@@ -1,9 +1,16 @@
 
+import PersonList from '../../component/PersonList';
+import Test from '../../component/Test';
+
 function Monitoring () {
 
     return (
 
-        <div> 数据监测</div>
+        <div> 数据监测
+
+            <Test />
+
+        </div>
     )
 }
 
