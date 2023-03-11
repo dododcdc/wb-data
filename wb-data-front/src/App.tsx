@@ -7,6 +7,8 @@ import Monitoring from './views/Monitoring';
 
 import Query from './views/Query';
 
+import Db from './views/Db'
+
 import {Routes, Route, HashRouter} from 'react-router-dom'
 
 
@@ -20,6 +22,7 @@ function App() {
           <Route index element={<Monitoring />} />
           <Route path="comparison" element={<Comparison />} />
           <Route path="query" element={<Query />} />
+          <Route path="source" element={<Db />} />
         </Route>
       </Routes>
         </HashRouter>

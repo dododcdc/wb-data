@@ -9,7 +9,7 @@ import { Menu } from 'antd';
 import logo from './../../assets/logo.png'
 
 
-function gg() {
+function WbLayOut() {
 
     const { Header, Footer, Sider, Content } = Layout;
 
@@ -27,6 +27,11 @@ function gg() {
         {
             label: '自助查询',
             key: '/query',
+            icon: <AppstoreOutlined />
+        },
+        {
+            label: '数据源',
+            key: '/source',
             icon: <AppstoreOutlined />
         }
     ];
@@ -61,4 +66,4 @@ function gg() {
     )
 }
 
-export  default gg
+export  default WbLayOut
