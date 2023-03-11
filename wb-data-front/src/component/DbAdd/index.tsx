@@ -1,13 +1,16 @@
 
 
 import React, { useState } from 'react';
-import { Button, Modal ,Checkbox, Form, Input} from 'antd';
+import { Button, Modal , Form, Input} from 'antd';
 
 
 import httpclient from "../../utils/httpclient";
 
+interface Props {
+    getAll: () => void;
+}
 
-const DbAdd: React.FC = () => {
+const DbAdd:React.FC<Props> = ({getAll}) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     const [form] = Form.useForm();
@@ -27,8 +30,10 @@ const DbAdd: React.FC = () => {
         httpclient.post("/db/add",JSON.stringify(data))
             .then(x  => {
                 console.log(x.data.msg)
-            })
 
+            }).then(() => {
+            getAll()
+        })
 
         setIsModalOpen(false);
     };
@@ -38,7 +43,8 @@ const DbAdd: React.FC = () => {
     };
 
     return (
-        <>
+        <div>
+            <Button onClick={getAll}>刷新</Button>
             <Button type="primary" onClick={showModal}>
                 添加数据源
             </Button>
@@ -88,7 +94,7 @@ const DbAdd: React.FC = () => {
 
                 </Form>
             </Modal>
-        </>
+        </div>
     );
 };
 

@@ -1,26 +1,51 @@
 import React from 'react';
 
 import httpclient from "../../utils/httpclient.js";
+import {Table} from "antd";
 
-class Test  extends React.Component {
-    state = {
+const Test:React.FC = () => {
 
-        name: ""
-    }
+    const dataSource = [
+        {
 
-    componentDidMount() {
-        httpclient.get("/t/test1")
-            .then(res => {
-               this.setState({name:res.data.code}) ;
-            })
-    }
+            name: '胡彦斌',
+            age: 32,
+            address: '西湖区湖底公园1号',
+        },
+        {
 
-    render() {
-        return (
+            name: '胡彦祖',
+            age: 42,
+            address: '西湖区湖底公园1号',
+        },
+    ];
 
-            <div>{this.state.name}</div>
-        )
-    }
+    const columns = [
+        {
+            title: '姓名',
+            dataIndex: 'name',
+            key: 'name',
+        },
+        {
+            title: '年龄',
+            dataIndex: 'age',
+            key: 'age',
+        },
+        {
+            title: '住址',
+
+
+        },
+    ];
+
+    return (
+        <div>
+            <Table rowSelection={{
+                type:'checkbox'
+            }}  dataSource={dataSource} columns={columns} />;
+        </div>
+    )
+
 
 }
 

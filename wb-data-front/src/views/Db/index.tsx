@@ -5,12 +5,13 @@ import React, {useEffect, useState} from 'react';
 import httpclient from "../../utils/httpclient";
 import DbAdd from "../../component/DbAdd";
 
-import { Button, Space } from 'antd';
+import {  Space,Table,Button } from 'antd';
+import {ColumnsType} from "antd/es/table";
 
 interface Data {
-    id:number;
-    url:string;
-    type:string;
+    id: React.Key;
+    url: string;
+    type: string;
     username: string;
     password: string;
     db_name: string;
@@ -20,18 +21,55 @@ interface Data {
     enabled: string;
 }
 
-function Db() {
+const columns:ColumnsType<Data> = [
+
+
+    {
+        title:"url"
+        ,dataIndex: 'url'
+        ,render: (text: string) => <Button>{text}</Button>
+        ,key:'url'
+    },
+    {
+        title:"username"
+        ,dataIndex:"username"
+        ,key:"username"
+    },
+    {
+        title:"password"
+        ,dataIndex:"password"
+        ,key:"password"
+    },
+    {
+        title:"dbName"
+        ,dataIndex:"db_name"
+        ,key:"db_name"
+    }
+]
+
+
+interface Props {
+    title: string;
+}
+
+
+
+const Db:React.FC<Props> = ({title}) => {
 
     const [data,setData] = useState<Data[]|null>(null)
 
-    useEffect(() => {
+    const getAll = () => {
         httpclient.get("/t/test3")
             .then(x =>{
                 const res:Data[] = x.data.data.content;
                 setData(res)
-
             } )
+    }
 
+
+
+    useEffect(() => {
+            getAll()
     },[])
 
     if (!data) {
@@ -40,19 +78,24 @@ function Db() {
 
     return (
         <div>
+            <h1>{title}</h1>
 
             <Space wrap>
-                <DbAdd />
+                <DbAdd getAll={getAll} />
 
             </Space>
 
-            <ul>
-                {
-                    data.map(item => (
-                        <li key={item.id} >{item.type}，{item.url}</li>
-                    ))
-                }
-            </ul>
+            <Table
+                    rowSelection={{
+                        type: 'checkbox'
+                    }}
+                   columns={columns}
+                   dataSource={data} rowKey="id"
+
+            >
+
+            </Table>
+
         </div>
     )
 
