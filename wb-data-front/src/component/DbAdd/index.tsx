@@ -1,7 +1,7 @@
 
 
 import React, { useState } from 'react';
-import { Button, Modal , Form, Input} from 'antd';
+import {Button, Modal, Form, Input, message, Space} from 'antd';
 
 
 import httpclient from "../../utils/httpclient";
@@ -25,15 +25,20 @@ const DbAdd:React.FC<Props> = ({getAll}) => {
 
 
         const data = form.getFieldsValue();
-        console.log(data);
+
 
         httpclient.post("/db/add",JSON.stringify(data))
             .then(x  => {
-                console.log(x.data.msg)
+                if (x.data.code === '200') {
+                    // 添加成功后调用父组件的方法刷新数据
+                    getAll()
+                    message.info("添加成功")
+                }else {
+                    message.error("添加失败")
 
-            }).then(() => {
-            getAll()
-        })
+                }
+
+            })
 
         setIsModalOpen(false);
     };
@@ -43,11 +48,14 @@ const DbAdd:React.FC<Props> = ({getAll}) => {
     };
 
     return (
-        <div>
-            <Button onClick={getAll}>刷新</Button>
-            <Button type="primary" onClick={showModal}>
-                添加数据源
-            </Button>
+        <div style={{padding:"20px"}}>
+            <Space size="middle">
+                <Button onClick={getAll}>刷新</Button>
+                <Button type="primary" onClick={showModal}>
+                    添加数据源
+                </Button>
+            </Space>
+
             <Modal title="Basic Modal" open={isModalOpen} onOk={handleOk} onCancel={handleCancel}>
                 <Form
                     name="basic"

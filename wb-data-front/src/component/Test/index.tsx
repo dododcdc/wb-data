@@ -1,6 +1,5 @@
 import React from 'react';
 
-import httpclient from "../../utils/httpclient.js";
 import {Table} from "antd";
 
 const Test:React.FC = () => {
@@ -45,7 +44,6 @@ const Test:React.FC = () => {
             }}  dataSource={dataSource} columns={columns} />;
         </div>
     )
-
 
 }
 
