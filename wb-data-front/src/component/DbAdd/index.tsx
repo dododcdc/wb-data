@@ -23,7 +23,6 @@ const DbAdd:React.FC<Props> = ({getAll}) => {
 
     const handleOk = () => {
 
-
         const data = form.getFieldsValue();
 
 

@@ -1,13 +1,15 @@
 
-import Comparison from './views/Comparison';
+import Comparison from './views/comparison';
 
-import Layout from "./views/Layout";
+import Layout from "./views/layout";
 
-import Monitoring from './views/Monitoring';
+import Monitoring from './views/monitoring';
 
-import Query from './views/Query';
+import Query from './views/query';
 
-import Db from './views/Db'
+import Db from './views/db'
+
+import Rule from './views/rule'
 
 import {Routes, Route, HashRouter} from 'react-router-dom'
 
@@ -23,6 +25,7 @@ function App() {
           <Route path="comparison" element={<Comparison />} />
           <Route path="query" element={<Query />} />
           <Route path="source" element={<Db />} />
+          <Route path="rule" element={<Rule />} />
         </Route>
       </Routes>
         </HashRouter>

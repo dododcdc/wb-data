@@ -1,50 +1,62 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import TodoService from '../../service/todo/index';
 
-import {Table} from "antd";
+interface Todo {
+    id: number;
+    title: string;
+    completed: boolean;
+}
 
-const Test:React.FC = () => {
+const TodoList: React.FC = () => {
+    const [todos, setTodos] = useState<Todo[]>([]);
 
-    const dataSource = [
-        {
+    useEffect(() => {
+        TodoService.getTodoList().then((data) => {
+            if (data) {
+                setTodos(data);
+            }
+        });
+    }, []);
 
-            name: '胡彦斌',
-            age: 32,
-            address: '西湖区湖底公园1号',
-        },
-        {
+    const handleAddTodo = () => {
+        TodoService.addTodo('新的待办事项').then((res:boolean) => {
+            if (res) {
+                // 添加成功，重新获取待办事项列表
+                TodoService.getTodoList().then((data) => {
+                    if (data) {
+                        setTodos(data);
+                    }
+                });
+            }
+        });
+    };
 
-            name: '胡彦祖',
-            age: 42,
-            address: '西湖区湖底公园1号',
-        },
-    ];
-
-    const columns = [
-        {
-            title: '姓名',
-            dataIndex: 'name',
-            key: 'name',
-        },
-        {
-            title: '年龄',
-            dataIndex: 'age',
-            key: 'age',
-        },
-        {
-            title: '住址',
-
-
-        },
-    ];
+    const handleDeleteTodo = (id: number) => {
+        TodoService.deleteTodoById(id).then((res) => {
+            if (res) {
+                // 删除成功，重新获取待办事项列表
+                TodoService.getTodoList().then((data) => {
+                    if (data) {
+                        setTodos(data);
+                    }
+                });
+            }
+        });
+    };
 
     return (
         <div>
-            <Table rowSelection={{
-                type:'checkbox'
-            }}  dataSource={dataSource} columns={columns} />;
+            <button onClick={handleAddTodo}>添加新的待办事项</button>
+            <ul>
+                {todos.map((todo) => (
+                    <li key={todo.id}>
+                        {todo.title} - {todo.completed ? '已完成' : '未完成'}
+                        <button onClick={() => handleDeleteTodo(todo.id)}>删除</button>
+                    </li>
+                ))}
+            </ul>
         </div>
-    )
+    );
+};
 
-}
-
-export default Test;
+export default TodoList;

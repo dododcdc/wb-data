@@ -9,7 +9,7 @@ import {
     CompletionContext,
     CompletionResult,
 } from '@codemirror/autocomplete';
-import {MySQL, sql, SQLDialect} from '@codemirror/lang-sql';
+import {MySQL, sql} from '@codemirror/lang-sql';
 
 
 const tables = ['table1', 'table2', 'table3'];

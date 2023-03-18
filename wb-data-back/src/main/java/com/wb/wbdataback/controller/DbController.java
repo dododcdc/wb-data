@@ -43,6 +43,7 @@ public class DbController {
 
         }catch (Exception e) {
 
+
             e.printStackTrace();
 
             return WbResult.failed();
@@ -59,4 +60,7 @@ public class DbController {
         return new WbResult("200","成功",data);
 
     }
+
+
+
 }

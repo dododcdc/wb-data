@@ -1,4 +1,3 @@
-
 import {  useNavigate,Outlet,Link } from "react-router-dom";
 import { Layout } from 'antd';
 
@@ -6,7 +5,8 @@ import { AppstoreOutlined, MailOutlined, SettingOutlined } from '@ant-design/ico
 import type { MenuProps } from 'antd';
 import { Menu } from 'antd';
 
-import logo from './../../assets/logo.png'
+import logo from '../../assets/cherry.svg'
+import { useRef } from 'react';
 
 
 function WbLayOut() {
@@ -33,8 +33,14 @@ function WbLayOut() {
             label: '数据源',
             key: '/source',
             icon: <AppstoreOutlined />
+        },
+        {
+            label: '检测规则配置',
+            key: '/rule',
+            icon: <AppstoreOutlined />
         }
     ];
+
 
 
     const navigate = useNavigate()
@@ -57,7 +63,7 @@ function WbLayOut() {
                 </Header>
                 <Layout>
                     <Sider>
-                        <Menu style={{minHeight:'500px'}} onClick={onClick}   items={items} />
+                        <Menu style={{minHeight:'500px'}} onClick={onClick}   items={items}  />
                     </Sider>
                     <Content> <Outlet /> </Content>
                 </Layout>

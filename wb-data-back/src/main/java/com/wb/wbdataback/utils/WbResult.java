@@ -2,12 +2,14 @@ package com.wb.wbdataback.utils;
 
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class WbResult {
 
     private static WbResult SUCCESS;
@@ -40,5 +42,7 @@ public class WbResult {
     public static WbResult failed() {
         return FAILED;
     }
+
+
 
 }

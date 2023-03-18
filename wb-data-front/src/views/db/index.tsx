@@ -3,6 +3,8 @@ import React, {useEffect, useState} from 'react';
 
 
 import httpclient from "../../utils/httpclient";
+import * as wbsource from "../../service/wbsource";
+import {WbSource} from "../../service/wbsource/types";
 import DbAdd from "../../component/DbAdd";
 
 import {  Space,Col, Row,Table,Button,Popconfirm,message } from 'antd';
@@ -11,22 +13,12 @@ import {ColumnsType} from "antd/es/table";
 
 
 
+
+
 const Db:React.FC = () => {
 
-    interface Data {
-        id: React.Key;
-        url: string;
-        type: string;
-        username: string;
-        password: string;
-        db_name: string;
-        create_time: string;
-        update_time: string;
-        update_by: string;
-        enabled: string;
-    }
 
-    const columns:ColumnsType<Data> = [
+    const columns:ColumnsType<WbSource> = [
 
 
         {
@@ -68,14 +60,14 @@ const Db:React.FC = () => {
     ]
 
 
-    const [data,setData] = useState<Data[]|null>(null)
+    const [data,setData] = useState<WbSource[]|null>(null)
 
     const getAll = () => {
-        httpclient.get("/db/all")
-            .then(x =>{
-                const res:Data[] = x.data.data;
-                setData(res)
-            } )
+
+        wbsource.findAll().then(x => {
+            setData(x)
+        })
+
     }
 
     const del = (id:React.Key) => {
@@ -97,10 +89,7 @@ const Db:React.FC = () => {
 
             })
 
-
     }
-
-
 
     useEffect(() => {
             getAll()

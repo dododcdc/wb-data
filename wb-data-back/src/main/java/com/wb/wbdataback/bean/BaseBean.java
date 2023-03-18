@@ -14,6 +14,7 @@ public class BaseBean {
 
     private Timestamp create_time;
     private Timestamp update_time;
+    private String create_by;
     private String update_by;
-    private String enabled;
+    private int deleted;
 }
