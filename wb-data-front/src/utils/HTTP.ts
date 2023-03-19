@@ -4,7 +4,7 @@ type MethodType = 'get' | 'post';
 
 interface CommonResponse<T> {
     code: string;
-    message: string;
+    msg: string;
     data: T;
 }
 
@@ -37,6 +37,24 @@ class Http {
                     'Content-Type': 'application/json'
                 }
             })
+            .then((res: AxiosResponse<CommonResponse<T>>) => {
+                if (res.data.code === "200") {
+                    return res.data;
+                } else {
+                    return null;
+                }
+            })
+            .catch((err) => {
+                console.log(err);
+                return null;
+            });
+    }
+
+
+
+    public static delete<T>(url: string, params?: object): Promise<CommonResponse<T> | null> {
+        return this.instance
+            .delete(url, { params })
             .then((res: AxiosResponse<CommonResponse<T>>) => {
                 if (res.data.code === "200") {
                     return res.data;

@@ -2,11 +2,13 @@ package com.wb.wbdataback.controller;
 
 
 import com.wb.wbdataback.bean.db.WbRule;
+import com.wb.wbdataback.bean.request.PageEntity;
 import com.wb.wbdataback.service.WbRuleRepo;
 import com.wb.wbdataback.utils.WbResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 
@@ -48,10 +50,10 @@ public class RuleController {
     }
 
     @PostMapping("/page")
-    public WbResult page(Integer page,Integer size) {
+    public WbResult page(@RequestBody PageEntity page) {
 
         try {
-            Page<WbRule> data = wbRuleRepo.findAll(PageRequest.of(0, 10,Sort.by("id").ascending()));
+            Page<WbRule> data = wbRuleRepo.findAll(PageRequest.of(page.getPage()-1, page.getSize(),Sort.by("updateTime").descending()));
             return WbResult.builder().code("200").msg("成功").data(data).build();
         } catch (Exception e) {
             e.printStackTrace();

@@ -18,20 +18,22 @@ import java.sql.Timestamp;
 @AllArgsConstructor
 @NoArgsConstructor
 
-public class WbSource extends BaseBean {
+public class WbSource  {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id ;
+
     private String type;
     private String url;
     private String username;
     private String password;
     private String db_name;
-//    private Timestamp create_time;
-//    private Timestamp update_time;
-//    private String update_by;
-//    private String enabled;
+    private Timestamp create_time;
+    private Timestamp update_time;
+    private String create_by;
+    private String update_by;
+    private int deleted;
 
 
 }

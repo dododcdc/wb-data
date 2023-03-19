@@ -8,12 +8,12 @@ import {WbRule} from "../../service/wbrule/types";
 
 
 interface Prop {
-    visible: boolean;
-    onCancel: () => void;
-    onOk: () => void;
+
+    flush: () => void;
+
 }
 
-const RuleAdd:React.FC<Prop> = () => {
+const RuleAdd:React.FC<Prop> = ({flush}) => {
 
     const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -29,16 +29,10 @@ const RuleAdd:React.FC<Prop> = () => {
 
         const data:WbRule = form.getFieldsValue();
 
-        rule.add(data).then().then(res => {
-            if (res) {
-                // 调用父组件方法刷新数据 ，将父组件分页信息拿到
-
-
-                message.info("添加成功")
-            }else {
-                message.error("添加失败")
-            }
+        rule.add(data).then(x => {
+            flush()
         })
+
 
 
         setIsModalOpen(false);
@@ -71,7 +65,22 @@ const RuleAdd:React.FC<Prop> = () => {
                 >
 
                     <Form.Item
-                        label="规则"
+                        label="名称"
+                        name="name"
+                        rules={[{ required: true, message: '请输入规则名称：user_count ' }]}
+                    >
+                        <Input />
+                    </Form.Item>
+                    <Form.Item
+                        label="规则描述"
+                        name="desc"
+                        rules={[{ required: true, message: '请输入规则描述,例如: 监控user表的数据量 ' }]}
+                    >
+                        <Input />
+                    </Form.Item>
+
+                    <Form.Item
+                        label="规则sql"
                         name="rule"
                         rules={[{ required: true, message: '请输入规则,例如: select count(*) from a ' }]}
                     >

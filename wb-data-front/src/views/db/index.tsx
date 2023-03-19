@@ -3,6 +3,7 @@ import React, {useEffect, useState} from 'react';
 
 
 import httpclient from "../../utils/httpclient";
+import {get ,post,del} from '../../utils/api';
 import * as wbsource from "../../service/wbsource";
 import {WbSource} from "../../service/wbsource/types";
 import DbAdd from "../../component/DbAdd";
@@ -64,7 +65,9 @@ const Db:React.FC = () => {
 
     const getAll = () => {
 
+
         wbsource.findAll().then(x => {
+            console.log(x)
             setData(x)
         })
 

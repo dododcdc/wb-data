@@ -4,6 +4,8 @@ import Http from "../../utils/HTTP";
 import {WbRule} from "./types";
 
 
+import {message} from 'antd';
+
 
 export const page = (page:Number, size?:Number) => {
 
@@ -16,7 +18,7 @@ export const page = (page:Number, size?:Number) => {
         size:size
     }
 
-    return Http.post<WbRule[]>('/rule/page',data).then(res => {
+    return Http.post<any>('/rule/page',data).then(res => {
         if (res) {
             return res.data
         } else {
@@ -30,8 +32,10 @@ export const page = (page:Number, size?:Number) => {
 export const add= (wbRule:WbRule) => {
     return Http.post<String>('/rule/add',JSON.stringify(wbRule)).then(res => {
         if (res) {
-            return res.data
+            message.info("添加成功")
+            return res.code
         } else {
+            message.error("添加失败")
             return []
         }
     })
@@ -40,11 +44,13 @@ export const add= (wbRule:WbRule) => {
 
 
 export const del = (id:Number) => {
-    return Http.get<WbRule>('/rule/del',id).then(res => {
+    return Http.delete<any>('/rule/del/'+id).then(res => {
         if (res) {
-            return res.data
+            message.info(res.msg)
+            return res
         } else {
-            return []
+            message.error("删除失败")
+            return null
         }
     })
 }
