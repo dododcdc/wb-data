@@ -1,4 +1,4 @@
-import {  useNavigate,Outlet,Link } from "react-router-dom";
+import {  useNavigate ,Outlet,Link } from "react-router-dom";
 import { Layout } from 'antd';
 
 import { AppstoreOutlined, MailOutlined, SettingOutlined } from '@ant-design/icons';
@@ -45,9 +45,10 @@ function WbLayOut() {
 
     const navigate = useNavigate()
 
-    const onClick: MenuProps['onClick'] = (e) => {
+    const onClick = (e: any) => {
         navigate(e.key, { replace: true })
     }
+
 
     return (
             <Layout  >

@@ -5,9 +5,18 @@ import {WbRule} from "./types";
 
 
 
-export const findAll = () => {
+export const page = (page:Number, size?:Number) => {
 
-    return Http.get<WbRule[]>('/rule/all').then(res => {
+    if (!size) {
+        size = 7;
+    }
+
+    const data = {
+        page:page,
+        size:size
+    }
+
+    return Http.post<WbRule[]>('/rule/page',data).then(res => {
         if (res) {
             return res.data
         } else {
@@ -16,4 +25,26 @@ export const findAll = () => {
     })
 
 
+}
+
+export const add= (wbRule:WbRule) => {
+    return Http.post<String>('/rule/add',JSON.stringify(wbRule)).then(res => {
+        if (res) {
+            return res.data
+        } else {
+            return []
+        }
+    })
+
+}
+
+
+export const del = (id:Number) => {
+    return Http.get<WbRule>('/rule/del',id).then(res => {
+        if (res) {
+            return res.data
+        } else {
+            return []
+        }
+    })
 }
