@@ -39,8 +39,8 @@ const Db:React.FC = () => {
         },
         {
             title:"dbName"
-            ,dataIndex:"db_name"
-            ,key:"db_name"
+            ,dataIndex:"dbName"
+            ,key:"dbName"
         },
         {
             title:"Action"
@@ -67,7 +67,6 @@ const Db:React.FC = () => {
 
 
         wbsource.findAll().then(x => {
-            console.log(x)
             setData(x)
         })
 

@@ -8,7 +8,6 @@ import com.wb.wbdataback.utils.WbResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 
@@ -53,7 +52,7 @@ public class RuleController {
     public WbResult page(@RequestBody PageEntity page) {
 
         try {
-            Page<WbRule> data = wbRuleRepo.findAll(PageRequest.of(page.getPage()-1, page.getSize(),Sort.by("updateTime").descending()));
+            Page<WbRule> data = wbRuleRepo.findAll(PageRequest.of(page.getPage()-1, page.getSize()));
             return WbResult.builder().code("200").msg("成功").data(data).build();
         } catch (Exception e) {
             e.printStackTrace();

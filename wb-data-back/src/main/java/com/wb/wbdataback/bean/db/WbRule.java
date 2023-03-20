@@ -1,21 +1,19 @@
 package com.wb.wbdataback.bean.db;
 
 
+import com.wb.wbdataback.bean.BaseBean;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import javax.persistence.*;
-import java.sql.Timestamp;
+import javax.persistence.Column;
+import javax.persistence.Entity;
 
 @Entity
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class WbRule  {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id ;
+public class WbRule extends BaseBean {
 
     @Column(name = "rule_name")
     private String name;
@@ -24,21 +22,5 @@ public class WbRule  {
     @Column(name = "rule_sql")
     private String rule;
 
-    @Column(nullable = false, updatable = false)
-    private Timestamp createTime;
 
-
-    @Column(nullable = false)
-    private Timestamp updateTime;
-
-    private String createBy;
-    private String updateBy;
-    private int deleted;
-
-
-    @PrePersist
-    public void prePersist() {
-        createTime = new Timestamp(System.currentTimeMillis());
-        updateTime = new Timestamp(System.currentTimeMillis());
-    }
 }

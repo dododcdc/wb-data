@@ -6,9 +6,9 @@ export interface WbSource {
     type: string;
     username: string;
     password: string;
-    db_name: string;
-    create_time: string;
-    update_time: string;
-    update_by: string;
+    dbName: string;
+    createTime: string;
+    updateTime: string;
+    updateBy: string;
     enabled: string;
 }

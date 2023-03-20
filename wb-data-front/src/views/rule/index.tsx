@@ -6,6 +6,7 @@ import {Button, Col, Popconfirm, Row, Space, Table} from "antd";
 import RuleAdd from "../../component/RuleAdd";
 
 import * as wbRule from "../../service/wbrule/index";
+
 import moment from 'moment';
 
 
