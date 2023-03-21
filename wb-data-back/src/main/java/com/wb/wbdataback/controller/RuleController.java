@@ -52,7 +52,7 @@ public class RuleController {
     public WbResult page(@RequestBody PageEntity page) {
 
         try {
-            Page<WbRule> data = wbRuleRepo.findAll(PageRequest.of(page.getPage()-1, page.getSize()));
+            Page<WbRule> data = wbRuleRepo.findAll(PageRequest.of(page.getPage()-1, page.getSize(),Sort.by(Sort.Direction.DESC, "updateTime")));
             return WbResult.builder().code("200").msg("成功").data(data).build();
         } catch (Exception e) {
             e.printStackTrace();
