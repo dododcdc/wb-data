@@ -6,8 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
+import javax.persistence.*;
 
 @Entity
 @Data
@@ -15,12 +14,23 @@ import javax.persistence.Entity;
 @NoArgsConstructor
 public class WbRule extends BaseBean {
 
-    @Column(name = "rule_name")
+
+    private Long wbSourceId;
+    @Column(name = "name")
     private String name;
-    @Column(name = "rule_desc")
-    private String desc;
+    @Column(name = "detail")
+    private String detail;
     @Column(name = "rule_sql")
-    private String rule;
+    private String ruleSql;
+
+    private Double threshold ;
+
+    private String operator;
+
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    private WbSource wbSource;
+
+
 
 
 }

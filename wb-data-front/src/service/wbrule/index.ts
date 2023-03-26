@@ -1,9 +1,6 @@
 import Http from "../../utils/HTTP";
 
 
-import {WbRule} from "./types";
-
-
 import {message} from 'antd';
 
 
@@ -29,7 +26,7 @@ export const page = (page:Number, size?:Number) => {
 
 }
 
-export const add= (wbRule:WbRule) => {
+export const add= (wbRule:any) => {
     return Http.post<String>('/rule/add',JSON.stringify(wbRule)).then(res => {
         if (res) {
             message.info("添加成功")

@@ -20,13 +20,18 @@ const Db:React.FC = () => {
 
 
     const columns:ColumnsType<WbSource> = [
-
+        {
+            title:"name"
+            ,dataIndex:"name"
+            ,key:"name"
+        },
 
         {
             title:"url"
             ,dataIndex: 'url'
             ,key:'url'
         },
+
         {
             title:"username"
             ,dataIndex:"username"
@@ -71,6 +76,8 @@ const Db:React.FC = () => {
         })
 
     }
+
+    // todo 删除数据源前先看 该数据源下有没有规则，如果有规则那么提示是否将规则一并删除
 
     const del = (id:React.Key) => {
 

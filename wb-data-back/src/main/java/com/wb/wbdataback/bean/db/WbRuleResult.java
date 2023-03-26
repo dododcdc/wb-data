@@ -1,29 +1,24 @@
 package com.wb.wbdataback.bean.db;
 
-
 import com.wb.wbdataback.bean.BaseBean;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import javax.persistence.Entity;
 
-
 @Entity
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@Builder
+public class WbRuleResult extends BaseBean
 
-public class WbSource extends BaseBean  {
+{
 
-
-    private String name;
-    private String type;
-    private String url;
-    private String driverClassName;
-    private String username;
-    private String password;
-    private String dbName;
-
+    private Long wbRuleId;
+    private Double result;
+    private int isException;
 
 }

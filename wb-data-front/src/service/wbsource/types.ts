@@ -2,6 +2,7 @@ import React from "react";
 
 export interface WbSource {
     id: React.Key;
+    name:string;
     url: string;
     type: string;
     username: string;

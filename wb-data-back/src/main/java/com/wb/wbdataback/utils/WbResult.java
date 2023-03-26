@@ -27,13 +27,6 @@ public class WbResult {
     private Object data;
 
 
-    public  WbResult(String code,String msg) {
-        this(code,msg,null);
-    }
-
-    public  WbResult(String code) {
-        this(code,"",null);
-    }
 
     public static WbResult success() {
         return SUCCESS;

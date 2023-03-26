@@ -38,6 +38,8 @@ public class DbController {
     @DeleteMapping("/del/{id}")
     public WbResult del(@PathVariable("id") Long  id) {
 
+
+
         try{
             wbSourceRepo.deleteById(id);
 

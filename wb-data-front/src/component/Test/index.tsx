@@ -1,62 +1,41 @@
-import React, { useState, useEffect } from 'react';
-import TodoService from '../../service/todo/index';
 
-interface Todo {
-    id: number;
-    title: string;
-    completed: boolean;
-}
+import React from 'react';
+import { SearchOutlined } from '@ant-design/icons';
+import { Button, Tooltip, Space } from 'antd';
 
-const TodoList: React.FC = () => {
-    const [todos, setTodos] = useState<Todo[]>([]);
 
-    useEffect(() => {
-        TodoService.getTodoList().then((data) => {
-            if (data) {
-                setTodos(data);
-            }
-        });
-    }, []);
 
-    const handleAddTodo = () => {
-        TodoService.addTodo('新的待办事项').then((res:boolean) => {
-            if (res) {
-                // 添加成功，重新获取待办事项列表
-                TodoService.getTodoList().then((data) => {
-                    if (data) {
-                        setTodos(data);
-                    }
-                });
-            }
-        });
-    };
+const Test: React.FC = () => (
+    <Space direction="vertical">
+        <Space wrap>
+            <Tooltip title="search">
+                <Button type="primary" shape="circle" icon={<SearchOutlined />} />
+            </Tooltip>
+            <Button type="primary" shape="circle">
+                A
+            </Button>
+            <Button type="primary" icon={<SearchOutlined />}>
+                Search
+            </Button>
+            <Tooltip title="search">
+                <Button shape="circle" icon={<SearchOutlined />} />
+            </Tooltip>
+            <Button icon={<SearchOutlined />}>Search</Button>
+        </Space>
+        <Space wrap>
+            <Tooltip title="search">
+                <Button shape="circle" icon={<SearchOutlined />} />
+            </Tooltip>
+            <Button icon={<SearchOutlined />}>Search</Button>
+            <Tooltip title="search">
+                <Button type="dashed" shape="circle" icon={<SearchOutlined />} />
+            </Tooltip>
+            <Button type="dashed" icon={<SearchOutlined />}>
+                Search
+            </Button>
+            <Button icon={<SearchOutlined />} href="https://www.google.com" />
+        </Space>
+    </Space>
+);
 
-    const handleDeleteTodo = (id: number) => {
-        TodoService.deleteTodoById(id).then((res) => {
-            if (res) {
-                // 删除成功，重新获取待办事项列表
-                TodoService.getTodoList().then((data) => {
-                    if (data) {
-                        setTodos(data);
-                    }
-                });
-            }
-        });
-    };
-
-    return (
-        <div>
-            <button onClick={handleAddTodo}>添加新的待办事项</button>
-            <ul>
-                {todos.map((todo) => (
-                    <li key={todo.id}>
-                        {todo.title} - {todo.completed ? '已完成' : '未完成'}
-                        <button onClick={() => handleDeleteTodo(todo.id)}>删除</button>
-                    </li>
-                ))}
-            </ul>
-        </div>
-    );
-};
-
-export default TodoList;
+export default Test;

@@ -68,6 +68,14 @@ const DbAdd:React.FC<Props> = ({getAll}) => {
                 >
 
                     <Form.Item
+                        label="名称"
+                        name="name"
+                        rules={[{ required: true, message: 'crm数据源' }]}
+                    >
+                        <Input />
+                    </Form.Item>
+
+                    <Form.Item
                         label="地址"
                         name="url"
                         rules={[{ required: true, message: '请输入地址,例如: jdbc:mysql:127.0.0.1:3306' }]}
@@ -93,7 +101,7 @@ const DbAdd:React.FC<Props> = ({getAll}) => {
 
                     <Form.Item
                         label="数据库"
-                        name="db_name"
+                        name="dbName"
                         rules={[{ required: true, message: '请输入默认数据库' }]}
                     >
                         <Input />
