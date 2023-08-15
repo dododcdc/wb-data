@@ -20,8 +20,6 @@ public class RuleResultController {
     private Query query;
 
 
-
-
     @PostMapping("/exec-rule")
     public WbResult execRule(@RequestBody WbRule wbRule) {
 

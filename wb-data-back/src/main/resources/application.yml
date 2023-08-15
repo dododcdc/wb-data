@@ -4,5 +4,6 @@ spring:
     username: root
     password: 1111
     driver-class-name: com.mysql.cj.jdbc.Driver
-  jpa:
-    show-sql: true
+  quartz:
+    jdbc:
+      initialize-schema: always

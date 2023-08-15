@@ -2,9 +2,11 @@ import React, {useEffect, useState} from 'react';
 
 import {WbRule} from '../../service/wbrule/types';
 import {ColumnsType} from "antd/es/table";
-import {Button, Col, Popconfirm, Row, Space, Table,Tooltip} from "antd";
-import { SearchOutlined ,DashboardOutlined,RightCircleOutlined,DeleteOutlined} from '@ant-design/icons';
+import {Button, Col, Popconfirm, Modal, Form, Row, Space, Table, Tooltip, Input, InputNumber} from "antd";
+import { DashboardOutlined,RightCircleOutlined,DeleteOutlined} from '@ant-design/icons';
 import RuleAdd from "../../component/RuleAdd";
+
+import * as job from '../../service/job/index';
 
 import * as wbRule from "../../service/wbrule/index";
 
@@ -71,7 +73,7 @@ const Rule: React.FC = () => {
                         </Tooltip>
 
                         <Tooltip title="配置调度">
-                            <Button type="primary" shape="circle" icon={<DashboardOutlined />} />
+                            <Button type="primary" shape="circle" icon={<DashboardOutlined />} onClick={ () => showModal(record.id) } />
                         </Tooltip>
 
                     <Popconfirm
@@ -91,6 +93,8 @@ const Rule: React.FC = () => {
         }
 
     ]
+
+    const [form] = Form.useForm();
 
     const [data, setData] = useState<any>([])
 
@@ -140,6 +144,44 @@ const Rule: React.FC = () => {
         getPageData(pagination.current,pagination.pageSize)
     },[])
 
+
+
+    const [open, setOpen] = useState(false);
+    const [confirmLoading, setConfirmLoading] = useState(false);
+
+
+
+    const showModal = (ruleId:any) => {
+        setOpen(true);
+        form.setFieldValue('ruleId',ruleId);
+
+    };
+
+    const handleOk = () => {
+
+        setConfirmLoading(true);
+
+        const data = form.getFieldsValue()
+
+
+
+        job.add(data)
+
+        setConfirmLoading(false);
+
+        setOpen(false);
+
+    };
+
+    const handleCancel = () => {
+        console.log('Clicked cancel button');
+        setOpen(false);
+    };
+
+
+
+
+
     return (
         <div>
 
@@ -154,7 +196,12 @@ const Rule: React.FC = () => {
                             getPageData(1,pagination.pageSize)
                         }} />
 
+
                     </Space>
+
+            <Space>
+                <Button onClick={ () => {job.delAll()}} > 清除所有调度</Button>
+            </Space>
 
 
                     <Table
@@ -171,6 +218,26 @@ const Rule: React.FC = () => {
                 {/*</Col>*/}
                 {/*<Col span={2}></Col>*/}
             {/*</Row>*/}
+
+            <Modal
+                title="Title"
+                open={open}
+                onOk={handleOk}
+                confirmLoading={confirmLoading}
+                onCancel={handleCancel}
+            >
+                <Form form={form}>
+                    <Form.Item name='ruleId' style={{ display: 'none' }} >
+                        <InputNumber  type="hidden" />
+
+                    </Form.Item>
+
+                    <Form.Item name='cron' label="cron" >
+                        <Input />
+
+                    </Form.Item>
+                </Form>
+            </Modal>
 
 
         </div>
