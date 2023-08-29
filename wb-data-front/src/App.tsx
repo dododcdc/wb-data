@@ -11,6 +11,8 @@ import Db from './views/db'
 
 import Rule from './views/rule'
 
+import Result from './views/result'
+
 import {Routes, Route, HashRouter} from 'react-router-dom'
 
 
@@ -26,6 +28,7 @@ function App() {
           <Route path="query" element={<Query />} />
           <Route path="source" element={<Db />} />
           <Route path="rule" element={<Rule />} />
+          <Route path="result" element={<Result />} />
         </Route>
       </Routes>
         </HashRouter>

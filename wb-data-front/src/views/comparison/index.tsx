@@ -8,7 +8,7 @@ function Comparison() {
 
 
     return (
-        <div>数据对比
+        <div>数据对比 待开发
 
             <button onClick={ () =>setCount( count + 1 )}>{count}</button>
 

@@ -38,6 +38,12 @@ function WbLayOut() {
             label: '检测规则配置',
             key: '/rule',
             icon: <AppstoreOutlined />
+        },
+
+        {
+            label: '规则运行结果',
+            key: '/result',
+            icon: <AppstoreOutlined />
         }
     ];
 

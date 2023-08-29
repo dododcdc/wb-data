@@ -6,7 +6,7 @@ function Monitoring () {
 
     return (
 
-        <div> 数据监测
+        <div> 数据监测 测试
 
             <Test />
 

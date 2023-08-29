@@ -3,6 +3,7 @@ package com.wb.wbdataback.controller;
 
 import com.wb.wbdataback.bean.db.WbRule;
 import com.wb.wbdataback.bean.request.PageEntity;
+import com.wb.wbdataback.service.QuartzService;
 import com.wb.wbdataback.service.WbRuleRepo;
 import com.wb.wbdataback.utils.WbResult;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +18,10 @@ public class RuleController {
 
     @Autowired
     private WbRuleRepo wbRuleRepo;
+
+    @Autowired
+    private QuartzService quartzService;
+
 
     @PostMapping("/add")
     public WbResult add(@RequestBody WbRule wbRule) {
@@ -39,7 +44,14 @@ public class RuleController {
 
     @DeleteMapping("/del/{id}")
     public WbResult del(@PathVariable("id") Long  id) {
+
+        String jobName = "job_rule" + id;
+        String jobGroupName = "job_rule" ;
+
         try {
+            // 先删除这个规则的调度
+            quartzService.deleteJob(jobName,jobGroupName);
+            // 再删除这个规则
             wbRuleRepo.deleteById(id);
             return WbResult.success();
         } catch (Exception e) {
