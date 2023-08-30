@@ -26,7 +26,7 @@ function WbLayOut() {
         },
         {
             label: '自助查询',
-            key: '/query',
+            key: '/ed',
             icon: <AppstoreOutlined />
         },
         {
