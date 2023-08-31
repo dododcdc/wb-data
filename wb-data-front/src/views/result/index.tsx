@@ -55,8 +55,10 @@ const Result:React.FC = () => {
 
     const getPageData = (a: number,b:number) => {
         page(a,b).then(res => {
+
+
             setData(res.content)
-            //setPagination({ ...pagination, total: res.totalElements,current: page })
+
             setPagination({current: a, total: res.totalElements, pageSize: b})
         })
 

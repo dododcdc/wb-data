@@ -1,8 +1,10 @@
 import Editor, { DiffEditor, useMonaco, loader } from '@monaco-editor/react';
 import React, {useEffect, useRef, useState} from "react";
-import {Button} from "antd";
+import {Button, Table} from "antd";
 import {Select} from "antd/lib";
 import * as wbsource from "../../service/wbsource";
+
+import { execQuery } from '../../service/other/index';
 
 function ED() {
 
@@ -10,6 +12,10 @@ function ED() {
     const editorRef = useRef(null);
 
     const [options,setOptions] = useState<Option[]>([])
+
+    const [data,setData] = useState<any>()
+
+    const [columns,setColumns] = useState()
 
 
 
@@ -21,8 +27,24 @@ function ED() {
     const handleGetSelectedText = () => {
         if (editorRef.current) {
             const selectedText = editorRef.current.getModel().getValueInRange(editorRef.current.getSelection());
-            alert(selectedText);
-            alert(db);
+            execQuery({'dbId':db,'sql':selectedText}).then((x) => {
+
+
+                setData(x)
+               const dydol =  Object.keys(x[0]).map(col => {
+                    return {
+                        title:col
+                        ,dataIndex:col
+                        ,key: col
+                    }
+                })
+
+                setColumns(dydol)
+            })
+
+
+
+
         }
     };
 
@@ -53,10 +75,9 @@ function ED() {
 
             <Button onClick={handleGetSelectedText}>运行</Button>
 
-
             <Select
                 showSearch
-                placeholder="Select a dataSource"
+                placeholder="选择一个数据源"
                 optionFilterProp="label"
                 onChange={handleChange}
                 filterOption={(input, option) =>
@@ -65,13 +86,19 @@ function ED() {
                 options={options}
             />
 
-            <Editor height="90vh" theme="vs-dark" defaultLanguage="sql" defaultValue=""
+            <Editor height="50vh" theme="vs-dark" defaultLanguage="sql" defaultValue=""
                     onMount={handleEditorDidMount}
             />
 
 
 
-            <div>查询结果展示</div>
+            <div>
+
+                <Table dataSource={data} columns={columns} />
+
+            </div>
+
+
         </div>
     )
 

@@ -19,7 +19,6 @@ export const page = (page:number,size?:number) => {
     return HTTP.post<any>("/rule-result/page",data).then(res => {
 
         if (res) {
-            console.log(res.data)
             return res.data
         }
         else {
