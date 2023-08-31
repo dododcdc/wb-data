@@ -1,5 +1,6 @@
 package com.wb.wbdataback.service.impl;
 
+import com.mchange.v2.c3p0.DriverManagerDataSource;
 import com.wb.wbdataback.bean.db.WbRule;
 import com.wb.wbdataback.bean.db.WbRuleResult;
 import com.wb.wbdataback.bean.db.WbSource;
@@ -14,6 +15,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.Assert;
 
 import javax.sql.DataSource;
+import java.sql.SQLException;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 
@@ -26,6 +30,9 @@ public class QueryImpl implements Query {
     @Autowired
     private WbSourceRepo wbSourceRepo;
 
+    private DriverManagerDataSource dataSource;
+    private JdbcTemplate jdbcTemplate;
+
 
     @Override
     public Double exec(WbRule wbRule) {
@@ -34,15 +41,18 @@ public class QueryImpl implements Query {
         Optional<WbSource> wbSource = wbSourceRepo.findById(wbSourceId);
 
 
-        DataSource dataSource = DataSourceBuilder.create().type(HikariDataSource.class).url(wbSource.get().getUrl())
-                .username(wbSource.get().getUsername())
-                .password(wbSource.get().getPassword())
-                .driverClassName(wbSource.get().getDriverClassName())
-                .build();
+        String url = wbSource.get().getUrl();
+        String username = wbSource.get().getUsername();
+        String password = wbSource.get().getPassword();
+        String driverClassName = wbSource.get().getDriverClassName();
+        dataSource = new DriverManagerDataSource();
+        dataSource.setJdbcUrl(url);
+        dataSource.setUser(username);
+        dataSource.setPassword(password);
+        dataSource.setDriverClass(driverClassName);
 
 
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
-
 
         // 结果值
         Double res = jdbcTemplate.queryForObject(wbRule.getRuleSql(), Double.class);
@@ -64,6 +74,31 @@ public class QueryImpl implements Query {
 
 
         return res;
+    }
+
+    @Override
+    public  List<Map<String, Object>> select(long sourceId, String sql) {
+
+        // 根据用户传入的数据源初始化datasource
+        Optional<WbSource> wbSource = wbSourceRepo.findById(sourceId);
+        String url = wbSource.get().getUrl();
+        String username = wbSource.get().getUsername();
+        String password = wbSource.get().getPassword();
+        String driverClassName = wbSource.get().getDriverClassName();
+        dataSource = new DriverManagerDataSource();
+        dataSource.setJdbcUrl(url);
+        dataSource.setUser(username);
+        dataSource.setPassword(password);
+        dataSource.setDriverClass(driverClassName);
+
+        this.jdbcTemplate = new JdbcTemplate(dataSource);
+
+        sql = sql + " limit 50";
+
+        // 执行sql
+        List<Map<String, Object>> maps = jdbcTemplate.queryForList(sql);
+
+        return maps;
     }
 
 
