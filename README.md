@@ -1,7 +1,6 @@
 # wb-data
-data help
-主要锻炼一下react能力，以前没写过
-
+springboot + react 
+![img.png](img.png)
 ### todo 
 
 * 数据源接入
