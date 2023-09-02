@@ -9,6 +9,7 @@ import logo from '../../assets/cherry.svg'
 import { useRef } from 'react';
 
 
+
 function WbLayOut() {
 
     const { Header, Footer, Sider, Content } = Layout;
@@ -66,6 +67,9 @@ function WbLayOut() {
                         height: 65,
                         margin: '0px 0px 0px 0'
                     }} />
+
+                    <h1>wb-data</h1>
+
 
                 </Header>
                 <Layout>

@@ -1,5 +1,6 @@
 package com.wb.wbdataback.service;
 
+import org.quartz.JobKey;
 import org.quartz.SchedulerException;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 
@@ -24,6 +25,14 @@ public interface QuartzService {
     // 删除某个job
 
     void deleteJob(String jobName, String jobGroupName) throws SchedulerException;
+
+    // 查询某个job的cron
+
+    String getCron(JobKey jobKey) throws SchedulerException;
+
+    // 更新某个job 的 cron
+
+    void updateCron(JobKey jobKey,String cron) throws SchedulerException;
 
 
     // 删除所有job

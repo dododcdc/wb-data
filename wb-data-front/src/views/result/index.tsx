@@ -12,7 +12,6 @@ import {WbRule} from "../../service/wbrule/types";
 
 const Result:React.FC = () => {
 
-
     const [pagination, setPagination] = useState<any>({ current: 1, pageSize: 10,total:0 });
     const [data, setData] = useState<any>([])
 
@@ -34,8 +33,7 @@ const Result:React.FC = () => {
             , key: 'isException'
             ,render: (text) => (
                 <div>
-
-                    {text === "0" ? (
+                    {text === 0 ? (
                         <Tag color="green">正常</Tag>
                     ) : (
                         <Tag color="red">异常</Tag>
@@ -80,7 +78,7 @@ const Result:React.FC = () => {
 
     return (
       <div>
-          result 开发中
+
 
           <Table
               rowSelection={{

@@ -57,8 +57,6 @@ const Rule: React.FC = () => {
         },
 
 
-
-
         {
             title:"操作"
             ,key:"action"
@@ -99,6 +97,8 @@ const Rule: React.FC = () => {
     const [data, setData] = useState<any>([])
 
     const [pagination, setPagination] = useState<any>({ current: 1, pageSize: 10,total:0 });
+
+    const [isExists ,setIsExists] = useState<boolean>(false)
 
     // 临时执行规则
     const exec = (wbrule:any) => {
@@ -151,21 +151,39 @@ const Rule: React.FC = () => {
 
 
 
-    const showModal = (ruleId:any) => {
-        setOpen(true);
+    const  showModal = (ruleId:any) => {
+
+      job.getCron(ruleId).then(x => {
+          if (x !== null && x !== "") {
+              form.setFieldValue("cron",x);
+              setIsExists(true)
+          }
+      })
+
+
+
         form.setFieldValue('ruleId',ruleId);
+
+
+        setOpen(true);
 
     };
 
     const handleOk = () => {
 
         setConfirmLoading(true);
-
         const data = form.getFieldsValue()
 
 
+        if (isExists) {
 
-        job.add(data)
+            job.updateCron(data.ruleId,data.cron)
+
+        }else {
+
+            job.add(data)
+        }
+
 
         setConfirmLoading(false);
 

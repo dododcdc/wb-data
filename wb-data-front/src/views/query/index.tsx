@@ -9,9 +9,9 @@ import { execQuery } from '../../service/other/index';
 function ED() {
 
 
-    const editorRef = useRef(null);
+    const editorRef = useRef<any>(null);
 
-    const [options,setOptions] = useState<Option[]>([])
+    const [options,setOptions] = useState<any[]>([])
 
     const [data,setData] = useState<any>()
 
@@ -19,7 +19,7 @@ function ED() {
 
 
 
-    const handleEditorDidMount = (editor, monaco) => {
+    const handleEditorDidMount = (editor:any, monaco:any) => {
         // 在编辑器加载完成后的回调函数
         editorRef.current = editor;
     };
@@ -31,7 +31,7 @@ function ED() {
 
 
                 setData(x)
-               const dydol =  Object.keys(x[0]).map(col => {
+               const dydol:any =  Object.keys(x[0]).map(col => {
                     return {
                         title:col
                         ,dataIndex:col
@@ -62,7 +62,7 @@ function ED() {
 
 
     const [db,setDb] = useState<number>()
-    const handleChange = (value) => {
+    const handleChange = (value:any) => {
         setDb(value);
 
     };

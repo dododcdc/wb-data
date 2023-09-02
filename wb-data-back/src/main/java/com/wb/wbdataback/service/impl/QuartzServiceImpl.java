@@ -7,6 +7,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 public class QuartzServiceImpl implements QuartzService {
 
@@ -53,6 +55,42 @@ public class QuartzServiceImpl implements QuartzService {
 
         scheduler.deleteJob(JobKey.jobKey(jobName, jobGroupName));
 
+
+    }
+
+    @Override
+    public String getCron(JobKey jobKey) throws SchedulerException {
+
+        List<? extends Trigger> triggersOfJob = scheduler.getTriggersOfJob(jobKey);
+
+        if (triggersOfJob.size()>0) {
+
+            Trigger trigger = triggersOfJob.get(0);
+
+            return  ((CronTrigger)trigger).getCronExpression();
+
+        }
+        return "";
+    }
+
+    @Override
+    public void updateCron(JobKey jobKey,String cron) throws SchedulerException {
+
+        JobDetail jobDetail = scheduler.getJobDetail(jobKey);
+
+
+        if (jobDetail != null) {
+
+            Trigger newTrigger = TriggerBuilder.newTrigger()
+                    .withIdentity("tr_rule" + jobKey.getName(), "tr_rule" + jobKey.getGroup())
+                    .withSchedule(CronScheduleBuilder.cronSchedule(cron)) // 设置新的 cron 表达式
+                    .build();
+
+            Trigger trigger = scheduler.getTriggersOfJob(jobKey).get(0);
+            TriggerKey key = trigger.getKey();
+            scheduler.rescheduleJob(key, newTrigger);
+
+        }
 
     }
 
