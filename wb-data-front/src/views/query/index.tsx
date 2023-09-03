@@ -86,8 +86,13 @@ function ED() {
                 options={options}
             />
 
-            <Editor height="50vh" theme="vs-dark" defaultLanguage="sql" defaultValue=""
+            <Editor height="50vh" theme="vs-dark"
+                    defaultLanguage="sql"
+                    defaultValue=""
                     onMount={handleEditorDidMount}
+                    options = {{
+                        lineNumbers: "on"
+                    }}
             />
 
 

@@ -70,15 +70,14 @@ function WbLayOut() {
 
                     <h1>wb-data</h1>
 
-
                 </Header>
                 <Layout>
-                    <Sider>
+                    <Sider style={{background:"white"}} >
                         <Menu style={{minHeight:'500px'}} onClick={onClick}   items={items}  />
                     </Sider>
                     <Content> <Outlet /> </Content>
                 </Layout>
-                <Footer >Footer</Footer>
+                {/*<Footer >Footer</Footer>*/}
             </Layout>
     )
 }
