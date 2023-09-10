@@ -25,9 +25,10 @@ function App() {
      <HashRouter>
       <Routes>
         <Route path="/" element={<Layout />}>
-          <Route index element={<Monitoring />} />
+          {/*<Route index element={<Monitoring />} />*/}
+          <Route index element={<ED />} />
           <Route path="comparison" element={<Comparison />} />
-          <Route path="ed" element={<ED />} />
+
           <Route path="source" element={<Db />} />
           <Route path="rule" element={<Rule />} />
           <Route path="result" element={<Result />} />

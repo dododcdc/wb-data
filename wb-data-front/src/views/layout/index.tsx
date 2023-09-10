@@ -15,19 +15,19 @@ function WbLayOut() {
     const { Header, Footer, Sider, Content } = Layout;
 
     const items: MenuProps['items'] = [
-        {
-            label: '数据监测',
-            key: '/',
-            icon: <MailOutlined />,
-        },
-        {
-            label: '数据对比',
-            key: '/comparison',
-            icon: <AppstoreOutlined />
-        },
+        // {
+        //     label: '数据监测',
+        //     key: '/',
+        //     icon: <MailOutlined />,
+        // },
+        // {
+        //     label: '数据对比',
+        //     key: '/comparison',
+        //     icon: <AppstoreOutlined />
+        // },
         {
             label: '自助查询',
-            key: '/ed',
+            key: '/',
             icon: <AppstoreOutlined />
         },
         {

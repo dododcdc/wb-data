@@ -110,9 +110,7 @@ const Db:React.FC = () => {
 
     return (
         <div>
-            <Row>
-                <Col span={2}></Col>
-                <Col span={20}>
+
                     <Space wrap>
                     <DbAdd getAll={getAll} />
 
@@ -127,9 +125,7 @@ const Db:React.FC = () => {
                     >
 
                     </Table>
-                </Col>
-                <Col span={2}></Col>
-            </Row>
+
 
 
         </div>
