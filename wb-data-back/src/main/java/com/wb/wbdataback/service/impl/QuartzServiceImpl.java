@@ -99,7 +99,9 @@ public class QuartzServiceImpl implements QuartzService {
     public void clear() throws Exception {
 
         scheduler.clear();
-        System.out.println("job已经全部清除完毕1.0.1");
+
+        System.out.println("job已经全部清除");
+
 
     }
 }
