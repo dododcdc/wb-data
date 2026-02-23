@@ -6,8 +6,8 @@
 *.swo
 
 # Project specific sensitive files
-小程序appsecret.txt
-oss.txt
+# (Removed non-existent file references)
+
 
 # Node / Frontend
 node_modules/
