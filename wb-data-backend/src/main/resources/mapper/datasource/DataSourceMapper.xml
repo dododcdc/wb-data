@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wbdata.datasource.mapper.DataSourceMapper">
+
+    <select id="selectDataSourceList" resultType="com.wbdata.datasource.entity.DataSource">
+        SELECT * FROM datasource
+        <where>
+            <if test="query.keyword != null and query.keyword != ''">
+                AND (name LIKE CONCAT('%', #{query.keyword}, '%') 
+                     OR description LIKE CONCAT('%', #{query.keyword}, '%')
+                     OR host LIKE CONCAT('%', #{query.keyword}, '%'))
+            </if>
+            <if test="query.typeList != null and query.typeList.size() > 0">
+                AND type IN
+                <foreach collection="query.typeList" item="t" open="(" separator="," close=")">
+                    #{t}
+                </foreach>
+            </if>
+            <if test="query.status != null and query.status != ''">
+                AND status = #{query.status}
+            </if>
+        </where>
+        <choose>
+            <when test="query.sortField != null and query.sortField != ''">
+                ORDER BY ${query.sortField} ${query.sortOrder}
+            </when>
+            <otherwise>
+                ORDER BY created_at DESC
+            </otherwise>
+        </choose>
+    </select>
+
+</mapper>

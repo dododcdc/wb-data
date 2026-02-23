@@ -1,0 +1,42 @@
+# IDEs and OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Project specific sensitive files
+小程序appsecret.txt
+oss.txt
+
+# Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+.env
+.env.*
+!.env.example
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Java / Backend
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+.factorypath
+.project
+.settings/
+.classpath
+
+# Logs
+logs/
+*.log
+
+# Misc
+.claude/
+.gemini/
