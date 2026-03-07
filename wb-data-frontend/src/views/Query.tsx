@@ -89,11 +89,12 @@ export default function Query() {
         }
     };
 
-    const handleRunQuery = async () => {
-        if (!selectedDsId || !sql) return;
+    const handleRunQuery = async (sqlToRun?: string) => {
+        const finalSql = sqlToRun ?? sql;
+        if (!selectedDsId || !finalSql.trim()) return;
         setLoadingQuery(true);
         try {
-            const data = await executeQuery(Number(selectedDsId), sql);
+            const data = await executeQuery(Number(selectedDsId), finalSql);
             setResult(data);
         } catch (error) {
             console.error('Failed to execute query', error);
@@ -102,13 +103,76 @@ export default function Query() {
         }
     };
 
+    /**
+     * Extracts the SQL statement the cursor is currently on.
+     * Splits the full text by semicolons and finds the segment that contains
+     * the cursor's character offset position — like DataGrip.
+     */
+    const getStatementAtCursor = (editor: any): string => {
+        const model = editor.getModel();
+        const position = editor.getPosition();
+        if (!model || !position) return sql;
+
+        const fullText = model.getValue();
+        const cursorOffset = model.getOffsetAt(position);
+
+        // Split statements by semicolons
+        const stmts: { start: number; end: number; text: string }[] = [];
+        let start = 0;
+        for (let i = 0; i <= fullText.length; i++) {
+            if (i === fullText.length || fullText[i] === ';') {
+                const text = fullText.slice(start, i).trim();
+                if (text) stmts.push({ start, end: i, text });
+                start = i + 1;
+            }
+        }
+
+        // Find the statement where the cursor is
+        for (const stmt of stmts) {
+            if (cursorOffset >= stmt.start && cursorOffset <= stmt.end + 1) {
+                return stmt.text;
+            }
+        }
+
+        // Fallback: return the full SQL
+        return fullText.trim();
+    };
+
+
+    const handleRunQueryRef = useRef(handleRunQuery);
+    useEffect(() => {
+        handleRunQueryRef.current = handleRunQuery;
+    }, [handleRunQuery]);
+
+    const getStatementAtCursorRef = useRef(getStatementAtCursor);
+    useEffect(() => {
+        getStatementAtCursorRef.current = getStatementAtCursor;
+    }, [getStatementAtCursor]);
+
+    const metadataRef = useRef(metadata);
+    useEffect(() => {
+        metadataRef.current = metadata;
+    }, [metadata]);
+
     const handleEditorDidMount = (editor: any, monaco: any) => {
         editorRef.current = editor;
 
+        const SQL_KEYWORDS = [
+            'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'LIMIT', 'ORDER BY', 'GROUP BY',
+            'HAVING', 'JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'ON', 'AS',
+            'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TABLE', 'DATABASE',
+            'IN', 'IS', 'NULL', 'NOT', 'EXISTS', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX',
+            'DISTINCT', 'UNION', 'ALL', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'ASC', 'DESC'
+        ];
+
         // Register custom completion provider for SQL
-        monaco.languages.registerCompletionItemProvider('sql', {
+        const provider = monaco.languages.registerCompletionItemProvider('sql', {
+            triggerCharacters: ['.'],
             provideCompletionItems: (model: any, position: any) => {
                 const word = model.getWordUntilPosition(position);
+                const lineContent = model.getLineContent(position.lineNumber);
+                const textBeforeCursor = lineContent.substring(0, position.column - 1);
+
                 const range = {
                     startLineNumber: position.lineNumber,
                     endLineNumber: position.lineNumber,
@@ -117,9 +181,61 @@ export default function Query() {
                 };
 
                 const suggestions: any[] = [];
+                const currentMetadata = metadataRef.current;
 
-                // 1. Add table suggestions
-                metadata.forEach(table => {
+                // 1. Column suggestions for "table." or "."
+                const lastDotIndex = textBeforeCursor.lastIndexOf('.');
+                if (lastDotIndex !== -1) {
+                    const parts = textBeforeCursor.trim().split(/\s+/);
+                    const lastPart = parts[parts.length - 1];
+                    const tableName = lastPart.split('.')[0];
+
+                    const table = currentMetadata.find(t => t.name.toLowerCase() === tableName.toLowerCase());
+                    if (table) {
+                        table.columns.forEach(col => {
+                            suggestions.push({
+                                label: col.name,
+                                kind: monaco.languages.CompletionItemKind.Field,
+                                insertText: col.name,
+                                detail: `${table.name} Column (${col.type})`,
+                                documentation: col.remarks,
+                                range: range,
+                            });
+                        });
+                        return { suggestions };
+                    }
+                }
+
+                // 2. Context-aware table suggestions (after FROM or JOIN)
+                const isAfterFromOrJoin = /\b(FROM|JOIN)\s+$/i.test(textBeforeCursor);
+                if (isAfterFromOrJoin) {
+                    currentMetadata.forEach(table => {
+                        suggestions.push({
+                            label: table.name,
+                            kind: monaco.languages.CompletionItemKind.Struct,
+                            insertText: table.name,
+                            detail: `Table (${table.type})`,
+                            documentation: table.remarks,
+                            range: range,
+                            sortText: '1' // Prioritize tables in this context
+                        });
+                    });
+                    return { suggestions };
+                }
+
+                // 3. Add General SQL Keywords
+                SQL_KEYWORDS.forEach(keyword => {
+                    suggestions.push({
+                        label: keyword,
+                        kind: monaco.languages.CompletionItemKind.Keyword,
+                        insertText: keyword,
+                        range: range,
+                        sortText: '9' // Lower priority than context-specific matches
+                    });
+                });
+
+                // 4. Add all tables to general search
+                currentMetadata.forEach(table => {
                     suggestions.push({
                         label: table.name,
                         kind: monaco.languages.CompletionItemKind.Struct,
@@ -127,33 +243,33 @@ export default function Query() {
                         detail: `Table (${table.type})`,
                         documentation: table.remarks,
                         range: range,
+                        sortText: '5'
                     });
 
-                    // 2. Add column suggestions for each table (optional prefix)
+                    // 5. Add columns to general search (optional but helpful)
                     table.columns.forEach(col => {
-                        suggestions.push({
-                            label: `${table.name}.${col.name}`,
-                            kind: monaco.languages.CompletionItemKind.Field,
-                            insertText: col.name, // Usually users type 'table.' and expect column
-                            filterText: `${table.name}.${col.name}`,
-                            detail: `${table.name} Column (${col.type})`,
-                            documentation: col.remarks,
-                            range: range,
-                        });
-
-                        // Also add raw column name as suggestion
                         suggestions.push({
                             label: col.name,
                             kind: monaco.languages.CompletionItemKind.Field,
                             insertText: col.name,
-                            detail: `Column (${col.type}) from ${table.name}`,
+                            detail: `Column of ${table.name} (${col.type})`,
                             range: range,
+                            sortText: '7'
                         });
                     });
                 });
 
                 return { suggestions };
             },
+        });
+
+        // Store provider to dispose on unmount
+        (editor as any)._completionProvider = provider;
+
+        // Add Cmd+Enter / Ctrl+Enter: run only the statement under the cursor
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+            const stmt = getStatementAtCursorRef.current(editor);
+            handleRunQueryRef.current(stmt);
         });
     };
 
@@ -241,10 +357,11 @@ export default function Query() {
                         <div className="toolbar-right">
                             <button
                                 className="run-button"
-                                onClick={handleRunQuery}
-                                disabled={loadingQuery || !selectedDsId}
+                                onClick={() => handleRunQuery()}
+                                disabled={loadingQuery || !selectedDsId || !sql}
+                                title="执行查询 (Cmd+Enter)"
                             >
-                                {loadingQuery ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} fill="currentColor" />}
+                                {loadingQuery ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} fill="white" />}
                                 <span>执行查询</span>
                             </button>
                         </div>
