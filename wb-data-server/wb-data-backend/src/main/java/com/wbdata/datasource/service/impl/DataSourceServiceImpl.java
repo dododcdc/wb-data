@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class DataSourceServiceImpl extends ServiceImpl<DataSourceMapper, DataSource> implements DataSourceService {
 
     private final DataSourcePluginRegistry pluginRegistry;
+    private final com.wbdata.datasource.plugin.DataSourceConnectionPoolManager poolManager;
 
     @Override
     public IPage<DataSource> getDataSourcePage(DataSourceSearchQuery query) {
@@ -32,12 +33,14 @@ public class DataSourceServiceImpl extends ServiceImpl<DataSourceMapper, DataSou
         ds.setId(id);
         ds.setStatus(status);
         this.updateById(ds);
+        poolManager.invalidate(id);
     }
 
     @Override
     public boolean testConnection(TestConnectionRequest request) {
         return pluginRegistry.getPlugin(request.getType())
                 .map(plugin -> plugin.testConnection(new com.wbdata.plugin.api.ConnectionTestRequest(
+                        null,   // testConnection always bypasses the pool
                         request.getType(),
                         request.getHost(),
                         request.getPort(),

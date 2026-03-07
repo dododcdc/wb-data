@@ -38,6 +38,7 @@ public class QueryServiceImpl implements QueryService {
             return CompletableFuture.supplyAsync(() -> {
                 return pluginRegistry.getPlugin(ds.getType())
                         .map(plugin -> plugin.executeQuery(new QueryRequest(
+                                ds.getId(),
                                 ds.getType(),
                                 ds.getHost(),
                                 ds.getPort(),

@@ -2,6 +2,7 @@ package com.wbdata.datasource.plugin;
 
 import com.wbdata.plugin.api.DataSourcePlugin;
 import com.wbdata.plugin.api.DataSourcePluginDescriptor;
+import com.wbdata.plugin.api.AbstractJdbcDataSourcePlugin;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -30,11 +31,14 @@ public class DataSourcePluginRegistry {
     private static final Logger log = LoggerFactory.getLogger(DataSourcePluginRegistry.class);
 
     private final PluginProperties pluginProperties;
+    private final DataSourceConnectionPoolManager poolManager;
     private final Map<String, DataSourcePlugin> plugins = new LinkedHashMap<>();
     private final List<URLClassLoader> classLoaders = new ArrayList<>();
 
-    public DataSourcePluginRegistry(PluginProperties pluginProperties) {
+    public DataSourcePluginRegistry(PluginProperties pluginProperties,
+                                    DataSourceConnectionPoolManager poolManager) {
         this.pluginProperties = pluginProperties;
+        this.poolManager = poolManager;
     }
 
     @PostConstruct
@@ -63,6 +67,28 @@ public class DataSourcePluginRegistry {
         }
 
         log.info("Loaded {} datasource plugins from {}", plugins.size(), pluginDirectory);
+
+        // Wire the pooled connection supplier into all AbstractJdbcDataSourcePlugin instances
+        AbstractJdbcDataSourcePlugin.setConnectionSupplier(
+                (request, jdbcUrl, driverClassName) -> {
+                    com.wbdata.datasource.entity.DataSource ds = new com.wbdata.datasource.entity.DataSource();
+                    // Use dataSourceId when available (set during query execution path),
+                    // otherwise derive a stable key from connection parameters.
+                    Long poolKey = request.dataSourceId() != null
+                            ? request.dataSourceId()
+                            : (long) java.util.Objects.hash(
+                                    request.host(), request.port(),
+                                    request.databaseName(), request.username(), request.type());
+                    ds.setId(poolKey);
+                    ds.setType(request.type());
+                    ds.setHost(request.host());
+                    ds.setPort(request.port());
+                    ds.setDatabaseName(request.databaseName());
+                    ds.setUsername(request.username());
+                    ds.setPassword(request.password());
+                    return poolManager.getConnection(ds, jdbcUrl, driverClassName);
+                }
+        );
     }
 
     public Optional<DataSourcePlugin> getPlugin(String type) {

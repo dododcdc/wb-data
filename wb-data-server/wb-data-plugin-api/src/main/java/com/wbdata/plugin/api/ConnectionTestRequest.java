@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.Map;
 
 public record ConnectionTestRequest(
+        Long dataSourceId,
         String type,
         String host,
         Integer port,

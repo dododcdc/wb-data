@@ -28,6 +28,7 @@ public class DataSourceController {
 
     private final DataSourceService dataSourceService;
     private final DataSourcePluginRegistry pluginRegistry;
+    private final com.wbdata.datasource.plugin.DataSourceConnectionPoolManager poolManager;
 
     @Operation(summary = "数据源插件列表")
     @GetMapping("/plugins")
@@ -84,13 +85,17 @@ public class DataSourceController {
         dataSource.setPassword(dto.getPassword());
         dataSource.setConnectionParams(dto.getConnectionParams());
         dataSource.setOwner(dto.getOwner());
-        return Result.success(dataSourceService.updateById(dataSource));
+        boolean updated = dataSourceService.updateById(dataSource);
+        poolManager.invalidate(id);   // evict stale pool for this data source
+        return Result.success(updated);
     }
 
     @Operation(summary = "删除数据源")
     @DeleteMapping("/{id}")
     public Result<Boolean> delete(@PathVariable Long id) {
-        return Result.success(dataSourceService.removeById(id));
+        boolean removed = dataSourceService.removeById(id);
+        poolManager.invalidate(id);   // close and evict the pool for the deleted data source
+        return Result.success(removed);
     }
 
     @Operation(summary = "更新启用状态")

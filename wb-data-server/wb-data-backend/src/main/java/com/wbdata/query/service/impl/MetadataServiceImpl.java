@@ -28,6 +28,7 @@ public class MetadataServiceImpl implements MetadataService {
 
         return pluginRegistry.getPlugin(ds.getType())
                 .map(plugin -> plugin.getDatabases(new ConnectionTestRequest(
+                        ds.getId(),
                         ds.getType(),
                         ds.getHost(),
                         ds.getPort(),
@@ -48,6 +49,7 @@ public class MetadataServiceImpl implements MetadataService {
 
         return pluginRegistry.getPlugin(ds.getType())
                 .map(plugin -> plugin.getTables(new ConnectionTestRequest(
+                        ds.getId(),
                         ds.getType(),
                         ds.getHost(),
                         ds.getPort(),
