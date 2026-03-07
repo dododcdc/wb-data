@@ -1,6 +1,7 @@
 .query-container {
     display: flex;
-    height: calc(100vh - 64px);
+    height: calc(100vh - 56px);
+    width: 100%;
     overflow: hidden;
     background: #0f1115;
     color: #e2e8f0;

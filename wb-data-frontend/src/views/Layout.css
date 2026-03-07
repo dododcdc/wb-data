@@ -105,12 +105,10 @@
   width: 28px;
   height: 4px;
   border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    rgba(22, 119, 255, 0) 0%,
-    rgba(147, 197, 253, 0.92) 52%,
-    rgba(22, 119, 255, 0.08) 100%
-  );
+  background: linear-gradient(90deg,
+      rgba(22, 119, 255, 0) 0%,
+      rgba(147, 197, 253, 0.92) 52%,
+      rgba(22, 119, 255, 0.08) 100%);
   opacity: 0;
   pointer-events: none;
 }
@@ -165,6 +163,12 @@
   margin: 0 auto;
   padding: 24px 28px;
   box-sizing: border-box;
+}
+
+.content-area.full-bleed {
+  max-width: 100%;
+  padding: 0;
+  margin: 0;
 }
 
 @media (max-width: 900px) {

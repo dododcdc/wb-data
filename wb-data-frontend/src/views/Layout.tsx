@@ -6,6 +6,7 @@ import './Layout.css';
 export default function Layout() {
     const { userInfo } = useUserStore();
     const location = useLocation();
+    const isQueryPage = location.pathname.startsWith('/query');
     const activeSection = location.pathname.startsWith('/datasources') ? 'datasources' : 'home';
 
     return (
@@ -47,7 +48,7 @@ export default function Layout() {
                 </div>
             </header>
             <main className="main-content">
-                <div className="content-area">
+                <div className={`content-area ${isQueryPage ? 'full-bleed' : ''}`}>
                     <Outlet />
                 </div>
             </main>
