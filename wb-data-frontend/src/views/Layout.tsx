@@ -30,6 +30,13 @@ export default function Layout() {
                             <Database size={18} />
                             <span>数据源管理</span>
                         </NavLink>
+                        <NavLink
+                            to="/query"
+                            className={`nav-item ${location.pathname.startsWith('/query') ? 'active' : ''}`.trim()}
+                        >
+                            <Layers size={18} />
+                            <span>自助查询</span>
+                        </NavLink>
                     </nav>
                 </div>
                 <div className="navbar-right">
