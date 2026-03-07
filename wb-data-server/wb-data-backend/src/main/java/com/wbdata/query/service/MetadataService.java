@@ -4,5 +4,6 @@ import com.wbdata.plugin.api.TableMetadata;
 import java.util.List;
 
 public interface MetadataService {
-    List<TableMetadata> getTables(Long dataSourceId);
+    List<String> getDatabases(Long dataSourceId);
+    List<TableMetadata> getTables(Long dataSourceId, String databaseName);
 }

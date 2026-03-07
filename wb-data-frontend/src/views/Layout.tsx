@@ -7,7 +7,6 @@ export default function Layout() {
     const { userInfo } = useUserStore();
     const location = useLocation();
     const isQueryPage = location.pathname.startsWith('/query');
-    const activeSection = location.pathname.startsWith('/datasources') ? 'datasources' : 'home';
 
     return (
         <div className="layout-container">
@@ -20,20 +19,24 @@ export default function Layout() {
                         <h2>WB Data</h2>
                     </div>
                     <nav className="nav-menu">
-                        <NavLink to="/" className={`nav-item ${activeSection === 'home' ? 'active' : ''}`.trim()} end>
+                        <NavLink
+                            to="/"
+                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`.trim()}
+                            end
+                        >
                             <Home size={18} />
                             <span>首页</span>
                         </NavLink>
                         <NavLink
                             to="/datasources"
-                            className={`nav-item ${activeSection === 'datasources' ? 'active' : ''}`.trim()}
+                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`.trim()}
                         >
                             <Database size={18} />
                             <span>数据源管理</span>
                         </NavLink>
                         <NavLink
                             to="/query"
-                            className={`nav-item ${location.pathname.startsWith('/query') ? 'active' : ''}`.trim()}
+                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`.trim()}
                         >
                             <Layers size={18} />
                             <span>自助查询</span>

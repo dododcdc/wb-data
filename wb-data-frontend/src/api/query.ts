@@ -23,8 +23,12 @@ export interface QueryResult {
     message: string;
 }
 
-export const getMetadataTables = (dataSourceId: number) => {
-    return request.get<any, TableMetadata[]>(`/api/v1/query/metadata/${dataSourceId}/tables`);
+export const getMetadataDatabases = (dataSourceId: number) => {
+    return request.get<any, string[]>(`/api/v1/query/metadata/${dataSourceId}/databases`);
+};
+
+export const getMetadataTables = (dataSourceId: number, databaseName: string) => {
+    return request.get<any, TableMetadata[]>(`/api/v1/query/metadata/${dataSourceId}/${databaseName}/tables`);
 };
 
 export const executeQuery = (dataSourceId: number, sql: string) => {

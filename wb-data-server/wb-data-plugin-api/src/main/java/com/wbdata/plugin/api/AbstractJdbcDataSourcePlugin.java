@@ -57,8 +57,42 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     }
 
 
+
     @Override
-    public java.util.List<TableMetadata> getTables(ConnectionTestRequest request) {
+    public java.util.List<String> getDatabases(ConnectionTestRequest request) {
+        java.util.List<String> databases = new java.util.ArrayList<>();
+        try {
+            registerDriverIfNeeded(driverClassName(), getClass().getClassLoader());
+            try (Connection connection = DriverManager.getConnection(
+                    buildJdbcUrl(request),
+                    emptyIfNull(request.username()),
+                    emptyIfNull(request.password()))) {
+                
+                java.sql.DatabaseMetaData metaData = connection.getMetaData();
+                // For MySQL, 'catalogs' are databases. For PostgreSQL/Oracle, 'schemas' might be more appropriate.
+                // We'll try catalogs first and if empty try schemas.
+                try (java.sql.ResultSet rs = metaData.getCatalogs()) {
+                    while (rs.next()) {
+                        databases.add(rs.getString("TABLE_CAT"));
+                    }
+                }
+                
+                if (databases.isEmpty()) {
+                    try (java.sql.ResultSet rs = metaData.getSchemas()) {
+                        while (rs.next()) {
+                            databases.add(rs.getString("TABLE_SCHEM"));
+                        }
+                    }
+                }
+            }
+        } catch (Exception exception) {
+            throw new RuntimeException("Failed to fetch databases", exception);
+        }
+        return databases;
+    }
+
+    @Override
+    public java.util.List<TableMetadata> getTables(ConnectionTestRequest request, String databaseName) {
         java.util.List<TableMetadata> tables = new java.util.ArrayList<>();
         try {
             registerDriverIfNeeded(driverClassName(), getClass().getClassLoader());
@@ -68,14 +102,15 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                     emptyIfNull(request.password()))) {
                 
                 java.sql.DatabaseMetaData metaData = connection.getMetaData();
-                try (java.sql.ResultSet rs = metaData.getTables(connection.getCatalog(), null, "%", new String[]{"TABLE", "VIEW"})) {
+                // Try fetching tables for the specific database (catalog in JDBC terms for MySQL)
+                try (java.sql.ResultSet rs = metaData.getTables(databaseName, null, "%", new String[]{"TABLE", "VIEW"})) {
                     while (rs.next()) {
                         String tableName = rs.getString("TABLE_NAME");
                         String tableType = rs.getString("TABLE_TYPE");
                         String remarks = rs.getString("REMARKS");
                         
                         java.util.List<ColumnMetadata> columns = new java.util.ArrayList<>();
-                        try (java.sql.ResultSet columnRs = metaData.getColumns(connection.getCatalog(), null, tableName, "%")) {
+                        try (java.sql.ResultSet columnRs = metaData.getColumns(databaseName, null, tableName, "%")) {
                             while (columnRs.next()) {
                                 columns.add(new ColumnMetadata(
                                     columnRs.getString("COLUMN_NAME"),
@@ -83,7 +118,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                                     columnRs.getInt("COLUMN_SIZE"),
                                     columnRs.getInt("NULLABLE") == java.sql.DatabaseMetaData.columnNullable,
                                     columnRs.getString("REMARKS"),
-                                    false // Primary key needs separate call
+                                    false
                                 ));
                             }
                         }
@@ -92,7 +127,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                 }
             }
         } catch (Exception exception) {
-            throw new RuntimeException("Failed to fetch tables", exception);
+            throw new RuntimeException("Failed to fetch tables of " + databaseName, exception);
         }
         return tables;
     }
@@ -110,42 +145,52 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
             try (Connection connection = DriverManager.getConnection(
                     buildJdbcUrl(connectionInfo),
                     emptyIfNull(request.username()),
-                    emptyIfNull(request.password()));
-                 java.sql.Statement statement = connection.createStatement()) {
+                    emptyIfNull(request.password()))) {
                 
-                boolean hasResultSet = statement.execute(request.sql());
-                if (hasResultSet) {
-                    try (java.sql.ResultSet rs = statement.getResultSet()) {
-                        java.sql.ResultSetMetaData rsMetaData = rs.getMetaData();
-                        int columnCount = rsMetaData.getColumnCount();
-                        
-                        java.util.List<ColumnMetadata> columns = new java.util.ArrayList<>();
-                        for (int i = 1; i <= columnCount; i++) {
-                            columns.add(new ColumnMetadata(
-                                rsMetaData.getColumnName(i),
-                                rsMetaData.getColumnTypeName(i),
-                                rsMetaData.getPrecision(i),
-                                rsMetaData.isNullable(i) != java.sql.ResultSetMetaData.columnNoNulls,
-                                "",
-                                false
-                            ));
-                        }
-                        
-                        java.util.List<java.util.Map<String, Object>> rows = new java.util.ArrayList<>();
-                        while (rs.next()) {
-                            java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
-                            for (int i = 1; i <= columnCount; i++) {
-                                row.put(rsMetaData.getColumnName(i), rs.getObject(i));
-                            }
-                            rows.add(row);
-                        }
-                        
-                        return new QueryResult(columns, rows, System.currentTimeMillis() - startTime, "Success");
+                // If a specific database is requested in the query request, switch to it if supported
+                if (request.databaseName() != null && !request.databaseName().isEmpty()) {
+                    try {
+                        connection.setCatalog(request.databaseName());
+                    } catch (Exception e) {
+                        // Some drivers might not support setCatalog, ignore for now
                     }
-                } else {
-                    int updateCount = statement.getUpdateCount();
-                    return new QueryResult(java.util.Collections.emptyList(), java.util.Collections.emptyList(), 
-                        System.currentTimeMillis() - startTime, "Affected rows: " + updateCount);
+                }
+
+                try (java.sql.Statement statement = connection.createStatement()) {
+                    boolean hasResultSet = statement.execute(request.sql());
+                    if (hasResultSet) {
+                        try (java.sql.ResultSet rs = statement.getResultSet()) {
+                            java.sql.ResultSetMetaData rsMetaData = rs.getMetaData();
+                            int columnCount = rsMetaData.getColumnCount();
+                            
+                            java.util.List<ColumnMetadata> columns = new java.util.ArrayList<>();
+                            for (int i = 1; i <= columnCount; i++) {
+                                columns.add(new ColumnMetadata(
+                                    rsMetaData.getColumnName(i),
+                                    rsMetaData.getColumnTypeName(i),
+                                    rsMetaData.getPrecision(i),
+                                    rsMetaData.isNullable(i) != java.sql.ResultSetMetaData.columnNoNulls,
+                                    "",
+                                    false
+                                ));
+                            }
+                            
+                            java.util.List<java.util.Map<String, Object>> rows = new java.util.ArrayList<>();
+                            while (rs.next()) {
+                                java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+                                for (int i = 1; i <= columnCount; i++) {
+                                    row.put(rsMetaData.getColumnName(i), rs.getObject(i));
+                                }
+                                rows.add(row);
+                            }
+                            
+                            return new QueryResult(columns, rows, System.currentTimeMillis() - startTime, "Success");
+                        }
+                    } else {
+                        int updateCount = statement.getUpdateCount();
+                        return new QueryResult(java.util.Collections.emptyList(), java.util.Collections.emptyList(), 
+                            System.currentTimeMillis() - startTime, "Affected rows: " + updateCount);
+                    }
                 }
             }
         } catch (Exception exception) {

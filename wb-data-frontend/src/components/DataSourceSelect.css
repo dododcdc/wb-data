@@ -6,8 +6,35 @@
     font-family: inherit;
 }
 
-.ds-select-control {
+.ds-combobox-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
     width: 100%;
+}
+
+.ds-search-icon {
+    position: absolute;
+    left: 10px;
+    color: #94a3b8;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.ds-combobox-input {
+    padding-left: 32px !important;
+}
+
+.ds-combobox-toggle {
+    position: absolute;
+    right: 8px;
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .ds-select-trigger {
@@ -32,6 +59,12 @@
     align-items: center;
     gap: 4px;
     flex-wrap: wrap;
+}
+
+.ds-select-label-plain {
+    font-size: 13px;
+    color: inherit;
+    padding: 2px 0;
 }
 
 .ds-select-trigger:hover:not([data-disabled]) {
@@ -148,14 +181,56 @@
     background-color: #bfbfbf;
 }
 
-@keyframes ds-slide-down {
-    from {
-        opacity: 0;
-        transform: translateY(-5px);
-    }
+/* Dark Mode Styles */
+.ds-dark.ds-select-trigger,
+.ds-select-root.ds-dark .ds-select-trigger {
+    background-color: #1f2937;
+    border-color: #374151;
+    color: #f1f5f9;
+    height: 32px;
+    padding: 0 10px;
+    font-size: 13px;
+    min-width: 140px;
+}
 
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+.ds-dark.ds-select-trigger:hover,
+.ds-select-root.ds-dark .ds-select-trigger:hover {
+    border-color: #3b82f6;
+    background-color: #374151;
+}
+
+.ds-dark .ds-select-indicator,
+.ds-select-root.ds-dark .ds-select-indicator {
+    color: #94a3b8;
+}
+
+.ds-dark.ds-select-content,
+.ds-select-content.ds-dark {
+    background-color: #1f2937;
+    border-color: #374151;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+}
+
+.ds-dark .ds-select-item,
+.ds-select-content.ds-dark .ds-select-item {
+    color: #e2e8f0;
+}
+
+.ds-dark .ds-select-item[data-highlighted],
+.ds-select-content.ds-dark .ds-select-item[data-highlighted] {
+    background-color: #374151;
+}
+
+.ds-dark .ds-select-item[data-state="checked"],
+.ds-select-content.ds-dark .ds-select-item[data-state="checked"] {
+    background-color: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+}
+
+.ds-dark .ds-select-loading,
+.ds-dark .ds-select-empty {
+    color: #94a3b8;
+    padding: 12px;
+    font-size: 13px;
+    text-align: center;
 }

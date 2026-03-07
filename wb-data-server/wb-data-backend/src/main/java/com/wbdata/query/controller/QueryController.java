@@ -21,10 +21,16 @@ public class QueryController {
     private final MetadataService metadataService;
     private final QueryService queryService;
 
-    @Operation(summary = "获取数据源表结构")
-    @GetMapping("/metadata/{dataSourceId}/tables")
-    public Result<List<TableMetadata>> getTables(@PathVariable Long dataSourceId) {
-        return Result.success(metadataService.getTables(dataSourceId));
+    @Operation(summary = "获取数据源下的所有数据库")
+    @GetMapping("/metadata/{dataSourceId}/databases")
+    public Result<List<String>> getDatabases(@PathVariable Long dataSourceId) {
+        return Result.success(metadataService.getDatabases(dataSourceId));
+    }
+
+    @Operation(summary = "获取数据库下的表结构")
+    @GetMapping("/metadata/{dataSourceId}/{databaseName}/tables")
+    public Result<List<TableMetadata>> getTables(@PathVariable Long dataSourceId, @PathVariable String databaseName) {
+        return Result.success(metadataService.getTables(dataSourceId, databaseName));
     }
 
     @Operation(summary = "执行SQL查询")

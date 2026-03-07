@@ -20,7 +20,27 @@ public class MetadataServiceImpl implements MetadataService {
     private final DataSourcePluginRegistry pluginRegistry;
 
     @Override
-    public List<TableMetadata> getTables(Long dataSourceId) {
+    public List<String> getDatabases(Long dataSourceId) {
+        DataSource ds = dataSourceService.getById(dataSourceId);
+        if (ds == null) {
+            return Collections.emptyList();
+        }
+
+        return pluginRegistry.getPlugin(ds.getType())
+                .map(plugin -> plugin.getDatabases(new ConnectionTestRequest(
+                        ds.getType(),
+                        ds.getHost(),
+                        ds.getPort(),
+                        ds.getDatabaseName(),
+                        ds.getUsername(),
+                        ds.getPassword(),
+                        ds.getConnectionParams()
+                )))
+                .orElse(Collections.emptyList());
+    }
+
+    @Override
+    public List<TableMetadata> getTables(Long dataSourceId, String databaseName) {
         DataSource ds = dataSourceService.getById(dataSourceId);
         if (ds == null) {
             return Collections.emptyList();
@@ -35,7 +55,7 @@ public class MetadataServiceImpl implements MetadataService {
                         ds.getUsername(),
                         ds.getPassword(),
                         ds.getConnectionParams()
-                )))
+                ), databaseName))
                 .orElse(Collections.emptyList());
     }
 }
