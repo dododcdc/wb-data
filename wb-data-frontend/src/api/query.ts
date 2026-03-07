@@ -24,11 +24,11 @@ export interface QueryResult {
 }
 
 export const getMetadataTables = (dataSourceId: number) => {
-    return request.get<TableMetadata[]>(`/api/v1/query/metadata/${dataSourceId}/tables`);
+    return request.get<any, TableMetadata[]>(`/api/v1/query/metadata/${dataSourceId}/tables`);
 };
 
 export const executeQuery = (dataSourceId: number, sql: string) => {
-    return request.post<QueryResult>(`/api/v1/query/execute/${dataSourceId}`, sql, {
+    return request.post<any, QueryResult>(`/api/v1/query/execute/${dataSourceId}`, sql, {
         headers: {
             'Content-Type': 'text/plain',
         },

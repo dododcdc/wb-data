@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import { Play, Database, Table, Columns, Loader2, Code2 } from 'lucide-react';
 import { getMetadataTables, executeQuery, TableMetadata, QueryResult } from '../api/query';
-import { getDataSourceList, DataSource } from '../api/datasource';
+import { getDataSourcePage, DataSource } from '../api/datasource';
 import { DataSourceSelect } from '../components/DataSourceSelect';
 import './Query.css';
 
@@ -28,8 +28,8 @@ export default function Query() {
 
     const loadDataSources = async () => {
         try {
-            const response = await getDataSourceList({ page: 1, size: 100 });
-            setDataSources(response.data.data.records);
+            const data = await getDataSourcePage({ page: 1, size: 100 });
+            setDataSources(data.records);
         } catch (error) {
             console.error('Failed to load data sources', error);
         }
@@ -38,8 +38,8 @@ export default function Query() {
     const loadMetadata = async (id: number) => {
         setLoadingMetadata(true);
         try {
-            const response = await getMetadataTables(id);
-            setMetadata(response.data.data);
+            const data = await getMetadataTables(id);
+            setMetadata(data);
         } catch (error) {
             console.error('Failed to load metadata', error);
         } finally {
@@ -51,8 +51,8 @@ export default function Query() {
         if (!selectedDsId || !sql) return;
         setLoadingQuery(true);
         try {
-            const response = await executeQuery(Number(selectedDsId), sql);
-            setResult(response.data.data);
+            const data = await executeQuery(Number(selectedDsId), sql);
+            setResult(data);
         } catch (error) {
             console.error('Failed to execute query', error);
         } finally {
