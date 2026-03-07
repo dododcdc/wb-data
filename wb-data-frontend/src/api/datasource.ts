@@ -17,6 +17,25 @@ export interface DataSource {
     updatedAt: string;
 }
 
+export interface PluginFieldDescriptor {
+    key: string;
+    section: string;
+    label: string;
+    placeholder: string;
+    inputType: string;
+    required: boolean;
+    defaultValue?: string | null;
+}
+
+export interface DataSourcePluginDescriptor {
+    type: string;
+    label: string;
+    order: number;
+    helperText: string;
+    supportsConnectionTest: boolean;
+    fields: PluginFieldDescriptor[];
+}
+
 export interface DataSourceSearchQuery {
     page?: number;
     size?: number;
@@ -36,6 +55,10 @@ export interface PageResult<T> {
 
 export const getDataSourcePage = (params: DataSourceSearchQuery) => {
     return request.get<any, PageResult<DataSource>>('/api/v1/datasources', { params });
+};
+
+export const getDataSourcePlugins = () => {
+    return request.get<any, DataSourcePluginDescriptor[]>('/api/v1/datasources/plugins');
 };
 
 export const getDataSourceById = (id: number) => {

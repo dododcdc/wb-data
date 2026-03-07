@@ -157,6 +157,13 @@
     margin-bottom: 0;
 }
 
+.config-section-tip {
+    margin: -6px 0 18px;
+    color: #64748b;
+    font-size: 0.86rem;
+    line-height: 1.6;
+}
+
 .field-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -185,6 +192,20 @@
     font-size: 0.85rem;
     font-weight: 600;
     color: #5c6269;
+}
+
+.input-help {
+    color: #94a3b8;
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.input-help code {
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: #eff6ff;
+    color: #0b63d8;
+    font-size: 0.92em;
 }
 
 .required {
@@ -277,6 +298,19 @@
     color: #1677ff;
 }
 
+.test-action-btn:disabled {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+    color: #94a3b8;
+    cursor: not-allowed;
+}
+
+.test-action-btn:disabled:hover {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+    color: #94a3b8;
+}
+
 .test-badge {
     display: flex;
     align-items: center;
@@ -291,6 +325,12 @@
 
 .test-badge.fail {
     color: #ff4d4f;
+}
+
+.test-note {
+    color: #64748b;
+    font-size: 0.82rem;
+    line-height: 1.5;
 }
 
 .footer-right {
@@ -317,20 +357,27 @@
 .submit-btn {
     height: 40px;
     padding: 0 28px;
-    background: #1677ff;
+    background: #4096ff;
     color: white;
     border: none;
     border-radius: 8px;
     font-weight: 600;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(22, 119, 255, 0.2);
+    box-shadow: 0 4px 12px rgba(22, 119, 255, 0.16);
     transition: all 0.2s;
 }
 
-.submit-btn:hover {
-    background: #4096ff;
+.submit-btn:hover,
+.submit-btn:focus-visible {
+    background: #1677ff;
     transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(22, 119, 255, 0.25);
+    box-shadow: 0 6px 16px rgba(22, 119, 255, 0.24);
+}
+
+.submit-btn:active {
+    background: #0958d9;
+    transform: translateY(0);
+    box-shadow: 0 3px 10px rgba(9, 88, 217, 0.22);
 }
 
 .submit-btn:disabled {

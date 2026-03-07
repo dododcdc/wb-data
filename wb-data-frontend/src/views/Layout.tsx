@@ -1,10 +1,13 @@
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { Database, Home, Layers } from 'lucide-react';
 import { useUserStore } from '../store';
 import './Layout.css';
 
 export default function Layout() {
     const { userInfo } = useUserStore();
+    const location = useLocation();
+    const activeSection = location.pathname.startsWith('/datasources') ? 'datasources' : 'home';
+
     return (
         <div className="layout-container">
             <header className="global-navbar">
@@ -16,11 +19,14 @@ export default function Layout() {
                         <h2>WB Data</h2>
                     </div>
                     <nav className="nav-menu">
-                        <NavLink to="/" className="nav-item" end>
+                        <NavLink to="/" className={`nav-item ${activeSection === 'home' ? 'active' : ''}`.trim()} end>
                             <Home size={18} />
-                            <span>仪表盘</span>
+                            <span>首页</span>
                         </NavLink>
-                        <NavLink to="/datasources" className="nav-item">
+                        <NavLink
+                            to="/datasources"
+                            className={`nav-item ${activeSection === 'datasources' ? 'active' : ''}`.trim()}
+                        >
                             <Database size={18} />
                             <span>数据源管理</span>
                         </NavLink>

@@ -27,6 +27,13 @@
     outline: none;
 }
 
+.ds-select-value {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
 .ds-select-trigger:hover:not([data-disabled]) {
     border-color: #1677ff;
 }
@@ -89,6 +96,13 @@
     font-size: 14px;
     cursor: pointer;
     transition: background-color 0.1s;
+}
+
+.ds-select-item-copy {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
 }
 
 .ds-select-item[data-highlighted] {

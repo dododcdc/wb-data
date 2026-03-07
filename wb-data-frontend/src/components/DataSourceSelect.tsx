@@ -18,7 +18,7 @@ type DataSourceSelectProps = {
     );
 
 export function DataSourceSelect(props: DataSourceSelectProps) {
-    const { options, placeholder = "Select...", disabled, multiple, value, onChange } = props;
+    const { options, placeholder = 'Select...', disabled, multiple, value, onChange } = props;
     const collection = createListCollection({ items: options });
 
     const handleValueChange = (values: string[]) => {
@@ -30,7 +30,7 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
     };
 
     const valueArray = Array.isArray(value) ? value : [value].filter(Boolean);
-
+    const selectedOptions = options.filter(opt => valueArray.includes(opt.value));
 
     return (
         <Select.Root
@@ -45,15 +45,15 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
             <Select.Control className="ds-select-control">
                 <Select.Trigger className="ds-select-trigger">
                     <Select.ValueText placeholder={placeholder}>
-                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                            {options
-                                .filter(opt => valueArray.includes(opt.value))
-                                .map(opt => (
+                        {selectedOptions.length > 0 ? (
+                            <div className="ds-select-value">
+                                {selectedOptions.map(opt => (
                                     <span key={opt.value} className={`type-badge ${opt.value.toLowerCase()}`}>
                                         {opt.label}
                                     </span>
-                                )) || placeholder}
-                        </div>
+                                ))}
+                            </div>
+                        ) : null}
                     </Select.ValueText>
                     <Select.Indicator className="ds-select-indicator">
                         <ChevronDown size={16} />
@@ -66,7 +66,7 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
                         <Select.ItemGroup>
                             {options.map((item) => (
                                 <Select.Item key={item.value} item={item} className="ds-select-item">
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div className="ds-select-item-copy">
                                         <span className={`type-badge ${item.value.toLowerCase()}`}>{item.label}</span>
                                     </div>
                                     <Select.ItemIndicator className="ds-select-item-indicator">
