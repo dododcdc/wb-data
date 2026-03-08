@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
-import { Play, Database, Table, Columns, Loader2, Code2 } from 'lucide-react';
+import { Play, Database, Table, Columns, Loader2, Code2, Wand2, Download, FileText, Sheet } from 'lucide-react';
+import { format as formatSql } from 'sql-formatter';
+import * as XLSX from 'xlsx';
 import { getMetadataDatabases, getMetadataTables, executeQuery, TableMetadata, QueryResult } from '../api/query';
 import { getDataSourcePage, DataSource } from '../api/datasource';
 import { DataSourceSelect } from '../components/DataSourceSelect';
@@ -19,6 +21,7 @@ export default function Query() {
     const [loadingQuery, setLoadingQuery] = useState(false);
     const [sql, setSql] = useState('');
     const [result, setResult] = useState<QueryResult | null>(null);
+    const [showExportMenu, setShowExportMenu] = useState(false);
     const editorRef = useRef<any>(null);
 
     useEffect(() => {
@@ -101,6 +104,63 @@ export default function Query() {
         } finally {
             setLoadingQuery(false);
         }
+    };
+
+    // ── SQL Formatting ──────────────────────────────────────────────────────
+    const handleFormat = () => {
+        if (!editorRef.current) return;
+        const raw = editorRef.current.getValue();
+        try {
+            const formatted = formatSql(raw, { language: 'sql', tabWidth: 4, keywordCase: 'upper' });
+            editorRef.current.setValue(formatted);
+        } catch {
+            // If sql-formatter can't parse it, leave as-is
+        }
+    };
+
+    // ── Result Export ────────────────────────────────────────────────────────
+    const exportFileName = () => {
+        const ds = dataSources.find(d => String(d.id) === selectedDsId);
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        return `query-result-${ds?.name ?? 'export'}-${ts}`;
+    };
+
+    const exportCsv = () => {
+        if (!result) return;
+        const header = result.columns.map(c => c.name).join(',');
+        const rows = result.rows.map(row =>
+            result.columns.map(c => {
+                const val = String(row[c.name] ?? '');
+                return val.includes(',') || val.includes('\n') || val.includes('"')
+                    ? `"${val.replace(/"/g, '""')}"` : val;
+            }).join(',')
+        );
+        const csv = [header, ...rows].join('\n');
+        const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+        triggerDownload(blob, `${exportFileName()}.csv`);
+        setShowExportMenu(false);
+    };
+
+    const exportExcel = () => {
+        if (!result) return;
+        const data = [
+            result.columns.map(c => c.name),
+            ...result.rows.map(row => result.columns.map(c => row[c.name] ?? ''))
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Result');
+        XLSX.writeFile(wb, `${exportFileName()}.xlsx`);
+        setShowExportMenu(false);
+    };
+
+    const triggerDownload = (blob: Blob, filename: string) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
     };
 
     /**
@@ -271,6 +331,14 @@ export default function Query() {
             const stmt = getStatementAtCursorRef.current(editor);
             handleRunQueryRef.current(stmt);
         });
+
+        // Add Shift+Alt+F: format SQL
+        editor.addAction({
+            id: 'format-sql',
+            label: 'Format SQL',
+            keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF],
+            run: () => handleFormat(),
+        });
     };
 
     return (
@@ -383,6 +451,14 @@ export default function Query() {
                                         <Code2 size={13} />
                                         <span>SQL 编辑器</span>
                                     </div>
+                                    <button
+                                        className="format-button"
+                                        onClick={handleFormat}
+                                        title="格式化 SQL (Shift+Alt+F)"
+                                    >
+                                        <Wand2 size={13} />
+                                        <span>格式化</span>
+                                    </button>
                                 </div>
                                 <div className="editor-wrapper">
                                     <Editor
@@ -417,11 +493,37 @@ export default function Query() {
                             <section className="results-section">
                                 <div className="section-header">
                                     <span className="section-title">查询结果</span>
-                                    {result && (
-                                        <div className="result-info">
-                                            找到 {result.rows.length} 条记录 • 耗时 {result.executionTimeMs}ms
-                                        </div>
-                                    )}
+                                    <div className="section-header-right">
+                                        {result && (
+                                            <div className="result-info">
+                                                找到 {result.rows.length} 条记录 • 耗时 {result.executionTimeMs}ms
+                                            </div>
+                                        )}
+                                        {result && result.columns.length > 0 && (
+                                            <div className="export-wrapper">
+                                                <button
+                                                    className="export-button"
+                                                    onClick={() => setShowExportMenu(v => !v)}
+                                                    title="导出结果"
+                                                >
+                                                    <Download size={14} />
+                                                    <span>导出</span>
+                                                </button>
+                                                {showExportMenu && (
+                                                    <div className="export-menu">
+                                                        <button className="export-menu-item" onClick={exportCsv}>
+                                                            <FileText size={14} />
+                                                            <span>导出 CSV</span>
+                                                        </button>
+                                                        <button className="export-menu-item" onClick={exportExcel}>
+                                                            <Sheet size={14} />
+                                                            <span>导出 Excel (.xlsx)</span>
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="results-container">
                                     {!result ? (
