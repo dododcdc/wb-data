@@ -7,6 +7,7 @@ import { getMetadataDatabases, getMetadataTables, executeQuery, TableMetadata, Q
 import { getDataSourcePage, DataSource } from '../api/datasource';
 import { DataSourceSelect } from '../components/DataSourceSelect';
 import { Splitter } from '@ark-ui/react/splitter';
+import { Tooltip } from '@ark-ui/react/tooltip';
 import './Query.css';
 
 export default function Query() {
@@ -93,8 +94,27 @@ export default function Query() {
     };
 
     const handleRunQuery = async (sqlToRun?: string) => {
-        const finalSql = sqlToRun ?? sql;
-        if (!selectedDsId || !finalSql.trim()) return;
+        let finalSql = sqlToRun;
+
+        // If no explicit SQL provided (e.g. from button click), check for selection
+        if (!finalSql && editorRef.current) {
+            const selection = editorRef.current.getSelection();
+            if (selection && !selection.isEmpty()) {
+                finalSql = editorRef.current.getModel()?.getValueInRange(selection);
+            }
+        }
+
+        // Fallback to full editor content if still no specific SQL
+        finalSql = finalSql ?? sql;
+
+        if (!selectedDsId) {
+            alert('请先选择数据源');
+            return;
+        }
+        if (!finalSql.trim()) {
+            alert('Nothing to run - 请输入 SQL 语句');
+            return;
+        }
         setLoadingQuery(true);
         try {
             const data = await executeQuery(Number(selectedDsId), finalSql);
@@ -197,7 +217,6 @@ export default function Query() {
         // Fallback: return the full SQL
         return fullText.trim();
     };
-
 
     const handleRunQueryRef = useRef(handleRunQuery);
     useEffect(() => {
@@ -326,10 +345,16 @@ export default function Query() {
         // Store provider to dispose on unmount
         (editor as any)._completionProvider = provider;
 
-        // Add Cmd+Enter / Ctrl+Enter: run only the statement under the cursor
+        // Add Cmd+Enter / Ctrl+Enter: run selection if exists, else only the statement under the cursor
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-            const stmt = getStatementAtCursorRef.current(editor);
-            handleRunQueryRef.current(stmt);
+            const selection = editor.getSelection();
+            if (selection && !selection.isEmpty()) {
+                const selectedText = editor.getModel()?.getValueInRange(selection);
+                handleRunQueryRef.current(selectedText);
+            } else {
+                const stmt = getStatementAtCursorRef.current(editor);
+                handleRunQueryRef.current(stmt);
+            }
         });
 
         // Add Shift+Alt+F: format SQL
@@ -423,15 +448,22 @@ export default function Query() {
                             )}
                         </div>
                         <div className="toolbar-right">
-                            <button
-                                className="run-button"
-                                onClick={() => handleRunQuery()}
-                                disabled={loadingQuery || !selectedDsId || !sql}
-                                title="执行查询 (Cmd+Enter)"
-                            >
-                                {loadingQuery ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} fill="white" />}
-                                <span>执行查询</span>
-                            </button>
+                            <Tooltip.Root openDelay={400} closeDelay={0} closeOnPointerDown={true}>
+                                <Tooltip.Trigger asChild>
+                                    <button
+                                        className="run-button"
+                                        onClick={() => handleRunQuery()}
+                                    >
+                                        {loadingQuery ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} fill="white" />}
+                                        <span>Run</span>
+                                    </button>
+                                </Tooltip.Trigger>
+                                <Tooltip.Positioner>
+                                    <Tooltip.Content className="tooltip-content">
+                                        Execute ⌘⏎
+                                    </Tooltip.Content>
+                                </Tooltip.Positioner>
+                            </Tooltip.Root>
                         </div>
                     </header>
 

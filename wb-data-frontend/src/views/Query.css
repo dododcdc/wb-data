@@ -295,10 +295,32 @@
     gap: 12px;
 }
 
+/* Tooltip (DataGrip style) */
+.tooltip-content {
+    display: none;
+    background: #2b2b2b;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    color: #bbb;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.tooltip-content[data-state="open"] {
+    display: block;
+}
+
+.tooltip-content[hidden] {
+    display: none;
+}
+
 .run-button {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     padding: 6px 14px;
     background: var(--accent-blue);
     color: white;
