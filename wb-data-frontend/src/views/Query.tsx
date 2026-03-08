@@ -262,26 +262,47 @@ export default function Query() {
                 const suggestions: any[] = [];
                 const currentMetadata = metadataRef.current;
 
-                // 1. Column suggestions for "table." or "."
+                // --- Extract Aliases ---
+                const fullText = model.getValue();
+                const aliases: Record<string, string> = {};
+                // Match "FROM table alias", "FROM schema.table AS alias", "JOIN table alias", or ", table alias"
+                const aliasRegex = /(?:FROM|JOIN|,)\s+(?:[a-zA-Z0-9_]+\.)?([a-zA-Z0-9_]+)(?:\s+AS)?\s+([a-zA-Z0-9_]+)/gi;
+                const reservedWords = new Set(['WHERE', 'ON', 'GROUP', 'ORDER', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'JOIN', 'SELECT', 'LIMIT', 'HAVING', 'AND', 'OR', 'AS']);
+                let match;
+                while ((match = aliasRegex.exec(fullText)) !== null) {
+                    const tableName = match[1].toLowerCase();
+                    const aliasName = match[2].toLowerCase();
+                    if (!reservedWords.has(aliasName.toUpperCase()) && !reservedWords.has(tableName.toUpperCase())) {
+                        aliases[aliasName] = tableName;
+                    }
+                }
+
+                // 1. Column suggestions for "table." or "alias."
                 const lastDotIndex = textBeforeCursor.lastIndexOf('.');
                 if (lastDotIndex !== -1) {
-                    const parts = textBeforeCursor.trim().split(/\s+/);
-                    const lastPart = parts[parts.length - 1];
-                    const tableName = lastPart.split('.')[0];
+                    const parts = textBeforeCursor.trim().split(/[\s,()=<>]+/); // Split by boundary characters
+                    const lastPart = parts[parts.length - 1]; // e.g. "t1" or "t1." or "t1.id."
 
-                    const table = currentMetadata.find(t => t.name.toLowerCase() === tableName.toLowerCase());
-                    if (table) {
-                        table.columns.forEach(col => {
-                            suggestions.push({
-                                label: col.name,
-                                kind: monaco.languages.CompletionItemKind.Field,
-                                insertText: col.name,
-                                detail: `${table.name} Column (${col.type})`,
-                                documentation: col.remarks,
-                                range: range,
+                    const dotParts = lastPart.split('.');
+                    // If we have at least one dot, the identifier is the part just before the last dot
+                    if (dotParts.length >= 2) {
+                        const identifier = dotParts[dotParts.length - 2].toLowerCase();
+                        const actualTableName = aliases[identifier] || identifier;
+
+                        const table = currentMetadata.find(t => t.name.toLowerCase() === actualTableName);
+                        if (table) {
+                            table.columns.forEach(col => {
+                                suggestions.push({
+                                    label: col.name,
+                                    kind: monaco.languages.CompletionItemKind.Field,
+                                    insertText: col.name,
+                                    detail: `${table.name} Column (${col.type})`,
+                                    documentation: col.remarks,
+                                    range: range,
+                                });
                             });
-                        });
-                        return { suggestions };
+                            return { suggestions };
+                        }
                     }
                 }
 
