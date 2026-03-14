@@ -35,7 +35,7 @@
   align-items: center;
   justify-content: center;
   width: 34px;
-  height: 34px;
+  height: 44px;
   background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-dark) 100%);
   border-radius: 11px;
   color: white;
