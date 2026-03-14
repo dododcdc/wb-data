@@ -414,7 +414,6 @@
 
 .format-button-inline:hover {
     background: var(--color-bg-secondary);
-    border-color: var(--color-border-hover);
 }
 
 .format-button-inline svg {
