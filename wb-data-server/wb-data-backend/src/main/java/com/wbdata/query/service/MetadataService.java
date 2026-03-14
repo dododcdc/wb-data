@@ -5,5 +5,8 @@ import java.util.List;
 
 public interface MetadataService {
     List<String> getDatabases(Long dataSourceId);
+
     List<TableMetadata> getTables(Long dataSourceId, String databaseName);
+
+    com.wbdata.plugin.api.DialectMetadata getDialectMetadata(Long dataSourceId);
 }

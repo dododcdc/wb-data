@@ -25,6 +25,10 @@ import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.stream.Stream;
 
+/**
+ * 数据源插件注册中心
+ * 负责从指定目录加载插件 JAR 包并注册数据源插件
+ */
 @Component
 public class DataSourcePluginRegistry {
 
@@ -41,6 +45,9 @@ public class DataSourcePluginRegistry {
         this.poolManager = poolManager;
     }
 
+    /**
+     * 加载插件目录下的所有数据源插件
+     */
     @PostConstruct
     public synchronized void loadPlugins() {
         plugins.clear();
@@ -49,7 +56,7 @@ public class DataSourcePluginRegistry {
 
         Path pluginDirectory = Paths.get(pluginProperties.getDir()).normalize().toAbsolutePath();
         if (!Files.exists(pluginDirectory)) {
-            log.warn("Plugin directory does not exist: {}", pluginDirectory);
+            log.warn("插件目录不存在: {}", pluginDirectory);
             return;
         }
 
@@ -63,17 +70,16 @@ public class DataSourcePluginRegistry {
                 loadPluginJar(pluginJar);
             }
         } catch (IOException exception) {
-            throw new IllegalStateException("Failed to read plugin directory: " + pluginDirectory, exception);
+            throw new IllegalStateException("读取插件目录失败: " + pluginDirectory, exception);
         }
 
-        log.info("Loaded {} datasource plugins from {}", plugins.size(), pluginDirectory);
+        log.info("从 {} 加载了 {} 个数据源插件", pluginDirectory, plugins.size());
 
-        // Wire the pooled connection supplier into all AbstractJdbcDataSourcePlugin instances
+        // 将池化连接供应器接入所有 AbstractJdbcDataSourcePlugin 实例
         AbstractJdbcDataSourcePlugin.setConnectionSupplier(
                 (request, jdbcUrl, driverClassName) -> {
                     com.wbdata.datasource.entity.DataSource ds = new com.wbdata.datasource.entity.DataSource();
-                    // Use dataSourceId when available (set during query execution path),
-                    // otherwise derive a stable key from connection parameters.
+                    // 如果有 dataSourceId 则使用它，否则根据连接参数派生一个稳定的键
                     Long poolKey = request.dataSourceId() != null
                             ? request.dataSourceId()
                             : (long) java.util.Objects.hash(
@@ -91,6 +97,9 @@ public class DataSourcePluginRegistry {
         );
     }
 
+    /**
+     * 根据类型获取对应的数据源插件
+     */
     public Optional<DataSourcePlugin> getPlugin(String type) {
         if (type == null || type.isBlank()) {
             return Optional.empty();
@@ -99,6 +108,9 @@ public class DataSourcePluginRegistry {
         return Optional.ofNullable(plugins.get(type.toUpperCase(Locale.ROOT)));
     }
 
+    /**
+     * 获取所有已注册插件的描述信息
+     */
     public List<DataSourcePluginDescriptor> getDescriptors() {
         return plugins.values().stream()
                 .map(DataSourcePlugin::descriptor)
@@ -108,21 +120,30 @@ public class DataSourcePluginRegistry {
                 .toList();
     }
 
+    /**
+     * 检查是否支持指定类型的数据源
+     */
     public boolean supports(String type) {
         return getPlugin(type).isPresent();
     }
 
+    /**
+     * 关闭所有插件的类加载器
+     */
     @PreDestroy
     public void closeLoaders() {
         for (URLClassLoader classLoader : classLoaders) {
             try {
                 classLoader.close();
             } catch (IOException exception) {
-                log.debug("Failed to close plugin class loader", exception);
+                log.debug("关闭插件类加载器失败", exception);
             }
         }
     }
 
+    /**
+     * 加载单个插件 JAR 包
+     */
     private void loadPluginJar(Path pluginJar) {
         try {
             URLClassLoader classLoader = new URLClassLoader(
@@ -141,25 +162,28 @@ public class DataSourcePluginRegistry {
                 classLoaders.add(classLoader);
             } else {
                 classLoader.close();
-                log.warn("No datasource plugin implementation found in {}", pluginJar.getFileName());
+                log.warn("未在 {} 中找到数据源插件实现", pluginJar.getFileName());
             }
         } catch (Exception exception) {
-            throw new IllegalStateException("Failed to load plugin jar: " + pluginJar, exception);
+            throw new IllegalStateException("加载插件 JAR 失败: " + pluginJar, exception);
         }
     }
 
+    /**
+     * 注册插件到插件映射表中
+     */
     private void registerPlugin(Path pluginJar, DataSourcePlugin plugin) {
         DataSourcePluginDescriptor descriptor = plugin.descriptor();
         if (descriptor == null || descriptor.type() == null || descriptor.type().isBlank()) {
-            throw new IllegalStateException("Plugin descriptor type must not be blank: " + pluginJar);
+            throw new IllegalStateException("插件描述器的类型不能为空: " + pluginJar);
         }
 
         String type = descriptor.type().toUpperCase(Locale.ROOT);
         if (plugins.containsKey(type)) {
-            throw new IllegalStateException("Duplicate datasource plugin type " + type + " from " + pluginJar);
+            throw new IllegalStateException("重复的数据源插件类型 " + type + " 来自 " + pluginJar);
         }
 
         plugins.put(type, plugin);
-        log.info("Registered datasource plugin [{}] from {}", type, pluginJar.getFileName());
+        log.info("已注册数据源插件 [{}] 来自 {}", type, pluginJar.getFileName());
     }
 }

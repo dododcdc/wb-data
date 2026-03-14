@@ -35,8 +35,7 @@ public class MetadataServiceImpl implements MetadataService {
                         ds.getDatabaseName(),
                         ds.getUsername(),
                         ds.getPassword(),
-                        ds.getConnectionParams()
-                )))
+                        ds.getConnectionParams())))
                 .orElse(Collections.emptyList());
     }
 
@@ -56,8 +55,19 @@ public class MetadataServiceImpl implements MetadataService {
                         ds.getDatabaseName(),
                         ds.getUsername(),
                         ds.getPassword(),
-                        ds.getConnectionParams()
-                ), databaseName))
+                        ds.getConnectionParams()), databaseName))
                 .orElse(Collections.emptyList());
+    }
+
+    @Override
+    public com.wbdata.plugin.api.DialectMetadata getDialectMetadata(Long dataSourceId) {
+        DataSource ds = dataSourceService.getById(dataSourceId);
+        if (ds == null) {
+            return new com.wbdata.plugin.api.DialectMetadata(null, null, null);
+        }
+
+        return pluginRegistry.getPlugin(ds.getType())
+                .map(com.wbdata.plugin.api.DataSourcePlugin::getDialectMetadata)
+                .orElseGet(() -> new com.wbdata.plugin.api.DialectMetadata(null, null, null));
     }
 }

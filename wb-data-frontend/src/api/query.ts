@@ -23,6 +23,18 @@ export interface QueryResult {
     message: string;
 }
 
+export interface FunctionMetadata {
+    name: string;
+    description: string;
+    signature: string;
+}
+
+export interface DialectMetadata {
+    keywords: string[];
+    functions: FunctionMetadata[];
+    dataTypes: string[];
+}
+
 export const getMetadataDatabases = (dataSourceId: number) => {
     return request.get<any, string[]>(`/api/v1/query/metadata/${dataSourceId}/databases`);
 };
@@ -37,4 +49,8 @@ export const executeQuery = (dataSourceId: number, sql: string) => {
             'Content-Type': 'text/plain',
         },
     });
+};
+
+export const getDialectMetadata = (dataSourceId: number) => {
+    return request.get<any, DialectMetadata>(`/api/v1/query/metadata/${dataSourceId}/dialect`);
 };

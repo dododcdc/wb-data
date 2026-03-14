@@ -8,16 +8,17 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Base class for all JDBC-based data source plugins.
- *
- * <p>By default, individual methods create raw JDBC connections via {@link DriverManager}.
- * To enable connection pooling, inject a {@link ConnectionSupplier} via
- * {@link #setConnectionSupplier(ConnectionSupplier)} — typically done by the backend's
- * {@code DataSourceConnectionPoolManager} after plugins are loaded.
+ * 基于 JDBC 的数据源插件抽象基类
+ * 
+ * <p>
+ * 默认情况下，各方法通过 {@link DriverManager} 创建原生 JDBC 连接。
+ * 如需启用连接池，请通过 {@link #setConnectionSupplier(ConnectionSupplier)} 
+ * 注入一个 {@link ConnectionSupplier}——通常由后端的
+ * {@code DataSourceConnectionPoolManager} 在插件加载完成后执行。
  *
  * <ul>
- *   <li>{@code testConnection} always bypasses the pool (it must validate fresh connectivity).</li>
- *   <li>{@code getDatabases}, {@code getTables}, {@code executeQuery} use the pool when available.</li>
+ * <li>{@code testConnection} 始终绕过连接池（必须验证新的连通性）。</li>
+ * <li>{@code getDatabases}、{@code getTables}、{@code executeQuery} 在有连接池时使用连接池。</li>
  * </ul>
  */
 public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
@@ -25,27 +26,28 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     private static final Set<String> REGISTERED_DRIVERS = ConcurrentHashMap.newKeySet();
 
     /**
-     * Functional interface supplied by the backend to provide pooled connections.
-     * The implementation is expected to use HikariCP under the hood.
+     * 由后端提供的函数式接口，用于提供池化连接。
+     * 实现应内部使用 HikariCP。
      */
     @FunctionalInterface
     public interface ConnectionSupplier {
         /**
-         * Returns a live JDBC connection for the given request.
-         * Callers are responsible for closing it (returning it to the pool).
+         * 返回给定请求的活跃 JDBC 连接。
+         * 调用方负责关闭它（将连接归还到池中）。
          */
-        Connection getConnection(ConnectionTestRequest request, String jdbcUrl, String driverClassName) throws Exception;
+        Connection getConnection(ConnectionTestRequest request, String jdbcUrl, String driverClassName)
+                throws Exception;
     }
 
     /**
-     * Optional pooled connection supplier. Null means fall back to {@link DriverManager}.
-     * Set by the backend after all plugins are loaded.
+     * 可选的池化连接供应器。为 null 时回退到 {@link DriverManager}。
+     * 由后端在所有插件加载完成后设置。
      */
     private static volatile ConnectionSupplier connectionSupplier;
 
     /**
-     * Injects a pooled connection supplier for all plugin instances
-     * (shared via static field to span all ClassLoader instances).
+     * 为所有插件实例注入一个池化连接供应器
+     * （通过静态字段共享，以跨越所有 ClassLoader 实例）。
      */
     public static void setConnectionSupplier(ConnectionSupplier supplier) {
         connectionSupplier = supplier;
@@ -56,11 +58,11 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     protected abstract String buildJdbcUrl(ConnectionTestRequest request);
 
     // -------------------------------------------------------------------------
-    // Internal helpers
+    // 内部辅助方法
     // -------------------------------------------------------------------------
 
     /**
-     * Always creates a fresh connection via DriverManager — used only for connectivity tests.
+     * 始终通过 DriverManager 创建新连接——仅用于连接测试。
      */
     private Connection openDirectConnection(ConnectionTestRequest request) throws Exception {
         registerDriverIfNeeded(driverClassName(), getClass().getClassLoader());
@@ -71,7 +73,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     }
 
     /**
-     * Returns a connection: pooled if a supplier has been set, direct otherwise.
+     * 返回连接：如果有供应器则使用池化连接，否则使用直连。
      */
     private Connection getConnection(ConnectionTestRequest request) throws Exception {
         ConnectionSupplier supplier = connectionSupplier;
@@ -82,12 +84,12 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     }
 
     // -------------------------------------------------------------------------
-    // Plugin interface implementations
+    // 插件接口实现
     // -------------------------------------------------------------------------
 
     @Override
     public boolean testConnection(ConnectionTestRequest request) {
-        // Always use a direct connection for tests — bypassing the pool intentionally.
+        // 测试连接时始终使用直连——有意绕过连接池
         try (Connection ignored = openDirectConnection(request)) {
             return true;
         } catch (Exception e) {
@@ -113,7 +115,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                 }
             }
         } catch (Exception e) {
-            throw new RuntimeException("Failed to fetch databases", e);
+            throw new DataSourceException("获取数据库列表失败", e);
         }
         return databases;
     }
@@ -123,11 +125,12 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
         java.util.List<TableMetadata> tables = new java.util.ArrayList<>();
         try (Connection connection = getConnection(request)) {
             java.sql.DatabaseMetaData metaData = connection.getMetaData();
-            try (java.sql.ResultSet rs = metaData.getTables(databaseName, null, "%", new String[]{"TABLE", "VIEW"})) {
+            try (java.sql.ResultSet rs = metaData.getTables(databaseName, null, "%",
+                    new String[] { "TABLE", "VIEW" })) {
                 while (rs.next()) {
                     String tableName = rs.getString("TABLE_NAME");
                     String tableType = rs.getString("TABLE_TYPE");
-                    String remarks   = rs.getString("REMARKS");
+                    String remarks = rs.getString("REMARKS");
 
                     java.util.List<ColumnMetadata> columns = new java.util.ArrayList<>();
                     try (java.sql.ResultSet colRs = metaData.getColumns(databaseName, null, tableName, "%")) {
@@ -138,15 +141,14 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                                     colRs.getInt("COLUMN_SIZE"),
                                     colRs.getInt("NULLABLE") == java.sql.DatabaseMetaData.columnNullable,
                                     colRs.getString("REMARKS"),
-                                    false
-                            ));
+                                    false));
                         }
                     }
                     tables.add(new TableMetadata(tableName, tableType, remarks, columns));
                 }
             }
         } catch (Exception e) {
-            throw new RuntimeException("Failed to fetch tables of " + databaseName, e);
+            throw new DataSourceException("获取表列表失败: " + databaseName, e);
         }
         return tables;
     }
@@ -156,67 +158,80 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
         long startTime = System.currentTimeMillis();
         ConnectionTestRequest connInfo = new ConnectionTestRequest(
                 request.dataSourceId(), request.type(), request.host(), request.port(), request.databaseName(),
-                request.username(), request.password(), request.connectionParams()
-        );
+                request.username(), request.password(), request.connectionParams());
         try (Connection connection = getConnection(connInfo)) {
             if (request.databaseName() != null && !request.databaseName().isEmpty()) {
                 try {
                     connection.setCatalog(request.databaseName());
                 } catch (Exception ignored) {
-                    // Some drivers do not support setCatalog
+                    // 某些驱动不支持 setCatalog
                 }
             }
             try (java.sql.Statement statement = connection.createStatement()) {
                 boolean hasResultSet = statement.execute(request.sql());
                 if (hasResultSet) {
-                    try (java.sql.ResultSet rs = statement.getResultSet()) {
-                        java.sql.ResultSetMetaData rsMeta = rs.getMetaData();
-                        int colCount = rsMeta.getColumnCount();
-
-                        java.util.List<ColumnMetadata> columns = new java.util.ArrayList<>();
-                        for (int i = 1; i <= colCount; i++) {
-                            columns.add(new ColumnMetadata(
-                                    rsMeta.getColumnName(i),
-                                    rsMeta.getColumnTypeName(i),
-                                    rsMeta.getPrecision(i),
-                                    rsMeta.isNullable(i) != java.sql.ResultSetMetaData.columnNoNulls,
-                                    "",
-                                    false
-                            ));
-                        }
-                        java.util.List<java.util.Map<String, Object>> rows = new java.util.ArrayList<>();
-                        while (rs.next()) {
-                            java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
-                            for (int i = 1; i <= colCount; i++) {
-                                row.put(rsMeta.getColumnName(i), rs.getObject(i));
-                            }
-                            rows.add(row);
-                        }
-                        return new QueryResult(columns, rows, System.currentTimeMillis() - startTime, "Success");
-                    }
+                    return buildQueryResult(statement, startTime);
                 } else {
                     int updateCount = statement.getUpdateCount();
                     return new QueryResult(
                             java.util.Collections.emptyList(),
                             java.util.Collections.emptyList(),
                             System.currentTimeMillis() - startTime,
-                            "Affected rows: " + updateCount
-                    );
+                            "Affected rows: " + updateCount);
                 }
             }
         } catch (Exception e) {
-            return new QueryResult(
-                    java.util.Collections.emptyList(),
-                    java.util.Collections.emptyList(),
-                    System.currentTimeMillis() - startTime,
-                    "Error: " + e.getMessage()
-            );
+            throw new DataSourceException("执行查询失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 从 Statement 中读取 ResultSet，解析列信息和行数据，封装为 QueryResult。
+     * 仅在 {@code statement.execute()} 返回 true（即有结果集）时调用。
+     */
+    private QueryResult buildQueryResult(java.sql.Statement statement, long startTime) throws java.sql.SQLException {
+        try (java.sql.ResultSet rs = statement.getResultSet()) {
+            java.sql.ResultSetMetaData rsMeta = rs.getMetaData();
+            int colCount = rsMeta.getColumnCount();
+
+            java.util.List<ColumnMetadata> columns = new java.util.ArrayList<>();
+            for (int i = 1; i <= colCount; i++) {
+                columns.add(new ColumnMetadata(
+                        rsMeta.getColumnName(i),
+                        rsMeta.getColumnTypeName(i),
+                        rsMeta.getPrecision(i),
+                        rsMeta.isNullable(i) == java.sql.ResultSetMetaData.columnNullable,
+                        "",
+                        false));
+            }
+            java.util.List<java.util.Map<String, Object>> rows = new java.util.ArrayList<>();
+            while (rs.next()) {
+                java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+                for (int i = 1; i <= colCount; i++) {
+                    row.put(rsMeta.getColumnName(i), rs.getObject(i));
+                }
+                rows.add(row);
+            }
+            return new QueryResult(columns, rows, System.currentTimeMillis() - startTime, "Success");
         }
     }
 
     // -------------------------------------------------------------------------
-    // Utility helpers
+    // 工具辅助方法
     // -------------------------------------------------------------------------
+
+    @Override
+    public DialectMetadata getDialectMetadata() {
+        return new DialectMetadata(
+                java.util.List.of(
+                        "SELECT", "FROM", "WHERE", "AND", "OR", "LIMIT", "ORDER BY", "GROUP BY",
+                        "HAVING", "JOIN", "LEFT JOIN", "RIGHT JOIN", "INNER JOIN", "ON", "AS",
+                        "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER", "TABLE", "DATABASE",
+                        "IN", "IS", "NULL", "NOT", "EXISTS", "COUNT", "SUM", "AVG", "MIN", "MAX",
+                        "DISTINCT", "UNION", "ALL", "CASE", "WHEN", "THEN", "ELSE", "END", "ASC", "DESC"),
+                java.util.List.of(),
+                java.util.List.of());
+    }
 
     protected String emptyIfNull(String value) {
         return value == null ? "" : value;
@@ -231,19 +246,23 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     }
 
     protected String connectionParam(Map<String, Object> params, String key) {
-        if (params == null || key == null) return null;
+        if (params == null || key == null)
+            return null;
         Object value = params.get(key);
-        if (value == null) return null;
+        if (value == null)
+            return null;
         String s = String.valueOf(value).trim();
         return s.isEmpty() ? null : s;
     }
 
     private void registerDriverIfNeeded(String driverClassName, ClassLoader classLoader) throws Exception {
         String registrationKey = driverClassName + '@' + System.identityHashCode(classLoader);
-        if (REGISTERED_DRIVERS.contains(registrationKey)) return;
+        if (REGISTERED_DRIVERS.contains(registrationKey))
+            return;
 
         synchronized (REGISTERED_DRIVERS) {
-            if (REGISTERED_DRIVERS.contains(registrationKey)) return;
+            if (REGISTERED_DRIVERS.contains(registrationKey))
+                return;
             Driver driver = (Driver) Class.forName(driverClassName, true, classLoader)
                     .getDeclaredConstructor()
                     .newInstance();
@@ -252,4 +271,3 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
         }
     }
 }
-

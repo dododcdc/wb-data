@@ -12,6 +12,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * 自助查询控制器
+ * 提供 SQL 查询与元数据获取的 REST API 接口
+ */
 @Tag(name = "自助查询", description = "SQL查询与元数据获取")
 @RestController
 @RequestMapping("/api/v1/query")
@@ -21,21 +25,39 @@ public class QueryController {
     private final MetadataService metadataService;
     private final QueryService queryService;
 
+    /**
+     * 获取数据源下的所有数据库列表
+     */
     @Operation(summary = "获取数据源下的所有数据库")
     @GetMapping("/metadata/{dataSourceId}/databases")
     public Result<List<String>> getDatabases(@PathVariable Long dataSourceId) {
         return Result.success(metadataService.getDatabases(dataSourceId));
     }
 
+    /**
+     * 获取数据库下的表结构信息
+     */
     @Operation(summary = "获取数据库下的表结构")
     @GetMapping("/metadata/{dataSourceId}/{databaseName}/tables")
     public Result<List<TableMetadata>> getTables(@PathVariable Long dataSourceId, @PathVariable String databaseName) {
         return Result.success(metadataService.getTables(dataSourceId, databaseName));
     }
 
+    /**
+     * 执行 SQL 查询
+     */
     @Operation(summary = "执行SQL查询")
     @PostMapping("/execute/{dataSourceId}")
     public Result<QueryResult> execute(@PathVariable Long dataSourceId, @RequestBody String sql) {
         return Result.success(queryService.executeQuery(dataSourceId, sql));
+    }
+
+    /**
+     * 获取数据源的 SQL 智能提示语言特性
+     */
+    @Operation(summary = "获取数据源的SQL智能提示语言特性")
+    @GetMapping("/metadata/{dataSourceId}/dialect")
+    public Result<com.wbdata.plugin.api.DialectMetadata> getDialectMetadata(@PathVariable Long dataSourceId) {
+        return Result.success(metadataService.getDialectMetadata(dataSourceId));
     }
 }

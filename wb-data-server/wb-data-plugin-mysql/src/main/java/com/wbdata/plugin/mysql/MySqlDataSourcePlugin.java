@@ -7,6 +7,9 @@ import com.wbdata.plugin.api.PluginFieldDescriptor;
 
 import java.util.List;
 
+/**
+ * MySQL 数据源插件
+ */
 public final class MySqlDataSourcePlugin extends AbstractJdbcDataSourcePlugin {
 
     private static final DataSourcePluginDescriptor DESCRIPTOR = new DataSourcePluginDescriptor(

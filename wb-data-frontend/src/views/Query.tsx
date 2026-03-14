@@ -3,7 +3,7 @@ import Editor from '@monaco-editor/react';
 import { Play, Database, Table, Columns, Loader2, Code2, Wand2, Download, FileText, Sheet } from 'lucide-react';
 import { format as formatSql } from 'sql-formatter';
 import * as XLSX from 'xlsx';
-import { getMetadataDatabases, getMetadataTables, executeQuery, TableMetadata, QueryResult } from '../api/query';
+import { getMetadataDatabases, getMetadataTables, executeQuery, getDialectMetadata, TableMetadata, QueryResult, DialectMetadata } from '../api/query';
 import { getDataSourcePage, DataSource } from '../api/datasource';
 import { DataSourceSelect } from '../components/DataSourceSelect';
 import { Splitter } from '@ark-ui/react/splitter';
@@ -18,6 +18,7 @@ export default function Query() {
     const [databases, setDatabases] = useState<string[]>([]);
     const [selectedDb, setSelectedDb] = useState<string>('');
     const [metadata, setMetadata] = useState<TableMetadata[]>([]);
+    const [dialectMetadata, setDialectMetadata] = useState<DialectMetadata | null>(null);
     const [loadingMetadata, setLoadingMetadata] = useState(false);
     const [loadingQuery, setLoadingQuery] = useState(false);
     const [sql, setSql] = useState('');
@@ -40,10 +41,12 @@ export default function Query() {
     useEffect(() => {
         if (selectedDsId) {
             loadDatabases(Number(selectedDsId));
+            loadDialect(Number(selectedDsId));
         } else {
             setDatabases([]);
             setSelectedDb('');
             setMetadata([]);
+            setDialectMetadata(null);
         }
     }, [selectedDsId]);
 
@@ -62,6 +65,15 @@ export default function Query() {
             console.error('Failed to load data sources', error);
         } finally {
             setLoadingDs(false);
+        }
+    };
+
+    const loadDialect = async (id: number) => {
+        try {
+            const data = await getDialectMetadata(id);
+            setDialectMetadata(data);
+        } catch (error) {
+            console.error('Failed to load dialect metadata', error);
         }
     };
 
@@ -233,16 +245,13 @@ export default function Query() {
         metadataRef.current = metadata;
     }, [metadata]);
 
+    const dialectMetadataRef = useRef(dialectMetadata);
+    useEffect(() => {
+        dialectMetadataRef.current = dialectMetadata;
+    }, [dialectMetadata]);
+
     const handleEditorDidMount = (editor: any, monaco: any) => {
         editorRef.current = editor;
-
-        const SQL_KEYWORDS = [
-            'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'LIMIT', 'ORDER BY', 'GROUP BY',
-            'HAVING', 'JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'ON', 'AS',
-            'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TABLE', 'DATABASE',
-            'IN', 'IS', 'NULL', 'NOT', 'EXISTS', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX',
-            'DISTINCT', 'UNION', 'ALL', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'ASC', 'DESC'
-        ];
 
         // Register custom completion provider for SQL
         const provider = monaco.languages.registerCompletionItemProvider('sql', {
@@ -261,6 +270,7 @@ export default function Query() {
 
                 const suggestions: any[] = [];
                 const currentMetadata = metadataRef.current;
+                const currentDialect = dialectMetadataRef.current;
 
                 // --- Extract Aliases ---
                 const fullText = model.getValue();
@@ -323,16 +333,44 @@ export default function Query() {
                     return { suggestions };
                 }
 
-                // 3. Add General SQL Keywords
-                SQL_KEYWORDS.forEach(keyword => {
-                    suggestions.push({
-                        label: keyword,
-                        kind: monaco.languages.CompletionItemKind.Keyword,
-                        insertText: keyword,
-                        range: range,
-                        sortText: '9' // Lower priority than context-specific matches
+                // 3. Add General SQL Keywords and Functions from Dialect
+                if (currentDialect) {
+                    currentDialect.keywords.forEach(keyword => {
+                        suggestions.push({
+                            label: keyword,
+                            kind: monaco.languages.CompletionItemKind.Keyword,
+                            insertText: keyword,
+                            range: range,
+                            sortText: '9' // Lower priority
+                        });
                     });
-                });
+
+                    currentDialect.dataTypes.forEach(dt => {
+                        suggestions.push({
+                            label: dt,
+                            kind: monaco.languages.CompletionItemKind.TypeParameter,
+                            insertText: dt,
+                            detail: 'Data Type',
+                            range: range,
+                            sortText: '8'
+                        });
+                    });
+
+                    currentDialect.functions.forEach(func => {
+                        suggestions.push({
+                            label: func.name,
+                            kind: monaco.languages.CompletionItemKind.Function,
+                            insertText: func.signature || `${func.name}($0)`,
+                            insertTextRules: (func.signature || `${func.name}($0)`).includes('$')
+                                ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+                                : undefined,
+                            detail: 'Function',
+                            documentation: func.description,
+                            range: range,
+                            sortText: '8'
+                        });
+                    });
+                }
 
                 // 4. Add all tables to general search
                 currentMetadata.forEach(table => {
