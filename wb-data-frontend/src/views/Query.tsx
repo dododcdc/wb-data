@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import Editor from '@monaco-editor/react';
 import { Play, Database, Table, Columns, Loader2, Code2, Wand2, Download, FileText, Sheet } from 'lucide-react';
 import { format as formatSql } from 'sql-formatter';
@@ -10,13 +10,23 @@ import { Splitter } from '@ark-ui/react/splitter';
 import { Tooltip } from '@ark-ui/react/tooltip';
 import './Query.css';
 
+const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+const modKey = isMac ? 'Cmd' : 'Ctrl';
+const DS_PAGE_SIZE = 50;
+
 export default function Query() {
     const [dataSources, setDataSources] = useState<DataSource[]>([]);
     const [selectedDsId, setSelectedDsId] = useState<string>('');
+    const [selectedDs, setSelectedDs] = useState<DataSource | null>(null);
     const [dsKeyword, setDsKeyword] = useState('');
     const [loadingDs, setLoadingDs] = useState(false);
+    const [loadingDsMore, setLoadingDsMore] = useState(false);
+    const [dsPage, setDsPage] = useState(1);
+    const [dsHasMore, setDsHasMore] = useState(true);
     const [databases, setDatabases] = useState<string[]>([]);
     const [selectedDb, setSelectedDb] = useState<string>('');
+    const [dbKeyword, setDbKeyword] = useState('');
+    const [loadingDatabases, setLoadingDatabases] = useState(false);
     const [metadata, setMetadata] = useState<TableMetadata[]>([]);
     const [dialectMetadata, setDialectMetadata] = useState<DialectMetadata | null>(null);
     const [loadingMetadata, setLoadingMetadata] = useState(false);
@@ -26,28 +36,35 @@ export default function Query() {
     const [queryError, setQueryError] = useState<string>('');
     const [showExportMenu, setShowExportMenu] = useState(false);
     const editorRef = useRef<any>(null);
-
-    useEffect(() => {
-        loadDataSources();
-    }, []);
+    const dsRequestIdRef = useRef(0);
 
     // Debounced search for DataSources
     useEffect(() => {
         const timer = setTimeout(() => {
-            loadDataSources(dsKeyword);
+            setDataSources([]);
+            setDsHasMore(true);
+            setDsPage(1);
+            setLoadingDsMore(false);
+            loadDataSources({ page: 1, keyword: dsKeyword, append: false });
         }, 300);
         return () => clearTimeout(timer);
     }, [dsKeyword]);
 
     useEffect(() => {
         if (selectedDsId) {
+            setDbKeyword('');
+            setSelectedDb('');
+            setDatabases([]);
+            setMetadata([]);
             loadDatabases(Number(selectedDsId));
             loadDialect(Number(selectedDsId));
         } else {
             setDatabases([]);
             setSelectedDb('');
+            setDbKeyword('');
             setMetadata([]);
             setDialectMetadata(null);
+            setSelectedDs(null);
         }
     }, [selectedDsId]);
 
@@ -57,16 +74,47 @@ export default function Query() {
         }
     }, [selectedDsId, selectedDb]);
 
-    const loadDataSources = async (keyword?: string) => {
-        setLoadingDs(true);
+    const loadDataSources = async ({ page, keyword, append }: { page: number; keyword: string; append: boolean; }) => {
+        const requestId = ++dsRequestIdRef.current;
+        if (append) {
+            setLoadingDsMore(true);
+        } else {
+            setLoadingDs(true);
+        }
         try {
-            const data = await getDataSourcePage({ page: 1, size: 50, keyword });
-            setDataSources(data.records);
+            const data = await getDataSourcePage({ page, size: DS_PAGE_SIZE, keyword });
+            if (requestId !== dsRequestIdRef.current) {
+                return;
+            }
+            setDataSources((prev) => {
+                if (!append) {
+                    return data.records;
+                }
+                const existingIds = new Set(prev.map(item => item.id));
+                const merged = [...prev, ...data.records.filter(item => !existingIds.has(item.id))];
+                return merged;
+            });
+            const hasMore = data.pages ? data.current < data.pages : data.records.length === DS_PAGE_SIZE;
+            setDsPage(data.current || page);
+            setDsHasMore(hasMore);
         } catch (error) {
             console.error('Failed to load data sources', error);
         } finally {
-            setLoadingDs(false);
+            if (requestId === dsRequestIdRef.current) {
+                if (append) {
+                    setLoadingDsMore(false);
+                } else {
+                    setLoadingDs(false);
+                }
+            }
         }
+    };
+
+    const loadMoreDataSources = () => {
+        if (loadingDs || loadingDsMore || !dsHasMore) {
+            return;
+        }
+        loadDataSources({ page: dsPage + 1, keyword: dsKeyword, append: true });
     };
 
     const loadDialect = async (id: number) => {
@@ -79,7 +127,7 @@ export default function Query() {
     };
 
     const loadDatabases = async (id: number) => {
-        setLoadingMetadata(true);
+        setLoadingDatabases(true);
         try {
             const data = await getMetadataDatabases(id);
             setDatabases(data);
@@ -90,7 +138,7 @@ export default function Query() {
         } catch (error) {
             console.error('Failed to load databases', error);
         } finally {
-            setLoadingMetadata(false);
+            setLoadingDatabases(false);
         }
     };
 
@@ -105,6 +153,40 @@ export default function Query() {
             setLoadingMetadata(false);
         }
     };
+
+    const selectedDsOption = useMemo(() => {
+        if (!selectedDs) {
+            return null;
+        }
+        return { label: selectedDs.name, value: String(selectedDs.id), type: selectedDs.type, raw: selectedDs };
+    }, [selectedDs]);
+
+    const dataSourceOptions = useMemo(() => {
+        const base = dataSources.map(ds => ({ label: ds.name, value: String(ds.id), type: ds.type, raw: ds }));
+        if (!selectedDs || base.some(opt => opt.value === String(selectedDs.id))) {
+            return base;
+        }
+        return [{ label: selectedDs.name, value: String(selectedDs.id), type: selectedDs.type, raw: selectedDs }, ...base];
+    }, [dataSources, selectedDs]);
+
+    const filteredDatabases = useMemo(() => {
+        if (!dbKeyword) {
+            return databases;
+        }
+        const normalized = dbKeyword.toLowerCase();
+        return databases.filter(db => db.toLowerCase().includes(normalized));
+    }, [databases, dbKeyword]);
+
+    const databaseOptions = useMemo(() => {
+        return filteredDatabases.map(db => ({ label: db, value: db }));
+    }, [filteredDatabases]);
+
+    const selectedDbOption = useMemo(() => {
+        if (!selectedDb) {
+            return null;
+        }
+        return { label: selectedDb, value: selectedDb };
+    }, [selectedDb]);
 
     const handleRunQuery = async (sqlToRun?: string) => {
         let finalSql = sqlToRun;
@@ -130,7 +212,7 @@ export default function Query() {
         }
         setLoadingQuery(true);
         try {
-            const data = await executeQuery(Number(selectedDsId), finalSql);
+            const data = await executeQuery(Number(selectedDsId), finalSql, selectedDb);
             setResult(data);
             setQueryError('');
         } catch (error: any) {
@@ -158,7 +240,7 @@ export default function Query() {
 
     // ── Result Export ────────────────────────────────────────────────────────
     const exportFileName = () => {
-        const ds = dataSources.find(d => String(d.id) === selectedDsId);
+        const ds = selectedDs || dataSources.find(d => String(d.id) === selectedDsId);
         const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
         return `query-result-${ds?.name ?? 'export'}-${ts}`;
     };
@@ -422,11 +504,14 @@ export default function Query() {
             }
         });
 
-        // Add Shift+Alt+F: format SQL
+        // Add Shift+Alt+F (Win/Linux) or Shift+Cmd+F (Mac): format SQL
+        const formatKeybinding = isMac
+            ? monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF
+            : monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF;
         editor.addAction({
             id: 'format-sql',
             label: 'Format SQL',
-            keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF],
+            keybindings: [formatKeybinding],
             run: () => handleFormat(),
         });
     };
@@ -447,7 +532,7 @@ export default function Query() {
                         <Database size={14} className="node-icon" />
                     </div>
                     <div className="sidebar-content">
-                        {loadingMetadata ? (
+                        {loadingMetadata || loadingDatabases ? (
                             <div className="loading-state">
                                 <Loader2 className="animate-spin" size={20} />
                                 <span>加载元数据中...</span>
@@ -475,7 +560,7 @@ export default function Query() {
                         ) : (
                             <div className="empty-state">
                                 <Database size={32} className="empty-icon" />
-                                <span>请先选择数据源</span>
+                                <span>{selectedDsId ? '请选择数据库' : '请先选择数据源'}</span>
                             </div>
                         )}
                     </div>
@@ -491,23 +576,44 @@ export default function Query() {
                     <header className="query-toolbar">
                         <div className="toolbar-left">
                             <DataSourceSelect
-                                options={dataSources.map(ds => ({ label: ds.name, value: String(ds.id), type: ds.type }))}
+                                options={dataSourceOptions}
                                 value={String(selectedDsId)}
-                                onChange={(val) => setSelectedDsId(val)}
+                                selectedOption={selectedDsOption}
+                                onChange={(val, option) => {
+                                    setSelectedDsId(val);
+                                    if (option?.raw) {
+                                        setSelectedDs(option.raw);
+                                        return;
+                                    }
+                                    const fallback = dataSources.find(ds => String(ds.id) === val) || null;
+                                    setSelectedDs(fallback);
+                                }}
                                 onInputChange={(val) => setDsKeyword(val)}
                                 loading={loadingDs}
+                                loadingMore={loadingDsMore}
+                                hasMore={dsHasMore}
+                                onLoadMore={loadMoreDataSources}
                                 placeholder="搜索并选择数据源..."
                                 theme="light"
+                                disableClientFilter
+                                ariaLabel="数据源选择"
+                                emptyText={dsKeyword ? '未找到匹配的数据源' : '暂无数据源'}
                             />
                             {selectedDsId && (
                                 <>
                                     <span className="breadcrumb-divider">/</span>
                                     <DataSourceSelect
-                                        options={databases.map(db => ({ label: db, value: db }))}
+                                        options={databaseOptions}
                                         value={selectedDb}
+                                        selectedOption={selectedDbOption}
                                         onChange={(val) => setSelectedDb(val)}
+                                        onInputChange={(val) => setDbKeyword(val)}
+                                        loading={loadingDatabases}
                                         placeholder="选择数据库"
                                         theme="light"
+                                        disableClientFilter
+                                        ariaLabel="数据库选择"
+                                        emptyText={dbKeyword ? '未找到匹配数据库' : '暂无数据库'}
                                     />
                                 </>
                             )}
@@ -518,14 +624,14 @@ export default function Query() {
                                     <button
                                         className="format-button-inline"
                                         onClick={handleFormat}
+                                        aria-label="格式化 SQL"
                                     >
                                         <Wand2 size={16} />
-                                        <span>格式化</span>
                                     </button>
                                 </Tooltip.Trigger>
                                 <Tooltip.Positioner>
                                     <Tooltip.Content className="tooltip-content">
-                                        格式化 (Ctrl+Shift+F)
+                                        格式化 ({isMac ? 'Cmd' : 'Ctrl'}+Shift+F)
                                     </Tooltip.Content>
                                 </Tooltip.Positioner>
                             </Tooltip.Root>
@@ -534,14 +640,14 @@ export default function Query() {
                                     <button
                                         className="run-button"
                                         onClick={() => handleRunQuery()}
+                                        aria-label="执行 SQL"
                                     >
                                         {loadingQuery ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} fill="white" />}
-                                        <span>Run</span>
                                     </button>
                                 </Tooltip.Trigger>
                                 <Tooltip.Positioner>
                                     <Tooltip.Content className="tooltip-content">
-                                        执行 (Ctrl+Enter)
+                                        执行 ({modKey}+Enter)
                                     </Tooltip.Content>
                                 </Tooltip.Positioner>
                             </Tooltip.Root>

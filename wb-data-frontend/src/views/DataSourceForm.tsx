@@ -318,12 +318,13 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                                             <input type="text" value={formData.name} onChange={e => handleChange('name', e.target.value)} placeholder="如：生产环境主库" />
                                         </div>
                                         <div className="input-group">
-                                            <label>数据库类型 <span className="required">*</span></label>
+                                            <label htmlFor="datasource-form-type-select">数据库类型 <span className="required">*</span></label>
                                             <DataSourceSelect
                                                 value={formData.type}
                                                 onChange={handleTypeChange}
                                                 options={typeOptions}
                                                 disabled={pluginQuery.isLoading || typeOptions.length === 0}
+                                                inputId="datasource-form-type-select"
                                             />
                                         </div>
                                         {pluginError ? (

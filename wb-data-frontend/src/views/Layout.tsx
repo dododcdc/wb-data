@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { Database, Home, Layers } from 'lucide-react';
+import { Database, Home, Layers, Search } from 'lucide-react';
 import { useUserStore } from '../store';
 import './Layout.css';
 
@@ -38,7 +38,7 @@ export default function Layout() {
                             to="/query"
                             className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`.trim()}
                         >
-                            <Layers size={18} />
+                            <Search size={18} />
                             <span>自助查询</span>
                         </NavLink>
                     </nav>

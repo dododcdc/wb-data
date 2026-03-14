@@ -44,10 +44,11 @@ export function DataSourceFilters(props: DataSourceFiltersProps) {
     return (
         <div className="datasource-filters">
             <div className="datasource-filter-stack datasource-filter-search">
-                <label className="datasource-filter-label">关键词检索</label>
+                <label className="datasource-filter-label" htmlFor="datasource-keyword-input">关键词检索</label>
                 <div className="datasource-search">
                     <Search size={16} />
                     <input
+                        id="datasource-keyword-input"
                         placeholder="搜索名称、描述、主机名"
                         value={keywordInput}
                         onChange={handleChange}
@@ -58,13 +59,13 @@ export function DataSourceFilters(props: DataSourceFiltersProps) {
             </div>
 
             <div className="datasource-filter-stack datasource-filter-type">
-                <label className="datasource-filter-label">数据源类型</label>
+                <label className="datasource-filter-label" htmlFor="datasource-filter-type-select">数据源类型</label>
                 <DataSourceSelect
-                    multiple={true}
-                    onChange={onTypeChange}
+                    onChange={(val) => onTypeChange([val])}
                     options={typeOptions}
-                    placeholder="选择一种或多种类型"
-                    value={selectedTypes}
+                    placeholder="选择类型"
+                    value={selectedTypes[0] || ''}
+                    inputId="datasource-filter-type-select"
                 />
             </div>
 

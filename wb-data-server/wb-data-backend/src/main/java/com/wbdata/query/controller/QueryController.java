@@ -48,8 +48,8 @@ public class QueryController {
      */
     @Operation(summary = "执行SQL查询")
     @PostMapping("/execute/{dataSourceId}")
-    public Result<QueryResult> execute(@PathVariable Long dataSourceId, @RequestBody String sql) {
-        return Result.success(queryService.executeQuery(dataSourceId, sql));
+    public Result<QueryResult> execute(@PathVariable Long dataSourceId, @RequestBody QueryRequest request) {
+        return Result.success(queryService.executeQuery(dataSourceId, request.sql(), request.database()));
     }
 
     /**

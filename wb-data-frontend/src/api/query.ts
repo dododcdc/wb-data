@@ -43,10 +43,13 @@ export const getMetadataTables = (dataSourceId: number, databaseName: string) =>
     return request.get<any, TableMetadata[]>(`/api/v1/query/metadata/${dataSourceId}/${databaseName}/tables`);
 };
 
-export const executeQuery = (dataSourceId: number, sql: string) => {
-    return request.post<any, QueryResult>(`/api/v1/query/execute/${dataSourceId}`, sql, {
+export const executeQuery = (dataSourceId: number, sql: string, database?: string) => {
+    return request.post<any, QueryResult>(`/api/v1/query/execute/${dataSourceId}`, {
+        sql,
+        database
+    }, {
         headers: {
-            'Content-Type': 'text/plain',
+            'Content-Type': 'application/json',
         },
     });
 };

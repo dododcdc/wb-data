@@ -1,108 +1,201 @@
-import { useState } from 'react';
-import { Combobox, createListCollection } from '@ark-ui/react/combobox';
-import { Portal } from '@ark-ui/react/portal';
-import { ChevronDown, Check, Search } from 'lucide-react';
-import './DataSourceSelect.css';
+import {
+    Combobox,
+    ComboboxInput,
+    ComboboxTrigger,
+    ComboboxContent,
+    ComboboxItem,
+    ComboboxEmpty,
+} from '@/components/ui/combobox';
+import { Search, ChevronDown, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState, type CompositionEvent, type UIEventHandler } from 'react';
 
 interface Option {
     label: string;
     value: string;
     type?: string;
+    raw?: any;
 }
 
 type DataSourceSelectProps = {
     options: Option[];
     placeholder?: string;
     disabled?: boolean;
+    onChange?: (value: string, option?: Option) => void;
     onInputChange?: (value: string) => void;
     loading?: boolean;
+    loadingMore?: boolean;
+    value?: string;
+    selectedOption?: Option | null;
+    hasMore?: boolean;
+    onLoadMore?: () => void;
+    onOpenChange?: (open: boolean) => void;
+    inputId?: string;
+    ariaLabel?: string;
+    ariaLabelledby?: string;
     theme?: 'light' | 'dark';
-} & (
-        | { multiple: true; value: string[]; onChange: (value: string[]) => void }
-        | { multiple?: false; value: string; onChange: (value: string) => void }
-    );
+    multiple?: boolean;
+    disableClientFilter?: boolean;
+    emptyText?: string;
+    loadingText?: string;
+    loadingMoreText?: string;
+    loadMoreText?: string;
+};
 
 export function DataSourceSelect(props: DataSourceSelectProps) {
-    const { options, placeholder = 'Search...', disabled, multiple, value, onChange, onInputChange, loading, theme = 'light' } = props;
-    const [isComposing, setIsComposing] = useState(false);
+    const {
+        options,
+        placeholder = '搜索...',
+        disabled,
+        value,
+        selectedOption,
+        onChange,
+        onInputChange,
+        loading,
+        loadingMore,
+        hasMore,
+        onLoadMore,
+        onOpenChange,
+        inputId,
+        ariaLabel,
+        ariaLabelledby,
+        theme = 'light',
+        disableClientFilter,
+        emptyText = '未找到匹配项',
+        loadingText = '加载中...',
+        loadingMoreText = '加载更多...',
+        loadMoreText = '继续滚动加载更多',
+    } = props;
 
-    const collection = createListCollection({
-        items: options,
-        itemToString: (item) => item.label,
-        itemToValue: (item) => item.value,
-    });
+    const isComposingRef = useRef(false);
+    const skipNextInputRef = useRef(false);
+    const [inputValue, setInputValue] = useState('');
 
-    const handleValueChange = (values: string[]) => {
-        if (multiple) {
-            (onChange as (v: string[]) => void)(values);
-        } else {
-            (onChange as (v: string) => void)(values[0] || '');
+    const resolvedValue = options.find(opt => opt.value === value) || selectedOption || null;
+
+    useEffect(() => {
+        if (resolvedValue) {
+            setInputValue(resolvedValue.label);
+            return;
+        }
+        setInputValue('');
+    }, [resolvedValue?.value, resolvedValue?.label]);
+
+    const handleValueChange = (newOption: Option | null) => {
+        if (newOption) {
+            setInputValue(newOption.label);
+            if (onChange) {
+                onChange(newOption.value, newOption);
+            }
+            return;
+        }
+        setInputValue('');
+    };
+
+    const handleInputValueChange = (nextValue: string, details?: { reason?: string }) => {
+        if (skipNextInputRef.current) {
+            skipNextInputRef.current = false;
+            return;
+        }
+        if (isComposingRef.current) {
+            return;
+        }
+        if (details?.reason && details.reason !== 'input-change' && details.reason !== 'input-clear' && details.reason !== 'input-paste') {
+            return;
+        }
+        setInputValue(nextValue);
+        onInputChange?.(nextValue);
+    };
+
+    const handleCompositionStart = () => {
+        isComposingRef.current = true;
+    };
+
+    const handleCompositionEnd = (event: CompositionEvent<HTMLInputElement>) => {
+        isComposingRef.current = false;
+        skipNextInputRef.current = true;
+        setTimeout(() => {
+            skipNextInputRef.current = false;
+        }, 0);
+        const nextValue = event.currentTarget.value;
+        setInputValue(nextValue);
+        onInputChange?.(nextValue);
+    };
+
+    const handleScroll: UIEventHandler<HTMLDivElement> = (event) => {
+        if (!onLoadMore || !hasMore || loading || loadingMore) {
+            return;
+        }
+        const target = event.currentTarget;
+        const nearBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 24;
+        if (nearBottom) {
+            onLoadMore();
         }
     };
 
-    const valueArray = Array.isArray(value) ? value : [value].filter(Boolean);
-
     return (
-        <Combobox.Root
-            collection={collection}
-            value={valueArray}
-            onValueChange={(e) => handleValueChange(e.value)}
-            onInputValueChange={(e) => {
-                // Only trigger search if not composing (IME)
-                if (!isComposing) {
-                    onInputChange?.(e.inputValue);
-                }
-            }}
-            multiple={multiple}
+        <Combobox<Option>
+            value={resolvedValue}
+            onValueChange={handleValueChange}
+            onInputValueChange={handleInputValueChange}
+            inputValue={inputValue}
+            onOpenChange={onOpenChange}
             disabled={disabled}
-            className={`ds-select-root ${theme === 'dark' ? 'ds-dark' : ''}`}
-            positioning={{ sameWidth: true, gutter: 0 }}
-            openOnClick
+            itemToStringLabel={(item) => item ? item.label : ''}
+            itemToStringValue={(item) => item ? item.value : ''}
+            isItemEqualToValue={(item, val) => item.value === val.value}
+            filter={disableClientFilter ? null : undefined}
         >
-            <Combobox.Control className="ds-select-control">
-                <div className="ds-combobox-input-wrapper">
-                    <Search className="ds-search-icon" size={14} />
-                    <Combobox.Input
-                        className="ds-select-trigger ds-combobox-input"
-                        placeholder={placeholder}
-                        onCompositionStart={() => setIsComposing(true)}
-                        onCompositionEnd={(e) => {
-                            setIsComposing(false);
-                            // Explicitly trigger search with the final composed value
-                            onInputChange?.(e.currentTarget.value);
-                        }}
-                    />
-                    <Combobox.Trigger className="ds-combobox-toggle">
-                        <ChevronDown size={14} />
-                    </Combobox.Trigger>
-                </div>
-            </Combobox.Control>
-            <Portal>
-                <Combobox.Positioner className="ds-select-positioner">
-                    <Combobox.Content className={`ds-select-content ${theme === 'dark' ? 'ds-dark' : ''}`}>
-                        {loading ? (
-                            <div className="ds-select-loading">加载中...</div>
-                        ) : options.length === 0 ? (
-                            <div className="ds-select-empty">未找到匹配项</div>
-                        ) : (
-                            <Combobox.ItemGroup>
-                                {options.map((item) => (
-                                    <Combobox.Item key={item.value} item={item} className="ds-select-item">
-                                        <div className="ds-select-item-copy">
-                                            <span className={item.type ? `type-badge ${item.type.toLowerCase()}` : 'ds-select-label-plain'}>
-                                                {item.label}
-                                            </span>
-                                        </div>
-                                        <Combobox.ItemIndicator className="ds-select-item-indicator">
-                                            <Check size={14} />
-                                        </Combobox.ItemIndicator>
-                                    </Combobox.Item>
-                                ))}
-                            </Combobox.ItemGroup>
-                        )}
-                    </Combobox.Content>
-                </Combobox.Positioner>
-            </Portal>
-        </Combobox.Root>
+            <div className={`ds-select-root relative flex items-center h-[44px] bg-background border border-input rounded-md overflow-hidden focus-within:ring-1 focus-within:ring-ring ${theme === 'dark' ? 'dark' : ''}`}>
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={14} />
+                <ComboboxInput 
+                    placeholder={placeholder}
+                    className="h-full w-full pl-9 pr-8 bg-transparent text-sm border-0 focus-visible:ring-0 shadow-none outline-none"
+                    onCompositionStart={handleCompositionStart}
+                    onCompositionEnd={handleCompositionEnd}
+                    id={inputId}
+                    aria-label={ariaLabelledby ? undefined : (ariaLabel ?? placeholder)}
+                    aria-labelledby={ariaLabelledby}
+                />
+                <ComboboxTrigger className="absolute right-0 top-0 bottom-0 w-8 border-l border-transparent flex items-center justify-center hover:bg-muted/50 transition-colors">
+                    <ChevronDown size={14} className="text-muted-foreground" />
+                </ComboboxTrigger>
+            </div>
+            
+            <ComboboxContent
+                sideOffset={4}
+                align="start"
+                className="w-[var(--anchor-width)] max-h-[300px]"
+                onScroll={handleScroll}
+            >
+                {loading ? (
+                    <div className="p-3 text-sm text-muted-foreground text-center">{loadingText}</div>
+                ) : options.length === 0 ? (
+                    <ComboboxEmpty>{emptyText}</ComboboxEmpty>
+                ) : (
+                    <>
+                        {options.map((item) => (
+                            <ComboboxItem key={item.value} value={item}>
+                                {item.type && (
+                                    <span className={`type-badge ${item.type.toLowerCase()} mr-2`}>
+                                        {item.type.toUpperCase()}
+                                    </span>
+                                )}
+                                {item.label}
+                            </ComboboxItem>
+                        ))}
+                        {loadingMore ? (
+                            <div className="flex items-center justify-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+                                <Loader2 className="animate-spin" size={12} />
+                                <span>{loadingMoreText}</span>
+                            </div>
+                        ) : hasMore ? (
+                            <div className="px-3 py-2 text-xs text-muted-foreground text-center">
+                                {loadMoreText}
+                            </div>
+                        ) : null}
+                    </>
+                )}
+            </ComboboxContent>
+        </Combobox>
     );
 }
