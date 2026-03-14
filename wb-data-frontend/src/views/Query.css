@@ -1,21 +1,10 @@
-:root {
-    --bg-main: var(--color-bg-primary);
-    --bg-sidebar: var(--color-bg-secondary);
-    --bg-hover: var(--color-bg-tertiary);
-    --border-color: var(--color-border);
-    --text-primary: #1e1e1e;
-    --text-secondary: var(--color-text-secondary);
-    --accent-blue: var(--color-accent);
-    --accent-glow: var(--color-accent-glow);
-}
-
 .query-splitter {
     display: flex;
     height: calc(100vh - 56px);
     width: 100%;
     overflow: hidden;
-    background: var(--bg-main);
-    color: var(--text-primary);
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
 }
 
 .query-splitter-panel {
@@ -58,7 +47,7 @@
 .splitter-trigger::before {
     content: '';
     position: absolute;
-    background: var(--border-color);
+    background: var(--color-border);
     transition: background 0.2s;
 }
 
@@ -71,14 +60,14 @@
 
 .splitter-trigger:hover::before,
 .splitter-trigger[data-dragging]::before {
-    background: var(--accent-blue);
+    background: var(--color-accent);
 }
 
 .splitter-indicator {
     position: relative;
     border-radius: 9999px;
     background: var(--color-text-secondary);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--color-border);
     z-index: 1;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     width: 4px;
@@ -112,7 +101,7 @@
 .splitter-trigger-vertical::before {
     content: '';
     position: absolute;
-    background: var(--border-color);
+    background: var(--color-border);
     transition: background 0.2s;
 }
 
@@ -125,14 +114,14 @@
 
 .splitter-trigger-vertical:hover::before,
 .splitter-trigger-vertical[data-dragging]::before {
-    background: var(--accent-blue);
+    background: var(--color-accent);
 }
 
 .splitter-indicator-vertical {
     position: relative;
     border-radius: 9999px;
     background: var(--color-text-secondary);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--color-border);
     z-index: 1;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     height: 4px;
@@ -158,19 +147,19 @@
     /* Splitter trigger acts as border */
     display: flex;
     flex-direction: column;
-    background: var(--bg-sidebar);
+    background: var(--color-bg-secondary);
 }
 
 .sidebar-header {
     height: 48px;
     padding: 0 16px;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--color-border);
     display: flex;
     align-items: center;
     justify-content: space-between;
     font-size: 0.75rem;
     font-weight: 700;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.1em;
 }
@@ -209,17 +198,17 @@
 
 .table-summary:hover {
     background: rgba(255, 255, 255, 0.05);
-    color: var(--text-primary);
+    color: var(--color-text-primary);
 }
 
 .table-node[open]>.table-summary {
     background: rgba(59, 130, 246, 0.1);
-    border-left-color: var(--accent-blue);
-    color: var(--text-primary);
+    border-left-color: var(--color-accent);
+    color: var(--color-text-primary);
 }
 
 .node-icon {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     opacity: 0.7;
 }
 
@@ -227,7 +216,7 @@
     margin: 0;
     padding: 4px 0 8px 40px;
     list-style: none;
-    border-left: 1px solid var(--border-color);
+    border-left: 1px solid var(--color-border);
     margin-left: 24px;
 }
 
@@ -237,17 +226,17 @@
     gap: 8px;
     padding: 4px 0;
     font-size: 0.75rem;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     transition: color 0.15s;
 }
 
 .column-node:hover {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
 }
 
 .col-type {
     font-size: 0.65rem;
-    color: #475569;
+    color: var(--color-text-muted);
     background: var(--color-border);
     padding: 0 4px;
     border-radius: 3px;
@@ -266,8 +255,8 @@
 .query-toolbar {
     height: 48px;
     padding: 0 20px;
-    background: var(--bg-sidebar);
-    border-bottom: 1px solid var(--border-color);
+    background: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-border);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -282,7 +271,7 @@
 }
 
 .breadcrumb-divider {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     opacity: 0.4;
     padding: 0 4px;
 }
@@ -371,7 +360,7 @@
     height: 36px;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--color-border);
 }
 
 .editor-tab {
@@ -382,16 +371,16 @@
     gap: 8px;
     font-size: 0.75rem;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     background: var(--color-bg-secondary);
-    border-right: 1px solid var(--border-color);
+    border-right: 1px solid var(--color-border);
     cursor: pointer;
 }
 
 .editor-tab.active {
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     background: var(--color-bg-secondary);
-    box-shadow: inset 0 2px 0 var(--accent-blue);
+    box-shadow: inset 0 2px 0 var(--color-accent);
 }
 
 /* ── Format Button ─────────────────────────────────── */
@@ -455,9 +444,9 @@
     height: 28px;
     font-size: 0.75rem;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-text-primary);
     background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--color-border);
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -474,17 +463,17 @@
 }
 
 .export-button svg {
-    color: var(--accent-blue);
+    color: var(--color-accent);
 }
 
 .export-menu {
     position: absolute;
     top: calc(100% + 8px);
     right: 0;
-    background: #1c1c21;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
     z-index: 1000;
     min-width: 180px;
@@ -513,7 +502,7 @@
     padding: 8px 12px;
     font-size: 0.8rem;
     font-weight: 500;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     background: transparent;
     border: none;
     border-radius: 4px;
@@ -524,7 +513,7 @@
 
 .export-menu-item:hover {
     background: rgba(255, 255, 255, 0.08);
-    color: var(--text-primary);
+    color: var(--color-text-primary);
 }
 
 .export-menu-item svg {
@@ -532,7 +521,7 @@
 }
 
 .export-menu-item:hover svg {
-    color: var(--accent-blue);
+    color: var(--color-accent);
 }
 
 /* Results Table Professional Styling */
@@ -541,14 +530,14 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: var(--bg-main);
+    background: var(--color-bg-primary);
 }
 
 .section-header {
     height: 36px;
     padding: 0 16px;
-    background: var(--bg-sidebar);
-    border-bottom: 1px solid var(--border-color);
+    background: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-border);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -557,7 +546,7 @@
 .section-title {
     font-size: 0.75rem;
     font-weight: 700;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
@@ -565,8 +554,8 @@
 .result-info {
     font-size: 0.7rem;
     font-weight: 500;
-    color: #64748b;
-    background: rgba(100, 116, 139, 0.1);
+    color: var(--color-text-muted);
+    background: var(--color-bg-tertiary);
     padding: 2px 8px;
     border-radius: 999px;
 }
@@ -594,7 +583,7 @@
     text-align: left;
     font-weight: 600;
     color: var(--color-text-secondary);
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--color-border);
     border-right: 1px solid var(--color-border);
 }
 
@@ -642,7 +631,7 @@
     justify-content: center;
     height: 100%;
     padding: 40px;
-    color: #4b5563;
+    color: var(--color-text-muted);
 }
 
 .empty-icon {
@@ -672,11 +661,11 @@
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #27272a;
+    background: var(--color-bg-tertiary);
     border-radius: 5px;
-    border: 2px solid var(--bg-main);
+    border: 2px solid var(--color-bg-primary);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #3f3f46;
+    background: var(--color-text-muted);
 }
