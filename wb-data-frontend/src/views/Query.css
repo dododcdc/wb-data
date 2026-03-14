@@ -337,13 +337,13 @@
 }
 
 .run-button:hover:not(:disabled) {
-    background: var(--color-bg-secondary);
-    color: var(--color-text-primary);
+    background: var(--color-brand-hover);
+    color: white;
 }
 
 .run-button:active:not(:disabled) {
-    background: var(--color-bg-tertiary);
-    color: var(--color-text-primary);
+    background: var(--color-brand);
+    color: white;
 }
 
 .run-button:disabled {
@@ -414,9 +414,19 @@
     transition: all var(--transition-fast);
 }
 
+.format-button-inline:hover {
+    background: var(--color-brand);
+    color: white;
+    border-color: var(--color-brand);
+}
+
+.format-button-inline:hover svg {
+    color: white;
+}
+
 .run-button:hover:not(:disabled) {
-    background: var(--color-bg-secondary);
-    color: var(--color-text-primary);
+    background: var(--color-brand-hover);
+    color: white;
 }
 
 .format-button-inline svg {
