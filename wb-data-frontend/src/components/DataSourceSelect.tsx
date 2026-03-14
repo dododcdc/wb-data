@@ -7,6 +7,7 @@ import {
     ComboboxEmpty,
 } from '@/components/ui/combobox';
 import { Search, ChevronDown, Loader2 } from 'lucide-react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useEffect, useRef, useState, type CompositionEvent, type UIEventHandler } from 'react';
 
 interface Option {
@@ -32,6 +33,9 @@ type DataSourceSelectProps = {
     inputId?: string;
     ariaLabel?: string;
     ariaLabelledby?: string;
+    virtualize?: boolean;
+    virtualItemSize?: number;
+    virtualOverscan?: number;
     theme?: 'light' | 'dark';
     multiple?: boolean;
     disableClientFilter?: boolean;
@@ -58,6 +62,9 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
         inputId,
         ariaLabel,
         ariaLabelledby,
+        virtualize = false,
+        virtualItemSize = 32,
+        virtualOverscan = 6,
         theme = 'light',
         disableClientFilter,
         emptyText = '未找到匹配项',
@@ -69,8 +76,23 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
     const isComposingRef = useRef(false);
     const skipNextInputRef = useRef(false);
     const [inputValue, setInputValue] = useState('');
+    const scrollRef = useRef<HTMLDivElement | null>(null);
+    const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
 
     const resolvedValue = options.find(opt => opt.value === value) || selectedOption || null;
+    const shouldVirtualize = virtualize && options.length > 0;
+    const virtualizer = useVirtualizer({
+        count: options.length,
+        getScrollElement: () => scrollElement,
+        estimateSize: () => virtualItemSize,
+        overscan: virtualOverscan,
+    });
+    const virtualItems = shouldVirtualize ? virtualizer.getVirtualItems() : [];
+
+    const handleScrollElementRef = (node: HTMLDivElement | null) => {
+        scrollRef.current = node;
+        setScrollElement(node);
+    };
 
     useEffect(() => {
         if (resolvedValue) {
@@ -166,6 +188,7 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
                 align="start"
                 className="w-[var(--anchor-width)] max-h-[300px]"
                 onScroll={handleScroll}
+                ref={handleScrollElementRef}
             >
                 {loading ? (
                     <div className="p-3 text-sm text-muted-foreground text-center">{loadingText}</div>
@@ -173,16 +196,40 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
                     <ComboboxEmpty>{emptyText}</ComboboxEmpty>
                 ) : (
                     <>
-                        {options.map((item) => (
-                            <ComboboxItem key={item.value} value={item}>
-                                {item.type && (
-                                    <span className={`type-badge ${item.type.toLowerCase()} mr-2`}>
-                                        {item.type.toUpperCase()}
-                                    </span>
-                                )}
-                                {item.label}
-                            </ComboboxItem>
-                        ))}
+                        {shouldVirtualize ? (
+                            <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+                                {virtualItems.map((virtualRow) => {
+                                    const item = options[virtualRow.index];
+                                    return (
+                                        <div
+                                            key={item.value}
+                                            className="absolute left-0 top-0 w-full"
+                                            style={{ transform: `translateY(${virtualRow.start}px)` }}
+                                        >
+                                            <ComboboxItem value={item}>
+                                                {item.type && (
+                                                    <span className={`type-badge ${item.type.toLowerCase()} mr-2`}>
+                                                        {item.type.toUpperCase()}
+                                                    </span>
+                                                )}
+                                                {item.label}
+                                            </ComboboxItem>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            options.map((item) => (
+                                <ComboboxItem key={item.value} value={item}>
+                                    {item.type && (
+                                        <span className={`type-badge ${item.type.toLowerCase()} mr-2`}>
+                                            {item.type.toUpperCase()}
+                                        </span>
+                                    )}
+                                    {item.label}
+                                </ComboboxItem>
+                            ))
+                        )}
                         {loadingMore ? (
                             <div className="flex items-center justify-center gap-2 px-3 py-2 text-xs text-muted-foreground">
                                 <Loader2 className="animate-spin" size={12} />

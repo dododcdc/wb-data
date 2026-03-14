@@ -40,38 +40,43 @@ function ComboboxTrigger({
   )
 }
 
-function ComboboxContent({
-  className,
-  children,
-  side = "bottom",
-  sideOffset = 4,
-  align = "start",
-  ...props
-}: ComboboxPrimitive.Popup.Props & Pick<ComboboxPrimitive.Positioner.Props, "align" | "side" | "sideOffset">) {
-  return (
-    <ComboboxPrimitive.Portal>
-      <ComboboxPrimitive.Positioner
-        side={side}
-        sideOffset={sideOffset}
-        align={align}
-        className="isolate z-50"
-      >
-        <ComboboxPrimitive.Popup
-          data-slot="combobox-content"
-          className={cn(
-            "relative isolate z-50 max-h-72 w-[var(--anchor-width)] min-w-36 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
-            className
-          )}
-          {...props}
+const ComboboxContent = React.forwardRef<HTMLDivElement, ComboboxPrimitive.Popup.Props & Pick<ComboboxPrimitive.Positioner.Props, "align" | "side" | "sideOffset">>(
+  ({
+    className,
+    children,
+    side = "bottom",
+    sideOffset = 4,
+    align = "start",
+    ...props
+  }, ref) => {
+    return (
+      <ComboboxPrimitive.Portal>
+        <ComboboxPrimitive.Positioner
+          side={side}
+          sideOffset={sideOffset}
+          align={align}
+          className="isolate z-50"
         >
-          <ComboboxPrimitive.List className="p-1">
-            {children}
-          </ComboboxPrimitive.List>
-        </ComboboxPrimitive.Popup>
-      </ComboboxPrimitive.Positioner>
-    </ComboboxPrimitive.Portal>
-  )
-}
+          <ComboboxPrimitive.Popup
+            ref={ref}
+            data-slot="combobox-content"
+            className={cn(
+              "relative isolate z-50 max-h-72 w-[var(--anchor-width)] min-w-36 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+              className
+            )}
+            {...props}
+          >
+            <ComboboxPrimitive.List className="p-1">
+              {children}
+            </ComboboxPrimitive.List>
+          </ComboboxPrimitive.Popup>
+        </ComboboxPrimitive.Positioner>
+      </ComboboxPrimitive.Portal>
+    )
+  }
+)
+
+ComboboxContent.displayName = "ComboboxContent"
 
 function ComboboxItem({
   className,

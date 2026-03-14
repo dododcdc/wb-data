@@ -596,6 +596,8 @@ export default function Query() {
                                 placeholder="搜索并选择数据源..."
                                 theme="light"
                                 disableClientFilter
+                                virtualize
+                                virtualItemSize={32}
                                 ariaLabel="数据源选择"
                                 emptyText={dsKeyword ? '未找到匹配的数据源' : '暂无数据源'}
                             />
