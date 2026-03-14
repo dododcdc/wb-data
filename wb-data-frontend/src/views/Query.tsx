@@ -513,6 +513,14 @@ export default function Query() {
                             )}
                         </div>
                         <div className="toolbar-right">
+                            <button
+                                className="format-button-inline"
+                                onClick={handleFormat}
+                                title="格式化 SQL (Ctrl+Shift+F)"
+                            >
+                                <Wand2 size={16} />
+                                <span>格式化</span>
+                            </button>
                             <Tooltip.Root openDelay={400} closeDelay={0} closeOnPointerDown={true}>
                                 <Tooltip.Trigger asChild>
                                     <button
@@ -543,16 +551,7 @@ export default function Query() {
                     >
                         <Splitter.Panel id="editor" className="query-splitter-panel-vertical">
                             <section className="editor-section">
-                                <div className="editor-toolbar">
-                                    <button
-                                        className="format-button"
-                                        onClick={handleFormat}
-                                        title="格式化 SQL (Shift+Alt+F)"
-                                    >
-                                        <Wand2 size={13} />
-                                        <span>格式化</span>
-                                    </button>
-                                </div>
+
                                 <div className="editor-wrapper">
                                     <Editor
                                         height="100%"
