@@ -15,7 +15,7 @@
 }
 
 .placeholder-icon {
-    color: #1677ff;
+    color: var(--color-brand);
     opacity: 0.2;
     margin-bottom: 24px;
 }

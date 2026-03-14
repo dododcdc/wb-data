@@ -6,9 +6,9 @@
 
 .datasource-toolbar,
 .datasource-table-panel {
-    border: 1px solid rgba(15, 23, 42, 0.08);
+    border: 1px solid var(--color-border);
     border-radius: 18px;
-    background: #ffffff;
+    background: var(--color-bg-primary);
     box-shadow: 0 12px 24px rgba(15, 23, 42, 0.04);
 }
 
@@ -28,15 +28,15 @@
     min-width: 0;
     height: 44px;
     padding: 0 14px;
-    border: 1px solid rgba(15, 23, 42, 0.08);
+    border: 1px solid var(--color-border);
     border-radius: 12px;
-    background: #f8fafc;
-    color: #64748b;
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-muted);
 }
 
 .datasource-search-shell:focus-within {
     border-color: rgba(22, 119, 255, 0.32);
-    background: #ffffff;
+    background: var(--color-bg-primary);
     box-shadow: 0 0 0 4px rgba(22, 119, 255, 0.08);
 }
 
@@ -65,7 +65,7 @@
     padding: 0 16px;
     border: none;
     border-radius: 12px;
-    background: linear-gradient(135deg, #1677ff 0%, #0d51c6 100%);
+    background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-hover) 100%);
     color: #fff;
     font-size: 0.92rem;
     font-weight: 600;
@@ -156,8 +156,8 @@
 
 .datasource-table th {
     padding: 14px 12px;
-    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-    color: #64748b;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-muted);
     font-size: 0.75rem;
     font-weight: 700;
     letter-spacing: 0.06em;
@@ -168,7 +168,7 @@
 .datasource-table td {
     padding: 14px 12px;
     border-bottom: 1px solid rgba(15, 23, 42, 0.06);
-    color: #0f172a;
+    color: var(--color-text-primary);
     font-size: 0.9rem;
     vertical-align: middle;
 }
@@ -189,12 +189,12 @@
 }
 
 .datasource-description {
-    color: #64748b;
+    color: var(--color-text-muted);
     font-size: 0.82rem;
 }
 
 .datasource-connection {
-    color: #475569;
+    color: var(--color-text-secondary);
     font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
     font-size: 0.82rem;
 }
@@ -228,7 +228,7 @@
 }
 
 .datasource-owner {
-    color: #475569;
+    color: var(--color-text-secondary);
     font-weight: 600;
 }
 
@@ -244,14 +244,14 @@
     width: 34px;
     height: 34px;
     padding: 0;
-    border: 1px solid rgba(15, 23, 42, 0.08);
+    border: 1px solid var(--color-border);
     border-radius: 10px;
     background: #fff;
-    color: #475569;
+    color: var(--color-text-secondary);
 }
 
 .datasource-icon-btn:hover:not(:disabled) {
-    border-color: rgba(22, 119, 255, 0.28);
+    border-color: var(--color-border-hover);
     color: #0b63d8;
 }
 
@@ -274,7 +274,7 @@
 }
 
 .datasource-page-info {
-    color: #64748b;
+    color: var(--color-text-muted);
     font-size: 0.88rem;
 }
 
@@ -291,10 +291,10 @@
     justify-content: center;
     height: 44px;
     padding: 0 14px;
-    border: 1px solid rgba(15, 23, 42, 0.08);
+    border: 1px solid var(--color-border);
     border-radius: 10px;
     background: #fff;
-    color: #475569;
+    color: var(--color-text-secondary);
     font-size: 0.88rem;
     font-weight: 600;
 }
@@ -318,7 +318,7 @@
 
 .datasource-page-btn.active {
     border-color: transparent;
-    background: linear-gradient(135deg, #1677ff 0%, #0d51c6 100%);
+    background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-hover) 100%);
     color: #fff;
     box-shadow: 0 10px 20px rgba(22, 119, 255, 0.18);
 }
@@ -334,8 +334,8 @@
 
 .datasource-pagination-nav.hover-locked .datasource-page-btn:hover,
 .datasource-pagination-nav.hover-locked .datasource-nav-btn:hover {
-    border-color: rgba(15, 23, 42, 0.08);
-    color: #475569;
+    border-color: var(--color-border);
+    color: var(--color-text-secondary);
 }
 
 .datasource-pagination-nav.hover-locked .datasource-page-btn.active:hover {

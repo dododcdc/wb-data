@@ -1,0 +1,161 @@
+/* ========================================
+   Design Tokens - Design System Base
+   ======================================== */
+
+:root {
+  /* Brand Colors */
+  --color-brand: #1677ff;
+  --color-brand-hover: #0d51c6;
+  --color-brand-light: #e6f7ff;
+  --color-brand-dark: #003eb3;
+
+  /* Accent Colors */
+  --color-accent: #3b82f6;
+  --color-accent-glow: rgba(59, 130, 246, 0.2);
+
+  /* Neutral Colors */
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+
+  /* Light Theme */
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f6f8fb;
+  --color-bg-tertiary: #f8fafc;
+  --color-border: rgba(15, 23, 42, 0.08);
+  --color-border-hover: rgba(22, 119, 255, 0.28);
+
+  /* Status Colors */
+  --color-success-bg: #ecfdf3;
+  --color-success: #027a48;
+  --color-error-bg: #fff6f6;
+  --color-error: #b42318;
+  --color-warning-bg: #fffbe6;
+  --color-warning: #faad14;
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 24px rgba(15, 23, 42, 0.04);
+  --shadow-brand: 0 10px 18px rgba(22, 119, 255, 0.24);
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease;
+  --transition-slow: 300ms ease;
+}
+
+/* Dark Theme */
+[data-theme='dark'] {
+  --color-bg-primary: #090b10;
+  --color-bg-secondary: #0d1117;
+  --color-bg-tertiary: #1f2937;
+  --color-text-primary: #f1f5f9;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+  --color-border: rgba(255, 255, 255, 0.08);
+}
+
+/* ========================================
+   Base Styles
+   ======================================== */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+/* ========================================
+   Utility Classes
+   ======================================== */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Focus visible for accessibility */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* ========================================
+   Type Badges (for data source types)
+   ======================================== */
+
+.type-badge {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.type-badge.mysql {
+  background-color: #e6f7ff;
+  color: #0958d9;
+}
+
+.type-badge.hive {
+  background-color: #fffbe6;
+  color: #faad14;
+}
+
+.type-badge.postgresql {
+  background-color: #f0f5ff;
+  color: #2f54eb;
+}
+
+.type-badge.starrocks {
+  background-color: #e6fffb;
+  color: #13c2c2;
+}
+
+.type-badge.oracle {
+  background-color: #fff2f0;
+  color: #ff4d4f;
+}
+
+.type-badge.sqlserver {
+  background-color: #f9f0ff;
+  color: #722ed1;
+}

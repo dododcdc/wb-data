@@ -76,39 +76,3 @@ button:focus-visible {
   }
 }
 
-.type-badge {
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.type-badge.mysql {
-  background-color: #e6f7ff;
-  color: #0958d9;
-}
-
-.type-badge.hive {
-  background-color: #fffbe6;
-  color: #faad14;
-}
-
-.type-badge.postgresql {
-  background-color: #f0f5ff;
-  color: #2f54eb;
-}
-
-.type-badge.starrocks {
-  background-color: #e6fffb;
-  color: #13c2c2;
-}
-
-.type-badge.oracle {
-  background-color: #fff2f0;
-  color: #ff4d4f;
-}
-
-.type-badge.sqlserver {
-  background-color: #f9f0ff;
-  color: #722ed1;
-}

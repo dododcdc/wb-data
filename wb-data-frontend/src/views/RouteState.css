@@ -122,7 +122,7 @@
 
 .route-state-primary {
     border: none;
-    background: linear-gradient(135deg, #1677ff 0%, #0d51c6 100%);
+    background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-hover) 100%);
     color: #fff;
     box-shadow: 0 12px 24px rgba(22, 119, 255, 0.16);
 }

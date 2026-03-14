@@ -1,12 +1,12 @@
 :root {
-    --bg-main: #090b10;
-    --bg-sidebar: #0d1117;
-    --bg-hover: #1f2937;
-    --border-color: #1e293b;
-    --text-primary: #f1f5f9;
-    --text-secondary: #94a3b8;
-    --accent-blue: #3b82f6;
-    --accent-glow: rgba(59, 130, 246, 0.2);
+    --bg-main: var(--color-bg-primary);
+    --bg-sidebar: var(--color-bg-secondary);
+    --bg-hover: var(--color-bg-tertiary);
+    --border-color: var(--color-border);
+    --text-primary: var(--color-text-primary);
+    --text-secondary: var(--color-text-secondary);
+    --accent-blue: var(--color-accent);
+    --accent-glow: var(--color-accent-glow);
 }
 
 .query-splitter {
@@ -77,7 +77,7 @@
 .splitter-indicator {
     position: relative;
     border-radius: 9999px;
-    background: #94a3b8;
+    background: var(--color-text-secondary);
     border: 1px solid rgba(255, 255, 255, 0.1);
     z-index: 1;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -132,7 +132,7 @@
 .splitter-indicator-vertical {
     position: relative;
     border-radius: 9999px;
-    background: #94a3b8;
+    background: var(--color-text-secondary);
     border: 1px solid rgba(255, 255, 255, 0.1);
     z-index: 1;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -250,7 +250,7 @@
 .col-type {
     font-size: 0.65rem;
     color: #475569;
-    background: #1e293b;
+    background: var(--color-border);
     padding: 0 4px;
     border-radius: 3px;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -583,7 +583,7 @@
     padding: 10px 12px;
     text-align: left;
     font-weight: 600;
-    color: #94a3b8;
+    color: var(--color-text-secondary);
     border-bottom: 1px solid var(--border-color);
     border-right: 1px solid rgba(255, 255, 255, 0.05);
 }
@@ -642,11 +642,11 @@
 
 .result-message {
     padding: 20px;
-    color: #3b82f6;
+    color: var(--color-accent);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.85rem;
     background: rgba(59, 130, 246, 0.05);
-    border: 1px dashed rgba(59, 130, 246, 0.2);
+    border: 1px dashed var(--color-accent-glow);
     margin: 16px;
     border-radius: 8px;
 }

@@ -3,7 +3,7 @@
   flex-direction: column;
   height: 100vh;
   width: 100vw;
-  background: #f6f8fb;
+  background: var(--color-bg-secondary);
 }
 
 .global-navbar {
@@ -36,7 +36,7 @@
   justify-content: center;
   width: 34px;
   height: 34px;
-  background: linear-gradient(135deg, #1677ff 0%, #003eb3 100%);
+  background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-dark) 100%);
   border-radius: 11px;
   color: white;
   box-shadow: 0 10px 18px rgba(22, 119, 255, 0.24);
@@ -48,7 +48,7 @@
 
 .logo-section h2 {
   margin: 0;
-  color: #0f172a;
+  color: var(--color-text-primary);
   font-size: 1.1rem;
   font-weight: 800;
   letter-spacing: -0.03em;
@@ -68,7 +68,7 @@
   padding: 0 14px 6px;
   height: 100%;
   text-decoration: none;
-  color: #475569;
+  color: var(--color-text-secondary);
   transition: color 0.18s ease;
   gap: 7px;
   font-weight: 600;
@@ -76,11 +76,11 @@
 }
 
 .nav-item:hover {
-  color: #0f172a;
+  color: var(--color-text-primary);
 }
 
 .nav-item.active {
-  color: #1677ff;
+  color: var(--color-brand);
 }
 
 .nav-item::after {
@@ -91,7 +91,7 @@
   bottom: 4px;
   height: 2px;
   border-radius: 999px;
-  background: #1677ff;
+  background: var(--color-brand);
   opacity: 0;
   transform: scaleX(0);
   transform-origin: left center;
@@ -132,7 +132,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  color: #0f172a;
+  color: var(--color-text-primary);
   font-weight: 600;
   font-size: 0.9rem;
 }
@@ -140,7 +140,7 @@
 .user-avater {
   width: 24px;
   height: 24px;
-  background: linear-gradient(135deg, #1677ff 0%, #0d51c6 100%);
+  background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-hover) 100%);
   color: white;
   border-radius: 50%;
   display: flex;
