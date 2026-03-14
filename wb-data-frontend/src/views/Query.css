@@ -292,6 +292,9 @@
 .toolbar-right {
     display: flex;
     align-items: center;
+    gap: 8px;
+    display: flex;
+    align-items: center;
     gap: 12px;
 }
 
@@ -321,32 +324,29 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 14px;
-    background: var(--accent-blue);
+    padding: 0 16px;
+    height: 36px;
+    background: var(--color-brand);
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-weight: 600;
     font-size: 0.85rem;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 0 0 0 var(--accent-glow);
+    transition: all var(--transition-fast);
 }
 
 .run-button:hover:not(:disabled) {
-    background: #2563eb;
-    box-shadow: 0 0 15px var(--accent-glow);
-    transform: translateY(-1px);
+    background: var(--color-brand-hover);
 }
 
 .run-button:active:not(:disabled) {
-    transform: translateY(0);
+    transform: scale(0.98);
 }
 
 .run-button:disabled {
-    opacity: 0.4;
+    opacity: 0.5;
     cursor: not-allowed;
-    filter: grayscale(0.5);
 }
 
 /* Editor Section */
@@ -396,17 +396,16 @@
 
 /* ── Format Button ─────────────────────────────────── */
 
-/* 工具栏内联格式化按钮（浅色背景） */
 .format-button-inline {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 0 12px;
+    padding: 0 16px;
     height: 36px;
     font-size: 0.85rem;
     font-weight: 500;
-    color: var(--color-text-secondary);
-    background: transparent;
+    color: var(--color-text-primary);
+    background: var(--color-bg-tertiary);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     cursor: pointer;
@@ -414,13 +413,12 @@
 }
 
 .format-button-inline:hover {
-    color: var(--color-text-primary);
-    background: var(--color-bg-tertiary);
+    background: var(--color-bg-secondary);
     border-color: var(--color-border-hover);
 }
 
 .format-button-inline svg {
-    color: var(--color-accent);
+    color: var(--color-text-secondary);
 }
 
 
