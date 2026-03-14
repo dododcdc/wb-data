@@ -543,11 +543,7 @@ export default function Query() {
                     >
                         <Splitter.Panel id="editor" className="query-splitter-panel-vertical">
                             <section className="editor-section">
-                                <div className="editor-tabs-container">
-                                    <div className="editor-tab active">
-                                        <Code2 size={13} />
-                                        <span>SQL 编辑器</span>
-                                    </div>
+                                <div className="editor-toolbar">
                                     <button
                                         className="format-button"
                                         onClick={handleFormat}

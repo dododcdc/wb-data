@@ -364,7 +364,7 @@
     width: 100%;
 }
 
-.editor-tabs-container {
+.editor-toolbar {
     display: flex;
     background: var(--color-bg-tertiary);
     padding: 0 8px;
