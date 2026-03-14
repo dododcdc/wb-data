@@ -513,14 +513,22 @@ export default function Query() {
                             )}
                         </div>
                         <div className="toolbar-right">
-                            <button
-                                className="format-button-inline"
-                                onClick={handleFormat}
-                                title="格式化 SQL (Ctrl+Shift+F)"
-                            >
-                                <Wand2 size={16} />
-                                <span>格式化</span>
-                            </button>
+                            <Tooltip.Root openDelay={400} closeDelay={0} closeOnPointerDown={true}>
+                                <Tooltip.Trigger asChild>
+                                    <button
+                                        className="format-button-inline"
+                                        onClick={handleFormat}
+                                    >
+                                        <Wand2 size={16} />
+                                        <span>格式化</span>
+                                    </button>
+                                </Tooltip.Trigger>
+                                <Tooltip.Positioner>
+                                    <Tooltip.Content className="tooltip-content">
+                                        格式化 (Ctrl+Shift+F)
+                                    </Tooltip.Content>
+                                </Tooltip.Positioner>
+                            </Tooltip.Root>
                             <Tooltip.Root openDelay={400} closeDelay={0} closeOnPointerDown={true}>
                                 <Tooltip.Trigger asChild>
                                     <button
