@@ -282,6 +282,8 @@
     font-weight: 500;
     padding: 0 8px;
     user-select: none;
+    display: flex;
+    align-items: center;
 }
 
 .toolbar-right {
@@ -320,7 +322,7 @@
     align-items: center;
     gap: 6px;
     padding: 0 16px;
-    height: 44px;
+    height: 32px;
     background: var(--color-brand);
     color: white;
     border: none;
@@ -404,7 +406,7 @@
     align-items: center;
     gap: 6px;
     padding: 0 16px;
-    height: 44px;
+    height: 32px;
     font-size: 0.85rem;
     font-weight: 500;
     color: var(--color-text-primary);

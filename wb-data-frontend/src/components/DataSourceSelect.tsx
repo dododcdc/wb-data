@@ -56,7 +56,7 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
             multiple={multiple}
             disabled={disabled}
             className={`ds-select-root ${theme === 'dark' ? 'ds-dark' : ''}`}
-            positioning={{ sameWidth: true, gutter: 4 }}
+            positioning={{ sameWidth: true, gutter: 0 }}
             openOnClick
         >
             <Combobox.Control className="ds-select-control">
