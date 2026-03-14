@@ -16,7 +16,7 @@
 .ds-search-icon {
     position: absolute;
     left: 10px;
-    color: #94a3b8;
+    color: var(--color-text-muted);
     pointer-events: none;
     z-index: 1;
 }
@@ -30,7 +30,7 @@
     right: 8px;
     background: transparent;
     border: none;
-    color: #94a3b8;
+    color: var(--color-text-muted);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -42,16 +42,20 @@
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    height: 40px;
+    height: 44px;
     padding: 0 12px;
     background-color: var(--color-bg-primary);
-    border: 1px solid #d9d9d9;
-    border-radius: 6px;
-    color: #1a1a1a;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-primary);
     font-size: 14px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all var(--transition-fast);
     outline: none;
+}
+
+.ds-select-trigger[data-placeholder] {
+    color: var(--color-text-muted);
 }
 
 .ds-select-value {
@@ -80,11 +84,11 @@
 .ds-select-trigger[data-disabled] {
     opacity: 0.5;
     cursor: not-allowed;
-    background-color: #f5f5f5;
+    background-color: var(--color-bg-tertiary);
 }
 
 .ds-select-indicator {
-    color: #8c8c8c;
+    color: var(--color-text-muted);
     display: flex;
     align-items: center;
     transition: transform 0.2s ease;
@@ -101,7 +105,7 @@
 
 .ds-select-content {
     background-color: var(--color-bg-primary);
-    border: 1px solid #ebedf0;
+    border: 1px solid var(--color-border);
     border-radius: 6px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     padding: 4px;
@@ -125,7 +129,7 @@
     justify-content: space-between;
     padding: 8px 12px;
     border-radius: 4px;
-    color: #1a1a1a;
+    color: var(--color-text-primary);
     font-size: 14px;
     cursor: pointer;
     transition: background-color 0.1s;
@@ -139,11 +143,11 @@
 }
 
 .ds-select-item[data-highlighted] {
-    background-color: #f5f5f5;
+    background-color: var(--color-bg-tertiary);
 }
 
 .ds-select-item[data-state="checked"] {
-    background-color: #e6f7ff;
+    background-color: var(--color-accent-glow);
     color: var(--color-brand);
     font-weight: 500;
 }
@@ -151,7 +155,7 @@
 .ds-select-item[data-disabled] {
     opacity: 0.5;
     cursor: not-allowed;
-    color: #bfbfbf;
+    color: var(--color-text-muted);
 }
 
 .ds-select-item-indicator {
@@ -173,12 +177,12 @@
 }
 
 .ds-select-content::-webkit-scrollbar-thumb {
-    background-color: #d9d9d9;
+    background-color: var(--color-border);
     border-radius: 10px;
 }
 
 .ds-select-content::-webkit-scrollbar-thumb:hover {
-    background-color: #bfbfbf;
+    background-color: var(--color-text-muted);
 }
 
 /* Dark Mode Styles */
@@ -201,7 +205,7 @@
 
 .ds-dark .ds-select-indicator,
 .ds-select-root.ds-dark .ds-select-indicator {
-    color: #94a3b8;
+    color: var(--color-text-muted);
 }
 
 .ds-dark.ds-select-content,
@@ -229,7 +233,7 @@
 
 .ds-dark .ds-select-loading,
 .ds-dark .ds-select-empty {
-    color: #94a3b8;
+    color: var(--color-text-muted);
     padding: 12px;
     font-size: 13px;
     text-align: center;
