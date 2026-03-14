@@ -337,11 +337,11 @@
 }
 
 .run-button:hover:not(:disabled) {
-    background: var(--color-brand-hover);
+    background: var(--color-bg-secondary);
 }
 
 .run-button:active:not(:disabled) {
-    transform: scale(0.98);
+    background: var(--color-bg-tertiary);
 }
 
 .run-button:disabled {
@@ -412,7 +412,7 @@
     transition: all var(--transition-fast);
 }
 
-.format-button-inline:hover {
+.run-button:hover:not(:disabled) {
     background: var(--color-bg-secondary);
 }
 
