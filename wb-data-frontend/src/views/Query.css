@@ -199,7 +199,7 @@
     align-items: center;
     gap: 10px;
     font-size: 0.85rem;
-    color: #cbd5e1;
+    color: var(--color-text-secondary);
     transition: all 0.2s ease;
     list-style: none;
     border-left: 2px solid transparent;
