@@ -88,10 +88,9 @@
 
 .splitter-trigger:hover .splitter-indicator,
 .splitter-trigger[data-dragging] .splitter-indicator {
-    background: var(--color-bg-primary);
-    width: 6px;
+    background: var(--color-accent);
+    width: 4px;
     height: 40px;
-    box-shadow: 0 0 15px var(--accent-glow), 0 0 5px rgba(255, 255, 255, 0.5);
 }
 
 /* Vertical Trigger Styling Refined */
@@ -143,10 +142,9 @@
 
 .splitter-trigger-vertical:hover .splitter-indicator-vertical,
 .splitter-trigger-vertical[data-dragging] .splitter-indicator-vertical {
-    background: var(--color-bg-primary);
-    height: 6px;
+    background: var(--color-accent);
+    height: 4px;
     width: 40px;
-    box-shadow: 0 0 15px var(--accent-glow), 0 0 5px rgba(255, 255, 255, 0.5);
 }
 
 /* End of Splitter Trigger Styles */
