@@ -7,6 +7,8 @@ import path from 'path'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    host: true,
+    allowedHosts: ['dododcdc.tail84596d.ts.net'],
     proxy: {
       '/api': {
         target: 'http://localhost:8080',

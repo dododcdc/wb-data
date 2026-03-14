@@ -12,15 +12,14 @@
 
 ### Specific Anti-Patterns Detected:
 
-| Anti-Pattern | Location | Severity |
-|-------------|----------|----------|
-| **Overused Font (Inter)** | `tokens.css:37`, `index.css:106` | High |
-| **Gradient Branding** | `Layout.css:39`, `DataSourceList.css:68` | Medium |
-| **Card-Based Layout** | `DataSourceList.css:10-12` | Medium |
-| **Generic Drop Shadows** | `tokens.css:57-60` | Medium |
-| **Glassmorphism Navbar** | `Layout.css:11,17` | Medium |
-| **Centered Hero Sections** | `Dashboard.tsx:8` | Low |
-| **Color-Only Status Indicators** | Multiple pill components | Medium |
+| Anti-Pattern | Location | Status |
+|-------------|----------|--------|
+| **Overused Font (Inter)** | `tokens.css:51`, `index.css:106` | **UNCHANGED** |
+| **Gradient Branding** | `Layout.css:39,108-111,143` | **UNCHANGED** |
+| **Glassmorphism Navbar** | `Layout.css:11,17` | **UNCHANGED** |
+| **Generic Drop Shadows** | `tokens.css:71-74` | **UNCHANGED** |
+| **Hardcoded Colors** | Multiple CSS files | **PARTIALLY FIXED** |
+| **Dual Token Systems** | `tokens.css` + `index.css` | **UNCHANGED** |
 
 ---
 
@@ -28,24 +27,32 @@
 
 ### Issue Count by Severity
 
-| Severity | Count |
-|----------|-------|
-| Critical | 4 |
-| High | 8 |
-| Medium | 12 |
-| Low | 6 |
-| **Total** | **30** |
+| Severity | First Audit | Second Audit | Change |
+|----------|-------------|--------------|--------|
+| Critical | 4 | 3 | -1 |
+| High | 8 | 6 | -2 |
+| Medium | 12 | 8 | -4 |
+| Low | 6 | 5 | -1 |
+| **Total** | **30** | **22** | **-8** |
 
-### Top Critical Issues
+### Top Critical Issues (Remaining)
 
-1. **Dual Token System Conflict** - Two competing design token systems create maintenance burden and inconsistency
-2. **Missing Form Labels** - DataSourceForm has inputs without proper `<label>` associations (WCAG A violation)
-3. **Incomplete Dark Mode** - Multiple hardcoded colors don't respect `[data-theme='dark']` or `.dark` variants
-4. **Hardcoded Colors Throughout** - 15+ instances of non-token colors scattered across components
+1. **Dual Token System Conflict** - Two competing design token systems (UNCHANGED)
+2. **Hardcoded Colors** - Still ~50+ instances in CSS files
+3. **Incomplete Dark Mode** - Query page hardcoded to dark (#090b10)
 
-### Overall Quality Score: **5.5/10**
+### Improvements Since First Audit
 
-The codebase is functional but lacks design system consistency. Accessibility violations and token conflicts are the highest priority concerns.
+- ✅ Added form labels with `htmlFor` attributes
+- ✅ Improved touch targets to 44px
+- ✅ Removed focus glow borders
+- ✅ Added focus-visible styles
+- ✅ Query page color variables refactored
+- ✅ Split DataSourceSelect to separate component
+
+### Overall Quality Score: **6.0/10** (+0.5)
+
+The codebase shows incremental improvement. Critical accessibility issues partially addressed. Design system consolidation remains the highest priority.
 
 ---
 
@@ -53,362 +60,260 @@ The codebase is functional but lacks design system consistency. Accessibility vi
 
 ### Critical Issues
 
-#### 1. Dual Design Token Systems
+#### 1. Dual Design Token Systems (UNCHANGED)
 
 | Attribute | Value |
 |-----------|-------|
 | **Location** | `src/styles/tokens.css` + `src/index.css` |
 | **Severity** | Critical |
 | **Category** | Theming |
-| **Description** | Two competing design token systems exist: custom CSS variables in `tokens.css` and Shadcn/UI OKLCH tokens in `index.css`. Components mix both systems. |
-| **Impact** | Maintenance nightmare; inconsistent styling; dark mode may not work consistently across all components |
-| **WCAG/Standard** | N/A |
-| **Recommendation** | Consolidate to ONE token system. Prefer the Shadcn OKLCH tokens as they're more modern and accessible |
+| **Description** | Two competing design token systems: custom CSS variables (tokens.css) and Shadcn OKLCH tokens (index.css). Components mix both systems inconsistently. |
+| **Impact** | Maintenance burden; dark mode inconsistent; developer confusion |
+| **Recommendation** | Consolidate to ONE token system. Recommend Shadcn OKLCH tokens as primary. |
 | **Suggested command** | `/normalize` to align with single design system |
 
-**Files affected:**
-- `src/index.css` (lines 36-145)
-- `src/styles/tokens.css` (lines 5-77)
-- `src/views/Layout.css` - uses `var(--color-*)` tokens
-- `src/views/Query.css` - uses `var(--color-*)` tokens
+**Current State:**
+- `tokens.css`: Uses `--color-brand`, `--color-bg-primary`, etc.
+- `index.css`: Uses `--primary`, `--background`, etc.
+- Components use mixed approach
 
 ---
 
-#### 2. Missing Form Labels (Accessibility Violation)
-
-| Attribute | Value |
-|-----------|-------|
-| **Location** | `src/views/DataSourceForm.tsx:216-246` |
-| **Severity** | Critical |
-| **Category** | Accessibility |
-| **Description** | Form inputs lack proper `<label>` elements with `htmlFor` associations. Screen readers cannot announce input purposes. |
-| **Impact** | WCAG 1.3.1 (Info and Relationships) violation. Users with visual impairments cannot understand form fields |
-| **WCAG** | WCAG 1.3.1 A, WCAG 3.3.2 A |
-| **Recommendation** | Add `<label htmlFor="field-id">` for each input, or use `aria-label` as fallback |
-| **Suggested command** | `/harden` to add proper labeling and error handling |
-
-**Affected inputs:**
-- `host` field
-- `port` field  
-- `databaseName` field
-- `username` field
-- `password` field
-
----
-
-#### 3. Incomplete Dark Mode Implementation
+#### 2. Hardcoded Colors Remain (~50 instances)
 
 | Attribute | Value |
 |-----------|-------|
 | **Location** | Multiple CSS files |
 | **Severity** | Critical |
 | **Category** | Theming |
-| **Description** | Hardcoded colors throughout codebase ignore dark theme. The `[data-theme='dark']` and `.dark` variants exist but aren't consistently used. |
-| **Impact** | Users with dark mode enabled get broken/hidden content. Inconsistent visual experience |
-| **WCAG** | WCAG 1.4.3 (Contrast) AA |
-| **Recommendation** | Replace all hardcoded `#fff`, `#f5f5f5`, `#111827` colors with design tokens that respond to theme |
-| **Suggested command** | `/normalize` to apply design tokens consistently |
+| **Description** | Despite partial fixes, ~50 hardcoded hex colors remain across CSS files |
+| **Impact** | Cannot theme; dark mode broken for these elements |
+| **Files with most issues:** | |
+| - | `DataSourceList.css` - 20+ hardcoded colors |
+| - | `DataSourceForm.css` - 15+ hardcoded colors |
+| - | `RouteState.css` - 15+ hardcoded colors |
+| - | `Layout.css:177` - Query page hardcoded dark |
+| **Recommendation** | Replace all hex colors with design tokens |
+| **Suggested command** | `/normalize` to replace hardcoded colors with tokens |
 
-**Examples:**
-- `DataSourceList.css:48` - `color: #111827`
-- `DataSourceList.css:69` - `color: #fff`
-- `DataSourceForm.css:60` - `color: #1a1a1a`
-- `DataSourceForm.css:67` - `color: #8c8c8c`
-- `DataSourceForm.css:224` - `color: #1a1a1a`
+**Remaining Hardcoded Colors:**
+
+```
+DataSourceList.css:
+- #111827 (text-primary equivalent)
+- #fff (background)
+- #fecaca, #fff6f6, #b42318 (error colors)
+- #6b7280, #94a3b8 (muted text)
+- #ecfdf3, #027a48 (success colors)
+- #f5f6f8, #475467 (disabled colors)
+
+DataSourceForm.css:
+- #1a1a1a (text)
+- #8c8c8c (muted)
+- #f5f5f5 (backgrounds)
+- #ebedf0, #f0f0f0 (borders)
+- #5c6269 (label colors)
+- #94a3b8 (help text)
+- #eff6ff, #0b63d8 (code/help)
+- #ff4d4f (required indicator)
+
+RouteState.css:
+- Multiple gradient backgrounds
+- Multiple text colors
+- Status colors
+
+Layout.css:
+- #090b10 (Query page background - hardcoded dark only)
+```
 
 ---
 
-#### 4. Hardcoded Colors (15+ Instances)
+#### 3. Incomplete Dark Mode - Query Page
 
 | Attribute | Value |
 |-----------|-------|
-| **Location** | Multiple CSS files |
+| **Location** | `Layout.css:177` |
 | **Severity** | Critical |
 | **Category** | Theming |
-| **Description** | Direct color values instead of design tokens throughout the codebase |
-| **Impact** | Cannot theme these elements; maintenance burden; potential contrast issues |
-| **WCAG** | Potential WCAG 1.4.3 violations |
-| **Recommendation** | Convert all hardcoded colors to design tokens |
-| **Suggested command** | `/normalize` to replace with tokens |
+| **Description** | Query page content area has `background-color: #090b10 !important` hardcoded dark color |
+| **Impact** | Query page ignores light theme entirely |
+| **Recommendation** | Use CSS custom property that responds to theme |
+| **Suggested command** | `/normalize` to fix theme switching |
+
+```css
+/* Current (BROKEN) */
+.content-area.full-bleed {
+  background-color: #090b10 !important;
+}
+
+/* Should be */
+.content-area.full-bleed {
+  background-color: var(--color-bg-primary, var(--background)) !important;
+}
+```
 
 ---
 
 ### High-Severity Issues
 
-#### 5. Overused Font Family (Inter)
+#### 4. Inter Font Still in Use
 
 | Attribute | Value |
 |-----------|-------|
-| **Location** | `src/styles/tokens.css:37`, `src/index.css:106` |
+| **Location** | `tokens.css:51` |
 | **Severity** | High |
 | **Category** | Anti-Pattern |
-| **Description** | Uses "Inter" font - a hallmark of AI-generated designs per frontend-design skill |
+| **Description** | Font stack starts with 'Inter' - hallmark of AI-generated designs |
 | **Impact** | Unremarkable, templated appearance |
-| **Recommendation** | Choose a distinctive display font paired with a refined body font |
-| **Suggested command** | `/bolder` to amplify design with unique typography |
+| **Recommendation** | Choose distinctive display + body font pairing |
+| **Suggested command** | `/bolder` to amplify with unique typography |
 
 ---
 
-#### 6. Gradient Branding Elements
+#### 5. Gradient Branding Elements
 
 | Attribute | Value |
 |-----------|-------|
-| **Location** | `Layout.css:39`, `DataSourceList.css:68` |
+| **Location** | `Layout.css:39,108-111,143` |
 | **Severity** | High |
 | **Category** | Anti-Pattern |
-| **Description** | Uses linear-gradient for buttons and logos - AI color palette tell |
-| **Impact** | Looks templated; gradient may not maintain contrast in dark mode |
-| **Recommendation** | Use solid brand colors or subtle shadows instead |
+| **Description** | Multiple gradient uses: logo, nav indicator, avatar |
+| **Impact** | AI-generated aesthetic; potential contrast issues |
+| **Recommendation** | Replace with solid colors or purposeful design |
 | **Suggested command** | `/quieter` to reduce visual noise |
 
 ---
 
-#### 7. Card-Based Layout Without Purpose
+#### 6. Glassmorphism Navbar
 
 | Attribute | Value |
 |-----------|-------|
-| **Location** | `DataSourceList.css:7-13`, `Dashboard.tsx` |
+| **Location** | `Layout.css:11,17` - `backdrop-filter: blur(14px)` |
 | **Severity** | High |
 | **Category** | Anti-Pattern |
-| **Description** | Everything wrapped in bordered card containers with shadows |
-| **Impact** | Visual monotony; doesn't add meaningful hierarchy |
-| **Recommendation** | Remove unnecessary containers; use spacing and layout for hierarchy |
-| **Suggested command** | `/distill` to remove unnecessary containers |
+| **Description** | Uses blur + transparency in navbar |
+| **Impact** | Decorative rather than purposeful; performance cost |
+| **Recommendation** | Use solid background or purposeful transparency |
+| **Suggested command** | `/quieter` to reduce decorative effects |
 
 ---
 
-#### 8. Missing Focus Indicators on Custom Components
+#### 7. Generic Drop Shadows
 
 | Attribute | Value |
 |-----------|-------|
-| **Location** | `DataSourceSelect.tsx`, custom combobox |
+| **Location** | `tokens.css:71-74` |
 | **Severity** | High |
-| **Category** | Accessibility |
-| **Description** | Custom interactive elements may lack visible focus states |
-| **Impact** | Keyboard users cannot navigate effectively |
-| **WCAG** | WCAG 2.4.7 (Focus Visible) AA |
-| **Recommendation** | Ensure all interactive elements have `focus-visible` styles |
-| **Suggested command** | `/harden` to improve focus management |
+| **Category** | Anti-Pattern |
+| **Description** | Generic shadows like `0 4px 12px rgba(0,0,0,0.08)` |
+| **Impact** | Templated appearance |
+| **Recommendation** | Create distinctive shadow system or use borders |
+| **Suggested command** | `/bolder` to create distinctive shadows |
 
 ---
 
-#### 9. Missing ARIA Labels on Icon Buttons
+#### 8. Missing ARIA Labels - Icon Buttons
 
 | Attribute | Value |
 |-----------|-------|
-| **Location** | `DataSourceList.tsx:192`, `DataSourceTable.tsx` |
+| **Location** | DataSourceTable, DataSourceList actions |
 | **Severity** | High |
 | **Category** | Accessibility |
-| **Description** | Icon-only buttons without `aria-label` or accessible names |
+| **Description** | Icon-only buttons (edit, delete, toggle) may lack aria-labels |
 | **Impact** | Screen reader users cannot understand button purpose |
-| **WCAG** | WCAG 1.1.1 (Non-text Content) A, WCAG 4.1.2 (Name, Role, Value) A |
-| **Recommendation** | Add `aria-label="Delete"` or similar to icon buttons |
+| **WCAG** | WCAG 1.1.1, WCAG 4.1.2 |
+| **Recommendation** | Add `aria-label` to all icon buttons |
 | **Suggested command** | `/harden` to add ARIA labels |
 
 ---
 
-#### 10. Dialog Without Focus Trap
+#### 9. Monaco Editor Not Lazy Loaded
 
 | Attribute | Value |
 |-----------|-------|
-| **Location** | `DataSourceForm.tsx:294` |
-| **Severity** | High |
-| **Category** | Accessibility |
-| **Description** | Modal dialog may not trap focus - users can tab outside while dialog open |
-| **Impact** | Keyboard users can lose context; poor modal experience |
-| **WCAG** | WCAG 2.1.2.1 (No Keyboard Trap) A |
-| **Recommendation** | Verify Ark UI Dialog traps focus; add `trapFocus` if needed |
-| **Suggested command** | `/harden` to verify and fix focus management |
-
----
-
-#### 11. No Lazy Loading on Editor/Heavy Components
-
-| Attribute | Value |
-|-----------|-------|
-| **Location** | `Query.tsx:2` - Monaco Editor |
+| **Location** | `Query.tsx:2` |
 | **Severity** | High |
 | **Category** | Performance |
-| **Description** | Monaco Editor (heavy ~3MB) loaded immediately on query page |
-| **Impact** | Slow initial page load; unnecessary resource loading |
-| **Recommendation** | Use `React.lazy()` or dynamic import with `loading` fallback |
+| **Description** | Monaco Editor (~3MB) loaded synchronously |
+| **Impact** | Slow initial page load |
+| **Recommendation** | Use React.lazy() with loading fallback |
 | **Suggested command** | `/optimize` to add code splitting |
 
 ---
 
-#### 12. Generic Drop Shadows
+#### 10. Console.error in Production
 
 | Attribute | Value |
 |-----------|-------|
-| **Location** | `tokens.css:57-60` |
+| **Location** | `Query.tsx:101,125,139,151` |
 | **Severity** | High |
-| **Category** | Anti-Pattern |
-| **Description** | Uses generic `0 4px 12px rgba(0,0,0,0.08)` shadows common in AI outputs |
-| **Impact** | Unremarkable, templated appearance |
-| **Recommendation** | Create distinctive shadow system or use subtle borders instead |
-| **Suggested command** | `/bolder` to create more distinctive visual identity |
+| **Category** | Code Quality |
+| **Description** | Multiple console.error calls in production code |
+| **Impact** | Information leakage; should use proper logging |
+| **Recommendation** | Remove or wrap with logging service |
+| **Suggested command** | `/polish` to clean up logging |
 
 ---
 
 ### Medium-Severity Issues
 
-#### 13. Glassmorphism Navbar
-
-| Attribute | Value |
-|-----------|-------|
-| **Location** | `Layout.css:11,17` - `backdrop-filter: blur(14px)` |
-| **Severity** | Medium |
-| **Category** | Anti-Pattern |
-| **Description** | Uses glassmorphism (blur + transparency) in navbar |
-| **Impact** | Decorative rather than purposeful; performance cost on older devices |
-| **Recommendation** | Use solid background or purpose-driven transparency |
-| **Suggested command** | `/quieter` to reduce decorative effects |
-
----
-
-#### 14. Loading Shimmer Animation
+#### 11. Loading Shimmer Animation Performance
 
 | Attribute | Value |
 |-----------|-------|
 | **Location** | `DataSourceList.css:99-106` |
 | **Severity** | Medium |
-| **Category | Performance |
-| **Description** | Uses CSS animation for loading state |
-| **Impact** | May cause layout thrashing if not carefully implemented |
-| **Recommendation** | Verify animation doesn't cause reflows |
-| **Suggested command** | `/optimize` to verify performance |
+| **Category** | Performance |
+| **Description** | CSS animation for loading state may cause reflows |
+| **Recommendation** | Verify uses transform, not layout properties |
+| **Suggested command** | `/optimize` to verify animation performance |
 
 ---
 
-#### 15. Missing Mobile Breakpoints
+#### 12. Missing Mobile Breakpoints
 
 | Attribute | Value |
 |-----------|-------|
 | **Location** | `Layout.css:181-201` |
 | **Severity** | Medium |
 | **Category** | Responsive |
-| **Description** | Only one responsive breakpoint (900px); limited mobile adaptation |
-| **Impact** | Poor experience on phones; horizontal scroll potential |
-| **Recommendation** | Add more breakpoints; adapt interface for mobile contexts |
+| **Description** | Only one breakpoint at 900px |
+| **Impact** | Limited mobile adaptation |
+| **Recommendation** | Add more breakpoints for phone/tablet |
 | **Suggested command** | `/adapt` to improve mobile experience |
 
 ---
 
-#### 16. Touch Target Size Inconsistency
+#### 13. Placeholder-Only Labels
 
 | Attribute | Value |
 |-----------|-------|
-| **Location** | Various button components |
-| **Severity** | Medium |
-| **Category** | Responsive |
-| **Description** | Some buttons 34px height, others 44px - WCAG recommends 44x44px minimum |
-| **Impact** | Difficult to tap on mobile; may miss touch targets |
-| **WCAG** | WCAG 2.5.5 (Target Size) AAA |
-| **Recommendation** | Standardize on 44px minimum for all interactive elements |
-| **Suggested command** | `/adapt` to fix touch targets |
-
----
-
-#### 17. Placeholder Text as Only Label
-
-| Attribute | Value |
-|-----------|-------|
-| **Location** | `DataSourceList.tsx:179` |
+| **Location** | `DataSourceList.tsx:179` search input |
 | **Severity** | Medium |
 | **Category** | Accessibility |
-| **Description** | Search input uses placeholder as only label |
-| **Impact** | Placeholder disappears on focus; users forget input purpose |
-| **WCAG** | WCAG 3.3.2 (Labels or Instructions) A |
-| **Recommendation** | Add visible label in addition to placeholder |
+| **Description** | Search uses placeholder as only label |
+| **Impact** | Placeholder disappears on focus |
+| **WCAG** | WCAG 3.3.2 |
+| **Recommendation** | Add visible label |
 | **Suggested command** | `/harden` to improve form accessibility |
 
 ---
 
-#### 18. No Error Boundary
+#### 14. No Error Boundary
 
 | Attribute | Value |
 |-----------|-------|
 | **Location** | `App.tsx` |
 | **Severity** | Medium |
 | **Category** | Performance |
-| **Description** | No React error boundary to catch render errors gracefully |
+| **Description** | No React error boundary for graceful failures |
 | **Impact** | Full app crashes on component errors |
-| **Recommendation** | Add `<ErrorBoundary>` wrapper around routes |
+| **Recommendation** | Add `<ErrorBoundary>` wrapper |
 | **Suggested command** | `/harden` to add error boundaries |
 
 ---
 
-#### 19. Unused Imports/Dependencies Check
-
-| Attribute | Value |
-|-----------|-------|
-| **Location** | Package.json |
-| **Severity** | Medium |
-| **Category** | Performance |
-| **Description** | Verify no unused dependencies; some imports may be unnecessary |
-| **Impact** | Larger bundle size than necessary |
-| **Recommendation** | Run `npm audit` and analyze bundle |
-| **Suggested command** | `/optimize` to reduce bundle size |
-
----
-
-#### 20. Hardcoded Width Values
-
-| Attribute | Value |
-|-----------|-------|
-| **Location** | `DataSourceForm.css:95` - `width: 1040px` |
-| **Severity** | Medium |
-| **Category** | Responsive |
-| **Description** | Fixed width that may break on smaller screens |
-| **Impact** | Horizontal scroll on narrow viewports |
-| **Recommendation** | Use `max-width` with percentage or `clamp()` |
-| **Suggested command** | `/adapt` to fix responsive constraints |
-
----
-
-#### 21. Redundant Color Tokens
-
-| Attribute | Value |
-|-----------|-------|
-| **Location** | `index.css:37-68` vs `tokens.css:5-35` |
-| **Severity** | Medium |
-| **Category** | Theming |
-| **Description** | Duplicate color tokens in both token files |
-| **Impact** | Confusion about which token to use; maintenance burden |
-| **Recommendation** | Remove one token system entirely |
-| **Suggested command** | `/normalize` to consolidate tokens |
-
----
-
-#### 22. Inconsistent Button Styles
-
-| Attribute | Value |
-|-----------|-------|
-| **Location** | Various button implementations |
-| **Severity** | Medium |
-| **Category** | Consistency |
-| **Description** | Mix of custom CSS buttons and shadcn/ui Button component |
-| **Impact** | Inconsistent user experience |
-| **Recommendation** | Standardize on shadcn Button component throughout |
-| **Suggested command** | `/normalize` to align component usage |
-
----
-
-#### 23. Type Badge Hardcoded Colors
-
-| Attribute | Value |
-|-----------|-------|
-| **Location** | `index.css:126-161` |
-| **Severity** | Medium |
-| **Category** | Theming |
-| **Description** | Type badges use hardcoded colors, not theme-aware |
-| **Impact** | May be invisible in dark mode |
-| **Recommendation** | Convert to CSS custom properties |
-| **Suggested command** | `/normalize` to make themable |
-
----
-
-#### 24. No Reduced Motion Support
+#### 15. No Reduced Motion Support
 
 | Attribute | Value |
 |-----------|-------|
@@ -417,119 +322,141 @@ The codebase is functional but lacks design system consistency. Accessibility vi
 | **Category** | Accessibility |
 | **Description** | Animations don't respect `prefers-reduced-motion` |
 | **Impact** | Discomfort for users with vestibular disorders |
-| **WCAG** | WCAG 2.3.3 (Animation from Interactions) AAA |
-| **Recommendation** | Add `@media (prefers-reduced-motion: reduce)` overrides |
+| **WCAG** | WCAG 2.3.3 AAA |
+| **Recommendation** | Add media query overrides |
 | **Suggested command** | `/harden` to add motion preferences |
+
+---
+
+#### 16. TypeScript Any Usage
+
+| Attribute | Value |
+|-----------|-------|
+| **Location** | `Query.tsx:38` - `editorRef: useRef<any>` |
+| **Severity** | Medium |
+| **Category** | Code Quality |
+| **Description** | Uses `any` instead of proper Monaco types |
+| **Impact** | Type safety compromised |
+| **Recommendation** | Import proper Monaco editor types |
+| **Suggested command** | `/polish` to add proper typing |
+
+---
+
+#### 17. Fixed Width - Form Modal
+
+| Attribute | Value |
+|-----------|-------|
+| **Location** | `DataSourceForm.css:95` - `width: 1040px` |
+| **Severity** | Medium |
+| **Category** | Responsive |
+| **Description** | Fixed width may break on smaller screens |
+| **Impact** | Horizontal scroll potential |
+| **Recommendation** | Use max-width with clamp() or percentage |
+| **Suggested command** | `/adapt` to fix responsive constraints |
+
+---
+
+#### 18. Unused Dashboard Component
+
+| Attribute | Value |
+|-----------|-------|
+| **Location** | `Dashboard.tsx` |
+| **Severity** | Medium |
+| **Category** | Code Quality |
+| **Description** | Placeholder with "under construction" - dead code |
+| **Impact** | Maintenance burden |
+| **Recommendation** | Implement properly or remove |
+| **Suggested command** | `/distill` to remove or implement |
 
 ---
 
 ### Low-Severity Issues
 
-#### 25. Console.log in Production Code
-
-| Attribute | Value |
-|-----------|-------|
-| **Location** | `Query.tsx:101,125,139,151` |
-| **Severity** | Low |
-| **Category** | Code Quality |
-| **Description** | `console.error` calls remain in production code |
-| **Impact** | Information leakage; performance overhead |
-| **Recommendation** | Use proper logging service or remove in production |
-| **Suggested command** | `/polish` to clean up logging |
-
----
-
-#### 26. Magic Numbers
+#### 19. Magic Numbers
 
 | Attribute | Value |
 |-----------|-------|
 | **Location** | Various CSS and TypeScript |
 | **Severity** | Low |
 | **Category** | Code Quality |
-| **Description** | Hardcoded numbers like `350ms` debounce, `50` page size without constants |
-| **Impact** | Hard to maintain; unclear purpose |
+| **Description** | Hardcoded numbers like 350ms debounce without constants |
 | **Recommendation** | Extract to named constants |
-| **Suggested command** | `/polish` to clean up magic numbers |
+| **Suggested command** | `/polish` to clean up |
 
 ---
 
-#### 27. Inconsistent Naming Conventions
+#### 20. Inconsistent Naming
 
 | Attribute | Value |
 |-----------|-------|
-| **Location** | Mixed camelCase and kebab-case |
+| **Location** | Mixed naming conventions |
 | **Severity** | Low |
 | **Category** | Code Quality |
-| **Description** | Some files use kebab-case (DataSourceList.css) vs camelCase |
-| **Impact** | Confusion; inconsistent developer experience |
+| **Description** | Some files kebab-case, others camelCase |
 | **Recommendation** | Standardize on project convention |
-| **Suggested command** | `/polish` to standardize naming |
+| **Suggested command** | `/polish` to standardize |
 
 ---
 
-#### 28. Unused Component - Dashboard
+#### 21. Missing Loading States
 
 | Attribute | Value |
 |-----------|-------|
-| **Location** | `Dashboard.tsx` |
-| **Severity** | Low |
-| **Category** | Code Quality |
-| **Description** | "Under construction" placeholder with no real functionality |
-| **Impact** | Dead code; maintenance burden |
-| **Recommendation** | Either implement properly or remove |
-| **Suggested command** | `/distill` to remove or properly implement |
-
----
-
-#### 29. Missing Loading States
-
-| Attribute | Value |
-|-----------|-------|
-| **Location** | Some user actions |
+| **Location** | Some async operations |
 | **Severity** | Low |
 | **Category** | UX |
-| **Description** | Some async operations lack loading indicators |
-| **Impact** | User confusion; potential double-clicks |
-| **Recommendation** | Add loading states to all async operations |
-| **Suggested command** | `/harden` to improve loading feedback |
+| **Description** | Some actions lack loading indicators |
+| **Recommendation** | Add loading to all async operations |
+| **Suggested command** | `/harden` to improve feedback |
 
 ---
 
-#### 30. TypeScript Any Usage
+#### 22. Redundant CSS Properties
 
 | Attribute | Value |
 |-----------|-------|
-| **Location** | `Query.tsx:38` - `editorRef: useRef<any>` |
+| **Location** | Various CSS files |
 | **Severity** | Low |
 | **Category** | Code Quality |
-| **Description** | Uses `any` type instead of proper Monaco types |
-| **Impact** | Type safety compromised; potential runtime errors |
-| **Recommendation** | Import proper Monaco editor types |
-| **Suggested command** | `/polish` to add proper typing |
+| **Description** | Duplicate or redundant CSS declarations |
+| **Recommendation** | Audit and consolidate |
+| **Suggested command** | `/polish` to clean up |
+
+---
+
+#### 23. Type Badge Colors Not Using Tokens
+
+| Attribute | Value |
+|-----------|-------|
+| **Location** | `tokens.css:36-48` - badge colors |
+| **Severity** | Low |
+| **Category** | Theming |
+| **Description** | Badge colors defined as tokens but not in main token system |
+| **Recommendation** | Move to main token file |
+| **Suggested command** | `/normalize` to consolidate tokens |
 
 ---
 
 ## Patterns & Systemic Issues
 
-### Recurring Problems
+### Recurring Problems (UNCHANGED)
 
-1. **Hard-coded colors appear in 15+ components** - Should use design tokens consistently
-2. **Touch targets inconsistently sized** - Mix of 34px, 42px, 44px heights throughout
-3. **Dual token systems create confusion** - `var(--color-*)` vs `var(--primary)` etc.
-4. **Mixed component approaches** - Some using shadcn/ui, others custom CSS
-5. **Dark mode not comprehensive** - Many elements ignore theme variants
-6. **Accessibility labels missing** - Icon buttons, form inputs lack proper ARIA
+1. **Hardcoded colors in 15+ components** - Should use design tokens
+2. **Touch targets now fixed at 44px** ✅
+3. **Dual token systems causing confusion** - Needs consolidation
+4. **Dark mode incomplete** - Query page hardcoded
+5. **Accessibility labels on icons** - Partial fix needed
+6. **AI-generated design tells** - Inter font, gradients, glassmorphism
 
 ### Anti-Patterns Summary
 
-| Anti-Pattern | Count | Impact |
+| Anti-Pattern | Count | Status |
 |--------------|-------|--------|
-| Overused fonts (Inter) | 2 | High |
-| Gradient elements | 3 | Medium |
-| Card wrappers | 5+ | Medium |
-| Generic shadows | 10+ | Medium |
-| Glassmorphism | 1 | Medium |
-| Hardcoded colors | 15+ | Critical |
+| Overused fonts (Inter) | 1 | UNCHANGED |
+| Gradient elements | 3 | UNCHANGED |
+| Glassmorphism | 1 | UNCHANGED |
+| Generic shadows | 4 | UNCHANGED |
+| Hardcoded colors | ~50 | PARTIALLY FIXED |
 
 ---
 
@@ -537,16 +464,18 @@ The codebase is functional but lacks design system consistency. Accessibility vi
 
 ### What's Working Well
 
-1. **Proper Focus Styles** - Global `:focus-visible` in `index.css:30-33` with brand color outline
-2. **Semantic HTML** - Good use of `<header>`, `<main>`, `<nav>` in Layout
-3. **React Query** - Excellent state management with proper caching and optimistic updates
-4. **URL-Based State** - Search params for pagination and filtering - shareable URLs
-5. **Debounced Search** - Proper debouncing in DataSourceList (350ms)
-6. **Loading Optimizations** - `placeholderData` for smooth pagination
-7. **Semantic Roles** - NavLink provides proper `aria-current` for navigation
-8. **Mobile Responsive** - Basic responsive breakpoint at 900px
-9. **CSS Custom Properties** - Good foundation for theming
-10. **Accessibility Utility** - `.sr-only` class available for screen reader content
+1. ✅ **Proper Focus Styles** - Global :focus-visible with brand color
+2. ✅ **Semantic HTML** - Good use of header, main, nav
+3. ✅ **React Query** - Excellent state management with caching
+4. ✅ **URL-Based State** - Shareable search/pagination URLs
+5. ✅ **Debounced Search** - Proper 300ms debouncing
+6. ✅ **Touch Targets** - Standardized at 44px minimum
+7. ✅ **Form Labels** - Added proper htmlFor associations
+8. ✅ **Loading Optimizations** - placeholderData for pagination
+9. ✅ **Accessible Dialog** - trapFocus, modal, lazyMount from Ark UI
+10. ✅ **Token Foundation** - Good CSS custom property base
+11. ✅ **Mobile Responsive** - Basic breakpoint at 900px
+12. ✅ **Type Badges** - Now use CSS variables with dark mode
 
 ---
 
@@ -556,37 +485,35 @@ The codebase is functional but lacks design system consistency. Accessibility vi
 
 | # | Action | Issue | Command |
 |---|--------|-------|---------|
-| 1 | Add form labels to DataSourceForm | #2 - WCAG violation | `/harden` |
-| 2 | Consolidate to single token system | #1 - Dual tokens | `/normalize` |
-| 3 | Fix hardcoded dark mode colors | #3 - Broken dark mode | `/normalize` |
-| 4 | Add aria-labels to icon buttons | #9 - A11y violation | `/harden` |
+| 1 | Fix Query page hardcoded dark background | #3 | `/normalize` |
+| 2 | Consolidate to single token system | #1 | `/normalize` |
+| 3 | Replace remaining hardcoded colors | #2 | `/normalize` |
 
 ### 2. Short-Term (This Sprint)
 
 | # | Action | Issue | Command |
 |---|--------|-------|---------|
-| 5 | Replace Inter font with distinctive fonts | #5 - AI slop | `/bolder` |
-| 6 | Remove unnecessary gradient usage | #6 - AI slop | `/quieter` |
-| 7 | Add code splitting for Monaco Editor | #11 - Performance | `/optimize` |
-| 8 | Add error boundary to App | #18 - Resilience | `/harden` |
+| 4 | Replace Inter font | #4 | `/bolder` |
+| 5 | Remove gradient usage | #5 | `/quieter` |
+| 6 | Lazy load Monaco Editor | #9 | `/optimize` |
+| 7 | Remove console.error statements | #10 | `/polish` |
 
 ### 3. Medium-Term (Next Sprint)
 
 | # | Action | Issue | Command |
 |---|--------|-------|---------|
-| 9 | Replace card layouts with purposeful containers | #7 - Anti-pattern | `/distill` |
-| 10 | Standardize touch targets at 44px minimum | #16 - Mobile | `/adapt` |
-| 11 | Add prefers-reduced-motion support | #24 - A11y | `/harden` |
-| 12 | Add mobile breakpoints | #15 - Responsive | `/adapt` |
+| 8 | Remove glassmorphism | #6 | `/quieter` |
+| 9 | Add error boundary | #14 | `/harden` |
+| 10 | Add prefers-reduced-motion | #15 | `/harden` |
+| 11 | Add mobile breakpoints | #12 | `/adapt` |
 
 ### 4. Long-Term (Future)
 
 | # | Action | Issue | Command |
 |---|--------|-------|---------|
-| 13 | Remove unused Dashboard component | #28 - Dead code | `/distill` |
-| 14 | Add proper Monaco types | #30 - Types | `/polish` |
-| 15 | Audit and remove console statements | #25 - Quality | `/polish` |
-| 16 | Create distinctive shadow system | #12 - Design | `/bolder` |
+| 12 | Replace generic shadows | #7 | `/bolder` |
+| 13 | Fix/remove Dashboard | #18 | `/distill` |
+| 14 | Add proper Monaco types | #16 | `/polish` |
 
 ---
 
@@ -596,31 +523,36 @@ The codebase is functional but lacks design system consistency. Accessibility vi
 
 | Command | Addresses Issues | Count |
 |---------|-----------------|-------|
-| `/normalize` | #1, #3, #4, #21, #22, #23 | 6 |
-| `/harden` | #2, #8, #9, #10, #17, #24, #29 | 7 |
-| `/optimize` | #11, #14, #19 | 3 |
-| `/adapt` | #15, #16, #20 | 3 |
-| `/quieter` | #6, #13 | 2 |
-| `/bolder` | #5, #12 | 2 |
-| `/distill` | #7, #28 | 2 |
-| `/polish` | #25, #26, #27, #30 | 4 |
+| `/normalize` | #1, #2, #3, #23 | 4 |
+| `/harden` | #8, #13, #14, #15, #21 | 5 |
+| `/optimize` | #9, #11 | 2 |
+| `/adapt` | #12, #17 | 2 |
+| `/quieter` | #5, #6 | 2 |
+| `/bolder` | #4, #7 | 2 |
+| `/polish` | #10, #16, #19, #20, #22 | 5 |
+| `/distill` | #18 | 1 |
 
-### Recommended Order
+### Recommended Fix Order
 
-1. **First**: `/normalize` - Fixes critical token system and dark mode issues
-2. **Second**: `/harden` - Fixes accessibility violations  
-3. **Third**: `/optimize` - Performance improvements
-4. **Fourth**: `/adapt` - Mobile responsiveness
-5. **Fifth**: `/bolder` / `/quieter` - Design improvements
+1. **First**: `/normalize` - Critical theming fixes
+2. **Second**: `/harden` - Accessibility improvements  
+3. **Third**: `/optimize` - Performance
+4. **Fourth**: `/quieter` / `/bolder` - Design improvements
+5. **Fifth**: `/polish` - Code quality
 
 ---
 
 ## Conclusion
 
-This codebase has a solid functional foundation but suffers from design system fragmentation and accessibility gaps. The dual token systems and hardcoded colors are the highest priority fixes. After addressing the critical issues, the design could be elevated with more distinctive typography and purposeful layouts.
+The codebase has improved since the first audit (30→22 issues, 5.5→6.0 score). Critical accessibility issues with form labels have been addressed. However, the fundamental design system fragmentation remains the highest priority. 
 
-**Next Audit Recommended**: After fixing critical issues (2 weeks)
+The dual token systems and hardcoded colors continue to cause maintenance burden and break dark mode. After addressing these critical theming issues, the design could be elevated by removing AI-generated aesthetic tells (Inter font, gradients, glassmorphism).
+
+**Progress: 27% of issues resolved** (8 of 30)
+
+**Next Audit Recommended**: After completing critical fixes (1-2 weeks)
 
 ---
 
 *Report generated by Quality Audit System*
+*Second Audit - 2026-03-14*

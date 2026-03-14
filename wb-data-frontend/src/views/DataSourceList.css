@@ -9,7 +9,7 @@
     border: 1px solid var(--color-border);
     border-radius: 18px;
     background: var(--color-bg-primary);
-    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.04);
+    box-shadow: var(--shadow-lg);
 }
 
 .datasource-toolbar {
@@ -45,8 +45,8 @@
     border: none;
     outline: none;
     background: transparent;
-    color: #111827;
-    font-size: 0.96rem;
+    color: var(--color-text-primary);
+    font-size: var(--text-lg);
 }
 
 .datasource-toolbar-actions {
@@ -65,17 +65,16 @@
     padding: 0 16px;
     border: none;
     border-radius: 12px;
-    background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-hover) 100%);
-    color: #fff;
-    font-size: 0.92rem;
+    background: var(--color-brand);
+    color: var(--color-bg-primary);
+    font-size: var(--text-md);
     font-weight: 600;
-    box-shadow: 0 12px 22px rgba(22, 119, 255, 0.18);
-    transition: transform 0.18s ease;
+    box-shadow: var(--shadow-brand);
+    transition: transform var(--transition-fast);
 }
 
 .datasource-primary-btn:hover {
     transform: translateY(-1px);
-    border-color: transparent;
 }
 
 .datasource-table-panel {
@@ -113,27 +112,27 @@
     align-items: flex-start;
     min-height: 160px;
     margin-top: 18px;
-    border: 1px solid #fecaca;
+    border: 1px solid var(--color-error-border);
     border-radius: 16px;
-    background: #fff6f6;
-    color: #b42318;
+    background: var(--color-error-bg);
+    color: var(--color-error);
 }
 
 .datasource-error strong,
 .datasource-empty h3 {
     margin: 0;
-    font-size: 1.05rem;
+    font-size: var(--text-xl);
 }
 
 .datasource-error p,
 .datasource-empty p {
     margin: 0;
-    color: #6b7280;
+    color: var(--color-text-muted);
 }
 
 .datasource-empty {
     margin-top: 18px;
-    color: #94a3b8;
+    color: var(--color-text-muted);
 }
 
 .datasource-table-shell {
@@ -167,7 +166,7 @@
 
 .datasource-table td {
     padding: 14px 12px;
-    border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+    border-bottom: 1px solid var(--color-border-subtle);
     color: var(--color-text-primary);
     font-size: 0.9rem;
     vertical-align: middle;
@@ -184,19 +183,19 @@
 }
 
 .datasource-name-main {
-    color: #111827;
-    font-size: 0.96rem;
+    color: var(--color-text-primary);
+    font-size: var(--text-lg);
 }
 
 .datasource-description {
     color: var(--color-text-muted);
-    font-size: 0.82rem;
+    font-size: var(--text-sm);
 }
 
 .datasource-connection {
     color: var(--color-text-secondary);
-    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-    font-size: 0.82rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
 }
 
 .datasource-status-pill {
@@ -211,13 +210,13 @@
 }
 
 .datasource-status-pill.enabled {
-    background: #ecfdf3;
-    color: #027a48;
+    background: var(--color-success-bg);
+    color: var(--color-success);
 }
 
 .datasource-status-pill.disabled {
-    background: #f5f6f8;
-    color: #475467;
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-secondary);
 }
 
 .datasource-status-dot {
@@ -245,19 +244,19 @@
     height: 44px;
     padding: 0;
     border: 1px solid var(--color-border);
-    border-radius: 10px;
-    background: #fff;
+    border-radius: var(--radius-md);
+    background: var(--color-bg-primary);
     color: var(--color-text-secondary);
 }
 
 .datasource-icon-btn:hover:not(:disabled) {
     border-color: var(--color-border-hover);
-    color: #0b63d8;
+    color: var(--color-link);
 }
 
 .datasource-icon-btn.danger:hover:not(:disabled) {
     border-color: rgba(239, 68, 68, 0.28);
-    color: #dc2626;
+    color: var(--color-error);
 }
 
 .datasource-icon-btn:disabled {
@@ -275,7 +274,7 @@
 
 .datasource-page-info {
     color: var(--color-text-muted);
-    font-size: 0.88rem;
+    font-size: var(--text-base);
 }
 
 .datasource-pagination-nav {
@@ -292,102 +291,32 @@
     height: 44px;
     padding: 0 14px;
     border: 1px solid var(--color-border);
-    border-radius: 10px;
-    background: #fff;
+    border-radius: var(--radius-md);
+    background: var(--color-bg-primary);
     color: var(--color-text-secondary);
-    font-size: 0.88rem;
+    font-size: var(--text-base);
     font-weight: 600;
-}
-
-.datasource-page-numbers {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.datasource-page-btn {
-    min-width: 36px;
-    padding: 0 12px;
 }
 
 .datasource-nav-btn:hover:not(:disabled),
 .datasource-page-btn:hover:not(:disabled) {
-    border-color: rgba(22, 119, 255, 0.24);
-    color: #0b63d8;
+    border-color: var(--color-border-hover);
+    color: var(--color-link);
 }
 
 .datasource-page-btn.active {
-    border-color: transparent;
-    background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-hover) 100%);
-    color: #fff;
-    box-shadow: 0 10px 20px rgba(22, 119, 255, 0.18);
+    background: var(--color-brand);
+    border-color: var(--color-brand);
+    color: var(--color-bg-primary);
 }
 
-.datasource-pagination-ellipsis {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 44px;
-    color: #94a3b8;
-}
-
-.datasource-pagination-nav.hover-locked .datasource-page-btn:hover,
-.datasource-pagination-nav.hover-locked .datasource-nav-btn:hover {
-    border-color: var(--color-border);
-    color: var(--color-text-secondary);
-}
-
-.datasource-pagination-nav.hover-locked .datasource-page-btn.active:hover {
-    border-color: transparent;
-    color: #fff;
+.datasource-nav-btn:disabled,
+.datasource-page-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 @keyframes datasourceShimmer {
-    from {
-        background-position: 180% 0;
-    }
-
-    to {
-        background-position: -20% 0;
-    }
-}
-
-@media (max-width: 900px) {
-    .datasource-toolbar {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .datasource-toolbar-actions {
-        justify-content: flex-end;
-    }
-}
-
-@media (max-width: 760px) {
-    .datasource-page {
-        gap: 12px;
-    }
-
-    .datasource-toolbar,
-    .datasource-table-panel {
-        padding-left: 14px;
-        padding-right: 14px;
-        border-radius: 14px;
-    }
-
-    .datasource-toolbar {
-        padding-top: 14px;
-        padding-bottom: 14px;
-    }
-
-    .datasource-pagination {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .datasource-pagination-nav {
-        width: 100%;
-        flex-wrap: wrap;
-    }
+    0% { background-position: 180% 0; }
+    100% { background-position: -180% 0; }
 }

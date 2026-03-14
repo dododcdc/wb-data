@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
-import Editor from '@monaco-editor/react';
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { Play, Database, Table, Columns, Loader2, Code2, Wand2, Download, FileText, Sheet } from 'lucide-react';
 import { format as formatSql } from 'sql-formatter';
 import * as XLSX from 'xlsx';
@@ -9,6 +8,19 @@ import { DataSourceSelect } from '../components/DataSourceSelect';
 import { Splitter } from '@ark-ui/react/splitter';
 import { Tooltip } from '@ark-ui/react/tooltip';
 import './Query.css';
+
+// Lazy load Monaco Editor for performance (~3MB savings on initial load)
+const Editor = lazy(() => import('@monaco-editor/react').then(mod => ({ default: mod.default })));
+
+function EditorLoader() {
+    return (
+        <div className="editor-loader">
+            <Loader2 className="animate-spin" size={24} />
+            <span>加载编辑器...</span>
+        </div>
+    );
+}
+
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const modKey = isMac ? 'Cmd' : 'Ctrl';
@@ -669,26 +681,28 @@ export default function Query() {
                             <section className="editor-section">
 
                                 <div className="editor-wrapper">
-                                    <Editor
-                                        height="100%"
-                                        language="sql"
-                                        theme="vs"
-                                        value={sql}
-                                        onChange={(value) => setSql(value || '')}
-                                        onMount={handleEditorDidMount}
-                                        options={{
-                                            minimap: { enabled: false },
-                                            fontSize: 14,
-                                            lineNumbers: 'on',
-                                            scrollBeyondLastLine: false,
-                                            automaticLayout: true,
-                                            padding: { top: 12, bottom: 12 },
-                                            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                                            roundedSelection: false,
-                                            cursorStyle: 'line',
-                                            renderLineHighlight: 'all',
-                                        }}
-                                    />
+                                    <Suspense fallback={<EditorLoader />}>
+                                        <Editor
+                                            height="100%"
+                                            language="sql"
+                                            theme="vs"
+                                            value={sql}
+                                            onChange={(value) => setSql(value || '')}
+                                            onMount={handleEditorDidMount}
+                                            options={{
+                                                minimap: { enabled: false },
+                                                fontSize: 14,
+                                                lineNumbers: 'on',
+                                                scrollBeyondLastLine: false,
+                                                automaticLayout: true,
+                                                padding: { top: 12, bottom: 12 },
+                                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                                                roundedSelection: false,
+                                                cursorStyle: 'line',
+                                                renderLineHighlight: 'all',
+                                            }}
+                                        />
+                                    </Suspense>
                                 </div>
                             </section>
                         </Splitter.Panel>

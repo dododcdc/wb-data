@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/combobox';
 import { Search, ChevronDown, Loader2 } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useEffect, useRef, useState, type CompositionEvent, type UIEventHandler } from 'react';
+import { useCallback, useEffect, useRef, useState, type CompositionEvent, type UIEventHandler } from 'react';
 
 interface Option {
     label: string;
@@ -89,10 +89,13 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
     });
     const virtualItems = shouldVirtualize ? virtualizer.getVirtualItems() : [];
 
-    const handleScrollElementRef = (node: HTMLDivElement | null) => {
+    const handleScrollElementRef = useCallback((node: HTMLDivElement | null) => {
+        if (scrollRef.current === node) {
+            return;
+        }
         scrollRef.current = node;
         setScrollElement(node);
-    };
+    }, []);
 
     useEffect(() => {
         if (resolvedValue) {

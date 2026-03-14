@@ -1,6 +1,7 @@
 .query-splitter {
     display: flex;
-    height: calc(100vh - 56px);
+    height: 100%;
+    min-height: 0;
     width: 100%;
     overflow: hidden;
     background: var(--color-bg-primary);
@@ -395,6 +396,19 @@
     flex: 1;
     min-height: 0;
     width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.editor-loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
 }
 
 .editor-toolbar {
