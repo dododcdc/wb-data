@@ -76,7 +76,12 @@
 }
 
 .ds-select-trigger[data-focus] {
-    border-color: var(--color-brand);
+    border-color: var(--color-border-hover);
+    outline: none;
+}
+
+.ds-select-trigger:focus-visible {
+    outline: none;
 }
 
 .ds-select-trigger[data-disabled] {
