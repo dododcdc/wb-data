@@ -133,8 +133,11 @@ export default function Query() {
             const data = await executeQuery(Number(selectedDsId), finalSql);
             setResult(data);
             setQueryError('');
-        } catch (error) {
-            const message = error instanceof Error ? error.message : '执行查询失败';
+        } catch (error: any) {
+            // axios 错误: error.response.data.message 包含后端返回的详细消息
+            const message = error?.response?.data?.message 
+                || error?.message 
+                || '执行查询失败';
             setQueryError(message);
         } finally {
             setLoadingQuery(false);
