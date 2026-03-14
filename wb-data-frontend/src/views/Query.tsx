@@ -23,6 +23,7 @@ export default function Query() {
     const [loadingQuery, setLoadingQuery] = useState(false);
     const [sql, setSql] = useState('');
     const [result, setResult] = useState<QueryResult | null>(null);
+    const [queryError, setQueryError] = useState<string>('');
     const [showExportMenu, setShowExportMenu] = useState(false);
     const editorRef = useRef<any>(null);
 
@@ -131,8 +132,10 @@ export default function Query() {
         try {
             const data = await executeQuery(Number(selectedDsId), finalSql);
             setResult(data);
+            setQueryError('');
         } catch (error) {
-            console.error('Failed to execute query', error);
+            const message = error instanceof Error ? error.message : '执行查询失败';
+            setQueryError(message);
         } finally {
             setLoadingQuery(false);
         }
@@ -617,7 +620,11 @@ export default function Query() {
                                     </div>
                                 </div>
                                 <div className="results-container">
-                                    {!result ? (
+                                    {queryError ? (
+                                        <div className="result-error">
+                                            <span>执行失败：{queryError}</span>
+                                        </div>
+                                    ) : !result ? (
                                         <div className="empty-results">
                                             <Code2 size={48} className="empty-icon" />
                                             <span>暂无查询结果。请运行 SQL 语句以查看数据。</span>
