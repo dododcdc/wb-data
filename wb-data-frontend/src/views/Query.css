@@ -3,7 +3,7 @@
     --bg-sidebar: var(--color-bg-secondary);
     --bg-hover: var(--color-bg-tertiary);
     --border-color: var(--color-border);
-    --text-primary: var(--color-text-primary);
+    --text-primary: #1e1e1e;
     --text-secondary: var(--color-text-secondary);
     --accent-blue: var(--color-accent);
     --accent-glow: var(--color-accent-glow);
@@ -88,7 +88,7 @@
 
 .splitter-trigger:hover .splitter-indicator,
 .splitter-trigger[data-dragging] .splitter-indicator {
-    background: #ffffff;
+    background: var(--color-bg-primary);
     width: 6px;
     height: 40px;
     box-shadow: 0 0 15px var(--accent-glow), 0 0 5px rgba(255, 255, 255, 0.5);
@@ -143,7 +143,7 @@
 
 .splitter-trigger-vertical:hover .splitter-indicator-vertical,
 .splitter-trigger-vertical[data-dragging] .splitter-indicator-vertical {
-    background: #ffffff;
+    background: var(--color-bg-primary);
     height: 6px;
     width: 40px;
     box-shadow: 0 0 15px var(--accent-glow), 0 0 5px rgba(255, 255, 255, 0.5);
@@ -352,7 +352,7 @@
 /* Editor Section */
 .editor-section {
     flex: 1;
-    background: #1e1e1e;
+    background: var(--color-bg-secondary);
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -366,7 +366,7 @@
 
 .editor-tabs-container {
     display: flex;
-    background: #18181b;
+    background: var(--color-bg-tertiary);
     padding: 0 8px;
     height: 36px;
     align-items: center;
@@ -383,14 +383,14 @@
     font-size: 0.75rem;
     font-weight: 600;
     color: var(--text-secondary);
-    background: #1e1e1e;
+    background: var(--color-bg-secondary);
     border-right: 1px solid var(--border-color);
     cursor: pointer;
 }
 
 .editor-tab.active {
     color: var(--text-primary);
-    background: #1e1e1e;
+    background: var(--color-bg-secondary);
     box-shadow: inset 0 2px 0 var(--accent-blue);
 }
 
@@ -572,20 +572,20 @@
     border-collapse: separate;
     border-spacing: 0;
     font-size: 0.8rem;
-    color: #e2e8f0;
+    color: var(--color-text-primary);
 }
 
 .results-table th {
     position: sticky;
     top: 0;
     z-index: 5;
-    background: #18181b;
+    background: var(--color-bg-tertiary);
     padding: 10px 12px;
     text-align: left;
     font-weight: 600;
     color: var(--color-text-secondary);
     border-bottom: 1px solid var(--border-color);
-    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    border-right: 1px solid var(--color-border);
 }
 
 .th-content {
@@ -594,7 +594,7 @@
 }
 
 .th-name {
-    color: #f8fafc;
+    color: var(--color-text-primary);
 }
 
 .th-type {
@@ -605,8 +605,8 @@
 
 .results-table td {
     padding: 8px 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-    border-right: 1px solid rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--color-border);
+    border-right: 1px solid var(--color-border);
     white-space: nowrap;
     max-width: 300px;
     overflow: hidden;
@@ -614,12 +614,12 @@
 }
 
 .results-table tr:nth-child(even) {
-    background: rgba(255, 255, 255, 0.015);
+    background: var(--color-bg-tertiary);
 }
 
 .results-table tr:hover td {
-    background: rgba(59, 130, 246, 0.05);
-    color: #fff;
+    background: var(--color-accent-glow);
+    color: var(--color-text-primary);
 }
 
 /* States */
@@ -645,7 +645,7 @@
     color: var(--color-accent);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.85rem;
-    background: rgba(59, 130, 246, 0.05);
+    background: var(--color-accent-glow);
     border: 1px dashed var(--color-accent-glow);
     margin: 16px;
     border-radius: 8px;
