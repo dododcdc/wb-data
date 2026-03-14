@@ -415,13 +415,13 @@
 }
 
 .format-button-inline:hover {
-    background: var(--color-brand);
-    color: white;
-    border-color: var(--color-brand);
+    background: var(--color-bg-secondary);
+    color: var(--color-text-primary);
+    border-color: var(--color-border-hover);
 }
 
 .format-button-inline:hover svg {
-    color: white;
+    color: var(--color-text-primary);
 }
 
 .run-button:hover:not(:disabled) {
