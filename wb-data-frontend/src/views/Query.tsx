@@ -525,7 +525,7 @@ export default function Query() {
                                 </Tooltip.Trigger>
                                 <Tooltip.Positioner>
                                     <Tooltip.Content className="tooltip-content">
-                                        Execute ⌘⏎
+                                        执行 (Ctrl+Enter)
                                     </Tooltip.Content>
                                 </Tooltip.Positioner>
                             </Tooltip.Root>

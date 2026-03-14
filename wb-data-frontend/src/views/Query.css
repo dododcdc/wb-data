@@ -298,15 +298,15 @@
 /* Tooltip (DataGrip style) */
 .tooltip-content {
     display: none;
-    background: #2b2b2b;
-    border: 1px solid #3c3c3c;
-    border-radius: 4px;
-    padding: 4px 8px;
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-1) var(--space-2);
     font-size: 0.8rem;
-    color: #bbb;
+    color: var(--color-text-primary);
     white-space: nowrap;
     pointer-events: none;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-md);
 }
 
 .tooltip-content[data-state="open"] {
