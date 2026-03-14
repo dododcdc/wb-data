@@ -497,7 +497,7 @@ export default function Query() {
                                 onInputChange={(val) => setDsKeyword(val)}
                                 loading={loadingDs}
                                 placeholder="搜索并选择数据源..."
-                                theme="dark"
+                                theme="light"
                             />
                             {selectedDsId && (
                                 <>
@@ -507,7 +507,7 @@ export default function Query() {
                                         value={selectedDb}
                                         onChange={(val) => setSelectedDb(val)}
                                         placeholder="选择数据库"
-                                        theme="dark"
+                                        theme="light"
                                     />
                                 </>
                             )}
@@ -561,7 +561,7 @@ export default function Query() {
                                     <Editor
                                         height="100%"
                                         language="sql"
-                                        theme="vs-dark"
+                                        theme="vs"
                                         value={sql}
                                         onChange={(value) => setSql(value || '')}
                                         onMount={handleEditorDidMount}
