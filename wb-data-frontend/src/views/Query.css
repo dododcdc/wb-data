@@ -338,10 +338,12 @@
 
 .run-button:hover:not(:disabled) {
     background: var(--color-bg-secondary);
+    color: var(--color-text-primary);
 }
 
 .run-button:active:not(:disabled) {
     background: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
 }
 
 .run-button:disabled {
@@ -414,6 +416,7 @@
 
 .run-button:hover:not(:disabled) {
     background: var(--color-bg-secondary);
+    color: var(--color-text-primary);
 }
 
 .format-button-inline svg {
