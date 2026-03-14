@@ -273,7 +273,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    
     z-index: 10;
 }
 
@@ -605,7 +605,7 @@
 
 .results-table td {
     padding: 8px 12px;
-    border-bottom: 1px solid var(--color-border);
+    
     border-right: 1px solid var(--color-border);
     white-space: nowrap;
     max-width: 300px;
