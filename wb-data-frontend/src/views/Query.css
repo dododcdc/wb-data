@@ -34,7 +34,7 @@
     flex-direction: column !important;
     min-width: 0 !important;
     overflow: hidden !important;
-    transition: flex 200ms ease;
+    transition: flex-basis 200ms ease;
 }
 
 /* Query Main Wrapper */
@@ -166,20 +166,18 @@
 
 .splitter-trigger-horizontal:focus,
 .splitter-trigger-vertical:focus {
-    outline: none !important;
-    box-shadow: none !important;
+    outline: none;
 }
 
 .splitter-trigger-horizontal:focus-visible,
 .splitter-trigger-vertical:focus-visible {
-    outline: none !important;
-    outline-offset: 0 !important;
+    outline: 2px solid var(--color-brand);
+    outline-offset: -2px;
 }
 
 .splitter-trigger-horizontal *,
 .splitter-trigger-vertical * {
-    outline: none !important;
-    box-shadow: none !important;
+    outline: none;
 }
 
 .splitter-indicator-horizontal {

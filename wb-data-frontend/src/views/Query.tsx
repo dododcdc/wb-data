@@ -755,6 +755,7 @@ export default function Query() {
                                 <input
                                     type="text"
                                     className="metadata-search-input"
+                                    aria-label="搜索表名"
                                     placeholder="搜索表名..."
                                     value={tableKeyword}
                                     onChange={(e) => {
@@ -1029,17 +1030,19 @@ export default function Query() {
                                                     className="export-button"
                                                     onClick={() => setShowExportMenu(v => !v)}
                                                     title="导出结果"
+                                                    aria-haspopup="menu"
+                                                    aria-expanded={showExportMenu}
                                                 >
                                                     <Download size={14} />
                                                     <span>导出</span>
                                                 </button>
                                                 {showExportMenu && (
-                                                    <div className="export-menu">
-                                                        <button className="export-menu-item" onClick={exportCsv}>
+                                                    <div className="export-menu" role="menu">
+                                                        <button className="export-menu-item" role="menuitem" onClick={exportCsv}>
                                                             <FileText size={14} />
                                                             <span>导出 CSV</span>
                                                         </button>
-                                                        <button className="export-menu-item" onClick={exportExcel}>
+                                                        <button className="export-menu-item" role="menuitem" onClick={exportExcel}>
                                                             <Sheet size={14} />
                                                             <span>导出 Excel (.xlsx)</span>
                                                         </button>

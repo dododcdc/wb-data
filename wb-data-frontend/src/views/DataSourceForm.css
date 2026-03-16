@@ -56,14 +56,14 @@
 .dialog-title {
     font-size: 1.125rem;
     font-weight: 600;
-    color: #1a1a1a;
+    color: var(--color-text-primary);
     margin: 0;
 }
 
 .dialog-close-btn {
     background: transparent;
     border: none;
-    color: #8c8c8c;
+    color: var(--color-text-muted);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -71,13 +71,11 @@
     padding: 4px;
     border-radius: 4px;
     transition: all 0.2s;
-    outline: none;
 }
 
-.dialog-close-btn:focus,
 .dialog-close-btn:focus-visible {
-    outline: none !important;
-    box-shadow: none !important;
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
 }
 
 .dialog-close-btn:hover {

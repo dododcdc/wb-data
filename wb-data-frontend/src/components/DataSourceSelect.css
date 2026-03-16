@@ -191,9 +191,9 @@
 /* Dark Mode Styles */
 .ds-dark.ds-select-trigger,
 .ds-select-root.ds-dark .ds-select-trigger {
-    background-color: #1f2937;
-    border-color: #374151;
-    color: #f1f5f9;
+    background-color: var(--color-input-bg);
+    border-color: var(--color-input-border);
+    color: var(--color-text-primary);
     height: 32px;
     padding: 0 10px;
     font-size: 13px;
@@ -202,8 +202,8 @@
 
 .ds-dark.ds-select-trigger:hover,
 .ds-select-root.ds-dark .ds-select-trigger:hover {
-    border-color: #3b82f6;
-    background-color: #374151;
+    border-color: var(--color-brand);
+    background-color: var(--color-bg-tertiary);
 }
 
 .ds-dark .ds-select-indicator,
@@ -213,25 +213,25 @@
 
 .ds-dark.ds-select-content,
 .ds-select-content.ds-dark {
-    background-color: #1f2937;
-    border-color: #374151;
+    background-color: var(--color-input-bg);
+    border-color: var(--color-input-border);
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
 }
 
 .ds-dark .ds-select-item,
 .ds-select-content.ds-dark .ds-select-item {
-    color: #e2e8f0;
+    color: var(--color-text-primary);
 }
 
 .ds-dark .ds-select-item[data-highlighted],
 .ds-select-content.ds-dark .ds-select-item[data-highlighted] {
-    background-color: #374151;
+    background-color: var(--color-bg-tertiary);
 }
 
 .ds-dark .ds-select-item[data-state="checked"],
 .ds-select-content.ds-dark .ds-select-item[data-state="checked"] {
-    background-color: rgba(59, 130, 246, 0.15);
-    color: #3b82f6;
+    background-color: var(--color-accent-glow);
+    color: var(--color-accent);
 }
 
 .ds-select-loading,

@@ -321,8 +321,8 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                                     <div className="side-panel-section">
                                         <h3 className="sub-section-title">标识与类型</h3>
                                         <div className="input-group">
-                                            <label>数据源名称 <span className="required">*</span></label>
-                                            <input type="text" value={formData.name} onChange={e => handleChange('name', e.target.value)} placeholder="如：生产环境主库" />
+                                            <label htmlFor="ds-name">数据源名称 <span className="required">*</span></label>
+                                            <input id="ds-name" type="text" value={formData.name} onChange={e => handleChange('name', e.target.value)} placeholder="如：生产环境主库" />
                                         </div>
                                         <div className="input-group">
                                             <label htmlFor="datasource-form-type-select">数据库类型 <span className="required">*</span></label>
@@ -340,12 +340,13 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                                             </p>
                                         ) : null}
                                         <div className="input-group">
-                                            <label>负责人</label>
-                                            <input type="text" value={formData.owner} onChange={e => handleChange('owner', e.target.value)} placeholder="项目负责人姓名" />
+                                            <label htmlFor="ds-owner">负责人</label>
+                                            <input id="ds-owner" type="text" value={formData.owner} onChange={e => handleChange('owner', e.target.value)} placeholder="项目负责人姓名" />
                                         </div>
                                         <div className="input-group">
-                                            <label>备注描述</label>
+                                            <label htmlFor="ds-description">备注描述</label>
                                             <textarea
+                                                id="ds-description"
                                                 value={formData.description}
                                                 onChange={e => handleChange('description', e.target.value)}
                                                 placeholder="简要描述业务用途..."
@@ -371,11 +372,12 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
 
                                                 return (
                                                     <div key={fieldKey} className={getFieldLayoutClass(field)}>
-                                                        <label>
+                                                        <label htmlFor={`ds-conn-${fieldKey}`}>
                                                             {field.label}
                                                             {field.required ? <span className="required">*</span> : null}
                                                         </label>
                                                         <input
+                                                            id={`ds-conn-${fieldKey}`}
                                                             type={field.inputType === 'password' ? 'password' : 'text'}
                                                             value={formData[fieldKey]}
                                                             onChange={(event) => handlePluginFieldChange(fieldKey, event.target.value)}
@@ -401,11 +403,12 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
 
                                                 return (
                                                     <div key={fieldKey} className={getFieldLayoutClass(field)}>
-                                                        <label>
+                                                        <label htmlFor={`ds-auth-${fieldKey}`}>
                                                             {field.label}
                                                             {field.required ? <span className="required">*</span> : null}
                                                         </label>
                                                         <input
+                                                            id={`ds-auth-${fieldKey}`}
                                                             type={field.inputType === 'password' ? 'password' : 'text'}
                                                             value={formData[fieldKey]}
                                                             onChange={(event) => handlePluginFieldChange(fieldKey, event.target.value)}

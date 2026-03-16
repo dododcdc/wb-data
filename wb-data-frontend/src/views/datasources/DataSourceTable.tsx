@@ -98,6 +98,7 @@ export function DataSourceTable(props: DataSourceTableProps) {
                                             className="datasource-icon-btn"
                                             onClick={() => onEdit(item.id)}
                                             title="编辑数据源"
+                                            aria-label="编辑数据源"
                                             type="button"
                                         >
                                             <Edit3 size={16} />
@@ -107,6 +108,7 @@ export function DataSourceTable(props: DataSourceTableProps) {
                                             disabled={statusPendingId === item.id}
                                             onClick={() => onToggleStatus(item)}
                                             title={item.status === 'ENABLED' ? '停用' : '启用'}
+                                            aria-label={item.status === 'ENABLED' ? '停用数据源' : '启用数据源'}
                                             type="button"
                                         >
                                             <Power size={16} />
@@ -116,6 +118,7 @@ export function DataSourceTable(props: DataSourceTableProps) {
                                             disabled={deletePendingId === item.id}
                                             onClick={() => onDelete(item.id)}
                                             title="删除数据源"
+                                            aria-label="删除数据源"
                                             type="button"
                                         >
                                             <Trash2 size={16} />

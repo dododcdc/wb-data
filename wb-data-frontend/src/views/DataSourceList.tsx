@@ -176,6 +176,7 @@ export default function DataSourceList() {
                 <div className="datasource-search-shell">
                     <Search size={16} />
                     <input
+                        aria-label="搜索数据源"
                         placeholder="搜索名称、描述、主机名"
                         value={keywordInput}
                         onChange={(event) => setKeywordInput(event.target.value)}
