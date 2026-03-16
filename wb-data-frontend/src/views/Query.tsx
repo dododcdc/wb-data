@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense, useCallback } from 'react';
-import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, Search } from 'lucide-react';
+import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, Search, PanelLeftClose, PanelLeft } from 'lucide-react';
 import { format as formatSql } from 'sql-formatter';
 import * as XLSX from 'xlsx';
 import { getMetadataDatabases, getMetadataTables, getMetadataColumns, executeQuery, getDialectMetadata, TableSummary, ColumnMetadata, QueryResult, DialectMetadata, PageResult } from '../api/query';
@@ -8,6 +8,7 @@ import { DataSourceSelect } from '../components/DataSourceSelect';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../components/ui/resizable';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { usePanelRef } from 'react-resizable-panels';
 import './Query.css';
 
 // Lazy load Monaco Editor for performance (~3MB savings on initial load)
@@ -24,7 +25,6 @@ function EditorLoader() {
 
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
-const modKey = isMac ? 'Cmd' : 'Ctrl';
 const DS_PAGE_SIZE = 50;
 
 export default function Query() {
@@ -65,6 +65,11 @@ export default function Query() {
     const [tableScrollElement, setTableScrollElement] = useState<HTMLDivElement | null>(null);
     const TABLE_PAGE_SIZE = 200;
 
+    const SIDEBAR_STORAGE_KEY = 'query-sidebar-collapsed';
+    const sidebarPanelRef = usePanelRef();
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+    const userToggledRef = useRef(false);
+
     const virtualizer = useVirtualizer({
         count: tables.length,
         getScrollElement: () => tableScrollElement,
@@ -77,6 +82,48 @@ export default function Query() {
         tableScrollRef.current = node;
         setTableScrollElement(node);
     }, []);
+
+    const toggleSidebar = useCallback(() => {
+        const panel = sidebarPanelRef.current;
+        if (!panel) return;
+        userToggledRef.current = true;
+        if (panel.isCollapsed()) {
+            panel.expand();
+        } else {
+            panel.collapse();
+        }
+    }, [sidebarPanelRef]);
+
+    const handleSidebarResize = useCallback((size: { asPercentage: number; inPixels: number }) => {
+        const panel = sidebarPanelRef.current;
+        if (!panel) return;
+        const collapsed = panel.isCollapsed();
+        setSidebarCollapsed(prev => {
+            if (prev !== collapsed) {
+                try { localStorage.setItem(SIDEBAR_STORAGE_KEY, String(collapsed)); } catch {}
+            }
+            return collapsed;
+        });
+    }, [sidebarPanelRef]);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+                e.preventDefault();
+                toggleSidebar();
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [toggleSidebar]);
+
+    useEffect(() => {
+        if (sidebarCollapsed) {
+            requestAnimationFrame(() => {
+                sidebarPanelRef.current?.collapse();
+            });
+        }
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Close export menu on backdrop click or Escape
     useEffect(() => {
@@ -165,6 +212,12 @@ export default function Query() {
     useEffect(() => {
         setExpandedTables(new Set());
     }, [selectedDsId, selectedDb]);
+
+    useEffect(() => {
+        if (tables.length > 0 && sidebarCollapsed && !userToggledRef.current) {
+            sidebarPanelRef.current?.expand();
+        }
+    }, [tables.length > 0]);
 
     const toggleTableExpand = (tableName: string) => {
         setExpandedTables(prev => {
@@ -679,8 +732,17 @@ export default function Query() {
         <div className="query-splitter">
             <ResizablePanelGroup className="query-splitter-panel" direction="horizontal">
                 {/* 左侧元数据面板 */}
-                <ResizablePanel defaultSize={300} minSize={250} maxSize={600} className="metadata-panel-wrapper">
-                    <aside className="metadata-panel">
+                <ResizablePanel
+                    panelRef={sidebarPanelRef}
+                    defaultSize={sidebarCollapsed ? 0 : 300}
+                    minSize={250}
+                    maxSize={600}
+                    collapsible
+                    collapsedSize={0}
+                    onResize={handleSidebarResize}
+                    className="metadata-panel-wrapper"
+                >
+                    <aside className={`metadata-panel ${!sidebarCollapsed ? 'sidebar-visible' : ''}`}>
                         <div className="metadata-header">
                             <span className="metadata-title">表结构</span>
                             {selectedDsId && selectedDb && tableTotal > 0 && (
@@ -808,7 +870,7 @@ export default function Query() {
                     </aside>
                 </ResizablePanel>
 
-                <ResizableHandle className="splitter-trigger-horizontal" data-orientation="horizontal">
+                <ResizableHandle className={`splitter-trigger-horizontal ${sidebarCollapsed ? 'splitter-hidden' : ''}`} data-orientation="horizontal" disabled={sidebarCollapsed}>
                     <div className="splitter-indicator-horizontal" />
                 </ResizableHandle>
 
@@ -816,6 +878,23 @@ export default function Query() {
                 <ResizablePanel defaultSize={800} minSize={600} className="query-main-wrapper">
                     <header className="query-toolbar">
                         <div className="toolbar-left">
+                            <TooltipProvider delayDuration={400}>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            className="sidebar-toggle-button toolbar-sidebar-toggle"
+                                            onClick={toggleSidebar}
+                                            aria-label={sidebarCollapsed ? '展开表结构' : '收起表结构'}
+                                        >
+                                            {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="tooltip-content" side="bottom">
+                                        {sidebarCollapsed ? '展开表结构' : '收起表结构'} <kbd>{isMac ? '⌘' : 'Ctrl'}+B</kbd>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                            <span className="toolbar-divider" />
                             <DataSourceSelect
                                 options={dataSourceOptions}
                                 value={String(selectedDsId)}
@@ -874,8 +953,8 @@ export default function Query() {
                                             <Wand2 size={16} />
                                         </button>
                                     </TooltipTrigger>
-                                    <TooltipContent className="tooltip-content">
-                                        格式化 ({isMac ? 'Cmd' : 'Ctrl'}+Shift+F)
+                                    <TooltipContent className="tooltip-content" side="bottom">
+                                        格式化 <kbd>{isMac ? '⌘' : 'Ctrl'}+⇧+F</kbd>
                                     </TooltipContent>
                                 </Tooltip>
                                 <Tooltip>
@@ -888,8 +967,8 @@ export default function Query() {
                                             {loadingQuery ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} fill="white" />}
                                         </button>
                                     </TooltipTrigger>
-                                    <TooltipContent className="tooltip-content">
-                                        执行 ({modKey}+Enter)
+                                    <TooltipContent className="tooltip-content" side="bottom">
+                                        执行 <kbd>{isMac ? '⌘' : 'Ctrl'}+↵</kbd>
                                     </TooltipContent>
                                 </Tooltip>
                             </TooltipProvider>
