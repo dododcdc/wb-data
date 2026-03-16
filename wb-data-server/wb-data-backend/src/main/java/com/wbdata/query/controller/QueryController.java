@@ -1,8 +1,10 @@
 package com.wbdata.query.controller;
 
 import com.wbdata.common.Result;
+import com.wbdata.plugin.api.ColumnMetadata;
+import com.wbdata.plugin.api.PageResult;
 import com.wbdata.plugin.api.QueryResult;
-import com.wbdata.plugin.api.TableMetadata;
+import com.wbdata.plugin.api.TableSummary;
 import com.wbdata.query.service.MetadataService;
 import com.wbdata.query.service.QueryService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,8 +41,20 @@ public class QueryController {
      */
     @Operation(summary = "获取数据库下的表结构")
     @GetMapping("/metadata/{dataSourceId}/{databaseName}/tables")
-    public Result<List<TableMetadata>> getTables(@PathVariable Long dataSourceId, @PathVariable String databaseName) {
-        return Result.success(metadataService.getTables(dataSourceId, databaseName));
+    public Result<PageResult<TableSummary>> getTables(@PathVariable Long dataSourceId,
+                                                 @PathVariable String databaseName,
+                                                 @RequestParam(required = false) String keyword,
+                                                 @RequestParam(defaultValue = "1") int page,
+                                                 @RequestParam(defaultValue = "200") int size) {
+        return Result.success(metadataService.getTables(dataSourceId, databaseName, keyword, page, size));
+    }
+
+    @Operation(summary = "获取指定表的字段信息")
+    @GetMapping("/metadata/{dataSourceId}/{databaseName}/tables/{tableName}/columns")
+    public Result<List<ColumnMetadata>> getColumns(@PathVariable Long dataSourceId,
+                                                    @PathVariable String databaseName,
+                                                    @PathVariable String tableName) {
+        return Result.success(metadataService.getColumns(dataSourceId, databaseName, tableName));
     }
 
     /**

@@ -8,7 +8,13 @@ public interface DataSourcePlugin {
 
     java.util.List<String> getDatabases(ConnectionTestRequest request);
 
-    java.util.List<TableMetadata> getTables(ConnectionTestRequest request, String databaseName);
+    default PageResult<TableSummary> getTables(ConnectionTestRequest request, String databaseName) {
+        return getTables(request, databaseName, null, 1, 200);
+    }
+
+    PageResult<TableSummary> getTables(ConnectionTestRequest request, String databaseName, String keyword, int page, int size);
+
+    java.util.List<ColumnMetadata> getColumns(ConnectionTestRequest request, String databaseName, String tableName);
 
     QueryResult executeQuery(QueryRequest request);
 

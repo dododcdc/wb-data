@@ -170,7 +170,7 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
             isItemEqualToValue={(item, val) => item.value === val.value}
             filter={disableClientFilter ? null : undefined}
         >
-            <div className={`ds-select-root relative flex items-center h-[44px] bg-background border border-input rounded-md overflow-hidden focus-within:ring-1 focus-within:ring-ring ${theme === 'dark' ? 'dark' : ''}`}>
+            <div className={`ds-select-root relative flex items-center h-[36px] bg-background border border-input rounded-md overflow-hidden focus-within:ring-1 focus-within:ring-ring ${theme === 'dark' ? 'dark' : ''}`}>
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={14} />
                 <ComboboxInput 
                     placeholder={placeholder}

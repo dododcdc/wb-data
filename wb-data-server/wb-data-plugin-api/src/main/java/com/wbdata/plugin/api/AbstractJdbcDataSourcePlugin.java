@@ -121,36 +121,60 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     }
 
     @Override
-    public java.util.List<TableMetadata> getTables(ConnectionTestRequest request, String databaseName) {
-        java.util.List<TableMetadata> tables = new java.util.ArrayList<>();
+    public PageResult<TableSummary> getTables(ConnectionTestRequest request, String databaseName, String keyword, int page, int size) {
+        java.util.List<TableSummary> allMatched = new java.util.ArrayList<>();
         try (Connection connection = getConnection(request)) {
             java.sql.DatabaseMetaData metaData = connection.getMetaData();
+
+            String normalizedKeyword = keyword == null ? null : keyword.trim().toLowerCase(java.util.Locale.ROOT);
+            boolean hasKeyword = normalizedKeyword != null && !normalizedKeyword.isEmpty();
+
             try (java.sql.ResultSet rs = metaData.getTables(databaseName, null, "%",
                     new String[] { "TABLE", "VIEW" })) {
                 while (rs.next()) {
                     String tableName = rs.getString("TABLE_NAME");
+                    if (hasKeyword && (tableName == null
+                            || !tableName.toLowerCase(java.util.Locale.ROOT).contains(normalizedKeyword))) {
+                        continue;
+                    }
                     String tableType = rs.getString("TABLE_TYPE");
                     String remarks = rs.getString("REMARKS");
-
-                    java.util.List<ColumnMetadata> columns = new java.util.ArrayList<>();
-                    try (java.sql.ResultSet colRs = metaData.getColumns(databaseName, null, tableName, "%")) {
-                        while (colRs.next()) {
-                            columns.add(new ColumnMetadata(
-                                    colRs.getString("COLUMN_NAME"),
-                                    colRs.getString("TYPE_NAME"),
-                                    colRs.getInt("COLUMN_SIZE"),
-                                    colRs.getInt("NULLABLE") == java.sql.DatabaseMetaData.columnNullable,
-                                    colRs.getString("REMARKS"),
-                                    false));
-                        }
-                    }
-                    tables.add(new TableMetadata(tableName, tableType, remarks, columns));
+                    allMatched.add(new TableSummary(tableName, tableType, remarks));
                 }
             }
         } catch (Exception e) {
             throw new DataSourceException("获取表列表失败: " + databaseName, e);
         }
-        return tables;
+
+        int total = allMatched.size();
+        int safePage = Math.max(page, 1);
+        int safeSize = size > 0 ? size : 200;
+        int fromIndex = Math.min((safePage - 1) * safeSize, total);
+        int toIndex = Math.min(fromIndex + safeSize, total);
+        java.util.List<TableSummary> data = new java.util.ArrayList<>(allMatched.subList(fromIndex, toIndex));
+        return new PageResult<>(data, total, safePage, safeSize);
+    }
+
+    @Override
+    public java.util.List<ColumnMetadata> getColumns(ConnectionTestRequest request, String databaseName, String tableName) {
+        java.util.List<ColumnMetadata> columns = new java.util.ArrayList<>();
+        try (Connection connection = getConnection(request)) {
+            java.sql.DatabaseMetaData metaData = connection.getMetaData();
+            try (java.sql.ResultSet colRs = metaData.getColumns(databaseName, null, tableName, "%")) {
+                while (colRs.next()) {
+                    columns.add(new ColumnMetadata(
+                            colRs.getString("COLUMN_NAME"),
+                            colRs.getString("TYPE_NAME"),
+                            colRs.getInt("COLUMN_SIZE"),
+                            colRs.getInt("NULLABLE") == java.sql.DatabaseMetaData.columnNullable,
+                            colRs.getString("REMARKS"),
+                            false));
+                }
+            }
+        } catch (Exception e) {
+            throw new DataSourceException("获取字段列表失败: " + databaseName + "." + tableName, e);
+        }
+        return columns;
     }
 
     @Override

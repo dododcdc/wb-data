@@ -3,8 +3,10 @@ package com.wbdata.query.service.impl;
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.datasource.plugin.DataSourcePluginRegistry;
 import com.wbdata.datasource.service.DataSourceService;
+import com.wbdata.plugin.api.ColumnMetadata;
 import com.wbdata.plugin.api.ConnectionTestRequest;
-import com.wbdata.plugin.api.TableMetadata;
+import com.wbdata.plugin.api.PageResult;
+import com.wbdata.plugin.api.TableSummary;
 import com.wbdata.query.service.MetadataService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -40,10 +42,10 @@ public class MetadataServiceImpl implements MetadataService {
     }
 
     @Override
-    public List<TableMetadata> getTables(Long dataSourceId, String databaseName) {
+    public PageResult<TableSummary> getTables(Long dataSourceId, String databaseName, String keyword, int page, int size) {
         DataSource ds = dataSourceService.getById(dataSourceId);
         if (ds == null) {
-            return Collections.emptyList();
+            return new PageResult<>(Collections.emptyList(), 0, page, size);
         }
 
         return pluginRegistry.getPlugin(ds.getType())
@@ -55,7 +57,27 @@ public class MetadataServiceImpl implements MetadataService {
                         ds.getDatabaseName(),
                         ds.getUsername(),
                         ds.getPassword(),
-                        ds.getConnectionParams()), databaseName))
+                        ds.getConnectionParams()), databaseName, keyword, page, size))
+                .orElse(new PageResult<>(Collections.emptyList(), 0, page, size));
+    }
+
+    @Override
+    public List<ColumnMetadata> getColumns(Long dataSourceId, String databaseName, String tableName) {
+        DataSource ds = dataSourceService.getById(dataSourceId);
+        if (ds == null) {
+            return Collections.emptyList();
+        }
+
+        return pluginRegistry.getPlugin(ds.getType())
+                .map(plugin -> plugin.getColumns(new ConnectionTestRequest(
+                        ds.getId(),
+                        ds.getType(),
+                        ds.getHost(),
+                        ds.getPort(),
+                        ds.getDatabaseName(),
+                        ds.getUsername(),
+                        ds.getPassword(),
+                        ds.getConnectionParams()), databaseName, tableName))
                 .orElse(Collections.emptyList());
     }
 

@@ -16,6 +16,19 @@ export interface TableMetadata {
     columns: ColumnMetadata[];
 }
 
+export interface TableSummary {
+    name: string;
+    type: string;
+    remarks: string;
+}
+
+export interface PageResult<T> {
+    data: T[];
+    total: number;
+    page: number;
+    size: number;
+}
+
 export interface QueryResult {
     columns: ColumnMetadata[];
     rows: any[];
@@ -39,8 +52,17 @@ export const getMetadataDatabases = (dataSourceId: number) => {
     return request.get<any, string[]>(`/api/v1/query/metadata/${dataSourceId}/databases`);
 };
 
-export const getMetadataTables = (dataSourceId: number, databaseName: string) => {
-    return request.get<any, TableMetadata[]>(`/api/v1/query/metadata/${dataSourceId}/${databaseName}/tables`);
+export const getMetadataTables = (dataSourceId: number, databaseName: string, keyword?: string, page?: number, size?: number) => {
+    const params = new URLSearchParams();
+    if (keyword) params.set('keyword', keyword);
+    if (page !== undefined) params.set('page', String(page));
+    if (size !== undefined) params.set('size', String(size));
+    const qs = params.toString();
+    return request.get<any, PageResult<TableSummary>>(`/api/v1/query/metadata/${dataSourceId}/${databaseName}/tables${qs ? '?' + qs : ''}`);
+};
+
+export const getMetadataColumns = (dataSourceId: number, databaseName: string, tableName: string) => {
+    return request.get<any, ColumnMetadata[]>(`/api/v1/query/metadata/${dataSourceId}/${databaseName}/tables/${encodeURIComponent(tableName)}/columns`);
 };
 
 export const executeQuery = (dataSourceId: number, sql: string, database?: string) => {

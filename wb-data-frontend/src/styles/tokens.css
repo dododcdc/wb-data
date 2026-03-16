@@ -25,6 +25,7 @@
 
   /* Border Colors */
   --color-border: rgba(15, 23, 42, 0.08);
+  --color-border-strong: rgba(15, 23, 42, 0.16);
   --color-border-hover: rgba(22, 119, 255, 0.28);
   --color-border-subtle: rgba(15, 23, 42, 0.06);
 
@@ -113,6 +114,7 @@
 
   /* Dark borders */
   --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
   --color-border-subtle: rgba(255, 255, 255, 0.06);
 
   /* Dark status colors */

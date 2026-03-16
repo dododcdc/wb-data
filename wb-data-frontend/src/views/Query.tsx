@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
-import { Play, Database, Table, Columns, Loader2, Code2, Wand2, Download, FileText, Sheet } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo, lazy, Suspense, useCallback } from 'react';
+import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, Search } from 'lucide-react';
 import { format as formatSql } from 'sql-formatter';
 import * as XLSX from 'xlsx';
-import { getMetadataDatabases, getMetadataTables, executeQuery, getDialectMetadata, TableMetadata, QueryResult, DialectMetadata } from '../api/query';
+import { getMetadataDatabases, getMetadataTables, getMetadataColumns, executeQuery, getDialectMetadata, TableSummary, ColumnMetadata, QueryResult, DialectMetadata, PageResult } from '../api/query';
 import { getDataSourcePage, DataSource } from '../api/datasource';
 import { DataSourceSelect } from '../components/DataSourceSelect';
-import { Splitter } from '@ark-ui/react/splitter';
-import { Tooltip } from '@ark-ui/react/tooltip';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../components/ui/resizable';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import './Query.css';
 
 // Lazy load Monaco Editor for performance (~3MB savings on initial load)
@@ -39,16 +40,67 @@ export default function Query() {
     const [selectedDb, setSelectedDb] = useState<string>('');
     const [dbKeyword, setDbKeyword] = useState('');
     const [loadingDatabases, setLoadingDatabases] = useState(false);
-    const [metadata, setMetadata] = useState<TableMetadata[]>([]);
+    const [tables, setTables] = useState<TableSummary[]>([]);
+    const [tableKeyword, setTableKeyword] = useState('');
+    const [tableKeywordCommitted, setTableKeywordCommitted] = useState('');
+    const [tablePage, setTablePage] = useState(1);
+    const [tableHasMore, setTableHasMore] = useState(true);
+    const [tableTotal, setTableTotal] = useState(0);
+    const [loadingTables, setLoadingTables] = useState(false);
+    const [loadingMoreTables, setLoadingMoreTables] = useState(false);
+    const [columnCache, setColumnCache] = useState<Map<string, ColumnMetadata[]>>(new Map());
+    const [loadingColumns, setLoadingColumns] = useState<Set<string>>(new Set());
     const [dialectMetadata, setDialectMetadata] = useState<DialectMetadata | null>(null);
-    const [loadingMetadata, setLoadingMetadata] = useState(false);
     const [loadingQuery, setLoadingQuery] = useState(false);
     const [sql, setSql] = useState('');
     const [result, setResult] = useState<QueryResult | null>(null);
     const [queryError, setQueryError] = useState<string>('');
     const [showExportMenu, setShowExportMenu] = useState(false);
+    const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
     const editorRef = useRef<any>(null);
+    const composingRef = useRef(false);
     const dsRequestIdRef = useRef(0);
+    const exportMenuRef = useRef<HTMLDivElement>(null);
+    const tableScrollRef = useRef<HTMLDivElement>(null);
+    const [tableScrollElement, setTableScrollElement] = useState<HTMLDivElement | null>(null);
+    const TABLE_PAGE_SIZE = 200;
+
+    const virtualizer = useVirtualizer({
+        count: tables.length,
+        getScrollElement: () => tableScrollElement,
+        estimateSize: () => 36,
+        overscan: 10,
+    });
+
+    const handleTableScrollRef = useCallback((node: HTMLDivElement | null) => {
+        if (tableScrollRef.current === node) return;
+        tableScrollRef.current = node;
+        setTableScrollElement(node);
+    }, []);
+
+    // Close export menu on backdrop click or Escape
+    useEffect(() => {
+        if (!showExportMenu) return;
+
+        const handleClickOutside = (e: MouseEvent) => {
+            if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+                setShowExportMenu(false);
+            }
+        };
+
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setShowExportMenu(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleEscape);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleEscape);
+        };
+    }, [showExportMenu]);
 
     // Debounced search for DataSources
     useEffect(() => {
@@ -67,14 +119,22 @@ export default function Query() {
             setDbKeyword('');
             setSelectedDb('');
             setDatabases([]);
-            setMetadata([]);
+            setTables([]);
+            setColumnCache(new Map());
+            setTableKeyword('');
+            setTableKeywordCommitted('');
+            setTableTotal(0);
             loadDatabases(Number(selectedDsId));
             loadDialect(Number(selectedDsId));
         } else {
             setDatabases([]);
             setSelectedDb('');
             setDbKeyword('');
-            setMetadata([]);
+            setTables([]);
+            setColumnCache(new Map());
+            setTableKeyword('');
+            setTableKeywordCommitted('');
+            setTableTotal(0);
             setDialectMetadata(null);
             setSelectedDs(null);
         }
@@ -82,9 +142,44 @@ export default function Query() {
 
     useEffect(() => {
         if (selectedDsId && selectedDb) {
-            loadMetadata(Number(selectedDsId), selectedDb);
+            setTableKeyword('');
+            setTableKeywordCommitted('');
+            setTablePage(1);
+            setTableHasMore(true);
+            setTableTotal(0);
+            setColumnCache(new Map());
+            loadTables(Number(selectedDsId), selectedDb);
         }
     }, [selectedDsId, selectedDb]);
+
+    useEffect(() => {
+        if (!selectedDsId || !selectedDb) return;
+        const timer = setTimeout(() => {
+            setTablePage(1);
+            setTableHasMore(true);
+            loadTables(Number(selectedDsId), selectedDb, tableKeywordCommitted, 1, false);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [tableKeywordCommitted]);
+
+    useEffect(() => {
+        setExpandedTables(new Set());
+    }, [selectedDsId, selectedDb]);
+
+    const toggleTableExpand = (tableName: string) => {
+        setExpandedTables(prev => {
+            const next = new Set(prev);
+            if (next.has(tableName)) {
+                next.delete(tableName);
+            } else {
+                next.add(tableName);
+                if (!columnCache.has(tableName) && selectedDsId && selectedDb) {
+                    loadColumns(Number(selectedDsId), selectedDb, tableName);
+                }
+            }
+            return next;
+        });
+    };
 
     const loadDataSources = async ({ page, keyword, append }: { page: number; keyword: string; append: boolean; }) => {
         const requestId = ++dsRequestIdRef.current;
@@ -154,17 +249,56 @@ export default function Query() {
         }
     };
 
-    const loadMetadata = async (id: number, dbName: string) => {
-        setLoadingMetadata(true);
+    const loadTables = async (dsId: number, dbName: string, keyword?: string, page: number = 1, append: boolean = false) => {
+        if (append) {
+            setLoadingMoreTables(true);
+        } else {
+            setLoadingTables(true);
+        }
         try {
-            const data = await getMetadataTables(id, dbName);
-            setMetadata(data);
+            const result = await getMetadataTables(dsId, dbName, keyword || undefined, page, TABLE_PAGE_SIZE);
+            if (append) {
+                setTables(prev => [...prev, ...result.data]);
+            } else {
+                setTables(result.data);
+            }
+            setTableTotal(result.total);
+            const loadedSoFar = append ? (page - 1) * TABLE_PAGE_SIZE + result.data.length : result.data.length;
+            setTableHasMore(loadedSoFar < result.total);
+            setTablePage(page);
         } catch (error) {
-            console.error('Failed to load metadata', error);
+            console.error('Failed to load tables', error);
         } finally {
-            setLoadingMetadata(false);
+            setLoadingTables(false);
+            setLoadingMoreTables(false);
         }
     };
+
+    const loadColumns = async (dsId: number, dbName: string, tableName: string) => {
+        if (columnCache.has(tableName)) return;
+        setLoadingColumns(prev => new Set(prev).add(tableName));
+        try {
+            const cols = await getMetadataColumns(dsId, dbName, tableName);
+            setColumnCache(prev => new Map(prev).set(tableName, cols));
+        } catch (error) {
+            console.error('Failed to load columns for', tableName, error);
+        } finally {
+            setLoadingColumns(prev => {
+                const next = new Set(prev);
+                next.delete(tableName);
+                return next;
+            });
+        }
+    };
+
+    const handleTableScroll = useCallback(() => {
+        const el = tableScrollRef.current;
+        if (!el || loadingMoreTables || !tableHasMore || !selectedDsId || !selectedDb) return;
+        const { scrollTop, scrollHeight, clientHeight } = el;
+        if (scrollHeight - scrollTop - clientHeight < 100) {
+            loadTables(Number(selectedDsId), selectedDb, tableKeywordCommitted || undefined, tablePage + 1, true);
+        }
+    }, [loadingMoreTables, tableHasMore, selectedDsId, selectedDb, tableKeywordCommitted, tablePage]);
 
     const selectedDsOption = useMemo(() => {
         if (!selectedDs) {
@@ -340,10 +474,15 @@ export default function Query() {
         getStatementAtCursorRef.current = getStatementAtCursor;
     }, [getStatementAtCursor]);
 
-    const metadataRef = useRef(metadata);
+    const tablesRef = useRef(tables);
     useEffect(() => {
-        metadataRef.current = metadata;
-    }, [metadata]);
+        tablesRef.current = tables;
+    }, [tables]);
+
+    const columnCacheRef = useRef(columnCache);
+    useEffect(() => {
+        columnCacheRef.current = columnCache;
+    }, [columnCache]);
 
     const dialectMetadataRef = useRef(dialectMetadata);
     useEffect(() => {
@@ -369,7 +508,8 @@ export default function Query() {
                 };
 
                 const suggestions: any[] = [];
-                const currentMetadata = metadataRef.current;
+                const currentTables = tablesRef.current;
+                const currentColumnCache = columnCacheRef.current;
                 const currentDialect = dialectMetadataRef.current;
 
                 // --- Extract Aliases ---
@@ -399,27 +539,34 @@ export default function Query() {
                         const identifier = dotParts[dotParts.length - 2].toLowerCase();
                         const actualTableName = aliases[identifier] || identifier;
 
-                        const table = currentMetadata.find(t => t.name.toLowerCase() === actualTableName);
-                        if (table) {
-                            table.columns.forEach(col => {
+                        const table = currentTables.find(t => t.name.toLowerCase() === actualTableName);
+                        const cachedCols = currentColumnCache.get(actualTableName) || currentColumnCache.get(table?.name || '');
+                        if (cachedCols) {
+                            cachedCols.forEach(col => {
                                 suggestions.push({
                                     label: col.name,
                                     kind: monaco.languages.CompletionItemKind.Field,
                                     insertText: col.name,
-                                    detail: `${table.name} Column (${col.type})`,
+                                    detail: `${actualTableName} Column (${col.type})`,
                                     documentation: col.remarks,
                                     range: range,
                                 });
                             });
                             return { suggestions };
                         }
+
+                        const matchedTable = currentTables.find(t => t.name.toLowerCase() === actualTableName);
+                        if (matchedTable && selectedDsId && selectedDb) {
+                            loadColumns(Number(selectedDsId), selectedDb, matchedTable.name);
+                        }
+                        return { suggestions };
                     }
                 }
 
                 // 2. Context-aware table suggestions (after FROM or JOIN)
                 const isAfterFromOrJoin = /\b(FROM|JOIN)\s+$/i.test(textBeforeCursor);
                 if (isAfterFromOrJoin) {
-                    currentMetadata.forEach(table => {
+                    currentTables.forEach(table => {
                         suggestions.push({
                             label: table.name,
                             kind: monaco.languages.CompletionItemKind.Struct,
@@ -472,8 +619,7 @@ export default function Query() {
                     });
                 }
 
-                // 4. Add all tables to general search
-                currentMetadata.forEach(table => {
+                currentTables.forEach(table => {
                     suggestions.push({
                         label: table.name,
                         kind: monaco.languages.CompletionItemKind.Struct,
@@ -483,14 +629,15 @@ export default function Query() {
                         range: range,
                         sortText: '5'
                     });
+                });
 
-                    // 5. Add columns to general search (optional but helpful)
-                    table.columns.forEach(col => {
+                currentColumnCache.forEach((cols, tblName) => {
+                    cols.forEach(col => {
                         suggestions.push({
                             label: col.name,
                             kind: monaco.languages.CompletionItemKind.Field,
                             insertText: col.name,
-                            detail: `Column of ${table.name} (${col.type})`,
+                            detail: `Column of ${tblName} (${col.type})`,
                             range: range,
                             sortText: '7'
                         });
@@ -529,62 +676,144 @@ export default function Query() {
     };
 
     return (
-        <Splitter.Root
-            className="query-splitter"
-            panels={[
-                { id: 'sidebar', minSize: 15, maxSize: 40 },
-                { id: 'main' }
-            ]}
-            defaultSize={[20, 80]}
-        >
-            <Splitter.Panel id="sidebar" className="query-splitter-panel">
-                <aside className="metadata-sidebar">
-                    <div className="sidebar-header">
-                        <span>库表导航</span>
-                        <Database size={14} className="node-icon" />
-                    </div>
-                    <div className="sidebar-content">
-                        {loadingMetadata || loadingDatabases ? (
-                            <div className="loading-state">
-                                <Loader2 className="animate-spin" size={20} />
-                                <span>加载元数据中...</span>
-                            </div>
-                        ) : metadata.length > 0 ? (
-                            <div className="metadata-tree">
-                                {metadata.map(table => (
-                                    <details key={table.name} className="table-node">
-                                        <summary className="table-summary">
-                                            <Table size={14} className="node-icon" />
-                                            <span>{table.name}</span>
-                                        </summary>
-                                        <ul className="column-list">
-                                            {table.columns.map(col => (
-                                                <li key={col.name} className="column-node">
-                                                    <Columns size={12} className="node-icon" />
-                                                    <span className="col-name">{col.name}</span>
-                                                    <span className="col-type">{col.type}</span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </details>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="empty-state">
-                                <Database size={32} className="empty-icon" />
-                                <span>{selectedDsId ? '请选择数据库' : '请先选择数据源'}</span>
+        <div className="query-splitter">
+            <ResizablePanelGroup className="query-splitter-panel" direction="horizontal">
+                {/* 左侧元数据面板 */}
+                <ResizablePanel defaultSize={300} minSize={250} maxSize={600} className="metadata-panel-wrapper">
+                    <aside className="metadata-panel">
+                        <div className="metadata-header">
+                            <span className="metadata-title">表结构</span>
+                            {selectedDsId && selectedDb && tableTotal > 0 && (
+                                <span className="metadata-total-count">共 {tableTotal} 张表</span>
+                            )}
+                        </div>
+                        {selectedDsId && selectedDb && (
+                            <div className="metadata-search">
+                                <Search size={14} className="metadata-search-icon" />
+                                <input
+                                    type="text"
+                                    className="metadata-search-input"
+                                    placeholder="搜索表名..."
+                                    value={tableKeyword}
+                                    onChange={(e) => {
+                                        setTableKeyword(e.target.value);
+                                        if (!composingRef.current) {
+                                            setTableKeywordCommitted(e.target.value);
+                                        }
+                                    }}
+                                    onCompositionStart={() => { composingRef.current = true; }}
+                                    onCompositionEnd={(e) => {
+                                        composingRef.current = false;
+                                        const val = (e.target as HTMLInputElement).value;
+                                        setTableKeyword(val);
+                                        setTableKeywordCommitted(val);
+                                    }}
+                                />
                             </div>
                         )}
-                    </div>
-                </aside>
-            </Splitter.Panel>
+                        <div
+                            className="metadata-content"
+                            ref={handleTableScrollRef}
+                            onScroll={handleTableScroll}
+                        >
+                            {loadingTables ? (
+                                <div className="metadata-empty">
+                                    <Loader2 size={24} className="animate-spin" />
+                                    <span>加载中...</span>
+                                </div>
+                            ) : tables.length === 0 ? (
+                                <div className="metadata-empty">
+                                    <Database size={32} className="metadata-empty-icon" />
+                                    <span>{selectedDsId && selectedDb ? (tableKeyword ? '未找到匹配的表' : '该数据库下没有表') : '请先选择数据源和数据库'}</span>
+                                </div>
+                            ) : (
+                                <div
+                                    style={{
+                                        height: `${virtualizer.getTotalSize()}px`,
+                                        width: '100%',
+                                        position: 'relative',
+                                    }}
+                                >
+                                    {virtualizer.getVirtualItems().map(virtualRow => {
+                                        const table = tables[virtualRow.index];
+                                        if (!table) return null;
+                                        const isExpanded = expandedTables.has(table.name);
+                                        const cols = columnCache.get(table.name);
+                                        const isLoadingCols = loadingColumns.has(table.name);
+                                        return (
+                                            <div
+                                                key={table.name}
+                                                data-index={virtualRow.index}
+                                                ref={virtualizer.measureElement}
+                                                style={{
+                                                    position: 'absolute',
+                                                    top: 0,
+                                                    left: 0,
+                                                    width: '100%',
+                                                    transform: `translateY(${virtualRow.start}px)`,
+                                                }}
+                                            >
+                                                <div className="metadata-item">
+                                                    <button
+                                                        type="button"
+                                                        className="metadata-item-header"
+                                                        onClick={() => toggleTableExpand(table.name)}
+                                                        aria-expanded={isExpanded}
+                                                        aria-label={`${isExpanded ? '收起' : '展开'} ${table.name} 字段`}
+                                                    >
+                                                        {isExpanded
+                                                            ? <ChevronDown size={14} className="metadata-chevron" />
+                                                            : <ChevronRight size={14} className="metadata-chevron" />
+                                                        }
+                                                        <Database size={14} className="metadata-icon" />
+                                                        <span className="metadata-item-name">{table.name}</span>
+                                                    </button>
+                                                    {isExpanded && (
+                                                        <ul className="metadata-columns">
+                                                            {isLoadingCols ? (
+                                                                <li className="metadata-column-loading">
+                                                                    <Loader2 size={12} className="animate-spin" />
+                                                                    <span>加载字段...</span>
+                                                                </li>
+                                                            ) : cols ? (
+                                                                <>
+                                                                    {cols.slice(0, 50).map(col => (
+                                                                        <li key={col.name} className="metadata-column">
+                                                                            <span className="column-name">{col.name}</span>
+                                                                            <span className="column-type">{col.type}</span>
+                                                                        </li>
+                                                                    ))}
+                                                                    {cols.length > 50 && (
+                                                                        <li className="metadata-more">
+                                                                            还有 {cols.length - 50} 个字段...
+                                                                        </li>
+                                                                    )}
+                                                                </>
+                                                            ) : null}
+                                                        </ul>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            {loadingMoreTables && (
+                                <div className="metadata-loading-more">
+                                    <Loader2 size={14} className="animate-spin" />
+                                    <span>加载更多...</span>
+                                </div>
+                            )}
+                        </div>
+                    </aside>
+                </ResizablePanel>
 
-            <Splitter.ResizeTrigger id="sidebar:main" className="splitter-trigger">
-                <Splitter.ResizeTriggerIndicator className="splitter-indicator" />
-            </Splitter.ResizeTrigger>
+                <ResizableHandle className="splitter-trigger-horizontal" data-orientation="horizontal">
+                    <div className="splitter-indicator-horizontal" />
+                </ResizableHandle>
 
-            <Splitter.Panel id="main" className="query-splitter-panel">
-                <main className="query-main">
+                {/* 右侧主内容区 */}
+                <ResizablePanel defaultSize={800} minSize={600} className="query-main-wrapper">
                     <header className="query-toolbar">
                         <div className="toolbar-left">
                             <DataSourceSelect
@@ -593,6 +822,7 @@ export default function Query() {
                                 selectedOption={selectedDsOption}
                                 onChange={(val, option) => {
                                     setSelectedDsId(val);
+                                    setDsKeyword('');
                                     if (option?.raw) {
                                         setSelectedDs(option.raw);
                                         return;
@@ -633,51 +863,41 @@ export default function Query() {
                             )}
                         </div>
                         <div className="toolbar-right">
-                            <Tooltip.Root openDelay={400} closeDelay={0} closeOnPointerDown={true}>
-                                <Tooltip.Trigger asChild>
-                                    <button
-                                        className="format-button-inline"
-                                        onClick={handleFormat}
-                                        aria-label="格式化 SQL"
-                                    >
-                                        <Wand2 size={16} />
-                                    </button>
-                                </Tooltip.Trigger>
-                                <Tooltip.Positioner>
-                                    <Tooltip.Content className="tooltip-content">
+                            <TooltipProvider delayDuration={400}>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            className="format-button-inline"
+                                            onClick={handleFormat}
+                                            aria-label="格式化 SQL"
+                                        >
+                                            <Wand2 size={16} />
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="tooltip-content">
                                         格式化 ({isMac ? 'Cmd' : 'Ctrl'}+Shift+F)
-                                    </Tooltip.Content>
-                                </Tooltip.Positioner>
-                            </Tooltip.Root>
-                            <Tooltip.Root openDelay={400} closeDelay={0} closeOnPointerDown={true}>
-                                <Tooltip.Trigger asChild>
-                                    <button
-                                        className="run-button"
-                                        onClick={() => handleRunQuery()}
-                                        aria-label="执行 SQL"
-                                    >
-                                        {loadingQuery ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} fill="white" />}
-                                    </button>
-                                </Tooltip.Trigger>
-                                <Tooltip.Positioner>
-                                    <Tooltip.Content className="tooltip-content">
+                                    </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            className="run-button"
+                                            onClick={() => handleRunQuery()}
+                                            aria-label="执行 SQL"
+                                        >
+                                            {loadingQuery ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} fill="white" />}
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="tooltip-content">
                                         执行 ({modKey}+Enter)
-                                    </Tooltip.Content>
-                                </Tooltip.Positioner>
-                            </Tooltip.Root>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
                         </div>
                     </header>
 
-                    <Splitter.Root
-                        className="query-vertical-splitter"
-                        orientation="vertical"
-                        panels={[
-                            { id: 'editor', minSize: 30 },
-                            { id: 'results', minSize: 20 }
-                        ]}
-                        defaultSize={[50, 50]}
-                    >
-                        <Splitter.Panel id="editor" className="query-splitter-panel-vertical">
+                    <ResizablePanelGroup className="query-vertical-splitter" direction="vertical">
+                        <ResizablePanel defaultSize={60} minSize={30} className="query-splitter-panel-vertical">
                             <section className="editor-section">
 
                                 <div className="editor-wrapper">
@@ -693,6 +913,9 @@ export default function Query() {
                                                 minimap: { enabled: false },
                                                 fontSize: 14,
                                                 lineNumbers: 'on',
+                                                lineNumbersMinChars: 2,
+                                                lineDecorationsWidth: 8,
+                                                glyphMargin: false,
                                                 scrollBeyondLastLine: false,
                                                 automaticLayout: true,
                                                 padding: { top: 12, bottom: 12 },
@@ -705,13 +928,13 @@ export default function Query() {
                                     </Suspense>
                                 </div>
                             </section>
-                        </Splitter.Panel>
+                        </ResizablePanel>
 
-                        <Splitter.ResizeTrigger id="editor:results" className="splitter-trigger-vertical">
-                            <Splitter.ResizeTriggerIndicator className="splitter-indicator-vertical" />
-                        </Splitter.ResizeTrigger>
+                        <ResizableHandle className="splitter-trigger-vertical" data-orientation="vertical">
+                            <div className="splitter-indicator-vertical" />
+                        </ResizableHandle>
 
-                        <Splitter.Panel id="results" className="query-splitter-panel-vertical">
+                        <ResizablePanel defaultSize={40} minSize={20} className="query-splitter-panel-vertical">
                             <section className="results-section">
                                 <div className="section-header">
                                     <span className="section-title">查询结果</span>
@@ -722,7 +945,7 @@ export default function Query() {
                                             </div>
                                         )}
                                         {result && result.columns.length > 0 && (
-                                            <div className="export-wrapper">
+                                            <div className="export-wrapper" ref={exportMenuRef}>
                                                 <button
                                                     className="export-button"
                                                     onClick={() => setShowExportMenu(v => !v)}
@@ -791,10 +1014,10 @@ export default function Query() {
                                     )}
                                 </div>
                             </section>
-                        </Splitter.Panel>
-                    </Splitter.Root>
-                </main>
-            </Splitter.Panel>
-        </Splitter.Root>
+                        </ResizablePanel>
+                    </ResizablePanelGroup>
+                </ResizablePanel>
+            </ResizablePanelGroup>
+        </div>
     );
 }

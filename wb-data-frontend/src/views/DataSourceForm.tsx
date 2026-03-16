@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Dialog } from '@ark-ui/react/dialog';
-import { Portal } from '@ark-ui/react/portal';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogOverlay,
+    DialogPortal,
+    DialogTitle,
+} from '../components/ui/dialog';
 import {
     DataSourcePluginDescriptor,
     PluginFieldDescriptor,
@@ -291,22 +298,22 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
     };
 
     return (
-        <Dialog.Root open={open} onOpenChange={onOpenChange} trapFocus modal lazyMount unmountOnExit>
-            <Portal>
-                <Dialog.Backdrop className="dialog-backdrop" />
-                <Dialog.Positioner className="dialog-positioner">
-                    <Dialog.Content className="dialog-content console-form-card">
+        <Dialog open={open} onOpenChange={(nextOpen) => onOpenChange({ open: nextOpen })}>
+            <DialogPortal>
+                <DialogOverlay className="dialog-backdrop" />
+                <DialogContent className="dialog-positioner">
+                    <div className="dialog-content console-form-card">
                         <div className="form-header">
-                            <Dialog.Title className="dialog-title">
+                            <DialogTitle className="dialog-title">
                                 {isEdit ? '编辑数据源' : '新建数据源'}
-                            </Dialog.Title>
-                            <Dialog.CloseTrigger className="dialog-close-btn">
+                            </DialogTitle>
+                            <DialogClose className="dialog-close-btn" aria-label="关闭">
                                 <X size={20} />
-                            </Dialog.CloseTrigger>
+                            </DialogClose>
                         </div>
-                        <Dialog.Description className="sr-only">
+                        <DialogDescription className="sr-only">
                             Form to configure settings for a data source connection.
-                        </Dialog.Description>
+                        </DialogDescription>
 
                         <div className="form-content">
                             <div className="form-main-layout">
@@ -441,9 +448,9 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                                 </div>
                             </div>
                         </div>
-                    </Dialog.Content>
-                </Dialog.Positioner>
-            </Portal>
-        </Dialog.Root>
+                    </div>
+                </DialogContent>
+            </DialogPortal>
+        </Dialog>
     );
 }
