@@ -21,7 +21,7 @@ server:
 
 wbdata:
   plugins:
-    dir: ${WB_DATA_PLUGIN_DIR:../../plugins}
+    dir: ${WB_DATA_PLUGIN_DIR:/Users/wenbin/Projects/wb-data/plugins}
 
 springdoc:
   api-docs:

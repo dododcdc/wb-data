@@ -54,7 +54,7 @@ public class DataSourcePluginRegistry {
         closeLoaders();
         classLoaders.clear();
 
-        Path pluginDirectory = Paths.get(pluginProperties.getDir()).normalize().toAbsolutePath();
+        Path pluginDirectory = resolvePluginDirectory();
         if (!Files.exists(pluginDirectory)) {
             log.warn("插件目录不存在: {}", pluginDirectory);
             return;
@@ -95,6 +95,23 @@ public class DataSourcePluginRegistry {
                     return poolManager.getConnection(ds, jdbcUrl, driverClassName);
                 }
         );
+    }
+
+    /**
+     * 解析插件目录的绝对路径。
+     *
+     * <p>{@code wbdata.plugins.dir} 必须配置为绝对路径，否则启动时抛出异常。</p>
+     */
+    private Path resolvePluginDirectory() {
+        String configured = pluginProperties.getDir();
+        if (configured == null || configured.isBlank()) {
+            throw new IllegalStateException("未配置插件目录，请设置 wbdata.plugins.dir 为绝对路径");
+        }
+        Path configuredPath = Paths.get(configured);
+        if (!configuredPath.isAbsolute()) {
+            throw new IllegalStateException("插件目录必须为绝对路径，当前值: " + configured);
+        }
+        return configuredPath.normalize();
     }
 
     /**
