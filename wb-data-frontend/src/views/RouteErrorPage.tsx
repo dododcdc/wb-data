@@ -32,7 +32,7 @@ export default function RouteErrorPage() {
 
     return (
         <div className="route-error-screen">
-            <section className="route-state-card route-state-card-error">
+            <section className="route-state-card route-state-card-error animate-enter">
                 <div className="route-state-code">{copy.code}</div>
                 <div className="route-state-copy">
                     <span className="route-state-kicker">Application Error</span>

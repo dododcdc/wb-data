@@ -3,7 +3,7 @@ package com.wbdata.plugin.api;
 import java.util.Collections;
 import java.util.Map;
 
-public record ConnectionTestRequest(
+public record DataSourceConnectionInfo(
         Long dataSourceId,
         String type,
         String host,
@@ -13,7 +13,7 @@ public record ConnectionTestRequest(
         String password,
         Map<String, Object> connectionParams
 ) {
-    public ConnectionTestRequest {
+    public DataSourceConnectionInfo {
         connectionParams = connectionParams == null ? Collections.emptyMap() : Collections.unmodifiableMap(connectionParams);
     }
 }

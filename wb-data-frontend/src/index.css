@@ -1,8 +1,8 @@
 @import "tailwindcss";
-@import "./styles/tokens.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+@import "@fontsource-variable/source-serif-4";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -13,7 +13,6 @@
   }
 
   html {
-    font-family: var(--font-sans);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -28,78 +27,272 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-brand);
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
+
+  /* ========================================
+     Type Badges (for data source types)
+     ======================================== */
+  .type-badge {
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text-secondary);
+  }
+
+  .type-badge.mysql {
+    background-color: var(--badge-mysql-bg);
+    color: var(--badge-mysql-fg);
+  }
+
+  .type-badge.hive {
+    background-color: var(--badge-hive-bg);
+    color: var(--badge-hive-fg);
+  }
+
+  .type-badge.postgresql {
+    background-color: var(--badge-postgresql-bg);
+    color: var(--badge-postgresql-fg);
+  }
+
+  .type-badge.starrocks {
+    background-color: var(--badge-starrocks-bg);
+    color: var(--badge-starrocks-fg);
+  }
+
+  .type-badge.oracle {
+    background-color: var(--badge-oracle-bg);
+    color: var(--badge-oracle-fg);
+  }
+
+  .type-badge.sqlserver {
+    background-color: var(--badge-sqlserver-bg);
+    color: var(--badge-sqlserver-fg);
+  }
+
+  @keyframes fadeSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-enter {
+    animation: fadeSlideUp 400ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-enter-delay-1 { animation-delay: 60ms; }
+  .animate-enter-delay-2 { animation-delay: 120ms; }
+  .animate-enter-delay-3 { animation-delay: 180ms; }
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  /* Shadcn Tokens — Warm Parchment Light Theme */
+  --background: oklch(0.975 0.005 80);
+  --foreground: oklch(0.16 0.01 60);
+  --card: oklch(0.98 0.004 80);
+  --card-foreground: oklch(0.16 0.01 60);
+  --popover: oklch(0.98 0.004 80);
+  --popover-foreground: oklch(0.16 0.01 60);
+  --primary: oklch(0.22 0.01 60);
+  --primary-foreground: oklch(0.975 0.005 80);
+  --secondary: oklch(0.955 0.008 75);
+  --secondary-foreground: oklch(0.22 0.01 60);
+  --muted: oklch(0.955 0.008 75);
+  --muted-foreground: oklch(0.52 0.01 60);
+  --accent: oklch(0.955 0.008 75);
+  --accent-foreground: oklch(0.22 0.01 60);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --border: oklch(0.91 0.01 75);
+  --input: oklch(0.91 0.01 75);
+  --ring: oklch(0.65 0.1 45);
+  --chart-1: oklch(0.68 0.14 45);
+  --chart-2: oklch(0.58 0.12 40);
+  --chart-3: oklch(0.50 0.10 50);
+  --chart-4: oklch(0.72 0.08 85);
+  --chart-5: oklch(0.45 0.08 55);
+  --radius: 0.5rem;
+  --sidebar: oklch(0.965 0.006 78);
+  --sidebar-foreground: oklch(0.16 0.01 60);
+  --sidebar-primary: oklch(0.22 0.01 60);
+  --sidebar-primary-foreground: oklch(0.975 0.005 80);
+  --sidebar-accent: oklch(0.955 0.008 75);
+  --sidebar-accent-foreground: oklch(0.22 0.01 60);
+  --sidebar-border: oklch(0.91 0.01 75);
+  --sidebar-ring: oklch(0.65 0.1 45);
+
+  /* ── Brand ── */
+  --color-brand: #D97757;
+  --color-brand-hover: #C4613F;
+  --color-brand-light: #FDF2EE;
+  --color-brand-dark: #A8502F;
+
+  /* ── Accent (warm terracotta) ── */
+  --color-accent: #D97757;
+  --color-accent-glow: rgba(217, 119, 87, 0.12);
+
+  /* ── Text ── */
+  --color-text-primary: #1A1A1A;
+  --color-text-secondary: #5B5B58;
+  --color-text-muted: #8A8A86;
+
+  /* ── Backgrounds (warm parchment) ── */
+  --color-bg-primary: #F8F7F4;
+  --color-bg-secondary: #F3F1EC;
+  --color-bg-tertiary: #EFECE6;
+
+  /* ── Borders (warm) ── */
+  --color-border: rgba(120, 110, 90, 0.12);
+  --color-border-strong: rgba(120, 110, 90, 0.22);
+  --color-border-hover: rgba(217, 119, 87, 0.35);
+  --color-border-subtle: rgba(120, 110, 90, 0.07);
+
+  /* ── Status ── */
+  --color-success-bg: #F0F9F4;
+  --color-success: #1A7A42;
+  --color-error-bg: #FDF2F2;
+  --color-error: #B42318;
+  --color-error-border: #F5C6C6;
+  --color-warning-bg: #FDF8EE;
+  --color-warning: #B8860B;
+  --color-warning-border: #E8D5A8;
+
+  /* ── Interactive ── */
+  --color-link: #C4613F;
+  --color-link-hover: #A8502F;
+  --color-input-bg: #FAFAF8;
+  --color-input-border: #DDD9D0;
+  --color-input-placeholder: #B5B2AA;
+
+  /* ── Type Badges (warm, muted palette) ── */
+  --badge-mysql-bg: #EDE8F5;
+  --badge-mysql-fg: #5B4BA0;
+  --badge-hive-bg: #FDF5E6;
+  --badge-hive-fg: #8B6914;
+  --badge-postgresql-bg: #E8EDF5;
+  --badge-postgresql-fg: #3D5A99;
+  --badge-starrocks-bg: #E6F2EF;
+  --badge-starrocks-fg: #2A7A6B;
+  --badge-oracle-bg: #FDF0ED;
+  --badge-oracle-fg: #C4613F;
+  --badge-sqlserver-bg: #F0ECF5;
+  --badge-sqlserver-fg: #6B4F9E;
+
+  /* ── Tooltip ── */
+  --color-tooltip-bg: #2C2926;
+  --color-tooltip-fg: #F5F2ED;
+
+  /* ── Typography ── */
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  --font-serif: 'Source Serif 4 Variable', Georgia, 'Times New Roman', serif;
+
+  /* ── Spacing ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ── Shadows (warm, not blue) ── */
+  --shadow-sm: 0 1px 2px rgba(80, 60, 40, 0.06);
+  --shadow-md: 0 4px 12px rgba(80, 60, 40, 0.08);
+  --shadow-lg: 0 12px 24px rgba(80, 60, 40, 0.06);
+  --shadow-brand: 0 8px 16px rgba(217, 119, 87, 0.18);
+
+  /* ── Transitions ── */
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease-in-out;
+  --transition-slow: 300ms ease-in-out;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: oklch(0.16 0.008 60);
+  --foreground: oklch(0.93 0.005 80);
+  --card: oklch(0.20 0.008 60);
+  --card-foreground: oklch(0.93 0.005 80);
+  --popover: oklch(0.20 0.008 60);
+  --popover-foreground: oklch(0.93 0.005 80);
+  --primary: oklch(0.93 0.005 80);
+  --primary-foreground: oklch(0.20 0.008 60);
+  --secondary: oklch(0.26 0.008 60);
+  --secondary-foreground: oklch(0.93 0.005 80);
+  --muted: oklch(0.26 0.008 60);
+  --muted-foreground: oklch(0.65 0.008 60);
+  --accent: oklch(0.26 0.008 60);
+  --accent-foreground: oklch(0.93 0.005 80);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --border: oklch(1 0.005 80 / 10%);
+  --input: oklch(1 0.005 80 / 15%);
+  --ring: oklch(0.50 0.008 60);
+  --chart-1: oklch(0.72 0.12 45);
+  --chart-2: oklch(0.62 0.10 40);
+  --chart-3: oklch(0.55 0.08 50);
+  --chart-4: oklch(0.68 0.06 85);
+  --chart-5: oklch(0.50 0.06 55);
+  --sidebar: oklch(0.20 0.008 60);
+  --sidebar-foreground: oklch(0.93 0.005 80);
+  --sidebar-primary: oklch(0.68 0.14 45);
+  --sidebar-primary-foreground: oklch(0.93 0.005 80);
+  --sidebar-accent: oklch(0.26 0.008 60);
+  --sidebar-accent-foreground: oklch(0.93 0.005 80);
+  --sidebar-border: oklch(1 0.005 80 / 10%);
+  --sidebar-ring: oklch(0.50 0.008 60);
+
+  --color-bg-primary: #1A1816;
+  --color-bg-secondary: #141210;
+  --color-bg-tertiary: #262320;
+
+  --color-text-primary: #EDE9E3;
+  --color-text-secondary: #A09A90;
+  --color-text-muted: #706B62;
+
+  --color-border: rgba(237, 233, 227, 0.08);
+  --color-border-strong: rgba(237, 233, 227, 0.16);
+  --color-border-subtle: rgba(237, 233, 227, 0.05);
+
+  --color-success-bg: rgba(26, 122, 66, 0.15);
+  --color-success: #6EE7A0;
+  --color-error-bg: rgba(180, 35, 24, 0.15);
+  --color-error: #FCA5A5;
+  --color-error-border: rgba(239, 68, 68, 0.25);
+  --color-warning-bg: rgba(184, 134, 11, 0.15);
+  --color-warning: #FCD34D;
+  --color-warning-border: rgba(184, 134, 11, 0.25);
+
+  --color-link: #E8936F;
+  --color-link-hover: #F0A888;
+  --color-input-bg: #262320;
+  --color-input-border: #3D3935;
+  --color-input-placeholder: #6B6560;
+
+  --badge-mysql-bg: #2A2540;
+  --badge-mysql-fg: #B8A8E8;
+  --badge-hive-bg: #352D14;
+  --badge-hive-fg: #E8C85A;
+  --badge-postgresql-bg: #1E2840;
+  --badge-postgresql-fg: #8BAAF0;
+  --badge-starrocks-bg: #1A3530;
+  --badge-starrocks-fg: #5EDBCB;
+  --badge-oracle-bg: #3A201A;
+  --badge-oracle-fg: #F0A888;
+  --badge-sqlserver-bg: #2A2040;
+  --badge-sqlserver-fg: #C0A0F0;
+
+  --color-tooltip-bg: #2C2926;
+  --color-tooltip-fg: #EDE9E3;
 }
 
 @theme inline {
