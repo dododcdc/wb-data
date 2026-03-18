@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "wbdata.plugins")
 public class PluginProperties {
 
-    private String dir = "../plugins";
+    private String dir;
 
     public String getDir() {
         return dir;

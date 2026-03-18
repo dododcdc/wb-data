@@ -1,7 +1,7 @@
 package com.wbdata.plugin.postgresql;
 
 import com.wbdata.plugin.api.AbstractJdbcDataSourcePlugin;
-import com.wbdata.plugin.api.ConnectionTestRequest;
+import com.wbdata.plugin.api.DataSourceConnectionInfo;
 import com.wbdata.plugin.api.DataSourcePluginDescriptor;
 import com.wbdata.plugin.api.PluginFieldDescriptor;
 
@@ -35,14 +35,14 @@ public final class PostgreSqlDataSourcePlugin extends AbstractJdbcDataSourcePlug
     }
 
     @Override
-    protected String buildJdbcUrl(ConnectionTestRequest request) {
-        String jdbcParams = connectionParam(request.connectionParams(), "jdbcParams");
+    protected String buildJdbcUrl(DataSourceConnectionInfo connectionInfo) {
+        String jdbcParams = connectionParam(connectionInfo.connectionParams(), "jdbcParams");
         String suffix = jdbcParams == null ? "" : "?" + jdbcParams;
         return String.format(
                 "jdbc:postgresql://%s:%s/%s%s",
-                request.host(),
-                defaultPort(request.port(), "5432"),
-                defaultDatabase(request.databaseName(), "postgres"),
+                connectionInfo.host(),
+                defaultPort(connectionInfo.port(), "5432"),
+                defaultDatabase(connectionInfo.databaseName(), "postgres"),
                 suffix
         );
     }

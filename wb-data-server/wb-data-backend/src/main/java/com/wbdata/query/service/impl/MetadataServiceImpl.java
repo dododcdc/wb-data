@@ -4,7 +4,7 @@ import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.datasource.plugin.DataSourcePluginRegistry;
 import com.wbdata.datasource.service.DataSourceService;
 import com.wbdata.plugin.api.ColumnMetadata;
-import com.wbdata.plugin.api.ConnectionTestRequest;
+import com.wbdata.plugin.api.DataSourceConnectionInfo;
 import com.wbdata.plugin.api.PageResult;
 import com.wbdata.plugin.api.TableSummary;
 import com.wbdata.query.service.MetadataService;
@@ -29,7 +29,7 @@ public class MetadataServiceImpl implements MetadataService {
         }
 
         return pluginRegistry.getPlugin(ds.getType())
-                .map(plugin -> plugin.getDatabases(new ConnectionTestRequest(
+                .map(plugin -> plugin.getDatabases(new DataSourceConnectionInfo(
                         ds.getId(),
                         ds.getType(),
                         ds.getHost(),
@@ -49,7 +49,7 @@ public class MetadataServiceImpl implements MetadataService {
         }
 
         return pluginRegistry.getPlugin(ds.getType())
-                .map(plugin -> plugin.getTables(new ConnectionTestRequest(
+                .map(plugin -> plugin.getTables(new DataSourceConnectionInfo(
                         ds.getId(),
                         ds.getType(),
                         ds.getHost(),
@@ -69,7 +69,7 @@ public class MetadataServiceImpl implements MetadataService {
         }
 
         return pluginRegistry.getPlugin(ds.getType())
-                .map(plugin -> plugin.getColumns(new ConnectionTestRequest(
+                .map(plugin -> plugin.getColumns(new DataSourceConnectionInfo(
                         ds.getId(),
                         ds.getType(),
                         ds.getHost(),

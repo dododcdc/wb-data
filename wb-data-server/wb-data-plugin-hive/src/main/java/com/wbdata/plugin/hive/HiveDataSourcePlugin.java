@@ -1,7 +1,7 @@
 package com.wbdata.plugin.hive;
 
 import com.wbdata.plugin.api.AbstractJdbcDataSourcePlugin;
-import com.wbdata.plugin.api.ConnectionTestRequest;
+import com.wbdata.plugin.api.DataSourceConnectionInfo;
 import com.wbdata.plugin.api.DataSourcePluginDescriptor;
 import com.wbdata.plugin.api.PluginFieldDescriptor;
 
@@ -35,12 +35,12 @@ public final class HiveDataSourcePlugin extends AbstractJdbcDataSourcePlugin {
     }
 
     @Override
-    protected String buildJdbcUrl(ConnectionTestRequest request) {
+    protected String buildJdbcUrl(DataSourceConnectionInfo connectionInfo) {
         return String.format(
                 "jdbc:hive2://%s:%s/%s",
-                request.host(),
-                defaultPort(request.port(), "10000"),
-                defaultDatabase(request.databaseName(), "default")
+                connectionInfo.host(),
+                defaultPort(connectionInfo.port(), "10000"),
+                defaultDatabase(connectionInfo.databaseName(), "default")
         );
     }
 }

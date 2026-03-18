@@ -543,6 +543,47 @@ export default function Query() {
     }, [dialectMetadata]);
 
     const handleEditorDidMount = (editor: any, monaco: any) => {
+        monaco.editor.defineTheme('warm-parchment', {
+            base: 'vs',
+            inherit: true,
+            rules: [
+                { token: '', foreground: '3D3A36' },
+                { token: 'comment', foreground: 'A09A90', fontStyle: 'italic' },
+                { token: 'keyword', foreground: 'B85C3A' },
+                { token: 'string', foreground: '6B8E5A' },
+                { token: 'number', foreground: 'B07D48' },
+                { token: 'operator', foreground: '5B5B58' },
+                { token: 'identifier', foreground: '3D3A36' },
+                { token: 'type', foreground: '7A6B5D' },
+                { token: 'delimiter', foreground: '8A8A86' },
+                { token: 'predefined', foreground: 'B85C3A' },
+            ],
+            colors: {
+                'editor.background': '#F8F7F4',
+                'editor.foreground': '#3D3A36',
+                'editor.lineHighlightBackground': '#F0EDE6',
+                'editor.selectionBackground': '#E3D9CC',
+                'editor.inactiveSelectionBackground': '#EDE8E0',
+                'editorCursor.foreground': '#D97757',
+                'editorLineNumber.foreground': '#C5C0B8',
+                'editorLineNumber.activeForeground': '#8A8A86',
+                'editorIndentGuide.background': '#E8E4DC',
+                'editorIndentGuide.activeBackground': '#D5D0C8',
+                'editor.selectionHighlightBackground': '#E8DFD4',
+                'editorBracketMatch.background': '#E8DFD4',
+                'editorBracketMatch.border': '#C4A882',
+                'editorGutter.background': '#F8F7F4',
+                'editorWidget.background': '#F3F1EC',
+                'editorWidget.border': '#E3DED5',
+                'editorSuggestWidget.background': '#F8F7F4',
+                'editorSuggestWidget.border': '#E3DED5',
+                'editorSuggestWidget.selectedBackground': '#EFECE6',
+                'editorSuggestWidget.highlightForeground': '#D97757',
+            },
+        });
+
+        monaco.editor.setTheme('warm-parchment');
+
         editorRef.current = editor;
 
         // Register custom completion provider for SQL
@@ -985,7 +1026,7 @@ export default function Query() {
                                         <Editor
                                             height="100%"
                                             language="sql"
-                                            theme="vs"
+                                            theme="warm-parchment"
                                             value={sql}
                                             onChange={(value) => setSql(value || '')}
                                             onMount={handleEditorDidMount}
@@ -999,7 +1040,7 @@ export default function Query() {
                                                 scrollBeyondLastLine: false,
                                                 automaticLayout: true,
                                                 padding: { top: 12, bottom: 12 },
-                                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                                                fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
                                                 roundedSelection: false,
                                                 cursorStyle: 'line',
                                                 renderLineHighlight: 'all',

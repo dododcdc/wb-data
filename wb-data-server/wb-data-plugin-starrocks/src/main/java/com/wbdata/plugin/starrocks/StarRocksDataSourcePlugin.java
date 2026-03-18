@@ -1,7 +1,7 @@
 package com.wbdata.plugin.starrocks;
 
 import com.wbdata.plugin.api.AbstractJdbcDataSourcePlugin;
-import com.wbdata.plugin.api.ConnectionTestRequest;
+import com.wbdata.plugin.api.DataSourceConnectionInfo;
 import com.wbdata.plugin.api.DataSourcePluginDescriptor;
 import com.wbdata.plugin.api.PluginFieldDescriptor;
 
@@ -35,14 +35,14 @@ public final class StarRocksDataSourcePlugin extends AbstractJdbcDataSourcePlugi
     }
 
     @Override
-    protected String buildJdbcUrl(ConnectionTestRequest request) {
-        String jdbcParams = connectionParam(request.connectionParams(), "jdbcParams");
+    protected String buildJdbcUrl(DataSourceConnectionInfo connectionInfo) {
+        String jdbcParams = connectionParam(connectionInfo.connectionParams(), "jdbcParams");
         String suffix = jdbcParams == null ? "useSSL=false&serverTimezone=UTC&characterEncoding=utf8" : jdbcParams;
         return String.format(
                 "jdbc:mysql://%s:%s/%s?%s",
-                request.host(),
-                defaultPort(request.port(), "9030"),
-                defaultDatabase(request.databaseName(), "default_catalog"),
+                connectionInfo.host(),
+                defaultPort(connectionInfo.port(), "9030"),
+                defaultDatabase(connectionInfo.databaseName(), "default_catalog"),
                 suffix
         );
     }

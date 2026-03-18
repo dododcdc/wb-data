@@ -172,7 +172,7 @@ export default function DataSourceList() {
 
     return (
         <div className="datasource-page">
-            <section className="datasource-toolbar">
+            <section className="datasource-toolbar animate-enter">
                 <div className="datasource-search-shell">
                     <Search size={16} />
                     <input
@@ -197,7 +197,7 @@ export default function DataSourceList() {
                 </div>
             </section>
 
-            <section className="datasource-table-panel">
+            <section className="datasource-table-panel animate-enter animate-enter-delay-1">
                 <DataSourceTable
                     data={records}
                     deletePendingId={pendingDeleteId}

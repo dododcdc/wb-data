@@ -8,7 +8,7 @@ export default function NotFound() {
 
     return (
         <div className="route-state-shell">
-            <section className="route-state-card route-state-card-notfound">
+            <section className="route-state-card route-state-card-notfound animate-enter">
                 <div className="route-state-code">404</div>
                 <div className="route-state-copy">
                     <span className="route-state-kicker">Missing Route</span>

@@ -4,17 +4,17 @@ public interface DataSourcePlugin {
 
     DataSourcePluginDescriptor descriptor();
 
-    boolean testConnection(ConnectionTestRequest request);
+    boolean testConnection(DataSourceConnectionInfo connectionInfo);
 
-    java.util.List<String> getDatabases(ConnectionTestRequest request);
+    java.util.List<String> getDatabases(DataSourceConnectionInfo connectionInfo);
 
-    default PageResult<TableSummary> getTables(ConnectionTestRequest request, String databaseName) {
-        return getTables(request, databaseName, null, 1, 200);
+    default PageResult<TableSummary> getTables(DataSourceConnectionInfo connectionInfo, String databaseName) {
+        return getTables(connectionInfo, databaseName, null, 1, 200);
     }
 
-    PageResult<TableSummary> getTables(ConnectionTestRequest request, String databaseName, String keyword, int page, int size);
+    PageResult<TableSummary> getTables(DataSourceConnectionInfo connectionInfo, String databaseName, String keyword, int page, int size);
 
-    java.util.List<ColumnMetadata> getColumns(ConnectionTestRequest request, String databaseName, String tableName);
+    java.util.List<ColumnMetadata> getColumns(DataSourceConnectionInfo connectionInfo, String databaseName, String tableName);
 
     QueryResult executeQuery(QueryRequest request);
 

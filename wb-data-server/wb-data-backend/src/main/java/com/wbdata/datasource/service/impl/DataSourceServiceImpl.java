@@ -39,7 +39,7 @@ public class DataSourceServiceImpl extends ServiceImpl<DataSourceMapper, DataSou
     @Override
     public boolean testConnection(TestConnectionRequest request) {
         return pluginRegistry.getPlugin(request.getType())
-                .map(plugin -> plugin.testConnection(new com.wbdata.plugin.api.ConnectionTestRequest(
+                .map(plugin -> plugin.testConnection(new com.wbdata.plugin.api.DataSourceConnectionInfo(
                         null,   // testConnection always bypasses the pool
                         request.getType(),
                         request.getHost(),

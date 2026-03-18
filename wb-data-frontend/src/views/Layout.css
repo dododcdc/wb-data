@@ -35,10 +35,10 @@
     justify-content: center;
     width: 34px;
     height: 44px;
-    background: var(--color-brand);
+    background: var(--color-text-primary);
     border-radius: 11px;
     color: var(--color-bg-primary);
-    box-shadow: var(--shadow-brand);
+    box-shadow: none;
 }
 
 .logo-icon {
@@ -49,6 +49,7 @@
     margin: 0;
     color: var(--color-text-primary);
     font-size: 1.1rem;
+    font-family: var(--font-serif);
     font-weight: 800;
     letter-spacing: -0.03em;
 }
@@ -105,9 +106,9 @@
     height: 4px;
     border-radius: 999px;
     background: linear-gradient(90deg,
-        rgba(22, 119, 255, 0) 0%,
-        rgba(147, 197, 253, 0.92) 52%,
-        rgba(22, 119, 255, 0.08) 100%);
+        rgba(217, 119, 87, 0) 0%,
+        rgba(217, 119, 87, 0.5) 52%,
+        rgba(217, 119, 87, 0) 100%);
     opacity: 0;
     pointer-events: none;
 }
@@ -139,7 +140,7 @@
 .user-avater {
     width: 24px;
     height: 24px;
-    background: var(--color-brand);
+    background: var(--color-text-primary);
     color: var(--color-bg-primary);
     border-radius: 50%;
     display: flex;
@@ -173,7 +174,7 @@
     flex: 1 !important;
     display: flex !important;
     flex-direction: column !important;
-    background-color: var(--color-bg-primary) !important;
+    background-color: var(--background) !important;
     overflow: hidden !important;
 }
 

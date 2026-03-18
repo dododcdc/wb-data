@@ -1,0 +1,21 @@
+bvaughn/react-resizable-panels
+  URL: https://github.com/bvaughn/react-resizable-panels
+  A Group wraps a set of resizable Panel components. Group content can be resized horizontally or vertically. Group elements always include the following ...
+  Category: github
+
+react-resizable-panels version 4 : r/reactjs
+  URL: https://www.reddit.com/r/reactjs/comments/1po274y/reactresizablepanels_version_4/
+  The biggest change in version 4 is that the library now supports specifying min/max panel sizes in pixels as well as percentages (and several ...
+
+Getting started with react-resizable-panels
+  URL: https://react-resizable-panels.vercel.app/
+  This library is a set of React components that can be used to build resizable layouts like the one below: This panel is resizable. This one is too.
+
+Resizable - Shadcn UI
+  URL: https://ui.shadcn.com/docs/components/radix/resizable
+  The Resizable component is built on top of react-resizable-panels by bvaughn. ... PanelGroup, Group. PanelResizeHandle, Separator. direction prop, orientation ...
+
+PanelResizeHandle cannot be used as a JSX component ...
+  URL: https://github.com/bvaughn/react-resizable-panels/issues/256
+  I'm getting an error for PanelResizeHandle when rendering an example from docs. TS Error: 'PanelResizeHandle' cannot be used as a JSX ...
+  Category: github

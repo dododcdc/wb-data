@@ -35,7 +35,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
          * 返回给定请求的活跃 JDBC 连接。
          * 调用方负责关闭它（将连接归还到池中）。
          */
-        Connection getConnection(ConnectionTestRequest request, String jdbcUrl, String driverClassName)
+        Connection getConnection(DataSourceConnectionInfo connectionInfo, String jdbcUrl, String driverClassName)
                 throws Exception;
     }
 
@@ -55,7 +55,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
 
     protected abstract String driverClassName();
 
-    protected abstract String buildJdbcUrl(ConnectionTestRequest request);
+    protected abstract String buildJdbcUrl(DataSourceConnectionInfo connectionInfo);
 
     // -------------------------------------------------------------------------
     // 内部辅助方法
@@ -64,23 +64,23 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     /**
      * 始终通过 DriverManager 创建新连接——仅用于连接测试。
      */
-    private Connection openDirectConnection(ConnectionTestRequest request) throws Exception {
+    private Connection openDirectConnection(DataSourceConnectionInfo connectionInfo) throws Exception {
         registerDriverIfNeeded(driverClassName(), getClass().getClassLoader());
         return DriverManager.getConnection(
-                buildJdbcUrl(request),
-                emptyIfNull(request.username()),
-                emptyIfNull(request.password()));
+                buildJdbcUrl(connectionInfo),
+                emptyIfNull(connectionInfo.username()),
+                emptyIfNull(connectionInfo.password()));
     }
 
     /**
      * 返回连接：如果有供应器则使用池化连接，否则使用直连。
      */
-    private Connection getConnection(ConnectionTestRequest request) throws Exception {
+    private Connection getConnection(DataSourceConnectionInfo connectionInfo) throws Exception {
         ConnectionSupplier supplier = connectionSupplier;
         if (supplier != null) {
-            return supplier.getConnection(request, buildJdbcUrl(request), driverClassName());
+            return supplier.getConnection(connectionInfo, buildJdbcUrl(connectionInfo), driverClassName());
         }
-        return openDirectConnection(request);
+        return openDirectConnection(connectionInfo);
     }
 
     // -------------------------------------------------------------------------
@@ -88,9 +88,9 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     // -------------------------------------------------------------------------
 
     @Override
-    public boolean testConnection(ConnectionTestRequest request) {
+    public boolean testConnection(DataSourceConnectionInfo connectionInfo) {
         // 测试连接时始终使用直连——有意绕过连接池
-        try (Connection ignored = openDirectConnection(request)) {
+        try (Connection ignored = openDirectConnection(connectionInfo)) {
             return true;
         } catch (Exception e) {
             return false;
@@ -98,9 +98,9 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     }
 
     @Override
-    public java.util.List<String> getDatabases(ConnectionTestRequest request) {
+    public java.util.List<String> getDatabases(DataSourceConnectionInfo connectionInfo) {
         java.util.List<String> databases = new java.util.ArrayList<>();
-        try (Connection connection = getConnection(request)) {
+        try (Connection connection = getConnection(connectionInfo)) {
             java.sql.DatabaseMetaData metaData = connection.getMetaData();
             try (java.sql.ResultSet rs = metaData.getCatalogs()) {
                 while (rs.next()) {
@@ -121,9 +121,9 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     }
 
     @Override
-    public PageResult<TableSummary> getTables(ConnectionTestRequest request, String databaseName, String keyword, int page, int size) {
+    public PageResult<TableSummary> getTables(DataSourceConnectionInfo connectionInfo, String databaseName, String keyword, int page, int size) {
         java.util.List<TableSummary> allMatched = new java.util.ArrayList<>();
-        try (Connection connection = getConnection(request)) {
+        try (Connection connection = getConnection(connectionInfo)) {
             java.sql.DatabaseMetaData metaData = connection.getMetaData();
 
             String normalizedKeyword = keyword == null ? null : keyword.trim().toLowerCase(java.util.Locale.ROOT);
@@ -156,9 +156,9 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     }
 
     @Override
-    public java.util.List<ColumnMetadata> getColumns(ConnectionTestRequest request, String databaseName, String tableName) {
+    public java.util.List<ColumnMetadata> getColumns(DataSourceConnectionInfo connectionInfo, String databaseName, String tableName) {
         java.util.List<ColumnMetadata> columns = new java.util.ArrayList<>();
-        try (Connection connection = getConnection(request)) {
+        try (Connection connection = getConnection(connectionInfo)) {
             java.sql.DatabaseMetaData metaData = connection.getMetaData();
             try (java.sql.ResultSet colRs = metaData.getColumns(databaseName, null, tableName, "%")) {
                 while (colRs.next()) {
@@ -180,13 +180,11 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     @Override
     public QueryResult executeQuery(QueryRequest request) {
         long startTime = System.currentTimeMillis();
-        ConnectionTestRequest connInfo = new ConnectionTestRequest(
-                request.dataSourceId(), request.type(), request.host(), request.port(), request.databaseName(),
-                request.username(), request.password(), request.connectionParams());
+        DataSourceConnectionInfo connInfo = request.connectionInfo();
         try (Connection connection = getConnection(connInfo)) {
-            if (request.databaseName() != null && !request.databaseName().isEmpty()) {
+            if (connInfo.databaseName() != null && !connInfo.databaseName().isEmpty()) {
                 try {
-                    connection.setCatalog(request.databaseName());
+                    connection.setCatalog(connInfo.databaseName());
                 } catch (Exception ignored) {
                     // 某些驱动不支持 setCatalog
                 }

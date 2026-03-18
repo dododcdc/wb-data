@@ -50,12 +50,13 @@
     justify-content: space-between;
     padding: 16px 24px;
     background-color: var(--color-bg-primary);
-    border-bottom: 1px solid #ebedf0;
+    border-bottom: 1px solid var(--color-border);
 }
 
 .dialog-title {
     font-size: 1.125rem;
     font-weight: 600;
+    font-family: var(--font-serif);
     color: var(--color-text-primary);
     margin: 0;
 }
@@ -79,14 +80,15 @@
 }
 
 .dialog-close-btn:hover {
-    background-color: #f5f5f5;
-    color: #1a1a1a;
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
 }
 
 /* Modal Card overrides */
 .console-form-card {
+    animation: fadeSlideUp 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
     background: var(--color-bg-primary);
-    border: 1px solid #ebedf0;
+    border: 1px solid var(--color-border);
     border-radius: 12px;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
     width: 1040px;
@@ -114,8 +116,8 @@
 /* Side Panel */
 .form-side-panel {
     flex: 0 0 320px;
-    background-color: #fafbfd;
-    border-right: 1px solid #f0f0f0;
+    background-color: var(--color-bg-secondary);
+    border-right: 1px solid var(--color-border);
     padding: 32px;
 }
 
@@ -123,7 +125,7 @@
     margin: 0 0 20px 0;
     font-size: 0.95rem;
     font-weight: 700;
-    color: #1a1a1a;
+    color: var(--color-text-primary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     display: flex;
@@ -169,7 +171,7 @@
 
 .panel-divider {
     height: 1px;
-    background-color: #f0f0f0;
+    background-color: var(--color-border);
     margin: 32px 0;
 }
 
@@ -188,11 +190,11 @@
 .input-group label {
     font-size: 0.85rem;
     font-weight: 600;
-    color: #5c6269;
+    color: var(--color-text-secondary);
 }
 
 .input-help {
-    color: #94a3b8;
+    color: var(--color-text-muted);
     font-size: 0.78rem;
     line-height: 1.5;
 }
@@ -200,13 +202,13 @@
 .input-help code {
     padding: 1px 6px;
     border-radius: 999px;
-    background: #eff6ff;
-    color: #0b63d8;
+    background: var(--color-brand-light);
+    color: var(--color-link);
     font-size: 0.92em;
 }
 
 .required {
-    color: #ff4d4f;
+    color: var(--color-error);
     margin-left: 2px;
 }
 
@@ -215,10 +217,10 @@
 .input-group select {
     height: 38px;
     padding: 0 12px;
-    border: 1px solid #d9d9d9;
+    border: 1px solid var(--color-input-border);
     border-radius: 8px;
     font-size: 0.92rem;
-    color: #1a1a1a;
+    color: var(--color-text-primary);
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     background-color: var(--color-bg-primary);
     width: 100%;
@@ -239,7 +241,7 @@
 .input-group textarea:focus {
     border-color: var(--color-brand);
     outline: none;
-    box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.1);
+    box-shadow: 0 0 0 3px var(--color-accent-glow);
 }
 
 .span-2 {
@@ -256,7 +258,7 @@
 
 .input-group input::placeholder,
 .input-group textarea::placeholder {
-    color: #bfbfbf;
+    color: var(--color-input-placeholder);
     font-size: 0.85rem;
 }
 
@@ -264,7 +266,7 @@
 .console-form-footer {
     padding: 20px 40px;
     background-color: var(--color-bg-primary);
-    border-top: 1px solid #f0f0f0;
+    border-top: 1px solid var(--color-border);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -279,10 +281,10 @@
 .test-action-btn {
     height: 44px;
     padding: 0 16px;
-    background: #f5f5f5;
-    border: 1px solid #d9d9d9;
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-input-border);
     border-radius: 6px;
-    color: #595959;
+    color: var(--color-text-secondary);
     font-weight: 500;
     font-size: 0.875rem;
     cursor: pointer;
@@ -297,15 +299,15 @@
 
 .test-action-btn:disabled {
     background: var(--color-bg-tertiary);
-    border-color: #e2e8f0;
-    color: #94a3b8;
+    border-color: var(--color-border);
+    color: var(--color-text-muted);
     cursor: not-allowed;
 }
 
 .test-action-btn:disabled:hover {
     background: var(--color-bg-tertiary);
-    border-color: #e2e8f0;
-    color: #94a3b8;
+    border-color: var(--color-border);
+    color: var(--color-text-muted);
 }
 
 .test-badge {
@@ -317,11 +319,11 @@
 }
 
 .test-badge.success {
-    color: #52c41a;
+    color: var(--color-success);
 }
 
 .test-badge.fail {
-    color: #ff4d4f;
+    color: var(--color-error);
 }
 
 .test-note {
@@ -338,47 +340,44 @@
 .cancel-btn {
     height: 40px;
     padding: 0 24px;
-    background: white;
-    border: 1px solid #d9d9d9;
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-input-border);
     border-radius: 8px;
-    color: #595959;
+    color: var(--color-text-secondary);
     font-weight: 500;
     cursor: pointer;
 }
 
 .cancel-btn:hover {
-    border-color: #ff4d4f;
-    color: #ff4d4f;
+    border-color: var(--color-error);
+    color: var(--color-error);
 }
 
 .submit-btn {
     height: 40px;
     padding: 0 28px;
-    background: #4096ff;
-    color: white;
+    background: var(--color-text-primary);
+    color: var(--color-bg-primary);
     border: none;
     border-radius: 8px;
     font-weight: 600;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(22, 119, 255, 0.16);
     transition: all 0.2s;
 }
 
 .submit-btn:hover,
 .submit-btn:focus-visible {
-    background: var(--color-brand);
+    background: var(--color-text-secondary);
     transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(22, 119, 255, 0.24);
 }
 
 .submit-btn:active {
-    background: #0958d9;
+    background: var(--color-text-primary);
     transform: translateY(0);
-    box-shadow: 0 3px 10px rgba(9, 88, 217, 0.22);
 }
 
 .submit-btn:disabled {
-    background: #d9d9d9;
+    background: var(--color-input-border);
     box-shadow: none;
     transform: none;
     cursor: not-allowed;
