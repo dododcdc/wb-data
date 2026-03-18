@@ -30,14 +30,14 @@
     padding: 0 14px;
     border: 1px solid var(--color-border);
     border-radius: 12px;
-    background: var(--color-bg-tertiary);
+    background: var(--color-bg-primary);
     color: var(--color-text-muted);
 }
 
 .datasource-search-shell:focus-within {
-    border-color: rgba(22, 119, 255, 0.32);
+    border-color: var(--color-border-hover);
     background: var(--color-bg-primary);
-    box-shadow: 0 0 0 4px rgba(22, 119, 255, 0.08);
+    box-shadow: 0 0 0 4px var(--color-accent-glow);
 }
 
 .datasource-search-shell input {
@@ -65,16 +65,16 @@
     padding: 0 16px;
     border: none;
     border-radius: 12px;
-    background: var(--color-brand);
+    background: var(--color-text-primary);
     color: var(--color-bg-primary);
     font-size: var(--text-md);
     font-weight: 600;
-    box-shadow: var(--shadow-brand);
-    transition: transform var(--transition-fast);
+    transition: transform var(--transition-fast), background var(--transition-fast);
 }
 
 .datasource-primary-btn:hover {
     transform: translateY(-1px);
+    background: var(--color-text-secondary);
 }
 
 .datasource-table-panel {
@@ -99,7 +99,7 @@
     width: min(640px, 100%);
     height: 12px;
     border-radius: 999px;
-    background: linear-gradient(90deg, rgba(22, 119, 255, 0.08), rgba(22, 119, 255, 0.22), rgba(22, 119, 255, 0.08));
+    background: linear-gradient(90deg, var(--color-accent-glow), rgba(217, 119, 87, 0.18), var(--color-accent-glow));
     background-size: 180% 100%;
     animation: datasourceShimmer 1.4s linear infinite;
 }
@@ -110,15 +110,20 @@
 
 .datasource-error {
     align-items: flex-start;
-    min-height: 160px;
+    min-height: 100px;
     margin-top: 18px;
-    border: 1px solid var(--color-error-border);
-    border-radius: 16px;
-    background: var(--color-error-bg);
+    border: 1px solid rgba(180, 35, 24, 0.15);
+    border-radius: 8px;
+    background: rgba(180, 35, 24, 0.04);
     color: var(--color-error);
 }
 
-.datasource-error strong,
+.datasource-error strong {
+    margin: 0;
+    font-size: var(--text-md);
+    font-weight: 600;
+}
+
 .datasource-empty h3 {
     margin: 0;
     font-size: var(--text-xl);
@@ -173,7 +178,7 @@
 }
 
 .datasource-table tbody tr:hover {
-    background: rgba(22, 119, 255, 0.03);
+    background: var(--color-accent-glow);
 }
 
 .datasource-name-cell {
@@ -255,7 +260,7 @@
 }
 
 .datasource-icon-btn.danger:hover:not(:disabled) {
-    border-color: rgba(239, 68, 68, 0.28);
+    border-color: var(--color-error-border);
     color: var(--color-error);
 }
 
@@ -275,6 +280,8 @@
 .datasource-page-info {
     color: var(--color-text-muted);
     font-size: var(--text-base);
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .datasource-pagination-nav {
