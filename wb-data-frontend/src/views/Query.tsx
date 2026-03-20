@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense, useCallback } from 'react';
 import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, Search, PanelLeftClose, PanelLeft } from 'lucide-react';
-import { format as formatSql } from 'sql-formatter';
-import * as XLSX from 'xlsx';
-import { getMetadataDatabases, getMetadataTables, getMetadataColumns, executeQuery, getDialectMetadata, TableSummary, ColumnMetadata, QueryResult, DialectMetadata, PageResult } from '../api/query';
+import { getMetadataDatabases, getMetadataTables, getMetadataColumns, executeQuery, getDialectMetadata, TableSummary, ColumnMetadata, QueryResult, DialectMetadata } from '../api/query';
 import { getDataSourcePage, DataSource } from '../api/datasource';
 import { DataSourceSelect } from '../components/DataSourceSelect';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../components/ui/resizable';
@@ -60,15 +58,32 @@ export default function Query() {
     const editorRef = useRef<any>(null);
     const composingRef = useRef(false);
     const dsRequestIdRef = useRef(0);
+    const databasesRequestIdRef = useRef(0);
+    const dialectRequestIdRef = useRef(0);
     const exportMenuRef = useRef<HTMLDivElement>(null);
-    const tableScrollRef = useRef<HTMLDivElement>(null);
+    const tableScrollRef = useRef<HTMLDivElement | null>(null);
+    const tableLoadingRequestKeysRef = useRef<Set<string>>(new Set());
+    const tableListPendingCountRef = useRef(0);
+    const tableMorePendingCountRef = useRef(0);
+    const activeDsIdRef = useRef('');
+    const activeDbRef = useRef('');
+    const tableKeywordCommittedRef = useRef('');
+    const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
     const [tableScrollElement, setTableScrollElement] = useState<HTMLDivElement | null>(null);
     const TABLE_PAGE_SIZE = 200;
 
     const SIDEBAR_STORAGE_KEY = 'query-sidebar-collapsed';
+    const SIDEBAR_DEFAULT_WIDTH = 300;
+    const SIDEBAR_MIN_WIDTH = 250;
+    const SIDEBAR_MAX_WIDTH = 600;
     const sidebarPanelRef = usePanelRef();
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-    const userToggledRef = useRef(false);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+        try {
+            return localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true';
+        } catch {
+            return true;
+        }
+    });
 
     const virtualizer = useVirtualizer({
         count: tables.length,
@@ -86,25 +101,19 @@ export default function Query() {
     const toggleSidebar = useCallback(() => {
         const panel = sidebarPanelRef.current;
         if (!panel) return;
-        userToggledRef.current = true;
-        if (panel.isCollapsed()) {
-            panel.expand();
-        } else {
-            panel.collapse();
-        }
-    }, [sidebarPanelRef]);
 
-    const handleSidebarResize = useCallback((size: { asPercentage: number; inPixels: number }) => {
-        const panel = sidebarPanelRef.current;
-        if (!panel) return;
-        const collapsed = panel.isCollapsed();
-        setSidebarCollapsed(prev => {
-            if (prev !== collapsed) {
-                try { localStorage.setItem(SIDEBAR_STORAGE_KEY, String(collapsed)); } catch {}
-            }
-            return collapsed;
-        });
-    }, [sidebarPanelRef]);
+        if (sidebarCollapsed) {
+            panel.expand();
+            setSidebarCollapsed(false);
+            try { localStorage.setItem(SIDEBAR_STORAGE_KEY, 'false'); } catch {}
+        } else {
+            setSidebarCollapsed(true);
+            try { localStorage.setItem(SIDEBAR_STORAGE_KEY, 'true'); } catch {}
+            requestAnimationFrame(() => {
+                sidebarPanelRef.current?.collapse();
+            });
+        }
+    }, [sidebarCollapsed, sidebarPanelRef]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -118,12 +127,16 @@ export default function Query() {
     }, [toggleSidebar]);
 
     useEffect(() => {
-        if (sidebarCollapsed) {
-            requestAnimationFrame(() => {
-                sidebarPanelRef.current?.collapse();
-            });
-        }
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+        activeDsIdRef.current = selectedDsId;
+    }, [selectedDsId]);
+
+    useEffect(() => {
+        activeDbRef.current = selectedDb;
+    }, [selectedDb]);
+
+    useEffect(() => {
+        tableKeywordCommittedRef.current = tableKeywordCommitted;
+    }, [tableKeywordCommitted]);
 
     // Close export menu on backdrop click or Escape
     useEffect(() => {
@@ -213,12 +226,6 @@ export default function Query() {
         setExpandedTables(new Set());
     }, [selectedDsId, selectedDb]);
 
-    useEffect(() => {
-        if (tables.length > 0 && sidebarCollapsed && !userToggledRef.current) {
-            sidebarPanelRef.current?.expand();
-        }
-    }, [tables.length > 0]);
-
     const toggleTableExpand = (tableName: string) => {
         setExpandedTables(prev => {
             const next = new Set(prev);
@@ -278,8 +285,11 @@ export default function Query() {
     };
 
     const loadDialect = async (id: number) => {
+        const requestId = ++dialectRequestIdRef.current;
         try {
             const data = await getDialectMetadata(id);
+            if (requestId !== dialectRequestIdRef.current) return;
+            if (activeDsIdRef.current !== String(id)) return;
             setDialectMetadata(data);
         } catch (error) {
             console.error('Failed to load dialect metadata', error);
@@ -287,9 +297,12 @@ export default function Query() {
     };
 
     const loadDatabases = async (id: number) => {
+        const requestId = ++databasesRequestIdRef.current;
         setLoadingDatabases(true);
         try {
             const data = await getMetadataDatabases(id);
+            if (requestId !== databasesRequestIdRef.current) return;
+            if (activeDsIdRef.current !== String(id)) return;
             setDatabases(data);
             // Default select the first database if available
             if (data.length > 0) {
@@ -298,32 +311,65 @@ export default function Query() {
         } catch (error) {
             console.error('Failed to load databases', error);
         } finally {
-            setLoadingDatabases(false);
+            if (requestId === databasesRequestIdRef.current) {
+                setLoadingDatabases(false);
+            }
         }
     };
 
     const loadTables = async (dsId: number, dbName: string, keyword?: string, page: number = 1, append: boolean = false) => {
+        const normalizedKeyword = (keyword ?? '').trim();
+        const requestKey = `${dsId}::${dbName}::${normalizedKeyword}::${page}`;
+        if (tableLoadingRequestKeysRef.current.has(requestKey)) {
+            return;
+        }
+        tableLoadingRequestKeysRef.current.add(requestKey);
+
         if (append) {
+            tableMorePendingCountRef.current += 1;
             setLoadingMoreTables(true);
         } else {
+            tableListPendingCountRef.current += 1;
             setLoadingTables(true);
         }
         try {
-            const result = await getMetadataTables(dsId, dbName, keyword || undefined, page, TABLE_PAGE_SIZE);
+            const result = await getMetadataTables(dsId, dbName, normalizedKeyword || undefined, page, TABLE_PAGE_SIZE);
+            const isStale =
+                activeDsIdRef.current !== String(dsId) ||
+                activeDbRef.current !== dbName ||
+                tableKeywordCommittedRef.current.trim() !== normalizedKeyword;
+            if (isStale) {
+                return;
+            }
+
             if (append) {
-                setTables(prev => [...prev, ...result.data]);
+                setTables(prev => {
+                    const existing = new Set(prev.map(table => table.name));
+                    const next = result.data.filter(table => !existing.has(table.name));
+                    return [...prev, ...next];
+                });
             } else {
                 setTables(result.data);
             }
             setTableTotal(result.total);
             const loadedSoFar = append ? (page - 1) * TABLE_PAGE_SIZE + result.data.length : result.data.length;
             setTableHasMore(loadedSoFar < result.total);
-            setTablePage(page);
+            setTablePage(prev => (append ? Math.max(prev, page) : page));
         } catch (error) {
             console.error('Failed to load tables', error);
         } finally {
-            setLoadingTables(false);
-            setLoadingMoreTables(false);
+            tableLoadingRequestKeysRef.current.delete(requestKey);
+            if (append) {
+                tableMorePendingCountRef.current = Math.max(0, tableMorePendingCountRef.current - 1);
+                if (tableMorePendingCountRef.current === 0) {
+                    setLoadingMoreTables(false);
+                }
+            } else {
+                tableListPendingCountRef.current = Math.max(0, tableListPendingCountRef.current - 1);
+                if (tableListPendingCountRef.current === 0) {
+                    setLoadingTables(false);
+                }
+            }
         }
     };
 
@@ -387,6 +433,11 @@ export default function Query() {
         return { label: selectedDb, value: selectedDb };
     }, [selectedDb]);
 
+    const hasHiddenMetadataHint =
+        sidebarCollapsed &&
+        Boolean(selectedDsId && selectedDb) &&
+        (loadingTables || loadingMoreTables || tableTotal > 0);
+
     const handleRunQuery = async (sqlToRun?: string) => {
         let finalSql = sqlToRun;
 
@@ -426,11 +477,12 @@ export default function Query() {
     };
 
     // ── SQL Formatting ──────────────────────────────────────────────────────
-    const handleFormat = () => {
+    const handleFormat = async () => {
         if (!editorRef.current) return;
         const raw = editorRef.current.getValue();
         try {
-            const formatted = formatSql(raw, { language: 'sql', tabWidth: 4, keywordCase: 'upper' });
+            const { format } = await import('sql-formatter');
+            const formatted = format(raw, { language: 'sql', tabWidth: 4, keywordCase: 'upper' });
             editorRef.current.setValue(formatted);
         } catch {
             // If sql-formatter can't parse it, leave as-is
@@ -460,8 +512,9 @@ export default function Query() {
         setShowExportMenu(false);
     };
 
-    const exportExcel = () => {
+    const exportExcel = async () => {
         if (!result) return;
+        const XLSX = await import('xlsx');
         const data = [
             result.columns.map(c => c.name),
             ...result.rows.map(row => result.columns.map(c => row[c.name] ?? ''))
@@ -587,6 +640,7 @@ export default function Query() {
         editorRef.current = editor;
 
         // Register custom completion provider for SQL
+        completionProviderRef.current?.dispose();
         const provider = monaco.languages.registerCompletionItemProvider('sql', {
             triggerCharacters: ['.'],
             provideCompletionItems: (model: any, position: any) => {
@@ -743,7 +797,7 @@ export default function Query() {
         });
 
         // Store provider to dispose on unmount
-        (editor as any)._completionProvider = provider;
+        completionProviderRef.current = provider;
 
         // Add Cmd+Enter / Ctrl+Enter: run selection if exists, else only the statement under the cursor
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
@@ -769,18 +823,24 @@ export default function Query() {
         });
     };
 
+    useEffect(() => {
+        return () => {
+            completionProviderRef.current?.dispose();
+            completionProviderRef.current = null;
+        };
+    }, []);
+
     return (
         <div className="query-splitter">
             <ResizablePanelGroup className="query-splitter-panel" direction="horizontal">
                 {/* 左侧元数据面板 */}
                 <ResizablePanel
                     panelRef={sidebarPanelRef}
-                    defaultSize={sidebarCollapsed ? 0 : 300}
-                    minSize={250}
-                    maxSize={600}
-                    collapsible
+                    defaultSize={sidebarCollapsed ? 0 : SIDEBAR_DEFAULT_WIDTH}
+                    minSize={SIDEBAR_MIN_WIDTH}
+                    maxSize={SIDEBAR_MAX_WIDTH}
+                    collapsible={sidebarCollapsed}
                     collapsedSize={0}
-                    onResize={handleSidebarResize}
                     className="metadata-panel-wrapper"
                 >
                     <aside className={`metadata-panel ${!sidebarCollapsed ? 'sidebar-visible' : ''}`}>
@@ -924,11 +984,12 @@ export default function Query() {
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <button
-                                            className="sidebar-toggle-button toolbar-sidebar-toggle"
+                                            className={`sidebar-toggle-button toolbar-sidebar-toggle ${hasHiddenMetadataHint ? 'has-notice' : ''}`}
                                             onClick={toggleSidebar}
                                             aria-label={sidebarCollapsed ? '展开表结构' : '收起表结构'}
                                         >
                                             {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+                                            {hasHiddenMetadataHint ? <span className="sidebar-toggle-notice" aria-hidden="true" /> : null}
                                         </button>
                                     </TooltipTrigger>
                                     <TooltipContent className="tooltip-content" side="bottom">
