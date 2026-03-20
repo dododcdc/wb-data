@@ -1,10 +1,18 @@
+import { lazy, Suspense } from 'react';
+import type { ReactNode } from 'react';
 import { createBrowserRouter } from 'react-router-dom';
 import Layout from '../views/Layout';
-import DataSourceList from '../views/DataSourceList';
-import Dashboard from '../views/Dashboard';
-import Query from '../views/Query';
-import NotFound from '../views/NotFound';
 import RouteErrorPage from '../views/RouteErrorPage';
+import RouteLoadingPage from '../views/RouteLoadingPage';
+
+const Dashboard = lazy(() => import('../views/Dashboard'));
+const DataSourceList = lazy(() => import('../views/DataSourceList'));
+const Query = lazy(() => import('../views/Query'));
+const NotFound = lazy(() => import('../views/NotFound'));
+
+function withRouteSuspense(element: ReactNode) {
+    return <Suspense fallback={<RouteLoadingPage />}>{element}</Suspense>;
+}
 
 const router = createBrowserRouter([
     {
@@ -14,19 +22,19 @@ const router = createBrowserRouter([
         children: [
             {
                 index: true,
-                element: <Dashboard />,
+                element: withRouteSuspense(<Dashboard />),
             },
             {
                 path: 'datasources',
-                element: <DataSourceList />,
+                element: withRouteSuspense(<DataSourceList />),
             },
             {
                 path: 'query',
-                element: <Query />,
+                element: withRouteSuspense(<Query />),
             },
             {
                 path: '*',
-                element: <NotFound />,
+                element: withRouteSuspense(<NotFound />),
             },
         ],
     },

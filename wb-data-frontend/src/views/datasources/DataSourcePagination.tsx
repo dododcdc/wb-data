@@ -31,6 +31,7 @@ export function DataSourcePagination(props: DataSourcePaginationProps) {
     const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
     const prevDisabled = currentPage === 1 || isFetching;
     const nextDisabled = currentPage >= totalPages || isFetching;
+    const ellipsis = 'ellipsis' as const;
 
     const paginationRange = useMemo(() => {
         const boundaryCount = 1;
@@ -64,9 +65,9 @@ export function DataSourcePagination(props: DataSourcePaginationProps) {
 
         const items: Array<number | 'ellipsis'> = [
             ...startPages,
-            ...(siblingsStart > boundaryCount + 2 ? ['ellipsis'] : [boundaryCount + 1]),
+            ...(siblingsStart > boundaryCount + 2 ? [ellipsis] : [boundaryCount + 1]),
             ...range(siblingsStart, siblingsEnd),
-            ...(siblingsEnd < totalPages - boundaryCount - 1 ? ['ellipsis'] : [totalPages - boundaryCount]),
+            ...(siblingsEnd < totalPages - boundaryCount - 1 ? [ellipsis] : [totalPages - boundaryCount]),
             ...endPages,
         ];
 

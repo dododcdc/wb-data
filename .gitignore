@@ -4,6 +4,10 @@
 .DS_Store
 *.swp
 *.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 
 # Project specific sensitive files
 # (Removed non-existent file references)
@@ -18,8 +22,10 @@ dist-ssr/
 .env.*
 !.env.example
 npm-debug.log*
+pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+lerna-debug.log*
 
 # Java / Backend
 target/
