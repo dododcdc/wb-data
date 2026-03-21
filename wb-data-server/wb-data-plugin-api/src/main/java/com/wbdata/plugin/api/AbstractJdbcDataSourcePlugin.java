@@ -88,12 +88,12 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     // -------------------------------------------------------------------------
 
     @Override
-    public boolean testConnection(DataSourceConnectionInfo connectionInfo) {
+    public ConnectionTestResult testConnectionDetailed(DataSourceConnectionInfo connectionInfo) {
         // 测试连接时始终使用直连——有意绕过连接池
         try (Connection ignored = openDirectConnection(connectionInfo)) {
-            return true;
+            return ConnectionTestResult.success("连接成功");
         } catch (Exception e) {
-            return false;
+            return ConnectionTestResult.failure(extractConnectionErrorMessage(e));
         }
     }
 
@@ -257,6 +257,72 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
 
     protected String emptyIfNull(String value) {
         return value == null ? "" : value;
+    }
+
+    private String extractConnectionErrorMessage(Exception exception) {
+        Throwable current = exception;
+        String message = null;
+
+        while (current != null) {
+            if (current.getMessage() != null && !current.getMessage().isBlank()) {
+                message = current.getMessage();
+            }
+            current = current.getCause();
+        }
+
+        if (message == null || message.isBlank()) {
+            return "连接失败，请检查地址、端口和认证信息";
+        }
+
+        return normalizeConnectionErrorMessage(message);
+    }
+
+    private String normalizeConnectionErrorMessage(String message) {
+        String normalized = message.trim();
+        String lowerCaseMessage = normalized.toLowerCase(java.util.Locale.ROOT);
+
+        if (lowerCaseMessage.contains("connection refused")
+                || lowerCaseMessage.contains("communications link failure")
+                || lowerCaseMessage.contains("connection reset")) {
+            return "无法建立连接，请检查主机地址、端口和数据库服务状态";
+        }
+
+        if (lowerCaseMessage.contains("timed out")
+                || lowerCaseMessage.contains("timeout")
+                || lowerCaseMessage.contains("socket timeout")) {
+            return "连接超时，请检查网络连通性以及主机地址和端口";
+        }
+
+        if (lowerCaseMessage.contains("unknown host")
+                || lowerCaseMessage.contains("unknownhostexception")) {
+            return "无法解析主机地址，请检查主机名是否正确";
+        }
+
+        if (lowerCaseMessage.contains("access denied")
+                || lowerCaseMessage.contains("authentication failed")
+                || lowerCaseMessage.contains("password authentication failed")
+                || lowerCaseMessage.contains("invalid authorization specification")) {
+            return "认证失败，请检查用户名和密码是否正确";
+        }
+
+        if (lowerCaseMessage.contains("unknown database")
+                || lowerCaseMessage.contains("database does not exist")
+                || lowerCaseMessage.contains("schema")
+                && lowerCaseMessage.contains("does not exist")) {
+            return "默认数据库不存在，请检查数据库名称是否正确";
+        }
+
+        if (lowerCaseMessage.contains("no suitable driver")
+                || lowerCaseMessage.contains("failed to load driver class")
+                || lowerCaseMessage.contains("classnotfoundexception")) {
+            return "缺少对应数据库驱动，请检查插件安装是否完整";
+        }
+
+        if (lowerCaseMessage.contains("too many connections")) {
+            return "数据库连接数已满，请稍后重试或检查数据库连接限制";
+        }
+
+        return "连接失败：" + normalized;
     }
 
     protected String defaultPort(Integer port, String fallback) {

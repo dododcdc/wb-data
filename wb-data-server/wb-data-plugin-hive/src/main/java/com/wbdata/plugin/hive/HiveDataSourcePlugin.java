@@ -20,7 +20,7 @@ public final class HiveDataSourcePlugin extends AbstractJdbcDataSourcePlugin {
                     new PluginFieldDescriptor("port", "connection", "端口", "10000", "text", true, "10000"),
                     new PluginFieldDescriptor("databaseName", "connection", "默认数据库", "如：default", "text", true, "default"),
                     new PluginFieldDescriptor("username", "authentication", "用户名", "hive_user", "text", true, null),
-                    new PluginFieldDescriptor("password", "authentication", "密码", "按认证方式填写", "password", false, null)
+                    new PluginFieldDescriptor("password", "authentication", "密码", "未配置密码可留空", "password", false, null)
             )
     );
 

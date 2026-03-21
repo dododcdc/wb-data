@@ -9,6 +9,7 @@ import com.wbdata.datasource.dto.TestConnectionRequest;
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.datasource.plugin.DataSourcePluginRegistry;
 import com.wbdata.datasource.service.DataSourceService;
+import com.wbdata.plugin.api.ConnectionTestResult;
 import com.wbdata.plugin.api.DataSourcePluginDescriptor;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -82,7 +83,9 @@ public class DataSourceController {
         dataSource.setPort(dto.getPort());
         dataSource.setDatabaseName(dto.getDatabaseName());
         dataSource.setUsername(dto.getUsername());
-        dataSource.setPassword(dto.getPassword());
+        if (dto.getPassword() != null && !dto.getPassword().isBlank()) {
+            dataSource.setPassword(dto.getPassword());
+        }
         dataSource.setConnectionParams(dto.getConnectionParams());
         dataSource.setOwner(dto.getOwner());
         boolean updated = dataSourceService.updateById(dataSource);
@@ -107,19 +110,19 @@ public class DataSourceController {
 
     @Operation(summary = "测试连接 (新建)")
     @PostMapping("/test-connection")
-    public Result<Boolean> testNewConnection(@RequestBody TestConnectionRequest request) {
+    public Result<ConnectionTestResult> testNewConnection(@Validated @RequestBody TestConnectionRequest request) {
         return Result.success(dataSourceService.testConnection(request));
     }
 
     @Operation(summary = "测试连接 (已有)")
     @PostMapping("/{id}/test")
-    public Result<Boolean> testExistingConnection(@PathVariable Long id) {
+    public Result<ConnectionTestResult> testExistingConnection(@PathVariable Long id) {
         return Result.success(dataSourceService.testConnection(id));
     }
 
     private void validatePluginType(String type) {
         if (!pluginRegistry.supports(type)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported datasource type: " + type);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "暂不支持的数据源类型: " + type);
         }
     }
 }

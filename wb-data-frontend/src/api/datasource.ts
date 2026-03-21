@@ -53,6 +53,11 @@ export interface PageResult<T> {
     pages: number;
 }
 
+export interface ConnectionTestResult {
+    success: boolean;
+    message: string;
+}
+
 export const getDataSourcePage = (params: DataSourceSearchQuery) => {
     return request.get<any, PageResult<DataSource>>('/api/v1/datasources', { params });
 };
@@ -82,9 +87,9 @@ export const updateDataSourceStatus = (id: number, status: string) => {
 };
 
 export const testNewConnection = (data: any) => {
-    return request.post<any, boolean>('/api/v1/datasources/test-connection', data);
+    return request.post<any, ConnectionTestResult>('/api/v1/datasources/test-connection', data);
 };
 
 export const testExistingConnection = (id: number) => {
-    return request.post<any, boolean>(`/api/v1/datasources/${id}/test`);
+    return request.post<any, ConnectionTestResult>(`/api/v1/datasources/${id}/test`);
 };

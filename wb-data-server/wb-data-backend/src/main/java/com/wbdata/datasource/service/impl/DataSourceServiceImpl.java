@@ -9,6 +9,7 @@ import com.wbdata.datasource.dto.TestConnectionRequest;
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.datasource.mapper.DataSourceMapper;
 import com.wbdata.datasource.service.DataSourceService;
+import com.wbdata.plugin.api.ConnectionTestResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,9 +38,13 @@ public class DataSourceServiceImpl extends ServiceImpl<DataSourceMapper, DataSou
     }
 
     @Override
-    public boolean testConnection(TestConnectionRequest request) {
+    public ConnectionTestResult testConnection(TestConnectionRequest request) {
+        if (request.getType() == null || request.getType().isBlank()) {
+            return ConnectionTestResult.failure("请选择数据源类型");
+        }
+
         return pluginRegistry.getPlugin(request.getType())
-                .map(plugin -> plugin.testConnection(new com.wbdata.plugin.api.DataSourceConnectionInfo(
+                .map(plugin -> plugin.testConnectionDetailed(new com.wbdata.plugin.api.DataSourceConnectionInfo(
                         null,   // testConnection always bypasses the pool
                         request.getType(),
                         request.getHost(),
@@ -49,14 +54,15 @@ public class DataSourceServiceImpl extends ServiceImpl<DataSourceMapper, DataSou
                         request.getPassword(),
                         request.getConnectionParams()
                 )))
-                .orElse(false);
+                .orElseGet(() -> ConnectionTestResult.failure("暂不支持的数据源类型: " + request.getType()));
     }
 
     @Override
-    public boolean testConnection(Long id) {
+    public ConnectionTestResult testConnection(Long id) {
         DataSource ds = this.getById(id);
-        if (ds == null)
-            return false;
+        if (ds == null) {
+            return ConnectionTestResult.failure("数据源不存在或已删除");
+        }
 
         TestConnectionRequest request = new TestConnectionRequest();
         request.setType(ds.getType());

@@ -19,7 +19,7 @@ import {
     updateDataSource,
 } from '../api/datasource';
 import { CheckCircle, AlertCircle, X } from 'lucide-react';
-import { DataSourceSelect } from '../components/DataSourceSelect';
+import { SimpleSelect } from '../components/SimpleSelect';
 import './DataSourceForm.css';
 
 interface DataSourceFormProps {
@@ -41,6 +41,8 @@ type FormState = {
     password: string;
     connectionParams: Record<string, unknown>;
 };
+
+type FormField = 'name' | 'type' | PluginEditableField;
 
 const PLUGIN_EDITABLE_FIELDS = ['host', 'port', 'databaseName', 'username', 'password'] as const;
 type PluginEditableField = (typeof PLUGIN_EDITABLE_FIELDS)[number];
@@ -133,20 +135,52 @@ function getFieldLayoutClass(field: PluginFieldDescriptor) {
     return 'input-group';
 }
 
+function getErrorMessage(error: unknown, fallback: string) {
+    if (typeof error === 'object' && error !== null) {
+        const axiosMessage = (error as {
+            response?: { data?: { message?: string } };
+            message?: string;
+        }).response?.data?.message;
+
+        if (axiosMessage) {
+            return axiosMessage;
+        }
+
+        const message = (error as { message?: string }).message;
+        if (message) {
+            return message;
+        }
+    }
+
+    return fallback;
+}
+
+function getFieldPlaceholder(field: PluginFieldDescriptor, isEdit: boolean) {
+    if (isEdit && field.key === 'password') {
+        return '留空则保持当前密码';
+    }
+
+    return field.placeholder;
+}
+
 export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuccess }: DataSourceFormProps) {
     const isEdit = Boolean(dataSourceId);
 
     const [formData, setFormData] = useState<FormState>(createEmptyFormState);
+    const [fieldErrors, setFieldErrors] = useState<Partial<Record<FormField, string>>>({});
 
     const [testResult, setTestResult] = useState<'none' | 'success' | 'fail'>('none');
+    const [testMessage, setTestMessage] = useState('');
     const [testing, setTesting] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState('');
 
     const pluginQuery = useQuery({
         queryKey: ['dataSourcePlugins'],
         queryFn: getDataSourcePlugins,
         staleTime: 5 * 60 * 1000,
     });
+    const { refetch: refetchPlugins } = pluginQuery;
 
     const pluginDescriptors = pluginQuery.data ?? [];
     const typeOptions = useMemo(
@@ -154,9 +188,11 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
         [pluginDescriptors],
     );
 
+    const effectiveType = formData.type || pluginDescriptors[0]?.type || '';
+
     const selectedPlugin = useMemo(
-        () => pluginDescriptors.find((plugin) => plugin.type === formData.type) ?? pluginDescriptors[0],
-        [formData.type, pluginDescriptors],
+        () => pluginDescriptors.find((plugin) => plugin.type === effectiveType) ?? pluginDescriptors[0],
+        [effectiveType, pluginDescriptors],
     );
 
     const supportsConnectionTest = selectedPlugin?.supportsConnectionTest ?? false;
@@ -167,7 +203,11 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
     // Reset form when opened with no ID, or fetch data when opened with an ID
     useEffect(() => {
         if (open) {
+            refetchPlugins();
+            setFieldErrors({});
             setTestResult('none');
+            setTestMessage('');
+            setSaveError('');
             if (isEdit && dataSourceId) {
                 getDataSourceById(dataSourceId).then(res => {
                     if (res) {
@@ -189,7 +229,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                 setFormData(createEmptyFormState());
             }
         }
-    }, [open, dataSourceId, isEdit]);
+    }, [dataSourceId, isEdit, open, refetchPlugins]);
 
     useEffect(() => {
         if (!open || pluginDescriptors.length === 0) {
@@ -217,8 +257,30 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
         });
     }, [isEdit, open, pluginDescriptors]);
 
+    useEffect(() => {
+        if (!open || !effectiveType || formData.type === effectiveType) {
+            return;
+        }
+
+        setFormData((previousState) => ({
+            ...previousState,
+            type: effectiveType,
+        }));
+    }, [effectiveType, formData.type, open]);
+
     const handleChange = (field: keyof Omit<FormState, 'connectionParams'>, value: string) => {
         setTestResult('none');
+        setTestMessage('');
+        setSaveError('');
+        setFieldErrors((previousErrors) => {
+            if (!previousErrors[field as FormField]) {
+                return previousErrors;
+            }
+
+            const nextErrors = { ...previousErrors };
+            delete nextErrors[field as FormField];
+            return nextErrors;
+        });
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
@@ -228,8 +290,12 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
 
     const handleTypeChange = (nextType: string) => {
         setTestResult('none');
+        setTestMessage('');
+        setSaveError('');
+        setFieldErrors({});
         setFormData((previousState) => {
-            const previousPlugin = pluginDescriptors.find((plugin) => plugin.type === previousState.type);
+            const previousType = previousState.type || effectiveType;
+            const previousPlugin = pluginDescriptors.find((plugin) => plugin.type === previousType);
             const nextPlugin = pluginDescriptors.find((plugin) => plugin.type === nextType);
 
             return applyPluginDefaults(
@@ -243,17 +309,74 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
         });
     };
 
+    const validateForm = (mode: 'test' | 'save') => {
+        const nextErrors: Partial<Record<FormField, string>> = {};
+
+        if (mode === 'save' && !formData.name.trim()) {
+            nextErrors.name = '数据源名称不能为空';
+        }
+
+        if (!effectiveType) {
+            nextErrors.type = '请选择数据库类型';
+        }
+
+        if (!selectedPlugin) {
+            setFieldErrors(nextErrors);
+            return false;
+        }
+
+        for (const field of selectedPlugin.fields) {
+            if (!isPluginEditableField(field.key) || !field.required) {
+                continue;
+            }
+
+            const fieldKey = field.key;
+            const rawValue = formData[fieldKey];
+            const value = rawValue.trim();
+
+            if (fieldKey === 'port') {
+                if (!value) {
+                    nextErrors.port = `${field.label}不能为空`;
+                    continue;
+                }
+
+                if (!/^\d+$/.test(value)) {
+                    nextErrors.port = '端口必须为数字';
+                    continue;
+                }
+
+                const port = Number.parseInt(value, 10);
+                if (port < 1 || port > 65535) {
+                    nextErrors.port = '端口必须在 1-65535 之间';
+                }
+                continue;
+            }
+
+            if (!value) {
+                nextErrors[fieldKey] = `${field.label}不能为空`;
+            }
+        }
+
+        setFieldErrors(nextErrors);
+        return Object.keys(nextErrors).length === 0;
+    };
+
     const onTestConnection = async () => {
         if (!supportsConnectionTest || !selectedPlugin) {
             return;
         }
 
+        if (!validateForm('test')) {
+            return;
+        }
+
         setTesting(true);
         setTestResult('none');
+        setTestMessage('');
+        setSaveError('');
         try {
-            let isSuccess = false;
             const requestPayload = {
-                type: formData.type,
+                type: effectiveType,
                 host: formData.host,
                 port: formData.port ? parseInt(formData.port, 10) : undefined,
                 databaseName: formData.databaseName,
@@ -261,10 +384,12 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                 password: formData.password,
                 connectionParams: normalizeConnectionParams(formData.connectionParams),
             };
-            isSuccess = await testNewConnection(requestPayload);
-            setTestResult(isSuccess ? 'success' : 'fail');
+            const result = await testNewConnection(requestPayload);
+            setTestResult(result.success ? 'success' : 'fail');
+            setTestMessage(result.message || (result.success ? '连接成功' : '连接失败'));
         } catch (error) {
             setTestResult('fail');
+            setTestMessage(getErrorMessage(error, '连接校验失败，请稍后重试'));
         } finally {
             setTesting(false);
         }
@@ -275,10 +400,16 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
             return;
         }
 
+        if (!validateForm('save')) {
+            return;
+        }
+
         setSaving(true);
+        setSaveError('');
         try {
             const payload = {
                 ...formData,
+                type: effectiveType,
                 port: formData.port ? parseInt(formData.port, 10) : undefined,
                 connectionParams: normalizeConnectionParams(formData.connectionParams),
             };
@@ -291,7 +422,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
             }
         } catch (error) {
             console.error(error);
-            alert('Save failed');
+            setSaveError(getErrorMessage(error, '保存失败，请检查表单后重试'));
         } finally {
             setSaving(false);
         }
@@ -320,19 +451,22 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                                 <div className="form-side-panel">
                                     <div className="side-panel-section">
                                         <h3 className="sub-section-title">标识与类型</h3>
-                                        <div className="input-group">
+                                        <div className={`input-group ${fieldErrors.name ? 'has-error' : ''}`}>
                                             <label htmlFor="ds-name">数据源名称 <span className="required">*</span></label>
                                             <input id="ds-name" type="text" value={formData.name} onChange={e => handleChange('name', e.target.value)} placeholder="如：生产环境主库" />
+                                            {fieldErrors.name ? <span className="input-error">{fieldErrors.name}</span> : null}
                                         </div>
-                                        <div className="input-group">
+                                        <div className={`input-group ${fieldErrors.type ? 'has-error' : ''}`}>
                                             <label htmlFor="datasource-form-type-select">数据库类型 <span className="required">*</span></label>
-                                            <DataSourceSelect
-                                                value={formData.type}
+                                            <SimpleSelect
+                                                id="datasource-form-type-select"
+                                                value={effectiveType}
                                                 onChange={handleTypeChange}
-                                                options={typeOptions}
                                                 disabled={pluginQuery.isLoading || typeOptions.length === 0}
-                                                inputId="datasource-form-type-select"
+                                                options={typeOptions}
+                                                placeholder="选择数据库类型"
                                             />
+                                            {fieldErrors.type ? <span className="input-error">{fieldErrors.type}</span> : null}
                                         </div>
                                         {pluginError ? (
                                             <p className="config-section-tip">
@@ -371,7 +505,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                                                 const fieldKey = field.key;
 
                                                 return (
-                                                    <div key={fieldKey} className={getFieldLayoutClass(field)}>
+                                                    <div key={fieldKey} className={`${getFieldLayoutClass(field)} ${fieldErrors[fieldKey] ? 'has-error' : ''}`}>
                                                         <label htmlFor={`ds-conn-${fieldKey}`}>
                                                             {field.label}
                                                             {field.required ? <span className="required">*</span> : null}
@@ -381,8 +515,9 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                                                             type={field.inputType === 'password' ? 'password' : 'text'}
                                                             value={formData[fieldKey]}
                                                             onChange={(event) => handlePluginFieldChange(fieldKey, event.target.value)}
-                                                            placeholder={field.placeholder}
+                                                            placeholder={getFieldPlaceholder(field, isEdit)}
                                                         />
+                                                        {fieldErrors[fieldKey] ? <span className="input-error">{fieldErrors[fieldKey]}</span> : null}
                                                     </div>
                                                 );
                                             })}
@@ -402,7 +537,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                                                 const fieldKey = field.key;
 
                                                 return (
-                                                    <div key={fieldKey} className={getFieldLayoutClass(field)}>
+                                                    <div key={fieldKey} className={`${getFieldLayoutClass(field)} ${fieldErrors[fieldKey] ? 'has-error' : ''}`}>
                                                         <label htmlFor={`ds-auth-${fieldKey}`}>
                                                             {field.label}
                                                             {field.required ? <span className="required">*</span> : null}
@@ -412,8 +547,12 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                                                             type={field.inputType === 'password' ? 'password' : 'text'}
                                                             value={formData[fieldKey]}
                                                             onChange={(event) => handlePluginFieldChange(fieldKey, event.target.value)}
-                                                            placeholder={field.placeholder}
+                                                            placeholder={getFieldPlaceholder(field, isEdit)}
                                                         />
+                                                        {fieldErrors[fieldKey] ? <span className="input-error">{fieldErrors[fieldKey]}</span> : null}
+                                                        {isEdit && fieldKey === 'password' ? (
+                                                            <span className="input-help">留空则保持当前密码不变</span>
+                                                        ) : null}
                                                     </div>
                                                 );
                                             })}
@@ -433,6 +572,12 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                                     </button>
                                     {testResult === 'success' && <div className="test-badge success"><CheckCircle size={14} /> 校验通过</div>}
                                     {testResult === 'fail' && <div className="test-badge fail"><AlertCircle size={14} /> 校验失败</div>}
+                                    {testResult === 'fail' && testMessage ? (
+                                        <div className="form-feedback form-feedback-error">
+                                            <AlertCircle size={14} />
+                                            <span>{testMessage}</span>
+                                        </div>
+                                    ) : null}
                                     {!selectedPlugin ? (
                                         <div className="test-note">
                                             当前没有可用的数据源插件，请先检查后端插件目录。
@@ -440,6 +585,12 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                                     ) : !supportsConnectionTest ? (
                                         <div className="test-note">
                                             当前版本暂未接入该类型的测试连接。
+                                        </div>
+                                    ) : null}
+                                    {saveError ? (
+                                        <div className="form-feedback form-feedback-error">
+                                            <AlertCircle size={14} />
+                                            <span>{saveError}</span>
                                         </div>
                                     ) : null}
                                 </div>
