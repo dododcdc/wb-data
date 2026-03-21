@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DatabaseZap, Search } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import { useDelayedBusy } from '../hooks/useDelayedBusy';
 import {
     DataSource,
     deleteDataSource,
@@ -9,7 +10,8 @@ import {
     updateDataSourceStatus,
 } from '../api/datasource';
 import DataSourceForm from './DataSourceForm';
-import { DEFAULT_PAGE_SIZE, parsePageParam, parsePageSizeParam } from './datasources/config';
+import DataSourceListSkeleton from './datasources/DataSourceListSkeleton';
+import { buildDataSourcePageQueryKey, DEFAULT_PAGE_SIZE, parsePageParam, parsePageSizeParam } from './datasources/config';
 import { DataSourcePagination } from './datasources/DataSourcePagination';
 import { DataSourceTable } from './datasources/DataSourceTable';
 import './DataSourceList.css';
@@ -91,7 +93,7 @@ export default function DataSourceList() {
     }, [suppressPaginationHover]);
 
     const pageQuery = useQuery({
-        queryKey: ['dataSources', { currentPage, pageSize, keyword }],
+        queryKey: buildDataSourcePageQueryKey({ currentPage, pageSize, keyword }),
         queryFn: () =>
             getDataSourcePage({
                 page: currentPage,
@@ -105,6 +107,7 @@ export default function DataSourceList() {
     const records = pageData?.records ?? [];
     const total = pageData?.total ?? 0;
     const totalPages = pageData?.pages ?? Math.max(1, Math.ceil(total / pageSize) || 1);
+    const isRefreshing = useDelayedBusy(pageQuery.isFetching && Boolean(pageData), { delayMs: 140, minVisibleMs: 320 });
 
     useEffect(() => {
         if (!pageData) return;
@@ -170,6 +173,10 @@ export default function DataSourceList() {
     const queryError = pageQuery.error as { message?: string } | null;
     const errorMessage = queryError?.message ?? '';
 
+    if (pageQuery.isLoading && !pageData) {
+        return <DataSourceListSkeleton />;
+    }
+
     return (
         <div className="datasource-page">
             <section className="datasource-toolbar animate-enter">
@@ -202,8 +209,7 @@ export default function DataSourceList() {
                     data={records}
                     deletePendingId={pendingDeleteId}
                     errorMessage={errorMessage}
-                    isFetching={pageQuery.isFetching}
-                    isLoading={pageQuery.isLoading}
+                    isRefreshing={isRefreshing}
                     onDelete={handleDelete}
                     onEdit={(id) => {
                         setEditingId(id);

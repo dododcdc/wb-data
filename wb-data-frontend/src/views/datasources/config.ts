@@ -7,6 +7,18 @@ export const STATUS_FILTER_OPTIONS = [
 export const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 export const DEFAULT_PAGE_SIZE = 7;
 
+export function buildDataSourcePageQueryKey(params: {
+    currentPage: number;
+    pageSize: number;
+    keyword: string;
+}) {
+    return ['dataSources', {
+        currentPage: params.currentPage,
+        pageSize: params.pageSize,
+        keyword: params.keyword,
+    }] as const;
+}
+
 export function parsePageParam(value: string | null) {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;

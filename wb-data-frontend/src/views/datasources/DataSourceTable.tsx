@@ -4,8 +4,7 @@ import { formatConnection, formatTimestamp, getStatusLabel } from './config';
 
 interface DataSourceTableProps {
     data: DataSource[];
-    isLoading: boolean;
-    isFetching: boolean;
+    isRefreshing: boolean;
     errorMessage: string;
     onEdit: (id: number) => void;
     onDelete: (id: number) => void;
@@ -17,8 +16,7 @@ interface DataSourceTableProps {
 export function DataSourceTable(props: DataSourceTableProps) {
     const {
         data,
-        isLoading,
-        isFetching,
+        isRefreshing,
         errorMessage,
         onEdit,
         onDelete,
@@ -27,21 +25,11 @@ export function DataSourceTable(props: DataSourceTableProps) {
         statusPendingId,
     } = props;
 
-    if (errorMessage) {
+    if (errorMessage && data.length === 0) {
         return (
             <div className="datasource-error">
                 <strong>列表加载失败</strong>
                 <p>{errorMessage}</p>
-            </div>
-        );
-    }
-
-    if (isLoading) {
-        return (
-            <div className="datasource-loading">
-                <div className="datasource-loading-bar" />
-                <div className="datasource-loading-bar short" />
-                <div className="datasource-loading-bar" />
             </div>
         );
     }
@@ -57,7 +45,14 @@ export function DataSourceTable(props: DataSourceTableProps) {
     }
 
     return (
-        <div className={`datasource-table-shell ${isFetching ? 'is-fetching' : ''}`}>
+        <div className={`datasource-table-shell ${isRefreshing ? 'is-refreshing' : ''}`}>
+            {errorMessage ? (
+                <div className="datasource-inline-error" role="alert">
+                    <strong>最新一次刷新失败</strong>
+                    <p>{errorMessage}</p>
+                </div>
+            ) : null}
+            <div className="datasource-table-progress" aria-hidden="true" />
             <div className="datasource-table-scroll">
                 <table className="datasource-table">
                     <thead>
@@ -129,6 +124,12 @@ export function DataSourceTable(props: DataSourceTableProps) {
                         ))}
                     </tbody>
                 </table>
+            </div>
+            <div className="datasource-refresh-overlay" aria-hidden={!isRefreshing}>
+                <div className="datasource-refresh-pill">
+                    <span className="datasource-refresh-dot" />
+                    正在更新列表
+                </div>
             </div>
         </div>
     );
