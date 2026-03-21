@@ -261,30 +261,41 @@
     font-size: var(--text-sm);
 }
 
+.datasource-status-cell {
+    white-space: nowrap;
+}
+
 .datasource-status-pill {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 0 12px;
-    height: 44px;
+    justify-content: center;
+    gap: 6px;
+    min-width: 82px;
+    padding: 0 10px;
+    height: 30px;
+    border: 1px solid transparent;
     border-radius: 999px;
-    font-size: 0.82rem;
-    font-weight: 700;
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1;
 }
 
 .datasource-status-pill.enabled {
-    background: var(--color-success-bg);
+    background: color-mix(in srgb, var(--color-success-bg) 88%, white);
+    border-color: color-mix(in srgb, var(--color-success) 18%, transparent);
     color: var(--color-success);
 }
 
 .datasource-status-pill.disabled {
-    background: var(--color-bg-tertiary);
+    background: color-mix(in srgb, var(--color-bg-tertiary) 90%, white);
+    border-color: rgba(120, 110, 90, 0.16);
     color: var(--color-text-secondary);
 }
 
 .datasource-status-dot {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     background: currentColor;
 }

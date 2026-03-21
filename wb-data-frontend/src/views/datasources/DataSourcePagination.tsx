@@ -26,8 +26,6 @@ export function DataSourcePagination(props: DataSourcePaginationProps) {
         onPageChange,
     } = props;
 
-    if (total === 0) return null;
-
     const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
     const prevDisabled = currentPage === 1 || isFetching;
     const nextDisabled = currentPage >= totalPages || isFetching;
@@ -85,6 +83,8 @@ export function DataSourcePagination(props: DataSourcePaginationProps) {
         }
         onPageChange(page);
     };
+
+    if (total === 0) return null;
 
     return (
         <div className="datasource-pagination">

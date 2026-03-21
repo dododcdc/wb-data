@@ -31,7 +31,7 @@ export interface PageResult<T> {
 
 export interface QueryResult {
     columns: ColumnMetadata[];
-    rows: any[];
+    rows: Record<string, unknown>[];
     executionTimeMs: number;
     message: string;
 }
@@ -49,7 +49,7 @@ export interface DialectMetadata {
 }
 
 export const getMetadataDatabases = (dataSourceId: number) => {
-    return request.get<any, string[]>(`/api/v1/query/metadata/${dataSourceId}/databases`);
+    return request.get<unknown, string[]>(`/api/v1/query/metadata/${dataSourceId}/databases`);
 };
 
 export const getMetadataTables = (dataSourceId: number, databaseName: string, keyword?: string, page?: number, size?: number) => {
@@ -58,15 +58,15 @@ export const getMetadataTables = (dataSourceId: number, databaseName: string, ke
     if (page !== undefined) params.set('page', String(page));
     if (size !== undefined) params.set('size', String(size));
     const qs = params.toString();
-    return request.get<any, PageResult<TableSummary>>(`/api/v1/query/metadata/${dataSourceId}/${databaseName}/tables${qs ? '?' + qs : ''}`);
+    return request.get<unknown, PageResult<TableSummary>>(`/api/v1/query/metadata/${dataSourceId}/${databaseName}/tables${qs ? '?' + qs : ''}`);
 };
 
 export const getMetadataColumns = (dataSourceId: number, databaseName: string, tableName: string) => {
-    return request.get<any, ColumnMetadata[]>(`/api/v1/query/metadata/${dataSourceId}/${databaseName}/tables/${encodeURIComponent(tableName)}/columns`);
+    return request.get<unknown, ColumnMetadata[]>(`/api/v1/query/metadata/${dataSourceId}/${databaseName}/tables/${encodeURIComponent(tableName)}/columns`);
 };
 
 export const executeQuery = (dataSourceId: number, sql: string, database?: string) => {
-    return request.post<any, QueryResult>(`/api/v1/query/execute/${dataSourceId}`, {
+    return request.post<unknown, QueryResult>(`/api/v1/query/execute/${dataSourceId}`, {
         sql,
         database
     }, {
@@ -77,5 +77,5 @@ export const executeQuery = (dataSourceId: number, sql: string, database?: strin
 };
 
 export const getDialectMetadata = (dataSourceId: number) => {
-    return request.get<any, DialectMetadata>(`/api/v1/query/metadata/${dataSourceId}/dialect`);
+    return request.get<unknown, DialectMetadata>(`/api/v1/query/metadata/${dataSourceId}/dialect`);
 };

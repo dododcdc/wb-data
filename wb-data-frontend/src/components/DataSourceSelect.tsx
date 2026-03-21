@@ -14,7 +14,7 @@ interface Option {
     label: string;
     value: string;
     type?: string;
-    raw?: any;
+    raw?: unknown;
 }
 
 type DataSourceSelectProps = {
@@ -103,7 +103,7 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
             return;
         }
         setInputValue('');
-    }, [resolvedValue?.value, resolvedValue?.label]);
+    }, [resolvedValue]);
 
     const handleValueChange = (newOption: Option | null) => {
         if (newOption) {
