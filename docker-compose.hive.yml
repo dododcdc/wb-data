@@ -1,0 +1,17 @@
+services:
+  hiveserver2:
+    image: apache/hive:4.0.0
+    container_name: wb-data-hiveserver2
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: hiveserver2
+    ports:
+      - "10000:10000"
+      - "10002:10002"
+    volumes:
+      # Keep warehouse files on the host. This setup still uses the image's
+      # embedded Derby metastore, so treat it as disposable local test infra.
+      - hive-warehouse:/opt/hive/data/warehouse
+
+volumes:
+  hive-warehouse:

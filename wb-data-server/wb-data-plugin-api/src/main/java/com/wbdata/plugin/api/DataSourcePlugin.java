@@ -4,7 +4,15 @@ public interface DataSourcePlugin {
 
     DataSourcePluginDescriptor descriptor();
 
-    boolean testConnection(DataSourceConnectionInfo connectionInfo);
+    default boolean testConnection(DataSourceConnectionInfo connectionInfo) {
+        return testConnectionDetailed(connectionInfo).success();
+    }
+
+    default ConnectionTestResult testConnectionDetailed(DataSourceConnectionInfo connectionInfo) {
+        return testConnection(connectionInfo)
+                ? ConnectionTestResult.success("连接成功")
+                : ConnectionTestResult.failure("连接失败，请检查地址、端口和认证信息");
+    }
 
     java.util.List<String> getDatabases(DataSourceConnectionInfo connectionInfo);
 

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.wbdata.datasource.dto.DataSourceSearchQuery;
 import com.wbdata.datasource.dto.TestConnectionRequest;
 import com.wbdata.datasource.entity.DataSource;
+import com.wbdata.plugin.api.ConnectionTestResult;
 
 public interface DataSourceService extends IService<DataSource> {
 
@@ -12,7 +13,7 @@ public interface DataSourceService extends IService<DataSource> {
 
     void updateStatus(Long id, String status);
 
-    boolean testConnection(TestConnectionRequest request);
+    ConnectionTestResult testConnection(TestConnectionRequest request);
 
-    boolean testConnection(Long id);
+    ConnectionTestResult testConnection(Long id);
 }

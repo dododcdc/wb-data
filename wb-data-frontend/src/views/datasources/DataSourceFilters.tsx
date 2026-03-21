@@ -1,6 +1,6 @@
 import { ChangeEventHandler, CompositionEventHandler } from 'react';
 import { Plus, RotateCcw, Search, SlidersHorizontal } from 'lucide-react';
-import { DataSourceSelect } from '../../components/DataSourceSelect';
+import { SimpleSelect } from '../../components/SimpleSelect';
 import { STATUS_FILTER_OPTIONS } from './config';
 
 type TypeOption = {
@@ -60,12 +60,12 @@ export function DataSourceFilters(props: DataSourceFiltersProps) {
 
             <div className="datasource-filter-stack datasource-filter-type">
                 <label className="datasource-filter-label" htmlFor="datasource-filter-type-select">数据源类型</label>
-                <DataSourceSelect
-                    onChange={(val) => onTypeChange([val])}
+                <SimpleSelect
+                    id="datasource-filter-type-select"
+                    value={selectedTypes[0]}
+                    onChange={(value) => onTypeChange(value ? [value] : [])}
                     options={typeOptions}
                     placeholder="选择类型"
-                    value={selectedTypes[0] || ''}
-                    inputId="datasource-filter-type-select"
                 />
             </div>
 
