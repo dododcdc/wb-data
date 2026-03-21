@@ -7,6 +7,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../compone
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { usePanelRef } from 'react-resizable-panels';
+import { useKeyboardFocusMode } from '../hooks/useKeyboardFocusMode';
 import './Query.css';
 
 // Lazy load Monaco Editor for performance (~3MB savings on initial load)
@@ -26,6 +27,8 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(na
 const DS_PAGE_SIZE = 50;
 
 export default function Query() {
+    useKeyboardFocusMode();
+
     const [dataSources, setDataSources] = useState<DataSource[]>([]);
     const [selectedDsId, setSelectedDsId] = useState<string>('');
     const [selectedDs, setSelectedDs] = useState<DataSource | null>(null);
@@ -73,9 +76,24 @@ export default function Query() {
     const TABLE_PAGE_SIZE = 200;
 
     const SIDEBAR_STORAGE_KEY = 'query-sidebar-collapsed';
-    const SIDEBAR_DEFAULT_WIDTH = 300;
-    const SIDEBAR_MIN_WIDTH = 250;
-    const SIDEBAR_MAX_WIDTH = 600;
+    const SIDEBAR_WIDTH_STORAGE_KEY = 'query-sidebar-width';
+    const SIDEBAR_DEFAULT_WIDTH_PX = 300;
+    const SIDEBAR_MIN_WIDTH_PX = 250;
+    const SIDEBAR_MAX_WIDTH_PX = 600;
+
+    // react-resizable-panels v4: plain numbers = percentages; strings like "300px" = pixels
+    const getInitialSidebarWidth = (): string => {
+        try {
+            const saved = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+            if (saved !== null) {
+                const parsed = Number(saved);
+                if (!isNaN(parsed) && parsed >= SIDEBAR_MIN_WIDTH_PX && parsed <= SIDEBAR_MAX_WIDTH_PX) {
+                    return `${parsed}px`;
+                }
+            }
+        } catch {}
+        return `${SIDEBAR_DEFAULT_WIDTH_PX}px`;
+    };
     const sidebarPanelRef = usePanelRef();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
         try {
@@ -836,9 +854,15 @@ export default function Query() {
                 {/* 左侧元数据面板 */}
                 <ResizablePanel
                     panelRef={sidebarPanelRef}
-                    defaultSize={sidebarCollapsed ? 0 : SIDEBAR_DEFAULT_WIDTH}
-                    minSize={SIDEBAR_MIN_WIDTH}
-                    maxSize={SIDEBAR_MAX_WIDTH}
+                    defaultSize={sidebarCollapsed ? '0px' : getInitialSidebarWidth()}
+                    onResize={(panelSize) => {
+                        const px = Math.round(panelSize.inPixels);
+                        if (!sidebarCollapsed && px >= SIDEBAR_MIN_WIDTH_PX) {
+                            try { localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(px)); } catch {}
+                        }
+                    }}
+                    minSize={`${SIDEBAR_MIN_WIDTH_PX}px`}
+                    maxSize={`${SIDEBAR_MAX_WIDTH_PX}px`}
                     collapsible={sidebarCollapsed}
                     collapsedSize={0}
                     className="metadata-panel-wrapper"
