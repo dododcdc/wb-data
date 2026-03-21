@@ -1113,6 +1113,7 @@ export default function Query() {
                                             language="sql"
                                             theme="warm-parchment"
                                             value={sql}
+                                            loading={<EditorLoader />}
                                             onChange={(value) => setSql(value || '')}
                                             onMount={handleEditorDidMount}
                                             options={{

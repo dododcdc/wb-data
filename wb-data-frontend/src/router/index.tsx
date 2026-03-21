@@ -1,8 +1,10 @@
 import { lazy, Suspense } from 'react';
 import type { ReactNode } from 'react';
 import { createBrowserRouter } from 'react-router-dom';
+import DashboardSkeleton from '../views/DashboardSkeleton';
 import DataSourceListSkeleton from '../views/datasources/DataSourceListSkeleton';
 import Layout from '../views/Layout';
+import QuerySkeleton from '../views/QuerySkeleton';
 import RouteErrorPage from '../views/RouteErrorPage';
 import RouteLoadingPage from '../views/RouteLoadingPage';
 import {
@@ -29,7 +31,7 @@ const router = createBrowserRouter([
         children: [
             {
                 index: true,
-                element: withRouteSuspense(<Dashboard />),
+                element: withRouteSuspense(<Dashboard />, <DashboardSkeleton />),
             },
             {
                 path: 'datasources',
@@ -37,7 +39,7 @@ const router = createBrowserRouter([
             },
             {
                 path: 'query',
-                element: withRouteSuspense(<Query />),
+                element: withRouteSuspense(<Query />, <QuerySkeleton />),
             },
             {
                 path: '*',

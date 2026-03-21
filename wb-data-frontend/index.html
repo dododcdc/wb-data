@@ -98,6 +98,16 @@
         padding: 24px 28px 32px;
       }
 
+      .boot-route {
+        display: none;
+      }
+
+      html[data-boot-route="dashboard"] .boot-route-dashboard,
+      html[data-boot-route="query"] .boot-route-query,
+      html[data-boot-route="default"] .boot-route-default {
+        display: block;
+      }
+
       .boot-panel,
       .boot-toolbar {
         border: 1px solid var(--boot-line);
@@ -131,6 +141,239 @@
       .boot-panel {
         padding: 18px;
         overflow: hidden;
+      }
+
+      .boot-dashboard {
+        min-height: calc(100vh - 56px - 56px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 44px;
+        padding: 18px 0;
+      }
+
+      .boot-dashboard-hero {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: min(520px, 100%);
+        gap: 18px;
+      }
+
+      .boot-dashboard-icon {
+        width: 68px;
+        height: 68px;
+        border-radius: 18px;
+      }
+
+      .boot-dashboard-title {
+        width: min(320px, 82%);
+        height: 28px;
+      }
+
+      .boot-dashboard-subtitle {
+        width: min(440px, 100%);
+        height: 16px;
+      }
+
+      .boot-dashboard-subtitle.short {
+        width: min(360px, 78%);
+      }
+
+      .boot-dashboard-cards {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 20px;
+        width: min(720px, 100%);
+      }
+
+      .boot-dashboard-card {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 16px;
+        padding: 22px;
+        border: 1px solid var(--boot-line);
+        border-radius: 18px;
+        background: color-mix(in srgb, var(--boot-surface) 94%, white);
+        box-shadow: 0 12px 24px rgba(80, 60, 40, 0.06);
+      }
+
+      .boot-dashboard-card-icon {
+        width: 46px;
+        height: 46px;
+        border-radius: 12px;
+      }
+
+      .boot-dashboard-card-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .boot-dashboard-card-title {
+        width: 124px;
+        height: 14px;
+      }
+
+      .boot-dashboard-card-text {
+        width: min(220px, 100%);
+        height: 12px;
+      }
+
+      .boot-dashboard-card-arrow {
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+      }
+
+      .boot-query {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-height: calc(100vh - 56px - 24px);
+      }
+
+      .boot-query-toolbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 16px;
+        align-items: center;
+        padding: 12px 16px;
+        border: 1px solid var(--boot-line);
+        border-radius: 18px;
+        background: color-mix(in srgb, var(--boot-surface) 94%, white);
+        box-shadow: 0 12px 24px rgba(80, 60, 40, 0.06);
+      }
+
+      .boot-query-toolbar-left,
+      .boot-query-toolbar-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .boot-query-sidebar-toggle,
+      .boot-query-icon,
+      .boot-query-run {
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+      }
+
+      .boot-query-divider {
+        width: 1px;
+        height: 20px;
+        background: var(--boot-line);
+      }
+
+      .boot-query-select {
+        height: 36px;
+        width: min(280px, 100%);
+        border-radius: 10px;
+      }
+
+      .boot-query-select.short {
+        width: 160px;
+      }
+
+      .boot-query-main {
+        display: grid;
+        grid-template-rows: minmax(0, 1.5fr) minmax(220px, 1fr);
+        min-height: 0;
+        flex: 1;
+        border: 1px solid var(--boot-line);
+        border-radius: 18px;
+        overflow: hidden;
+        background: color-mix(in srgb, var(--boot-surface) 94%, white);
+        box-shadow: 0 12px 24px rgba(80, 60, 40, 0.06);
+      }
+
+      .boot-query-editor {
+        position: relative;
+        overflow: hidden;
+        border-bottom: 1px solid rgba(120, 110, 90, 0.08);
+        background:
+          linear-gradient(180deg, rgba(239, 236, 230, 0.72), rgba(248, 247, 244, 0.96)),
+          var(--boot-surface);
+      }
+
+      .boot-query-gutter {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 44px;
+        border-right: 1px solid rgba(120, 110, 90, 0.08);
+        background: rgba(239, 236, 230, 0.45);
+      }
+
+      .boot-query-editor-lines {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding: 22px 24px 22px 68px;
+      }
+
+      .boot-query-line {
+        height: 12px;
+        border-radius: 999px;
+      }
+
+      .boot-query-line.long {
+        width: 56%;
+      }
+
+      .boot-query-line.medium {
+        width: 38%;
+      }
+
+      .boot-query-line.short {
+        width: 22%;
+      }
+
+      .boot-query-results {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        padding: 16px 18px 24px;
+      }
+
+      .boot-query-results-header {
+        width: 88px;
+        height: 14px;
+      }
+
+      .boot-query-results-card {
+        flex: 1;
+        min-height: 180px;
+        padding: 20px;
+        border: 1px solid rgba(120, 110, 90, 0.08);
+        border-radius: 16px;
+        background: rgba(248, 247, 244, 0.76);
+      }
+
+      .boot-query-results-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        min-height: 100%;
+      }
+
+      .boot-query-results-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+      }
+
+      .boot-query-results-text {
+        width: min(280px, 70%);
+        height: 12px;
+      }
+
+      .boot-query-results-text.short {
+        width: min(220px, 54%);
       }
 
       .boot-progress {
@@ -218,11 +461,36 @@
           padding: 18px 16px 24px;
         }
 
+        .boot-dashboard-cards {
+          grid-template-columns: 1fr;
+        }
+
+        .boot-query-toolbar {
+          grid-template-columns: 1fr;
+        }
+
+        .boot-query-toolbar-left {
+          flex-wrap: wrap;
+        }
+
+        .boot-query-main {
+          grid-template-rows: minmax(0, 1.2fr) minmax(200px, 0.8fr);
+        }
+
         .boot-row {
           grid-template-columns: repeat(3, 1fr);
         }
       }
     </style>
+    <script>
+      (function () {
+        var path = window.location.pathname.replace(/\/+$/, '') || '/';
+        var route = 'default';
+        if (path === '/') route = 'dashboard';
+        else if (path.indexOf('/query') === 0) route = 'query';
+        document.documentElement.setAttribute('data-boot-route', route);
+      })();
+    </script>
   </head>
   <body>
     <div id="root">
@@ -244,47 +512,115 @@
           </div>
         </div>
         <div class="boot-content">
-          <div class="boot-toolbar">
-            <div class="boot-search boot-skeleton"></div>
-            <div class="boot-button boot-skeleton"></div>
+          <div class="boot-route boot-route-dashboard">
+            <div class="boot-dashboard">
+              <div class="boot-dashboard-hero">
+                <div class="boot-dashboard-icon boot-skeleton"></div>
+                <div class="boot-dashboard-title boot-skeleton"></div>
+                <div class="boot-dashboard-subtitle boot-skeleton"></div>
+                <div class="boot-dashboard-subtitle short boot-skeleton"></div>
+              </div>
+              <div class="boot-dashboard-cards">
+                <div class="boot-dashboard-card">
+                  <div class="boot-dashboard-card-icon boot-skeleton"></div>
+                  <div class="boot-dashboard-card-copy">
+                    <div class="boot-dashboard-card-title boot-skeleton"></div>
+                    <div class="boot-dashboard-card-text boot-skeleton"></div>
+                  </div>
+                  <div class="boot-dashboard-card-arrow boot-skeleton"></div>
+                </div>
+                <div class="boot-dashboard-card">
+                  <div class="boot-dashboard-card-icon boot-skeleton"></div>
+                  <div class="boot-dashboard-card-copy">
+                    <div class="boot-dashboard-card-title boot-skeleton"></div>
+                    <div class="boot-dashboard-card-text boot-skeleton"></div>
+                  </div>
+                  <div class="boot-dashboard-card-arrow boot-skeleton"></div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="boot-panel">
-            <div class="boot-progress"></div>
-            <div class="boot-row">
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
+
+          <div class="boot-route boot-route-query">
+            <div class="boot-query">
+              <div class="boot-query-toolbar">
+                <div class="boot-query-toolbar-left">
+                  <div class="boot-query-sidebar-toggle boot-skeleton"></div>
+                  <div class="boot-query-divider"></div>
+                  <div class="boot-query-select boot-skeleton"></div>
+                  <div class="boot-query-select short boot-skeleton"></div>
+                </div>
+                <div class="boot-query-toolbar-right">
+                  <div class="boot-query-icon boot-skeleton"></div>
+                  <div class="boot-query-run boot-skeleton"></div>
+                </div>
+              </div>
+              <div class="boot-query-main">
+                <div class="boot-query-editor">
+                  <div class="boot-query-gutter"></div>
+                  <div class="boot-query-editor-lines">
+                    <div class="boot-query-line long boot-skeleton"></div>
+                    <div class="boot-query-line medium boot-skeleton"></div>
+                    <div class="boot-query-line short boot-skeleton"></div>
+                  </div>
+                </div>
+                <div class="boot-query-results">
+                  <div class="boot-query-results-header boot-skeleton"></div>
+                  <div class="boot-query-results-card">
+                    <div class="boot-query-results-empty">
+                      <div class="boot-query-results-icon boot-skeleton"></div>
+                      <div class="boot-query-results-text boot-skeleton"></div>
+                      <div class="boot-query-results-text short boot-skeleton"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="boot-row">
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
+          </div>
+
+          <div class="boot-route boot-route-default">
+            <div class="boot-toolbar">
+              <div class="boot-search boot-skeleton"></div>
+              <div class="boot-button boot-skeleton"></div>
             </div>
-            <div class="boot-row">
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-            </div>
-            <div class="boot-row">
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
-              <div class="boot-cell boot-skeleton"></div>
+            <div class="boot-panel">
+              <div class="boot-progress"></div>
+              <div class="boot-row">
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+              </div>
+              <div class="boot-row">
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+              </div>
+              <div class="boot-row">
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+              </div>
+              <div class="boot-row">
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+                <div class="boot-cell boot-skeleton"></div>
+              </div>
             </div>
           </div>
         </div>
