@@ -76,9 +76,27 @@ export default function Query() {
     const TABLE_PAGE_SIZE = 200;
 
     const SIDEBAR_STORAGE_KEY = 'query-sidebar-collapsed';
+    const SIDEBAR_SIZE_STORAGE_KEY = 'query-sidebar-size';
+    const EDITOR_SIZE_STORAGE_KEY = 'query-editor-size';
     const SIDEBAR_DEFAULT_WIDTH_PX = 300;
     const SIDEBAR_MIN_WIDTH_PX = 250;
     const SIDEBAR_MAX_WIDTH_PX = 600;
+
+    const getInitialHorizontalSizes = (): number[] | undefined => {
+        try {
+            const saved = localStorage.getItem(SIDEBAR_SIZE_STORAGE_KEY);
+            if (saved) return JSON.parse(saved);
+        } catch {}
+        return undefined;
+    };
+
+    const getInitialVerticalSizes = (): number[] | undefined => {
+        try {
+            const saved = localStorage.getItem(EDITOR_SIZE_STORAGE_KEY);
+            if (saved) return JSON.parse(saved);
+        } catch {}
+        return undefined;
+    };
 
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
         try {
@@ -828,6 +846,10 @@ export default function Query() {
         <div className="query-splitter h-full flex w-full">
             <Allotment
                 className="query-splitter-panel"
+                defaultSizes={getInitialHorizontalSizes()}
+                onDragEnd={(sizes) => {
+                    try { localStorage.setItem(SIDEBAR_SIZE_STORAGE_KEY, JSON.stringify(sizes)); } catch {}
+                }}
                 onVisibleChange={(index, visible) => {
                     if (index === 0) {
                         setSidebarCollapsed(!visible);
@@ -1073,7 +1095,13 @@ export default function Query() {
                         </div>
                     </header>
 
-                    <Allotment vertical>
+                    <Allotment 
+                        vertical
+                        defaultSizes={getInitialVerticalSizes()}
+                        onDragEnd={(sizes) => {
+                            try { localStorage.setItem(EDITOR_SIZE_STORAGE_KEY, JSON.stringify(sizes)); } catch {}
+                        }}
+                    >
                         <Allotment.Pane preferredSize="60%" className="query-editor-wrapper relative">
                             <section className="editor-section">
 
