@@ -3,10 +3,10 @@ import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, Chevr
 import { getMetadataDatabases, getMetadataTables, getMetadataColumns, executeQuery, getDialectMetadata, TableSummary, ColumnMetadata, QueryResult, DialectMetadata } from '../api/query';
 import { getDataSourcePage, DataSource } from '../api/datasource';
 import { DataSourceSelect } from '../components/DataSourceSelect';
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../components/ui/resizable';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { usePanelRef } from 'react-resizable-panels';
+import { Allotment } from 'allotment';
+import 'allotment/dist/style.css';
 import { useKeyboardFocusMode } from '../hooks/useKeyboardFocusMode';
 import './Query.css';
 
@@ -76,25 +76,10 @@ export default function Query() {
     const TABLE_PAGE_SIZE = 200;
 
     const SIDEBAR_STORAGE_KEY = 'query-sidebar-collapsed';
-    const SIDEBAR_WIDTH_STORAGE_KEY = 'query-sidebar-width';
     const SIDEBAR_DEFAULT_WIDTH_PX = 300;
     const SIDEBAR_MIN_WIDTH_PX = 250;
     const SIDEBAR_MAX_WIDTH_PX = 600;
 
-    // react-resizable-panels v4: plain numbers = percentages; strings like "300px" = pixels
-    const getInitialSidebarWidth = (): string => {
-        try {
-            const saved = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
-            if (saved !== null) {
-                const parsed = Number(saved);
-                if (!isNaN(parsed) && parsed >= SIDEBAR_MIN_WIDTH_PX && parsed <= SIDEBAR_MAX_WIDTH_PX) {
-                    return `${parsed}px`;
-                }
-            }
-        } catch {}
-        return `${SIDEBAR_DEFAULT_WIDTH_PX}px`;
-    };
-    const sidebarPanelRef = usePanelRef();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
         try {
             return localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true';
@@ -117,21 +102,12 @@ export default function Query() {
     }, []);
 
     const toggleSidebar = useCallback(() => {
-        const panel = sidebarPanelRef.current;
-        if (!panel) return;
-
-        if (sidebarCollapsed) {
-            panel.expand();
-            setSidebarCollapsed(false);
-            try { localStorage.setItem(SIDEBAR_STORAGE_KEY, 'false'); } catch {}
-        } else {
-            setSidebarCollapsed(true);
-            try { localStorage.setItem(SIDEBAR_STORAGE_KEY, 'true'); } catch {}
-            requestAnimationFrame(() => {
-                sidebarPanelRef.current?.collapse();
-            });
-        }
-    }, [sidebarCollapsed, sidebarPanelRef]);
+        setSidebarCollapsed(prev => {
+            const next = !prev;
+            try { localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next)); } catch {}
+            return next;
+        });
+    }, []);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -849,25 +825,24 @@ export default function Query() {
     }, []);
 
     return (
-        <div className="query-splitter">
-            <ResizablePanelGroup className="query-splitter-panel" direction="horizontal">
+        <div className="query-splitter h-full flex w-full">
+            <Allotment
+                className="query-splitter-panel"
+                onVisibleChange={(index, visible) => {
+                    if (index === 0) {
+                        setSidebarCollapsed(!visible);
+                    }
+                }}
+            >
                 {/* 左侧元数据面板 */}
-                <ResizablePanel
-                    panelRef={sidebarPanelRef}
-                    defaultSize={sidebarCollapsed ? '0px' : getInitialSidebarWidth()}
-                    onResize={(panelSize) => {
-                        const px = Math.round(panelSize.inPixels);
-                        if (!sidebarCollapsed && px >= SIDEBAR_MIN_WIDTH_PX) {
-                            try { localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(px)); } catch {}
-                        }
-                    }}
-                    minSize={`${SIDEBAR_MIN_WIDTH_PX}px`}
-                    maxSize={`${SIDEBAR_MAX_WIDTH_PX}px`}
-                    collapsible={sidebarCollapsed}
-                    collapsedSize={0}
+                <Allotment.Pane
+                    preferredSize={SIDEBAR_DEFAULT_WIDTH_PX}
+                    minSize={SIDEBAR_MIN_WIDTH_PX}
+                    maxSize={SIDEBAR_MAX_WIDTH_PX}
+                    visible={!sidebarCollapsed}
                     className="metadata-panel-wrapper"
                 >
-                    <aside className={`metadata-panel ${!sidebarCollapsed ? 'sidebar-visible' : ''}`}>
+                    <aside className={`metadata-panel sidebar-visible`}>
                         <div className="metadata-header">
                             <span className="metadata-title">表结构</span>
                             {selectedDsId && selectedDb && tableTotal > 0 && (
@@ -994,14 +969,10 @@ export default function Query() {
                             )}
                         </div>
                     </aside>
-                </ResizablePanel>
-
-                <ResizableHandle className={`splitter-trigger-horizontal ${sidebarCollapsed ? 'splitter-hidden' : ''}`} data-orientation="horizontal" disabled={sidebarCollapsed}>
-                    <div className="splitter-indicator-horizontal" />
-                </ResizableHandle>
+                </Allotment.Pane>
 
                 {/* 右侧主内容区 */}
-                <ResizablePanel defaultSize={800} minSize={600} className="query-main-wrapper">
+                <Allotment.Pane minSize={600} className="query-main-wrapper">
                     <header className="query-toolbar">
                         <div className="toolbar-left">
                             <TooltipProvider delayDuration={400}>
@@ -1102,8 +1073,8 @@ export default function Query() {
                         </div>
                     </header>
 
-                    <ResizablePanelGroup className="query-vertical-splitter" direction="vertical">
-                        <ResizablePanel defaultSize={60} minSize={30} className="query-splitter-panel-vertical">
+                    <Allotment vertical>
+                        <Allotment.Pane preferredSize="60%" className="query-editor-wrapper relative">
                             <section className="editor-section">
 
                                 <div className="editor-wrapper">
@@ -1134,13 +1105,9 @@ export default function Query() {
                                     </Suspense>
                                 </div>
                             </section>
-                        </ResizablePanel>
+                        </Allotment.Pane>
 
-                        <ResizableHandle className="splitter-trigger-vertical" data-orientation="vertical">
-                            <div className="splitter-indicator-vertical" />
-                        </ResizableHandle>
-
-                        <ResizablePanel defaultSize={40} minSize={20} className="query-splitter-panel-vertical">
+                        <Allotment.Pane minSize={200} preferredSize="40%" className="query-result-wrapper">
                             <section className="results-section">
                                 <div className="section-header">
                                     <span className="section-title">查询结果</span>
@@ -1222,10 +1189,10 @@ export default function Query() {
                                     )}
                                 </div>
                             </section>
-                        </ResizablePanel>
-                    </ResizablePanelGroup>
-                </ResizablePanel>
-            </ResizablePanelGroup>
+                        </Allotment.Pane>
+                    </Allotment>
+                </Allotment.Pane>
+            </Allotment>
         </div>
     );
 }
