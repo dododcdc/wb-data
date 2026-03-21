@@ -100,7 +100,8 @@ export default function Query() {
 
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
         try {
-            return localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true';
+            const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+            return saved !== 'false'; // 默认隐藏，除非明确保存为 'false'
         } catch {
             return true;
         }
