@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense, useCallback } from 'react';
+import type * as Monaco from 'monaco-editor';
 import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, Search, PanelLeftClose, PanelLeft } from 'lucide-react';
 import { getMetadataDatabases, getMetadataTables, getMetadataColumns, executeQuery, getDialectMetadata, TableSummary, ColumnMetadata, QueryResult, DialectMetadata } from '../api/query';
 import { getDataSourcePage, DataSource } from '../api/datasource';
@@ -25,6 +26,17 @@ function EditorLoader() {
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const DS_PAGE_SIZE = 50;
+
+type MonacoEditorInstance = Monaco.editor.IStandaloneCodeEditor;
+
+type QueryEditorError = {
+    response?: {
+        data?: {
+            message?: string;
+        };
+    };
+    message?: string;
+};
 
 export default function Query() {
     useKeyboardFocusMode();
@@ -58,7 +70,7 @@ export default function Query() {
     const [queryError, setQueryError] = useState<string>('');
     const [showExportMenu, setShowExportMenu] = useState(false);
     const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
-    const editorRef = useRef<any>(null);
+    const editorRef = useRef<MonacoEditorInstance | null>(null);
     const composingRef = useRef(false);
     const dsRequestIdRef = useRef(0);
     const databasesRequestIdRef = useRef(0);
@@ -86,7 +98,9 @@ export default function Query() {
         try {
             const saved = localStorage.getItem(SIDEBAR_SIZE_STORAGE_KEY);
             if (saved) return JSON.parse(saved);
-        } catch {}
+        } catch {
+            // Ignore storage access failures and fall back to defaults.
+        }
         return undefined;
     };
 
@@ -94,7 +108,9 @@ export default function Query() {
         try {
             const saved = localStorage.getItem(EDITOR_SIZE_STORAGE_KEY);
             if (saved) return JSON.parse(saved);
-        } catch {}
+        } catch {
+            // Ignore storage access failures and fall back to defaults.
+        }
         return undefined;
     };
 
@@ -123,7 +139,11 @@ export default function Query() {
     const toggleSidebar = useCallback(() => {
         setSidebarCollapsed(prev => {
             const next = !prev;
-            try { localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next)); } catch {}
+            try {
+                localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+            } catch {
+                // Ignore storage access failures and keep the in-memory state.
+            }
             return next;
         });
     }, []);
@@ -149,7 +169,7 @@ export default function Query() {
 
     useEffect(() => {
         tableKeywordCommittedRef.current = tableKeywordCommitted;
-    }, [tableKeywordCommitted]);
+    }, [selectedDb, selectedDsId, tableKeywordCommitted]);
 
     // Close export menu on backdrop click or Escape
     useEffect(() => {
@@ -233,7 +253,7 @@ export default function Query() {
             loadTables(Number(selectedDsId), selectedDb, tableKeywordCommitted, 1, false);
         }, 300);
         return () => clearTimeout(timer);
-    }, [tableKeywordCommitted]);
+    }, [selectedDb, selectedDsId, tableKeywordCommitted]);
 
     useEffect(() => {
         setExpandedTables(new Set());
@@ -451,7 +471,7 @@ export default function Query() {
         Boolean(selectedDsId && selectedDb) &&
         (loadingTables || loadingMoreTables || tableTotal > 0);
 
-    const handleRunQuery = async (sqlToRun?: string) => {
+    const handleRunQuery = useCallback(async (sqlToRun?: string) => {
         let finalSql = sqlToRun;
 
         // If no explicit SQL provided (e.g. from button click), check for selection
@@ -478,16 +498,16 @@ export default function Query() {
             const data = await executeQuery(Number(selectedDsId), finalSql, selectedDb);
             setResult(data);
             setQueryError('');
-        } catch (error: any) {
-            // axios 错误: error.response.data.message 包含后端返回的详细消息
-            const message = error?.response?.data?.message 
-                || error?.message 
+        } catch (error: unknown) {
+            const requestError = error as QueryEditorError;
+            const message = requestError.response?.data?.message
+                || requestError.message
                 || '执行查询失败';
             setQueryError(message);
         } finally {
             setLoadingQuery(false);
         }
-    };
+    }, [selectedDb, selectedDsId, sql]);
 
     // ── SQL Formatting ──────────────────────────────────────────────────────
     const handleFormat = async () => {
@@ -553,7 +573,7 @@ export default function Query() {
      * Splits the full text by semicolons and finds the segment that contains
      * the cursor's character offset position — like DataGrip.
      */
-    const getStatementAtCursor = (editor: any): string => {
+    const getStatementAtCursor = useCallback((editor: MonacoEditorInstance): string => {
         const model = editor.getModel();
         const position = editor.getPosition();
         if (!model || !position) return sql;
@@ -581,7 +601,7 @@ export default function Query() {
 
         // Fallback: return the full SQL
         return fullText.trim();
-    };
+    }, [sql]);
 
     const handleRunQueryRef = useRef(handleRunQuery);
     useEffect(() => {
@@ -608,7 +628,7 @@ export default function Query() {
         dialectMetadataRef.current = dialectMetadata;
     }, [dialectMetadata]);
 
-    const handleEditorDidMount = (editor: any, monaco: any) => {
+    const handleEditorDidMount = (editor: MonacoEditorInstance, monaco: typeof Monaco) => {
         monaco.editor.defineTheme('warm-parchment', {
             base: 'vs',
             inherit: true,
@@ -656,19 +676,19 @@ export default function Query() {
         completionProviderRef.current?.dispose();
         const provider = monaco.languages.registerCompletionItemProvider('sql', {
             triggerCharacters: ['.'],
-            provideCompletionItems: (model: any, position: any) => {
+            provideCompletionItems: (model, position) => {
                 const word = model.getWordUntilPosition(position);
                 const lineContent = model.getLineContent(position.lineNumber);
                 const textBeforeCursor = lineContent.substring(0, position.column - 1);
 
-                const range = {
+                const range: Monaco.IRange = {
                     startLineNumber: position.lineNumber,
                     endLineNumber: position.lineNumber,
                     startColumn: word.startColumn,
                     endColumn: word.endColumn,
                 };
 
-                const suggestions: any[] = [];
+                const suggestions: Monaco.languages.CompletionItem[] = [];
                 const currentTables = tablesRef.current;
                 const currentColumnCache = columnCacheRef.current;
                 const currentDialect = dialectMetadataRef.current;
@@ -679,7 +699,7 @@ export default function Query() {
                 // Match "FROM table alias", "FROM schema.table AS alias", "JOIN table alias", or ", table alias"
                 const aliasRegex = /(?:FROM|JOIN|,)\s+(?:[a-zA-Z0-9_]+\.)?([a-zA-Z0-9_]+)(?:\s+AS)?\s+([a-zA-Z0-9_]+)/gi;
                 const reservedWords = new Set(['WHERE', 'ON', 'GROUP', 'ORDER', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'JOIN', 'SELECT', 'LIMIT', 'HAVING', 'AND', 'OR', 'AS']);
-                let match;
+                let match: RegExpExecArray | null;
                 while ((match = aliasRegex.exec(fullText)) !== null) {
                     const tableName = match[1].toLowerCase();
                     const aliasName = match[2].toLowerCase();
@@ -849,7 +869,11 @@ export default function Query() {
                 className="query-splitter-panel"
                 defaultSizes={getInitialHorizontalSizes()}
                 onDragEnd={(sizes) => {
-                    try { localStorage.setItem(SIDEBAR_SIZE_STORAGE_KEY, JSON.stringify(sizes)); } catch {}
+                    try {
+                        localStorage.setItem(SIDEBAR_SIZE_STORAGE_KEY, JSON.stringify(sizes));
+                    } catch {
+                        // Ignore storage access failures and keep the current splitter size.
+                    }
                 }}
                 onVisibleChange={(index, visible) => {
                     if (index === 0) {
@@ -1024,7 +1048,7 @@ export default function Query() {
                                     setSelectedDsId(val);
                                     setDsKeyword('');
                                     if (option?.raw) {
-                                        setSelectedDs(option.raw);
+                                        setSelectedDs(option.raw as DataSource);
                                         return;
                                     }
                                     const fallback = dataSources.find(ds => String(ds.id) === val) || null;
@@ -1100,7 +1124,11 @@ export default function Query() {
                         vertical
                         defaultSizes={getInitialVerticalSizes()}
                         onDragEnd={(sizes) => {
-                            try { localStorage.setItem(EDITOR_SIZE_STORAGE_KEY, JSON.stringify(sizes)); } catch {}
+                            try {
+                                localStorage.setItem(EDITOR_SIZE_STORAGE_KEY, JSON.stringify(sizes));
+                            } catch {
+                                // Ignore storage access failures and keep the current splitter size.
+                            }
                         }}
                     >
                         <Allotment.Pane preferredSize="60%" className="query-editor-wrapper relative">

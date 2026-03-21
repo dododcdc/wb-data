@@ -79,7 +79,7 @@ export function DataSourceTable(props: DataSourceTableProps) {
                                     <span className={`type-badge ${item.type.toLowerCase()}`}>{item.type}</span>
                                 </td>
                                 <td className="datasource-connection">{formatConnection(item.host, item.port, item.databaseName)}</td>
-                                <td>
+                                <td className="datasource-status-cell">
                                     <span className={`datasource-status-pill ${item.status === 'ENABLED' ? 'enabled' : 'disabled'}`}>
                                         <span className="datasource-status-dot" />
                                         {getStatusLabel(item.status)}

@@ -182,7 +182,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
     });
     const { refetch: refetchPlugins } = pluginQuery;
 
-    const pluginDescriptors = pluginQuery.data ?? [];
+    const pluginDescriptors = useMemo(() => pluginQuery.data ?? [], [pluginQuery.data]);
     const typeOptions = useMemo(
         () => pluginDescriptors.map((plugin) => ({ label: plugin.label, value: plugin.type })),
         [pluginDescriptors],
