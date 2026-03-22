@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useMemo, lazy, Suspense, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, lazy, Suspense, useCallback, useLayoutEffect } from 'react';
 import type * as Monaco from 'monaco-editor';
+import type { AllotmentHandle } from 'allotment';
 import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, Search, PanelLeftClose, PanelLeft } from 'lucide-react';
 import { getMetadataDatabases, getMetadataTables, getMetadataColumns, executeQuery, getDialectMetadata, TableSummary, ColumnMetadata, QueryResult, DialectMetadata } from '../api/query';
 import { getDataSourcePage, DataSource } from '../api/datasource';
@@ -26,6 +27,14 @@ function EditorLoader() {
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const DS_PAGE_SIZE = 50;
+const SIDEBAR_STORAGE_KEY = 'query-sidebar-collapsed';
+const LEGACY_SIDEBAR_SIZE_STORAGE_KEY = 'query-sidebar-size';
+const SIDEBAR_EXPANDED_WIDTH_STORAGE_KEY = 'query-sidebar-expanded-width';
+const EDITOR_SIZE_STORAGE_KEY = 'query-editor-size';
+const SIDEBAR_DEFAULT_WIDTH_PX = 300;
+const SIDEBAR_MIN_WIDTH_PX = 250;
+const SIDEBAR_MAX_WIDTH_PX = 600;
+const QUERY_MAIN_DEFAULT_WIDTH_PX = 1100;
 
 type MonacoEditorInstance = Monaco.editor.IStandaloneCodeEditor;
 
@@ -52,6 +61,75 @@ function mergeDatabaseOptions(databases: string[], fallbackDatabase?: string) {
     databases.forEach(pushUnique);
 
     return merged;
+}
+
+function clampSidebarWidth(width: number) {
+    if (!Number.isFinite(width)) {
+        return SIDEBAR_DEFAULT_WIDTH_PX;
+    }
+
+    return Math.min(SIDEBAR_MAX_WIDTH_PX, Math.max(SIDEBAR_MIN_WIDTH_PX, Math.round(width)));
+}
+
+function parseStoredSidebarWidth(rawWidth: unknown) {
+    const width = Number(rawWidth);
+    if (!Number.isFinite(width) || width <= 0) {
+        return null;
+    }
+
+    return clampSidebarWidth(width);
+}
+
+function getStoredSidebarCollapsed() {
+    try {
+        const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+        return saved !== 'false'; // 默认隐藏，除非明确保存为 'false'
+    } catch {
+        return true;
+    }
+}
+
+function getStoredSidebarExpandedWidth() {
+    try {
+        const savedWidth = localStorage.getItem(SIDEBAR_EXPANDED_WIDTH_STORAGE_KEY);
+        if (savedWidth) {
+            const parsedWidth = parseStoredSidebarWidth(savedWidth);
+            if (parsedWidth !== null) {
+                return parsedWidth;
+            }
+        }
+
+        const legacySizes = localStorage.getItem(LEGACY_SIDEBAR_SIZE_STORAGE_KEY);
+        if (legacySizes) {
+            const parsed = JSON.parse(legacySizes);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                const parsedWidth = parseStoredSidebarWidth(parsed[0]);
+                if (parsedWidth !== null) {
+                    return parsedWidth;
+                }
+            }
+        }
+    } catch {
+        // Ignore storage access failures and fall back to defaults.
+    }
+
+    return SIDEBAR_DEFAULT_WIDTH_PX;
+}
+
+function getInitialVerticalSizes(): number[] | undefined {
+    try {
+        const saved = localStorage.getItem(EDITOR_SIZE_STORAGE_KEY);
+        if (saved) return JSON.parse(saved);
+    } catch {
+        // Ignore storage access failures and fall back to defaults.
+    }
+    return undefined;
+}
+
+function getHorizontalSizes(sidebarCollapsed: boolean, sidebarExpandedWidth: number) {
+    return sidebarCollapsed
+        ? [0, QUERY_MAIN_DEFAULT_WIDTH_PX]
+        : [clampSidebarWidth(sidebarExpandedWidth), QUERY_MAIN_DEFAULT_WIDTH_PX];
 }
 
 export default function Query() {
@@ -100,15 +178,9 @@ export default function Query() {
     const activeDbRef = useRef('');
     const tableKeywordCommittedRef = useRef('');
     const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
+    const horizontalSplitterRef = useRef<AllotmentHandle | null>(null);
     const [tableScrollElement, setTableScrollElement] = useState<HTMLDivElement | null>(null);
     const TABLE_PAGE_SIZE = 200;
-
-    const SIDEBAR_STORAGE_KEY = 'query-sidebar-collapsed';
-    const SIDEBAR_SIZE_STORAGE_KEY = 'query-sidebar-size';
-    const EDITOR_SIZE_STORAGE_KEY = 'query-editor-size';
-    const SIDEBAR_DEFAULT_WIDTH_PX = 300;
-    const SIDEBAR_MIN_WIDTH_PX = 250;
-    const SIDEBAR_MAX_WIDTH_PX = 600;
 
     const getActiveDataSource = useCallback(() => {
         if (selectedDs && String(selectedDs.id) === selectedDsId) {
@@ -117,34 +189,12 @@ export default function Query() {
         return dataSources.find(item => String(item.id) === selectedDsId) ?? null;
     }, [dataSources, selectedDs, selectedDsId]);
 
-    const getInitialHorizontalSizes = (): number[] | undefined => {
-        try {
-            const saved = localStorage.getItem(SIDEBAR_SIZE_STORAGE_KEY);
-            if (saved) return JSON.parse(saved);
-        } catch {
-            // Ignore storage access failures and fall back to defaults.
-        }
-        return undefined;
-    };
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(getStoredSidebarCollapsed);
+    const [sidebarExpandedWidth, setSidebarExpandedWidth] = useState(getStoredSidebarExpandedWidth);
 
-    const getInitialVerticalSizes = (): number[] | undefined => {
-        try {
-            const saved = localStorage.getItem(EDITOR_SIZE_STORAGE_KEY);
-            if (saved) return JSON.parse(saved);
-        } catch {
-            // Ignore storage access failures and fall back to defaults.
-        }
-        return undefined;
-    };
-
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-        try {
-            const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
-            return saved !== 'false'; // 默认隐藏，除非明确保存为 'false'
-        } catch {
-            return true;
-        }
-    });
+    const initialHorizontalSizes = useMemo(() => {
+        return getHorizontalSizes(sidebarCollapsed, sidebarExpandedWidth);
+    }, [sidebarCollapsed, sidebarExpandedWidth]);
 
     const virtualizer = useVirtualizer({
         count: tables.length,
@@ -159,17 +209,38 @@ export default function Query() {
         setTableScrollElement(node);
     }, []);
 
+    const persistSidebarCollapsed = useCallback((collapsed: boolean) => {
+        try {
+            localStorage.setItem(SIDEBAR_STORAGE_KEY, String(collapsed));
+        } catch {
+            // Ignore storage access failures and keep the in-memory state.
+        }
+    }, []);
+
+    const persistSidebarExpandedWidth = useCallback((width: number) => {
+        try {
+            localStorage.setItem(SIDEBAR_EXPANDED_WIDTH_STORAGE_KEY, String(width));
+            localStorage.removeItem(LEGACY_SIDEBAR_SIZE_STORAGE_KEY);
+        } catch {
+            // Ignore storage access failures and keep the in-memory state.
+        }
+    }, []);
+
     const toggleSidebar = useCallback(() => {
         setSidebarCollapsed(prev => {
             const next = !prev;
-            try {
-                localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
-            } catch {
-                // Ignore storage access failures and keep the in-memory state.
-            }
+            persistSidebarCollapsed(next);
             return next;
         });
-    }, []);
+    }, [persistSidebarCollapsed]);
+
+    useLayoutEffect(() => {
+        horizontalSplitterRef.current?.resize(getHorizontalSizes(sidebarCollapsed, sidebarExpandedWidth));
+    }, [sidebarCollapsed, sidebarExpandedWidth]);
+
+    useEffect(() => {
+        persistSidebarExpandedWidth(sidebarExpandedWidth);
+    }, [persistSidebarExpandedWidth, sidebarExpandedWidth]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -889,18 +960,22 @@ export default function Query() {
     return (
         <div className="query-splitter h-full flex w-full">
             <Allotment
+                ref={horizontalSplitterRef}
                 className="query-splitter-panel"
-                defaultSizes={getInitialHorizontalSizes()}
+                defaultSizes={initialHorizontalSizes}
                 onDragEnd={(sizes) => {
-                    try {
-                        localStorage.setItem(SIDEBAR_SIZE_STORAGE_KEY, JSON.stringify(sizes));
-                    } catch {
-                        // Ignore storage access failures and keep the current splitter size.
+                    const sidebarSize = sizes[0];
+                    if (typeof sidebarSize === 'number' && sidebarSize > 0) {
+                        const nextWidth = clampSidebarWidth(sidebarSize);
+                        setSidebarExpandedWidth(currentWidth => currentWidth === nextWidth ? currentWidth : nextWidth);
+                        persistSidebarExpandedWidth(nextWidth);
                     }
                 }}
                 onVisibleChange={(index, visible) => {
                     if (index === 0) {
-                        setSidebarCollapsed(!visible);
+                        const nextCollapsed = !visible;
+                        setSidebarCollapsed(current => current === nextCollapsed ? current : nextCollapsed);
+                        persistSidebarCollapsed(nextCollapsed);
                     }
                 }}
             >
@@ -1042,7 +1117,7 @@ export default function Query() {
                 </Allotment.Pane>
 
                 {/* 右侧主内容区 */}
-                <Allotment.Pane minSize={600} className="query-main-wrapper">
+                <Allotment.Pane minSize={600} preferredSize="100%" className="query-main-wrapper">
                     <header className="query-toolbar">
                         <div className="toolbar-left">
                             <TooltipProvider delayDuration={400}>
