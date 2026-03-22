@@ -872,6 +872,30 @@ export default function Query() {
         return '执行完成';
     }, [loadingQuery, queryError, result]);
 
+    const resultOutputLabel = useMemo(() => {
+        if (loadingQuery) {
+            return '运行中';
+        }
+        if (queryError) {
+            return '错误输出';
+        }
+        if (!result) {
+            return '结果输出';
+        }
+        if (result.columns.length > 0) {
+            return '结果集';
+        }
+        return '执行信息';
+    }, [loadingQuery, queryError, result]);
+
+    const resultToneClass = queryError
+        ? 'is-error'
+        : loadingQuery
+            ? 'is-running'
+            : result
+                ? 'is-ready'
+                : 'is-idle';
+
     const handleRunQuery = useCallback(async (sqlToRun?: string) => {
         let finalSql = sqlToRun;
 
@@ -1024,6 +1048,11 @@ export default function Query() {
         tablesRef.current = tables;
     }, [tables]);
 
+    const databasesRef = useRef(databases);
+    useEffect(() => {
+        databasesRef.current = databases;
+    }, [databases]);
+
     const columnCacheRef = useRef(columnCache);
     useEffect(() => {
         columnCacheRef.current = columnCache;
@@ -1095,9 +1124,40 @@ export default function Query() {
                 };
 
                 const suggestions: Monaco.languages.CompletionItem[] = [];
+                const suggestionKeys = new Set<string>();
                 const currentTables = tablesRef.current;
+                const currentDatabases = databasesRef.current;
                 const currentColumnCache = columnCacheRef.current;
                 const currentDialect = dialectMetadataRef.current;
+                const normalizedWord = (word.word || '').toLowerCase();
+                const selectedDatabase = activeDbRef.current.toLowerCase();
+
+                const buildPrefixRank = (candidate: string) => {
+                    const normalizedCandidate = candidate.toLowerCase();
+                    if (!normalizedWord) return '2';
+                    if (normalizedCandidate === normalizedWord) return '0';
+                    if (normalizedCandidate.startsWith(normalizedWord)) return '1';
+                    if (normalizedCandidate.includes(normalizedWord)) return '2';
+                    return '3';
+                };
+
+                const pushSuggestion = (
+                    item: Monaco.languages.CompletionItem,
+                    categoryRank: string,
+                    dedupeKey?: string,
+                ) => {
+                    const labelText = typeof item.label === 'string' ? item.label : item.label.label;
+                    const key = dedupeKey ?? `${item.kind}:${labelText.toLowerCase()}:${item.detail ?? ''}`;
+                    if (suggestionKeys.has(key)) {
+                        return;
+                    }
+
+                    suggestionKeys.add(key);
+                    suggestions.push({
+                        ...item,
+                        sortText: `${categoryRank}${buildPrefixRank(labelText)}-${labelText.toLowerCase()}`,
+                    });
+                };
 
                 // --- Extract Aliases ---
                 const fullText = model.getValue();
@@ -1124,20 +1184,37 @@ export default function Query() {
                     // If we have at least one dot, the identifier is the part just before the last dot
                     if (dotParts.length >= 2) {
                         const identifier = dotParts[dotParts.length - 2].toLowerCase();
+                        const isDatabaseQualifier = currentDatabases.some(db => db.toLowerCase() === identifier);
+                        if (isDatabaseQualifier) {
+                            if (identifier === selectedDatabase) {
+                                currentTables.forEach(table => {
+                                    pushSuggestion({
+                                        label: table.name,
+                                        kind: monaco.languages.CompletionItemKind.Struct,
+                                        insertText: table.name,
+                                        detail: `Table in ${identifier}`,
+                                        documentation: table.remarks,
+                                        range,
+                                    }, '10', `db-table:${identifier}:${table.name.toLowerCase()}`);
+                                });
+                            }
+                            return { suggestions };
+                        }
+
                         const actualTableName = aliases[identifier] || identifier;
 
                         const table = currentTables.find(t => t.name.toLowerCase() === actualTableName);
                         const cachedCols = currentColumnCache.get(actualTableName) || currentColumnCache.get(table?.name || '');
                         if (cachedCols) {
                             cachedCols.forEach(col => {
-                                suggestions.push({
+                                pushSuggestion({
                                     label: col.name,
                                     kind: monaco.languages.CompletionItemKind.Field,
                                     insertText: col.name,
                                     detail: `${actualTableName} Column (${col.type})`,
                                     documentation: col.remarks,
-                                    range: range,
-                                });
+                                    range,
+                                }, '00', `column:${actualTableName}:${col.name.toLowerCase()}`);
                             });
                             return { suggestions };
                         }
@@ -1150,19 +1227,41 @@ export default function Query() {
                     }
                 }
 
-                // 2. Context-aware table suggestions (after FROM or JOIN)
-                const isAfterFromOrJoin = /\b(FROM|JOIN)\s+$/i.test(textBeforeCursor);
-                if (isAfterFromOrJoin) {
+                // 2. Context-aware database/table suggestions after relation keywords
+                const relationContextMatch = /\b(FROM|JOIN|INTO|UPDATE|TABLE)\s+([a-zA-Z0-9_]*)$/i.exec(textBeforeCursor);
+                if (relationContextMatch) {
+                    currentDatabases.forEach(database => {
+                        pushSuggestion({
+                            label: database,
+                            kind: monaco.languages.CompletionItemKind.Module,
+                            insertText: database,
+                            detail: 'Database',
+                            range,
+                        }, '05', `database:${database.toLowerCase()}`);
+                    });
                     currentTables.forEach(table => {
-                        suggestions.push({
+                        pushSuggestion({
                             label: table.name,
                             kind: monaco.languages.CompletionItemKind.Struct,
                             insertText: table.name,
                             detail: `Table (${table.type})`,
                             documentation: table.remarks,
-                            range: range,
-                            sortText: '1' // Prioritize tables in this context
-                        });
+                            range,
+                        }, '08', `table:${table.name.toLowerCase()}`);
+                    });
+                    return { suggestions };
+                }
+
+                const useContextMatch = /\b(USE|DATABASE|SCHEMA)\s+([a-zA-Z0-9_]*)$/i.exec(textBeforeCursor);
+                if (useContextMatch) {
+                    currentDatabases.forEach(database => {
+                        pushSuggestion({
+                            label: database,
+                            kind: monaco.languages.CompletionItemKind.Module,
+                            insertText: database,
+                            detail: 'Database',
+                            range,
+                        }, '02', `database:${database.toLowerCase()}`);
                     });
                     return { suggestions };
                 }
@@ -1173,29 +1272,27 @@ export default function Query() {
                     : FALLBACK_SQL_KEYWORDS;
 
                 keywordSuggestions.forEach(keyword => {
-                        suggestions.push({
-                            label: keyword,
-                            kind: monaco.languages.CompletionItemKind.Keyword,
-                            insertText: keyword,
-                            range: range,
-                            sortText: '9' // Lower priority
-                        });
-                    });
+                    pushSuggestion({
+                        label: keyword,
+                        kind: monaco.languages.CompletionItemKind.Keyword,
+                        insertText: keyword,
+                        range,
+                    }, '70', `keyword:${keyword.toLowerCase()}`);
+                });
 
                 if (currentDialect) {
                     currentDialect.dataTypes.forEach(dt => {
-                        suggestions.push({
+                        pushSuggestion({
                             label: dt,
                             kind: monaco.languages.CompletionItemKind.TypeParameter,
                             insertText: dt,
                             detail: 'Data Type',
-                            range: range,
-                            sortText: '8'
-                        });
+                            range,
+                        }, '60', `datatype:${dt.toLowerCase()}`);
                     });
 
                     currentDialect.functions.forEach(func => {
-                        suggestions.push({
+                        pushSuggestion({
                             label: func.name,
                             kind: monaco.languages.CompletionItemKind.Function,
                             insertText: func.signature || `${func.name}($0)`,
@@ -1204,34 +1301,41 @@ export default function Query() {
                                 : undefined,
                             detail: 'Function',
                             documentation: func.description,
-                            range: range,
-                            sortText: '8'
-                        });
+                            range,
+                        }, '50', `function:${func.name.toLowerCase()}`);
                     });
                 }
 
+                currentDatabases.forEach(database => {
+                    pushSuggestion({
+                        label: database,
+                        kind: monaco.languages.CompletionItemKind.Module,
+                        insertText: database,
+                        detail: 'Database',
+                        range,
+                    }, '20', `database:${database.toLowerCase()}`);
+                });
+
                 currentTables.forEach(table => {
-                    suggestions.push({
+                    pushSuggestion({
                         label: table.name,
                         kind: monaco.languages.CompletionItemKind.Struct,
                         insertText: table.name,
                         detail: `Table (${table.type})`,
                         documentation: table.remarks,
-                        range: range,
-                        sortText: '5'
-                    });
+                        range,
+                    }, '30', `table:${table.name.toLowerCase()}`);
                 });
 
                 currentColumnCache.forEach((cols, tblName) => {
                     cols.forEach(col => {
-                        suggestions.push({
+                        pushSuggestion({
                             label: col.name,
                             kind: monaco.languages.CompletionItemKind.Field,
                             insertText: col.name,
                             detail: `Column of ${tblName} (${col.type})`,
-                            range: range,
-                            sortText: '7'
-                        });
+                            range,
+                        }, '40', `column:${tblName}:${col.name.toLowerCase()}`);
                     });
                 });
 
@@ -1611,8 +1715,11 @@ export default function Query() {
                             <section className={`results-section ${resultCollapsed ? 'collapsed' : ''}`.trim()}>
                                 <div className="section-header">
                                     <div className="section-header-left">
-                                        <span className="section-title">查询结果</span>
-                                        <div className={`result-summary ${queryError ? 'is-error' : ''}`.trim()}>
+                                        <div className={`result-output-tab ${resultToneClass}`.trim()}>
+                                            <span className="result-output-tab-dot" aria-hidden="true" />
+                                            <span>{resultOutputLabel}</span>
+                                        </div>
+                                        <div className={`result-summary ${resultToneClass}`.trim()}>
                                             {loadingQuery ? <Loader2 size={12} className="animate-spin" /> : null}
                                             <span>{resultStatusText}</span>
                                         </div>
@@ -1649,15 +1756,24 @@ export default function Query() {
                                                 )}
                                             </div>
                                         )}
-                                        <button
-                                            type="button"
-                                            className={`section-toggle-button ${hasHiddenResultHint ? 'has-notice' : ''}`.trim()}
-                                            onClick={toggleResultPanel}
-                                            aria-label={resultCollapsed ? '展开查询结果' : '收起查询结果'}
-                                        >
-                                            {resultCollapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                                            {hasHiddenResultHint ? <span className="sidebar-toggle-notice" aria-hidden="true" /> : null}
-                                        </button>
+                                        <TooltipProvider delayDuration={400}>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <button
+                                                        type="button"
+                                                        className={`section-toggle-button ${hasHiddenResultHint ? 'has-notice' : ''}`.trim()}
+                                                        onClick={toggleResultPanel}
+                                                        aria-label={resultCollapsed ? '展开查询结果' : '收起查询结果'}
+                                                    >
+                                                        {resultCollapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                                        {hasHiddenResultHint ? <span className="sidebar-toggle-notice" aria-hidden="true" /> : null}
+                                                    </button>
+                                                </TooltipTrigger>
+                                                <TooltipContent className="tooltip-content" side="top">
+                                                    {resultCollapsed ? '展开查询结果' : '收起查询结果'} <kbd>{isMac ? '⌘' : 'Ctrl'}+J</kbd>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
                                     </div>
                                 </div>
                                 {!resultCollapsed && (
