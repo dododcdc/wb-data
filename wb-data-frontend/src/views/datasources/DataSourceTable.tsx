@@ -7,7 +7,7 @@ interface DataSourceTableProps {
     isRefreshing: boolean;
     errorMessage: string;
     onEdit: (id: number) => void;
-    onDelete: (id: number) => void;
+    onDelete: (dataSource: DataSource) => void;
     onToggleStatus: (dataSource: DataSource) => void;
     deletePendingId: number | null;
     statusPendingId: number | null;
@@ -61,9 +61,9 @@ export function DataSourceTable(props: DataSourceTableProps) {
                             <th>类型</th>
                             <th>连接信息</th>
                             <th>状态</th>
-                            <th>负责人</th>
-                            <th>更新时间</th>
-                            <th>操作</th>
+                            <th className="datasource-owner-column">负责人</th>
+                            <th className="datasource-updated-column">更新时间</th>
+                            <th className="datasource-actions-column">操作</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -85,9 +85,9 @@ export function DataSourceTable(props: DataSourceTableProps) {
                                         {getStatusLabel(item.status)}
                                     </span>
                                 </td>
-                                <td className="datasource-owner">{item.owner || '--'}</td>
-                                <td>{formatTimestamp(item.updatedAt)}</td>
-                                <td>
+                                <td className="datasource-owner datasource-owner-column">{item.owner || '--'}</td>
+                                <td className="datasource-updated-at datasource-updated-column">{formatTimestamp(item.updatedAt)}</td>
+                                <td className="datasource-actions-column">
                                     <div className="datasource-actions">
                                         <button
                                             className="datasource-icon-btn"
@@ -111,7 +111,7 @@ export function DataSourceTable(props: DataSourceTableProps) {
                                         <button
                                             className="datasource-icon-btn danger"
                                             disabled={deletePendingId === item.id}
-                                            onClick={() => onDelete(item.id)}
+                                            onClick={() => onDelete(item)}
                                             title="删除数据源"
                                             aria-label="删除数据源"
                                             type="button"
