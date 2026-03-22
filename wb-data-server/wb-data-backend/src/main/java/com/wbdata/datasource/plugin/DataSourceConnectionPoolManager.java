@@ -11,7 +11,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.sql.Connection;
+import java.sql.Driver;
+import java.sql.DriverManager;
+import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -30,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 public class DataSourceConnectionPoolManager {
 
     private static final Logger log = LoggerFactory.getLogger(DataSourceConnectionPoolManager.class);
+    private static final Set<String> REGISTERED_DRIVERS = ConcurrentHashMap.newKeySet();
 
     /** 最多同时保持活跃连接池的数据源数量 */
     private static final int MAX_POOL_COUNT = 50;
@@ -61,8 +69,10 @@ public class DataSourceConnectionPoolManager {
      * @param driverClassName JDBC 驱动类名（由插件提供）
      * @return 来自连接池的活跃 JDBC 连接
      */
-    public Connection getConnection(DataSource ds, String jdbcUrl, String driverClassName) throws SQLException {
-        HikariDataSource pool = poolCache.get(ds.getId(), id -> createPool(ds, jdbcUrl, driverClassName));
+    public Connection getConnection(DataSource ds, String jdbcUrl, String driverClassName, ClassLoader driverClassLoader)
+            throws SQLException {
+        HikariDataSource pool = poolCache.get(ds.getId(),
+                id -> createPool(ds, jdbcUrl, driverClassName, driverClassLoader));
         return pool.getConnection();
     }
 
@@ -79,12 +89,16 @@ public class DataSourceConnectionPoolManager {
         }
     }
 
-    private HikariDataSource createPool(DataSource ds, String jdbcUrl, String driverClassName) {
+    private HikariDataSource createPool(
+            DataSource ds,
+            String jdbcUrl,
+            String driverClassName,
+            ClassLoader driverClassLoader) {
         log.info("创建新的连接池, dataSourceId={}, type={}, url={}",
                 ds.getId(), ds.getType(), jdbcUrl);
+        registerDriverIfNeeded(driverClassName, driverClassLoader);
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(jdbcUrl);
-        config.setDriverClassName(driverClassName);
         if (ds.getUsername() != null && !ds.getUsername().isBlank()) {
             config.setUsername(ds.getUsername());
         }
@@ -100,6 +114,77 @@ public class DataSourceConnectionPoolManager {
         // 禁用自动提交以实现查询隔离；插件将管理事务
         config.setAutoCommit(true);
         return new HikariDataSource(config);
+    }
+
+    private void registerDriverIfNeeded(String driverClassName, ClassLoader driverClassLoader) {
+        if (driverClassName == null || driverClassName.isBlank()) {
+            return;
+        }
+        ClassLoader effectiveClassLoader = driverClassLoader != null
+                ? driverClassLoader
+                : Thread.currentThread().getContextClassLoader();
+        String registrationKey = driverClassName + '@' + System.identityHashCode(effectiveClassLoader);
+        if (REGISTERED_DRIVERS.contains(registrationKey)) {
+            return;
+        }
+        synchronized (REGISTERED_DRIVERS) {
+            if (REGISTERED_DRIVERS.contains(registrationKey)) {
+                return;
+            }
+            try {
+                Driver driver = (Driver) Class.forName(driverClassName, true, effectiveClassLoader)
+                        .getDeclaredConstructor()
+                        .newInstance();
+                DriverManager.registerDriver(new DriverShim(driver));
+                REGISTERED_DRIVERS.add(registrationKey);
+            } catch (Exception exception) {
+                throw new IllegalStateException("注册 JDBC 驱动失败: " + driverClassName, exception);
+            }
+        }
+    }
+
+    private static final class DriverShim implements Driver {
+
+        private final Driver driver;
+
+        private DriverShim(Driver driver) {
+            this.driver = driver;
+        }
+
+        @Override
+        public Connection connect(String url, Properties info) throws SQLException {
+            return driver.connect(url, info);
+        }
+
+        @Override
+        public boolean acceptsURL(String url) throws SQLException {
+            return driver.acceptsURL(url);
+        }
+
+        @Override
+        public DriverPropertyInfo[] getPropertyInfo(String url, Properties info) throws SQLException {
+            return driver.getPropertyInfo(url, info);
+        }
+
+        @Override
+        public int getMajorVersion() {
+            return driver.getMajorVersion();
+        }
+
+        @Override
+        public int getMinorVersion() {
+            return driver.getMinorVersion();
+        }
+
+        @Override
+        public boolean jdbcCompliant() {
+            return driver.jdbcCompliant();
+        }
+
+        @Override
+        public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
+            return driver.getParentLogger();
+        }
     }
 
     @PreDestroy

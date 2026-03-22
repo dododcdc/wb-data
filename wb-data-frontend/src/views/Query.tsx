@@ -38,6 +38,22 @@ type QueryEditorError = {
     message?: string;
 };
 
+function mergeDatabaseOptions(databases: string[], fallbackDatabase?: string) {
+    const merged: string[] = [];
+
+    const pushUnique = (database?: string) => {
+        const normalized = database?.trim();
+        if (!normalized) return;
+        if (merged.some(item => item.toLowerCase() === normalized.toLowerCase())) return;
+        merged.push(normalized);
+    };
+
+    pushUnique(fallbackDatabase);
+    databases.forEach(pushUnique);
+
+    return merged;
+}
+
 export default function Query() {
     useKeyboardFocusMode();
 
@@ -93,6 +109,13 @@ export default function Query() {
     const SIDEBAR_DEFAULT_WIDTH_PX = 300;
     const SIDEBAR_MIN_WIDTH_PX = 250;
     const SIDEBAR_MAX_WIDTH_PX = 600;
+
+    const getActiveDataSource = useCallback(() => {
+        if (selectedDs && String(selectedDs.id) === selectedDsId) {
+            return selectedDs;
+        }
+        return dataSources.find(item => String(item.id) === selectedDsId) ?? null;
+    }, [dataSources, selectedDs, selectedDsId]);
 
     const getInitialHorizontalSizes = (): number[] | undefined => {
         try {
@@ -209,6 +232,8 @@ export default function Query() {
 
     useEffect(() => {
         if (selectedDsId) {
+            const activeDataSource = getActiveDataSource();
+
             setDbKeyword('');
             setSelectedDb('');
             setDatabases([]);
@@ -217,7 +242,7 @@ export default function Query() {
             setTableKeyword('');
             setTableKeywordCommitted('');
             setTableTotal(0);
-            loadDatabases(Number(selectedDsId));
+            loadDatabases(Number(selectedDsId), activeDataSource?.databaseName);
             loadDialect(Number(selectedDsId));
         } else {
             setDatabases([]);
@@ -231,7 +256,7 @@ export default function Query() {
             setDialectMetadata(null);
             setSelectedDs(null);
         }
-    }, [selectedDsId]);
+    }, [getActiveDataSource, selectedDsId]);
 
     useEffect(() => {
         if (selectedDsId && selectedDb) {
@@ -329,18 +354,16 @@ export default function Query() {
         }
     };
 
-    const loadDatabases = async (id: number) => {
+    const loadDatabases = async (id: number, fallbackDatabase?: string) => {
         const requestId = ++databasesRequestIdRef.current;
         setLoadingDatabases(true);
         try {
             const data = await getMetadataDatabases(id);
             if (requestId !== databasesRequestIdRef.current) return;
             if (activeDsIdRef.current !== String(id)) return;
-            setDatabases(data);
-            // Default select the first database if available
-            if (data.length > 0) {
-                setSelectedDb(data[0]);
-            }
+            const mergedDatabases = mergeDatabaseOptions(data, fallbackDatabase);
+            setDatabases(mergedDatabases);
+            setSelectedDb(mergedDatabases[0] ?? '');
         } catch (error) {
             console.error('Failed to load databases', error);
         } finally {
