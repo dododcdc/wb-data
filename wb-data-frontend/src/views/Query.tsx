@@ -34,7 +34,9 @@ const EDITOR_SIZE_STORAGE_KEY = 'query-editor-size';
 const SIDEBAR_DEFAULT_WIDTH_PX = 300;
 const SIDEBAR_MIN_WIDTH_PX = 250;
 const SIDEBAR_MAX_WIDTH_PX = 600;
+const QUERY_MAIN_MIN_WIDTH_PX = 600;
 const QUERY_MAIN_DEFAULT_WIDTH_PX = 1100;
+const SIDEBAR_TOGGLE_TRANSITION_MS = 160;
 
 type MonacoEditorInstance = Monaco.editor.IStandaloneCodeEditor;
 
@@ -126,10 +128,20 @@ function getInitialVerticalSizes(): number[] | undefined {
     return undefined;
 }
 
-function getHorizontalSizes(sidebarCollapsed: boolean, sidebarExpandedWidth: number) {
-    return sidebarCollapsed
-        ? [0, QUERY_MAIN_DEFAULT_WIDTH_PX]
-        : [clampSidebarWidth(sidebarExpandedWidth), QUERY_MAIN_DEFAULT_WIDTH_PX];
+function getHorizontalSizes(sidebarCollapsed: boolean, sidebarExpandedWidth: number, totalWidth?: number) {
+    const resolvedTotalWidth = Number.isFinite(totalWidth) && totalWidth && totalWidth > 0
+        ? totalWidth
+        : QUERY_MAIN_DEFAULT_WIDTH_PX;
+
+    if (sidebarCollapsed) {
+        return [0, resolvedTotalWidth];
+    }
+
+    const maxSidebarWidth = Math.max(0, resolvedTotalWidth - QUERY_MAIN_MIN_WIDTH_PX);
+    const nextSidebarWidth = Math.min(clampSidebarWidth(sidebarExpandedWidth), maxSidebarWidth);
+    const nextMainWidth = Math.max(QUERY_MAIN_MIN_WIDTH_PX, resolvedTotalWidth - nextSidebarWidth);
+
+    return [nextSidebarWidth, nextMainWidth];
 }
 
 export default function Query() {
@@ -179,6 +191,9 @@ export default function Query() {
     const tableKeywordCommittedRef = useRef('');
     const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
     const horizontalSplitterRef = useRef<AllotmentHandle | null>(null);
+    const sidebarTransitionTimerRef = useRef<number | null>(null);
+    const horizontalLayoutSizesRef = useRef<number[] | null>(null);
+    const querySplitterRef = useRef<HTMLDivElement | null>(null);
     const [tableScrollElement, setTableScrollElement] = useState<HTMLDivElement | null>(null);
     const TABLE_PAGE_SIZE = 200;
 
@@ -191,6 +206,7 @@ export default function Query() {
 
     const [sidebarCollapsed, setSidebarCollapsed] = useState(getStoredSidebarCollapsed);
     const [sidebarExpandedWidth, setSidebarExpandedWidth] = useState(getStoredSidebarExpandedWidth);
+    const [sidebarTransitioning, setSidebarTransitioning] = useState(false);
 
     const initialHorizontalSizes = useMemo(() => {
         return getHorizontalSizes(sidebarCollapsed, sidebarExpandedWidth);
@@ -226,21 +242,65 @@ export default function Query() {
         }
     }, []);
 
+    const startSidebarTransition = useCallback(() => {
+        if (sidebarTransitionTimerRef.current !== null) {
+            window.clearTimeout(sidebarTransitionTimerRef.current);
+        }
+
+        setSidebarTransitioning(true);
+        sidebarTransitionTimerRef.current = window.setTimeout(() => {
+            setSidebarTransitioning(false);
+            sidebarTransitionTimerRef.current = null;
+        }, SIDEBAR_TOGGLE_TRANSITION_MS + 40);
+    }, []);
+
     const toggleSidebar = useCallback(() => {
+        startSidebarTransition();
         setSidebarCollapsed(prev => {
             const next = !prev;
             persistSidebarCollapsed(next);
             return next;
         });
-    }, [persistSidebarCollapsed]);
+    }, [persistSidebarCollapsed, startSidebarTransition]);
+
+    const getCurrentHorizontalTotalWidth = useCallback(() => {
+        const cachedSizes = horizontalLayoutSizesRef.current;
+        if (cachedSizes && cachedSizes.length === 2) {
+            const total = cachedSizes[0] + cachedSizes[1];
+            if (Number.isFinite(total) && total > 0) {
+                return total;
+            }
+        }
+
+        const measuredWidth = querySplitterRef.current?.clientWidth;
+        if (typeof measuredWidth === 'number' && measuredWidth > 0) {
+            return measuredWidth;
+        }
+
+        return QUERY_MAIN_DEFAULT_WIDTH_PX;
+    }, []);
 
     useLayoutEffect(() => {
-        horizontalSplitterRef.current?.resize(getHorizontalSizes(sidebarCollapsed, sidebarExpandedWidth));
-    }, [sidebarCollapsed, sidebarExpandedWidth]);
+        const nextSizes = getHorizontalSizes(
+            sidebarCollapsed,
+            sidebarExpandedWidth,
+            getCurrentHorizontalTotalWidth(),
+        );
+        horizontalLayoutSizesRef.current = nextSizes;
+        horizontalSplitterRef.current?.resize(nextSizes);
+    }, [getCurrentHorizontalTotalWidth, sidebarCollapsed, sidebarExpandedWidth]);
 
     useEffect(() => {
         persistSidebarExpandedWidth(sidebarExpandedWidth);
     }, [persistSidebarExpandedWidth, sidebarExpandedWidth]);
+
+    useEffect(() => {
+        return () => {
+            if (sidebarTransitionTimerRef.current !== null) {
+                window.clearTimeout(sidebarTransitionTimerRef.current);
+            }
+        };
+    }, []);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -958,12 +1018,19 @@ export default function Query() {
     }, []);
 
     return (
-        <div className="query-splitter h-full flex w-full">
+        <div
+            ref={querySplitterRef}
+            className={`query-splitter h-full flex w-full ${sidebarTransitioning ? 'sidebar-transitioning' : ''}`.trim()}
+        >
             <Allotment
                 ref={horizontalSplitterRef}
                 className="query-splitter-panel"
                 defaultSizes={initialHorizontalSizes}
+                onChange={(sizes) => {
+                    horizontalLayoutSizesRef.current = sizes;
+                }}
                 onDragEnd={(sizes) => {
+                    horizontalLayoutSizesRef.current = sizes;
                     const sidebarSize = sizes[0];
                     if (typeof sidebarSize === 'number' && sidebarSize > 0) {
                         const nextWidth = clampSidebarWidth(sidebarSize);
@@ -987,7 +1054,7 @@ export default function Query() {
                     visible={!sidebarCollapsed}
                     className="metadata-panel-wrapper"
                 >
-                    <aside className={`metadata-panel sidebar-visible`}>
+                    <aside className={`metadata-panel ${sidebarCollapsed ? 'sidebar-hidden' : 'sidebar-visible'}`}>
                         <div className="metadata-header">
                             <span className="metadata-title">表结构</span>
                             {selectedDsId && selectedDb && tableTotal > 0 && (
@@ -1117,7 +1184,7 @@ export default function Query() {
                 </Allotment.Pane>
 
                 {/* 右侧主内容区 */}
-                <Allotment.Pane minSize={600} preferredSize="100%" className="query-main-wrapper">
+                <Allotment.Pane minSize={QUERY_MAIN_MIN_WIDTH_PX} preferredSize="100%" className="query-main-wrapper">
                     <header className="query-toolbar">
                         <div className="toolbar-left">
                             <TooltipProvider delayDuration={400}>
