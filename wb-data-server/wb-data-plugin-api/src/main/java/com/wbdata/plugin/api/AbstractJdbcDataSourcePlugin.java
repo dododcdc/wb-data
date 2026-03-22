@@ -35,7 +35,11 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
          * 返回给定请求的活跃 JDBC 连接。
          * 调用方负责关闭它（将连接归还到池中）。
          */
-        Connection getConnection(DataSourceConnectionInfo connectionInfo, String jdbcUrl, String driverClassName)
+        Connection getConnection(
+                DataSourceConnectionInfo connectionInfo,
+                String jdbcUrl,
+                String driverClassName,
+                ClassLoader driverClassLoader)
                 throws Exception;
     }
 
@@ -75,10 +79,14 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     /**
      * 返回连接：如果有供应器则使用池化连接，否则使用直连。
      */
-    private Connection getConnection(DataSourceConnectionInfo connectionInfo) throws Exception {
+    protected Connection getConnection(DataSourceConnectionInfo connectionInfo) throws Exception {
         ConnectionSupplier supplier = connectionSupplier;
         if (supplier != null) {
-            return supplier.getConnection(connectionInfo, buildJdbcUrl(connectionInfo), driverClassName());
+            return supplier.getConnection(
+                    connectionInfo,
+                    buildJdbcUrl(connectionInfo),
+                    driverClassName(),
+                    getClass().getClassLoader());
         }
         return openDirectConnection(connectionInfo);
     }
@@ -117,7 +125,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
         } catch (Exception e) {
             throw new DataSourceException("获取数据库列表失败", e);
         }
-        return databases;
+        return prioritizeConfiguredDatabase(databases, connectionInfo.databaseName());
     }
 
     @Override
@@ -257,6 +265,32 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
 
     protected String emptyIfNull(String value) {
         return value == null ? "" : value;
+    }
+
+    protected java.util.List<String> prioritizeConfiguredDatabase(java.util.List<String> databases, String configuredDatabase) {
+        java.util.List<String> normalized = new java.util.ArrayList<>();
+        for (String database : databases) {
+            if (database != null && !database.isBlank()) {
+                normalized.add(database);
+            }
+        }
+
+        if (configuredDatabase == null || configuredDatabase.isBlank()) {
+            return normalized;
+        }
+
+        String preferred = configuredDatabase.trim();
+        for (int index = 0; index < normalized.size(); index++) {
+            String database = normalized.get(index);
+            if (database.equalsIgnoreCase(preferred)) {
+                normalized.remove(index);
+                normalized.add(0, database);
+                return normalized;
+            }
+        }
+
+        normalized.add(0, preferred);
+        return normalized;
     }
 
     private String extractConnectionErrorMessage(Exception exception) {

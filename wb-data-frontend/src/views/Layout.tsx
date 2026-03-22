@@ -81,7 +81,7 @@ export default function Layout() {
                 <div className="navbar-left">
                     <div className="logo-section">
                         <div className="logo-wrapper">
-                            <Layers size={24} className="logo-icon" />
+                            <Layers size={18} className="logo-icon" />
                         </div>
                         <h2>WB Data</h2>
                     </div>

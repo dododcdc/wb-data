@@ -77,7 +77,7 @@ public class DataSourcePluginRegistry {
 
         // 将池化连接供应器接入所有 AbstractJdbcDataSourcePlugin 实例
         AbstractJdbcDataSourcePlugin.setConnectionSupplier(
-                (request, jdbcUrl, driverClassName) -> {
+                (request, jdbcUrl, driverClassName, driverClassLoader) -> {
                     com.wbdata.datasource.entity.DataSource ds = new com.wbdata.datasource.entity.DataSource();
                     // 如果有 dataSourceId 则使用它，否则根据连接参数派生一个稳定的键
                     Long poolKey = request.dataSourceId() != null
@@ -92,7 +92,7 @@ public class DataSourcePluginRegistry {
                     ds.setDatabaseName(request.databaseName());
                     ds.setUsername(request.username());
                     ds.setPassword(request.password());
-                    return poolManager.getConnection(ds, jdbcUrl, driverClassName);
+                    return poolManager.getConnection(ds, jdbcUrl, driverClassName, driverClassLoader);
                 }
         );
     }

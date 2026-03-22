@@ -60,19 +60,20 @@
 .logo-section {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 }
 
 .logo-wrapper {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
-    height: 44px;
+    width: 32px;
+    height: 32px;
     background: var(--color-text-primary);
-    border-radius: 11px;
+    border-radius: 10px;
     color: var(--color-bg-primary);
     box-shadow: none;
+    flex-shrink: 0;
 }
 
 .logo-icon {
@@ -219,6 +220,21 @@
 
     .navbar-left {
         gap: 16px;
+    }
+
+    .logo-section {
+        gap: 7px;
+    }
+
+    .logo-wrapper {
+        width: 28px;
+        height: 28px;
+        border-radius: 9px;
+    }
+
+    .logo-icon {
+        width: 16px;
+        height: 16px;
     }
 
     .nav-item span {
