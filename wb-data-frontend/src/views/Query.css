@@ -8,6 +8,12 @@
     color: var(--color-text-primary);
 }
 
+.query-splitter.sidebar-transitioning .query-splitter-panel > [class*='splitViewContainer'] > [class*='splitViewView'] {
+    transition:
+        width 160ms cubic-bezier(0.22, 1, 0.36, 1),
+        left 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .query-splitter-panel {
     display: flex;
     height: 100%;
@@ -28,12 +34,26 @@
     border-right: 0;
     overflow: hidden;
     min-width: 200px;
-    opacity: 0;
-    transition: opacity 150ms ease 100ms;
+    opacity: 1;
+    transform: translateX(0);
+    transition: none;
+    will-change: opacity, transform;
 }
 
 .metadata-panel.sidebar-visible {
     opacity: 1;
+    transform: translateX(0);
+}
+
+.metadata-panel.sidebar-hidden {
+    opacity: 0;
+    transform: translateX(-8px);
+}
+
+.query-splitter.sidebar-transitioning .metadata-panel {
+    transition:
+        opacity 140ms ease,
+        transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .metadata-header {
