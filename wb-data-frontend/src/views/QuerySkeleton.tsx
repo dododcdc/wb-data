@@ -1,4 +1,5 @@
 import './RouteSkeletons.css';
+import './Query.css';
 
 export default function QuerySkeleton() {
     return (
