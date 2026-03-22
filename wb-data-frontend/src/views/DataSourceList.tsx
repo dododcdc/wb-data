@@ -2,6 +2,14 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DatabaseZap, Search } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogOverlay,
+    DialogPortal,
+    DialogTitle,
+} from '../components/ui/dialog';
 import { useDelayedBusy } from '../hooks/useDelayedBusy';
 import {
     DataSource,
@@ -40,6 +48,7 @@ export default function DataSourceList() {
     const [suppressPaginationHover, setSuppressPaginationHover] = useState(false);
     const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
     const [pendingStatusId, setPendingStatusId] = useState<number | null>(null);
+    const [pendingDeleteTarget, setPendingDeleteTarget] = useState<DataSource | null>(null);
 
     const currentPage = parsePageParam(searchParams.get('page'));
     const pageSize = parsePageSizeParam(searchParams.get('size'));
@@ -125,6 +134,7 @@ export default function DataSourceList() {
             setPendingDeleteId(id);
         },
         onSuccess: () => {
+            setPendingDeleteTarget(null);
             queryClient.invalidateQueries({ queryKey: ['dataSources'] });
         },
         onSettled: () => {
@@ -160,9 +170,21 @@ export default function DataSourceList() {
         });
     };
 
-    const handleDelete = (id: number) => {
-        if (!window.confirm('确认删除这个数据源吗？')) return;
-        deleteMutation.mutate(id);
+    const handlePageSizeChange = (nextPageSize: number) => {
+        if (nextPageSize === pageSize || pageQuery.isFetching) return;
+        patchSearchParams((params) => {
+            params.set('size', String(nextPageSize));
+            params.set('page', '1');
+        });
+    };
+
+    const handleDelete = (item: DataSource) => {
+        setPendingDeleteTarget(item);
+    };
+
+    const handleConfirmDelete = () => {
+        if (!pendingDeleteTarget) return;
+        deleteMutation.mutate(pendingDeleteTarget.id);
     };
 
     const handleToggleStatus = (item: DataSource) => {
@@ -223,6 +245,7 @@ export default function DataSourceList() {
                     hoverLocked={suppressPaginationHover}
                     isFetching={pageQuery.isFetching}
                     onPageChange={handlePageChange}
+                    onPageSizeChange={handlePageSizeChange}
                     pageSize={pageSize}
                     total={total}
                 />
@@ -242,6 +265,51 @@ export default function DataSourceList() {
                     }
                 }}
             />
+
+            <Dialog open={Boolean(pendingDeleteTarget)} onOpenChange={(nextOpen) => {
+                if (!nextOpen && pendingDeleteId == null) {
+                    setPendingDeleteTarget(null);
+                }
+            }}>
+                <DialogPortal>
+                    <DialogOverlay className="dialog-backdrop" />
+                    <DialogContent className="dialog-positioner">
+                        <div className="datasource-confirm-dialog">
+                            <DialogTitle className="datasource-confirm-title">删除数据源</DialogTitle>
+                            <DialogDescription className="datasource-confirm-description">
+                                {pendingDeleteTarget ? (
+                                    <>
+                                        你将删除数据源 <strong>{pendingDeleteTarget.name}</strong>。删除后该连接配置将不再出现在目录里，请确认当前没有人继续依赖它。
+                                    </>
+                                ) : ''}
+                            </DialogDescription>
+                            <div className="datasource-confirm-meta">
+                                <span>{pendingDeleteTarget?.type ?? '--'}</span>
+                                <span>{pendingDeleteTarget?.host ?? '--'}</span>
+                                <span>{pendingDeleteTarget?.databaseName || '未配置默认库'}</span>
+                            </div>
+                            <div className="datasource-confirm-actions">
+                                <button
+                                    className="datasource-secondary-btn"
+                                    disabled={pendingDeleteId != null}
+                                    onClick={() => setPendingDeleteTarget(null)}
+                                    type="button"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    className="datasource-danger-btn"
+                                    disabled={!pendingDeleteTarget || pendingDeleteId != null}
+                                    onClick={handleConfirmDelete}
+                                    type="button"
+                                >
+                                    {pendingDeleteId != null ? '删除中...' : '确认删除'}
+                                </button>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </DialogPortal>
+            </Dialog>
         </div>
     );
 }

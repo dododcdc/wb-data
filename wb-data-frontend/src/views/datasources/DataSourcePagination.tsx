@@ -1,11 +1,6 @@
-import { useMemo } from 'react';
-import {
-    Pagination,
-    PaginationContent,
-    PaginationEllipsis,
-    PaginationItem,
-    PaginationLink,
-} from '../../components/ui/pagination';
+import { ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react';
+import { SimpleSelect } from '../../components/SimpleSelect';
+import { PAGE_SIZE_OPTIONS } from './config';
 
 interface DataSourcePaginationProps {
     total: number;
@@ -14,6 +9,7 @@ interface DataSourcePaginationProps {
     isFetching: boolean;
     hoverLocked: boolean;
     onPageChange: (page: number) => void;
+    onPageSizeChange: (pageSize: number) => void;
 }
 
 export function DataSourcePagination(props: DataSourcePaginationProps) {
@@ -24,60 +20,21 @@ export function DataSourcePagination(props: DataSourcePaginationProps) {
         isFetching,
         hoverLocked,
         onPageChange,
+        onPageSizeChange,
     } = props;
 
     const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
     const prevDisabled = currentPage === 1 || isFetching;
     const nextDisabled = currentPage >= totalPages || isFetching;
-    const ellipsis = 'ellipsis' as const;
+    const pageStart = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    const pageEnd = total === 0 ? 0 : Math.min(currentPage * pageSize, total);
+    const pageCount = total === 0 ? 0 : pageEnd - pageStart + 1;
+    const pageSizeOptions = PAGE_SIZE_OPTIONS.map((value) => ({
+        label: `${value} 条`,
+        value: String(value),
+    }));
 
-    const paginationRange = useMemo(() => {
-        const boundaryCount = 1;
-        const siblingCount = 1;
-        const range = (start: number, end: number) => {
-            const length = Math.max(end - start + 1, 0);
-            return Array.from({ length }, (_, i) => start + i);
-        };
-        const totalPageNumbers = boundaryCount * 2 + siblingCount * 2 + 3;
-        if (totalPages <= totalPageNumbers) {
-            return range(1, totalPages);
-        }
-
-        const startPages = range(1, boundaryCount);
-        const endPages = range(totalPages - boundaryCount + 1, totalPages);
-
-        const siblingsStart = Math.max(
-            Math.min(
-                currentPage - siblingCount,
-                totalPages - boundaryCount - siblingCount * 2 - 1,
-            ),
-            boundaryCount + 2,
-        );
-        const siblingsEnd = Math.min(
-            Math.max(
-                currentPage + siblingCount,
-                boundaryCount + siblingCount * 2 + 2,
-            ),
-            totalPages - boundaryCount - 1,
-        );
-
-        const items: Array<number | 'ellipsis'> = [
-            ...startPages,
-            ...(siblingsStart > boundaryCount + 2 ? [ellipsis] : [boundaryCount + 1]),
-            ...range(siblingsStart, siblingsEnd),
-            ...(siblingsEnd < totalPages - boundaryCount - 1 ? [ellipsis] : [totalPages - boundaryCount]),
-            ...endPages,
-        ];
-
-        return items.filter((item, index, self) => {
-            if (item === 'ellipsis') {
-                return self[index - 1] !== 'ellipsis';
-            }
-            return self.indexOf(item) === index;
-        });
-    }, [currentPage, totalPages]);
-
-    const handlePageClick = (page: number) => {
+    const goToPage = (page: number) => {
         if (page < 1 || page > totalPages || page === currentPage || isFetching) {
             return;
         }
@@ -87,68 +44,78 @@ export function DataSourcePagination(props: DataSourcePaginationProps) {
     if (total === 0) return null;
 
     return (
-        <div className="datasource-pagination">
-            <div className="datasource-page-info">共 {total} 条数据</div>
+        <div className={`datasource-pagination datasource-pagination-admin ${hoverLocked ? 'hover-locked' : ''}`}>
+            <div className="datasource-page-info">
+                本页 {pageCount} 条，共 {total} 条
+            </div>
 
-            <Pagination className={`datasource-pagination-nav ${hoverLocked ? 'hover-locked' : ''}`} aria-label="数据源分页导航">
-                <PaginationContent className="datasource-page-numbers">
-                    <PaginationItem>
-                        <PaginationLink
-                            href="#"
-                            className="datasource-nav-btn"
-                            aria-disabled={prevDisabled}
-                            tabIndex={prevDisabled ? -1 : 0}
-                            onClick={(event) => {
-                                event.preventDefault();
-                                if (!prevDisabled) {
-                                    handlePageClick(currentPage - 1);
+            <div className="datasource-pagination-controls" aria-label="数据源分页导航">
+                <div className="datasource-page-size-group">
+                    <span className="datasource-pagination-label">每页</span>
+                    <div className="datasource-page-size-select">
+                        <SimpleSelect
+                            id="datasource-page-size"
+                            value={String(pageSize)}
+                            options={pageSizeOptions}
+                            disabled={isFetching}
+                            menuPlacement="up"
+                            onChange={(value) => {
+                                const parsed = Number(value);
+                                if (Number.isFinite(parsed) && parsed !== pageSize) {
+                                    onPageSizeChange(parsed);
                                 }
                             }}
-                        >
-                            上一页
-                        </PaginationLink>
-                    </PaginationItem>
-                    {paginationRange.map((item, index) => (
-                        item === 'ellipsis' ? (
-                            <PaginationItem key={`ellipsis-${index}`}>
-                                <PaginationEllipsis className="datasource-pagination-ellipsis">...</PaginationEllipsis>
-                            </PaginationItem>
-                        ) : (
-                            <PaginationItem key={item}>
-                                <PaginationLink
-                                    href="#"
-                                    className={`datasource-page-btn ${item === currentPage ? 'active' : ''}`}
-                                    isActive={item === currentPage}
-                                    aria-disabled={isFetching}
-                                    tabIndex={isFetching ? -1 : 0}
-                                    onClick={(event) => {
-                                        event.preventDefault();
-                                        handlePageClick(item);
-                                    }}
-                                >
-                                    {item}
-                                </PaginationLink>
-                            </PaginationItem>
-                        )
-                    ))}
-                    <PaginationItem>
-                        <PaginationLink
-                            href="#"
-                            className="datasource-nav-btn"
-                            aria-disabled={nextDisabled}
-                            tabIndex={nextDisabled ? -1 : 0}
-                            onClick={(event) => {
-                                event.preventDefault();
-                                if (!nextDisabled) {
-                                    handlePageClick(currentPage + 1);
-                                }
-                            }}
-                        >
-                            下一页
-                        </PaginationLink>
-                    </PaginationItem>
-                </PaginationContent>
-            </Pagination>
+                        />
+                    </div>
+                </div>
+
+                <div className="datasource-page-status">
+                    第 {currentPage} / {totalPages} 页
+                </div>
+
+                <div className="datasource-page-actions">
+                    <button
+                        className="datasource-page-icon-btn"
+                        type="button"
+                        aria-label="第一页"
+                        aria-disabled={prevDisabled}
+                        disabled={prevDisabled}
+                        onClick={() => goToPage(1)}
+                    >
+                        <ChevronsLeft size={16} />
+                    </button>
+                    <button
+                        className="datasource-page-icon-btn"
+                        type="button"
+                        aria-label="上一页"
+                        aria-disabled={prevDisabled}
+                        disabled={prevDisabled}
+                        onClick={() => goToPage(currentPage - 1)}
+                    >
+                        <ChevronLeft size={16} />
+                    </button>
+                    <button
+                        className="datasource-page-icon-btn"
+                        type="button"
+                        aria-label="下一页"
+                        aria-disabled={nextDisabled}
+                        disabled={nextDisabled}
+                        onClick={() => goToPage(currentPage + 1)}
+                    >
+                        <ChevronRight size={16} />
+                    </button>
+                    <button
+                        className="datasource-page-icon-btn"
+                        type="button"
+                        aria-label="最后一页"
+                        aria-disabled={nextDisabled}
+                        disabled={nextDisabled}
+                        onClick={() => goToPage(totalPages)}
+                    >
+                        <ChevronsRight size={16} />
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }

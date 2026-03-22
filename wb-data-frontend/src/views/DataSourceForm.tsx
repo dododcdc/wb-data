@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
     Dialog,
@@ -165,9 +165,12 @@ function getFieldPlaceholder(field: PluginFieldDescriptor, isEdit: boolean) {
 
 export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuccess }: DataSourceFormProps) {
     const isEdit = Boolean(dataSourceId);
+    const detailRequestIdRef = useRef(0);
 
     const [formData, setFormData] = useState<FormState>(createEmptyFormState);
     const [fieldErrors, setFieldErrors] = useState<Partial<Record<FormField, string>>>({});
+    const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+    const [loadError, setLoadError] = useState('');
 
     const [testResult, setTestResult] = useState<'none' | 'success' | 'fail'>('none');
     const [testMessage, setTestMessage] = useState('');
@@ -203,14 +206,23 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
     // Reset form when opened with no ID, or fetch data when opened with an ID
     useEffect(() => {
         if (open) {
+            const requestId = ++detailRequestIdRef.current;
             refetchPlugins();
             setFieldErrors({});
             setTestResult('none');
             setTestMessage('');
             setSaveError('');
+            setLoadError('');
             if (isEdit && dataSourceId) {
-                getDataSourceById(dataSourceId).then(res => {
-                    if (res) {
+                setIsLoadingDetails(true);
+                setFormData(createEmptyFormState());
+
+                getDataSourceById(dataSourceId)
+                    .then(res => {
+                        if (detailRequestIdRef.current !== requestId || !res) {
+                            return;
+                        }
+
                         setFormData({
                             name: res.name || '',
                             type: res.type || '',
@@ -223,16 +235,28 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                             password: res.password || '',
                             connectionParams: normalizeConnectionParams((res.connectionParams || {}) as Record<string, unknown>),
                         });
-                    }
-                });
+                    })
+                    .catch((error) => {
+                        if (detailRequestIdRef.current !== requestId) {
+                            return;
+                        }
+
+                        setLoadError(getErrorMessage(error, '加载数据源详情失败，请稍后重试'));
+                    })
+                    .finally(() => {
+                        if (detailRequestIdRef.current === requestId) {
+                            setIsLoadingDetails(false);
+                        }
+                    });
             } else {
+                setIsLoadingDetails(false);
                 setFormData(createEmptyFormState());
             }
         }
     }, [dataSourceId, isEdit, open, refetchPlugins]);
 
     useEffect(() => {
-        if (!open || pluginDescriptors.length === 0) {
+        if (!open || pluginDescriptors.length === 0 || (isEdit && isLoadingDetails)) {
             return;
         }
 
@@ -255,7 +279,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                 defaultPlugin,
             );
         });
-    }, [isEdit, open, pluginDescriptors]);
+    }, [isEdit, isLoadingDetails, open, pluginDescriptors]);
 
     useEffect(() => {
         if (!open || !effectiveType || formData.type === effectiveType) {
@@ -362,7 +386,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
     };
 
     const onTestConnection = async () => {
-        if (!supportsConnectionTest || !selectedPlugin) {
+        if (!supportsConnectionTest || !selectedPlugin || isLoadingDetails) {
             return;
         }
 
@@ -396,7 +420,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
     };
 
     const onSave = async () => {
-        if (!selectedPlugin) {
+        if (!selectedPlugin || isLoadingDetails) {
             return;
         }
 
@@ -447,7 +471,14 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                         </DialogDescription>
 
                         <div className="form-content">
-                            <div className="form-main-layout">
+                            {isLoadingDetails ? (
+                                <div className="form-loading-state" role="status" aria-live="polite">
+                                    <div className="form-loading-spinner" aria-hidden="true" />
+                                    <strong>正在加载数据源信息</strong>
+                                    <p>稍等一下，正在同步当前配置。</p>
+                                </div>
+                            ) : (
+                                <div className="form-main-layout">
                                 <div className="form-side-panel">
                                     <div className="side-panel-section">
                                         <h3 className="sub-section-title">标识与类型</h3>
@@ -472,6 +503,12 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                                             <p className="config-section-tip">
                                                 数据源插件加载失败：{pluginError.message}
                                             </p>
+                                        ) : null}
+                                        {loadError ? (
+                                            <div className="form-feedback form-feedback-error">
+                                                <AlertCircle size={14} />
+                                                <span>{loadError}</span>
+                                            </div>
                                         ) : null}
                                         <div className="input-group">
                                             <label htmlFor="ds-owner">负责人</label>
@@ -559,14 +596,16 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                                </div>
+                            )}
 
                             <div className="console-form-footer">
                                 <div className="footer-left">
                                     <button
                                         className="test-action-btn"
                                         onClick={onTestConnection}
-                                        disabled={testing || !supportsConnectionTest || !selectedPlugin}
+                                        disabled={testing || isLoadingDetails || !supportsConnectionTest || !selectedPlugin}
+                                        type="button"
                                     >
                                         {testing ? '正在测试...' : supportsConnectionTest ? '测试连接' : '测试连接（待支持）'}
                                     </button>
@@ -595,8 +634,8 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                                     ) : null}
                                 </div>
                                 <div className="footer-right">
-                                    <button className="cancel-btn" onClick={() => onOpenChange({ open: false })}>取消</button>
-                                    <button className="submit-btn" onClick={onSave} disabled={saving || !selectedPlugin}>
+                                    <button className="cancel-btn" onClick={() => onOpenChange({ open: false })} type="button">取消</button>
+                                    <button className="submit-btn" onClick={onSave} disabled={saving || isLoadingDetails || !selectedPlugin} type="button">
                                         {saving ? '保存中...' : '确认保存'}
                                     </button>
                                 </div>

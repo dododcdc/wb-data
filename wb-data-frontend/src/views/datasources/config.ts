@@ -5,7 +5,7 @@ export const STATUS_FILTER_OPTIONS = [
 ];
 
 export const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
-export const DEFAULT_PAGE_SIZE = 7;
+export const DEFAULT_PAGE_SIZE = 10;
 
 export function buildDataSourcePageQueryKey(params: {
     currentPage: number;
@@ -44,13 +44,14 @@ export function formatTimestamp(value?: string) {
     const parsedDate = new Date(value);
     if (Number.isNaN(parsedDate.getTime())) return value;
 
-    return new Intl.DateTimeFormat('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-    }).format(parsedDate);
+    const year = parsedDate.getFullYear();
+    const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+    const day = String(parsedDate.getDate()).padStart(2, '0');
+    const hours = String(parsedDate.getHours()).padStart(2, '0');
+    const minutes = String(parsedDate.getMinutes()).padStart(2, '0');
+    const seconds = String(parsedDate.getSeconds()).padStart(2, '0');
+
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 export function formatConnection(host?: string, port?: number, databaseName?: string) {
