@@ -93,6 +93,94 @@ type QueryEditorError = {
     message?: string;
 };
 
+type SqlSourceTable = {
+    databaseName?: string;
+    tableName: string;
+    alias?: string;
+};
+
+const SQL_ALIAS_RESERVED_WORDS = new Set([
+    'WHERE',
+    'ON',
+    'GROUP',
+    'ORDER',
+    'LEFT',
+    'RIGHT',
+    'INNER',
+    'OUTER',
+    'JOIN',
+    'SELECT',
+    'LIMIT',
+    'HAVING',
+    'AND',
+    'OR',
+    'AS',
+    'UNION',
+    'BY',
+]);
+
+function getCurrentStatement(fullText: string, cursorOffset: number) {
+    const safeOffset = Math.max(0, Math.min(cursorOffset, fullText.length));
+    const statementStart = fullText.lastIndexOf(';', Math.max(0, safeOffset - 1)) + 1;
+    const nextSemicolonIndex = fullText.indexOf(';', safeOffset);
+    const statementEnd = nextSemicolonIndex === -1 ? fullText.length : nextSemicolonIndex;
+
+    return {
+        text: fullText.slice(statementStart, statementEnd),
+        textBeforeCursor: fullText.slice(statementStart, safeOffset),
+        textAfterCursor: fullText.slice(safeOffset, statementEnd),
+    };
+}
+
+function parseSqlSourceTables(statement: string) {
+    const fromMatch = /\bFROM\b/i.exec(statement);
+    if (!fromMatch) {
+        return [];
+    }
+
+    const fromClause = statement.slice(fromMatch.index);
+    const sourceTables: SqlSourceTable[] = [];
+    const sourceKeys = new Set<string>();
+    const sourceRegex = /(?:\bFROM\b|\bJOIN\b|,)\s+(?:([a-zA-Z0-9_]+)\.)?([a-zA-Z0-9_]+)(?:\s+(?:AS\s+)?([a-zA-Z0-9_]+))?/gi;
+
+    let match: RegExpExecArray | null;
+    while ((match = sourceRegex.exec(fromClause)) !== null) {
+        const databaseName = match[1];
+        const tableName = match[2];
+        const alias = match[3];
+
+        if (SQL_ALIAS_RESERVED_WORDS.has(tableName.toUpperCase())) {
+            continue;
+        }
+
+        const normalizedAlias = alias && !SQL_ALIAS_RESERVED_WORDS.has(alias.toUpperCase()) ? alias : undefined;
+        const sourceKey = `${databaseName?.toLowerCase() || ''}:${tableName.toLowerCase()}:${normalizedAlias?.toLowerCase() || ''}`;
+        if (sourceKeys.has(sourceKey)) {
+            continue;
+        }
+
+        sourceKeys.add(sourceKey);
+        sourceTables.push({
+            databaseName,
+            tableName,
+            alias: normalizedAlias,
+        });
+    }
+
+    return sourceTables;
+}
+
+function isSelectListContext(statement: string, textBeforeCursor: string) {
+    const selectMatch = /^\s*SELECT\b/i.exec(statement);
+    const fromMatch = /\bFROM\b/i.exec(statement);
+    if (!selectMatch || !fromMatch) {
+        return false;
+    }
+
+    const cursorIndex = textBeforeCursor.length;
+    return cursorIndex >= selectMatch[0].length && cursorIndex <= fromMatch.index;
+}
+
 function mergeDatabaseOptions(databases: string[], fallbackDatabase?: string) {
     const merged: string[] = [];
 
@@ -302,6 +390,8 @@ export default function Query() {
     const activeDsIdRef = useRef('');
     const activeDbRef = useRef('');
     const tableKeywordCommittedRef = useRef('');
+    const loadingColumnsRef = useRef(loadingColumns);
+    const columnLoadPromisesRef = useRef<Map<string, Promise<ColumnMetadata[] | null>>>(new Map());
     const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
     const horizontalSplitterRef = useRef<AllotmentHandle | null>(null);
     const verticalSplitterRef = useRef<AllotmentHandle | null>(null);
@@ -782,20 +872,41 @@ export default function Query() {
     };
 
     const loadColumns = async (dsId: number, dbName: string, tableName: string) => {
-        if (columnCache.has(tableName)) return;
-        setLoadingColumns(prev => new Set(prev).add(tableName));
-        try {
-            const cols = await getMetadataColumns(dsId, dbName, tableName);
-            setColumnCache(prev => new Map(prev).set(tableName, cols));
-        } catch (error) {
-            console.error('Failed to load columns for', tableName, error);
-        } finally {
-            setLoadingColumns(prev => {
-                const next = new Set(prev);
-                next.delete(tableName);
-                return next;
-            });
+        const cachedColumns = columnCacheRef.current.get(tableName);
+        if (cachedColumns) {
+            return cachedColumns;
         }
+
+        const requestKey = `${dsId}::${dbName}::${tableName}`;
+        const existingPromise = columnLoadPromisesRef.current.get(requestKey);
+        if (existingPromise) {
+            return existingPromise;
+        }
+
+        setLoadingColumns(prev => new Set(prev).add(tableName));
+
+        const requestPromise = (async () => {
+            try {
+                const cols = await getMetadataColumns(dsId, dbName, tableName);
+                if (activeDsIdRef.current === String(dsId) && activeDbRef.current === dbName) {
+                    setColumnCache(prev => new Map(prev).set(tableName, cols));
+                }
+                return cols;
+            } catch (error) {
+                console.error('Failed to load columns for', tableName, error);
+                return null;
+            } finally {
+                columnLoadPromisesRef.current.delete(requestKey);
+                setLoadingColumns(prev => {
+                    const next = new Set(prev);
+                    next.delete(tableName);
+                    return next;
+                });
+            }
+        })();
+
+        columnLoadPromisesRef.current.set(requestKey, requestPromise);
+        return requestPromise;
     };
 
     const handleTableScroll = useCallback(() => {
@@ -858,7 +969,7 @@ export default function Query() {
             return '执行失败';
         }
         if (!result) {
-            return '运行 SQL 后显示';
+            return '';
         }
         if (result.columns.length > 0) {
             return `${result.rows.length} 条记录${typeof result.executionTimeMs === 'number' ? ` • ${result.executionTimeMs}ms` : ''}`;
@@ -1058,6 +1169,10 @@ export default function Query() {
         columnCacheRef.current = columnCache;
     }, [columnCache]);
 
+    useEffect(() => {
+        loadingColumnsRef.current = loadingColumns;
+    }, [loadingColumns]);
+
     const dialectMetadataRef = useRef(dialectMetadata);
     useEffect(() => {
         dialectMetadataRef.current = dialectMetadata;
@@ -1096,10 +1211,21 @@ export default function Query() {
                 'editorGutter.background': '#F8F7F4',
                 'editorWidget.background': '#F3F1EC',
                 'editorWidget.border': '#E3DED5',
+                'editorWidget.foreground': '#3D3A36',
                 'editorSuggestWidget.background': '#F8F7F4',
                 'editorSuggestWidget.border': '#E3DED5',
                 'editorSuggestWidget.selectedBackground': '#EFECE6',
-                'editorSuggestWidget.highlightForeground': '#D97757',
+                'editorSuggestWidget.foreground': '#544C45',
+                'editorSuggestWidget.selectedForeground': '#4B433C',
+                'editorSuggestWidget.highlightForeground': '#82331A',
+                'editorSuggestWidget.focusHighlightForeground': '#7A2E17',
+                'editorSuggestWidget.selectedIconForeground': '#A66A47',
+                'list.highlightForeground': '#93401F',
+                'list.focusHighlightForeground': '#7A2E17',
+                'list.focusForeground': '#2F2B27',
+                'list.focusBackground': '#E9E2D7',
+                'list.hoverForeground': '#3D3A36',
+                'list.hoverBackground': '#F1ECE3',
             },
         });
 
@@ -1111,10 +1237,13 @@ export default function Query() {
         completionProviderRef.current?.dispose();
         const provider = monaco.languages.registerCompletionItemProvider('sql', {
             triggerCharacters: ['.', ' '],
-            provideCompletionItems: (model, position) => {
+            provideCompletionItems: async (model, position) => {
                 const word = model.getWordUntilPosition(position);
-                const lineContent = model.getLineContent(position.lineNumber);
-                const textBeforeCursor = lineContent.substring(0, position.column - 1);
+                const fullText = model.getValue();
+                const cursorOffset = model.getOffsetAt(position);
+                const currentStatement = getCurrentStatement(fullText, cursorOffset);
+                const textBeforeCursor = currentStatement.textBeforeCursor;
+                const statementSourceTables = parseSqlSourceTables(currentStatement.text);
 
                 const range: Monaco.IRange = {
                     startLineNumber: position.lineNumber,
@@ -1131,6 +1260,12 @@ export default function Query() {
                 const currentDialect = dialectMetadataRef.current;
                 const normalizedWord = (word.word || '').toLowerCase();
                 const selectedDatabase = activeDbRef.current.toLowerCase();
+                const aliases = statementSourceTables.reduce<Record<string, string>>((acc, sourceTable) => {
+                    if (sourceTable.alias) {
+                        acc[sourceTable.alias.toLowerCase()] = sourceTable.tableName.toLowerCase();
+                    }
+                    return acc;
+                }, {});
 
                 const buildPrefixRank = (candidate: string) => {
                     const normalizedCandidate = candidate.toLowerCase();
@@ -1158,21 +1293,6 @@ export default function Query() {
                         sortText: `${categoryRank}${buildPrefixRank(labelText)}-${labelText.toLowerCase()}`,
                     });
                 };
-
-                // --- Extract Aliases ---
-                const fullText = model.getValue();
-                const aliases: Record<string, string> = {};
-                // Match "FROM table alias", "FROM schema.table AS alias", "JOIN table alias", or ", table alias"
-                const aliasRegex = /(?:FROM|JOIN|,)\s+(?:[a-zA-Z0-9_]+\.)?([a-zA-Z0-9_]+)(?:\s+AS)?\s+([a-zA-Z0-9_]+)/gi;
-                const reservedWords = new Set(['WHERE', 'ON', 'GROUP', 'ORDER', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'JOIN', 'SELECT', 'LIMIT', 'HAVING', 'AND', 'OR', 'AS']);
-                let match: RegExpExecArray | null;
-                while ((match = aliasRegex.exec(fullText)) !== null) {
-                    const tableName = match[1].toLowerCase();
-                    const aliasName = match[2].toLowerCase();
-                    if (!reservedWords.has(aliasName.toUpperCase()) && !reservedWords.has(tableName.toUpperCase())) {
-                        aliases[aliasName] = tableName;
-                    }
-                }
 
                 // 1. Column suggestions for "table." or "alias."
                 const lastDotIndex = textBeforeCursor.lastIndexOf('.');
@@ -1204,7 +1324,7 @@ export default function Query() {
                         const actualTableName = aliases[identifier] || identifier;
 
                         const table = currentTables.find(t => t.name.toLowerCase() === actualTableName);
-                        const cachedCols = currentColumnCache.get(actualTableName) || currentColumnCache.get(table?.name || '');
+                        let cachedCols = currentColumnCache.get(actualTableName) || currentColumnCache.get(table?.name || '');
                         if (cachedCols) {
                             cachedCols.forEach(col => {
                                 pushSuggestion({
@@ -1220,14 +1340,83 @@ export default function Query() {
                         }
 
                         const matchedTable = currentTables.find(t => t.name.toLowerCase() === actualTableName);
-                        if (matchedTable && selectedDsId && selectedDb) {
-                            loadColumns(Number(selectedDsId), selectedDb, matchedTable.name);
+                        const activeDsId = activeDsIdRef.current;
+                        const activeDb = activeDbRef.current;
+                        if (matchedTable && activeDsId && activeDb) {
+                            cachedCols = await loadColumns(Number(activeDsId), activeDb, matchedTable.name) || undefined;
+                        }
+
+                        if (cachedCols) {
+                            cachedCols.forEach(col => {
+                                pushSuggestion({
+                                    label: col.name,
+                                    kind: monaco.languages.CompletionItemKind.Field,
+                                    insertText: col.name,
+                                    detail: `${actualTableName} Column (${col.type})`,
+                                    documentation: col.remarks,
+                                    range,
+                                }, '00', `column:${actualTableName}:${col.name.toLowerCase()}`);
+                            });
                         }
                         return { suggestions };
                     }
                 }
 
-                // 2. Context-aware database/table suggestions after relation keywords
+                // 2. Column suggestions inside SELECT list based on current statement source tables
+                if (isSelectListContext(currentStatement.text, textBeforeCursor) && statementSourceTables.length > 0) {
+                    const sourceColumns = await Promise.all(statementSourceTables.map(async sourceTable => {
+                        const normalizedDatabase = sourceTable.databaseName?.toLowerCase();
+                        if (normalizedDatabase && normalizedDatabase !== selectedDatabase) {
+                            return { sourceTable, columns: null, resolvedTableName: sourceTable.tableName };
+                        }
+
+                        const matchedTable = currentTables.find(table => table.name.toLowerCase() === sourceTable.tableName.toLowerCase());
+                        const resolvedTableName = matchedTable?.name || sourceTable.tableName;
+                        let cachedCols = currentColumnCache.get(resolvedTableName) || currentColumnCache.get(sourceTable.tableName);
+
+                        if (!cachedCols) {
+                            const activeDsId = activeDsIdRef.current;
+                            const activeDb = activeDbRef.current;
+                            if (activeDsId && activeDb) {
+                                cachedCols = await loadColumns(
+                                    Number(activeDsId),
+                                    activeDb,
+                                    matchedTable?.name || sourceTable.tableName,
+                                ) || undefined;
+                            }
+                        }
+
+                        return { sourceTable, columns: cachedCols ?? null, resolvedTableName };
+                    }));
+
+                    sourceColumns.forEach(({ sourceTable, columns, resolvedTableName }) => {
+                        if (!columns) {
+                            return;
+                        }
+
+                        const needsQualifiedInsert = Boolean(sourceTable.alias) || statementSourceTables.length > 1;
+                        const qualifier = sourceTable.alias || resolvedTableName;
+
+                        columns.forEach(col => {
+                            const insertText = needsQualifiedInsert ? `${qualifier}.${col.name}` : col.name;
+                            const sourceLabel = sourceTable.alias
+                                ? `${sourceTable.alias} (${resolvedTableName})`
+                                : resolvedTableName;
+
+                            pushSuggestion({
+                                label: col.name,
+                                kind: monaco.languages.CompletionItemKind.Field,
+                                insertText,
+                                filterText: `${col.name} ${insertText} ${resolvedTableName}`,
+                                detail: `${sourceLabel} Column (${col.type})`,
+                                documentation: col.remarks,
+                                range,
+                            }, '01', `select-column:${sourceLabel.toLowerCase()}:${col.name.toLowerCase()}`);
+                        });
+                    });
+                }
+
+                // 3. Context-aware database/table suggestions after relation keywords
                 const relationContextMatch = /\b(FROM|JOIN|INTO|UPDATE|TABLE)\s+([a-zA-Z0-9_]*)$/i.exec(textBeforeCursor);
                 if (relationContextMatch) {
                     currentDatabases.forEach(database => {
@@ -1266,7 +1455,7 @@ export default function Query() {
                     return { suggestions };
                 }
 
-                // 3. Add General SQL Keywords and Functions from Dialect
+                // 4. Add General SQL Keywords and Functions from Dialect
                 const keywordSuggestions = currentDialect?.keywords?.length
                     ? currentDialect.keywords
                     : FALLBACK_SQL_KEYWORDS;
@@ -1719,10 +1908,12 @@ export default function Query() {
                                             <span className="result-output-tab-dot" aria-hidden="true" />
                                             <span>{resultOutputLabel}</span>
                                         </div>
-                                        <div className={`result-summary ${resultToneClass}`.trim()}>
-                                            {loadingQuery ? <Loader2 size={12} className="animate-spin" /> : null}
-                                            <span>{resultStatusText}</span>
-                                        </div>
+                                        {resultStatusText ? (
+                                            <div className={`result-summary ${resultToneClass}`.trim()}>
+                                                {loadingQuery ? <Loader2 size={12} className="animate-spin" /> : null}
+                                                <span>{resultStatusText}</span>
+                                            </div>
+                                        ) : null}
                                     </div>
                                     <div className="section-header-right">
                                         {!resultCollapsed && result && (
