@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense, useCallback, useLayoutEffect } from 'react';
 import type * as Monaco from 'monaco-editor';
 import type { AllotmentHandle } from 'allotment';
-import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, Search, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, ChevronUp, Search, PanelLeftClose, PanelLeft } from 'lucide-react';
 import { getMetadataDatabases, getMetadataTables, getMetadataColumns, executeQuery, getDialectMetadata, TableSummary, ColumnMetadata, QueryResult, DialectMetadata } from '../api/query';
 import { getDataSourcePage, DataSource } from '../api/datasource';
 import { DataSourceSelect } from '../components/DataSourceSelect';
@@ -30,13 +30,57 @@ const DS_PAGE_SIZE = 50;
 const SIDEBAR_STORAGE_KEY = 'query-sidebar-collapsed';
 const LEGACY_SIDEBAR_SIZE_STORAGE_KEY = 'query-sidebar-size';
 const SIDEBAR_EXPANDED_WIDTH_STORAGE_KEY = 'query-sidebar-expanded-width';
-const EDITOR_SIZE_STORAGE_KEY = 'query-editor-size';
+const LEGACY_EDITOR_SIZE_STORAGE_KEY = 'query-editor-size';
+const RESULT_PANEL_COLLAPSED_STORAGE_KEY = 'query-result-collapsed';
+const RESULT_PANEL_EXPANDED_HEIGHT_STORAGE_KEY = 'query-result-expanded-height';
+const RESULT_PANEL_AUTO_OPEN_STORAGE_KEY = 'query-result-auto-open';
 const SIDEBAR_DEFAULT_WIDTH_PX = 300;
 const SIDEBAR_MIN_WIDTH_PX = 250;
 const SIDEBAR_MAX_WIDTH_PX = 600;
 const QUERY_MAIN_MIN_WIDTH_PX = 600;
 const QUERY_MAIN_DEFAULT_WIDTH_PX = 1100;
+const QUERY_EDITOR_DEFAULT_HEIGHT_PX = 520;
+const QUERY_EDITOR_MIN_HEIGHT_PX = 220;
+const RESULT_PANEL_COLLAPSED_HEIGHT_PX = 44;
+const RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX = RESULT_PANEL_COLLAPSED_HEIGHT_PX;
+const RESULT_PANEL_DEFAULT_HEIGHT_PX = 320;
 const SIDEBAR_TOGGLE_TRANSITION_MS = 160;
+const FALLBACK_SQL_KEYWORDS = [
+    'SELECT',
+    'FROM',
+    'WHERE',
+    'JOIN',
+    'LEFT JOIN',
+    'RIGHT JOIN',
+    'INNER JOIN',
+    'GROUP BY',
+    'ORDER BY',
+    'HAVING',
+    'LIMIT',
+    'INSERT',
+    'UPDATE',
+    'DELETE',
+    'CREATE',
+    'ALTER',
+    'DROP',
+    'COUNT',
+    'SUM',
+    'AVG',
+    'MIN',
+    'MAX',
+    'DISTINCT',
+    'AS',
+    'AND',
+    'OR',
+    'NOT',
+    'IN',
+    'EXISTS',
+    'CASE',
+    'WHEN',
+    'THEN',
+    'ELSE',
+    'END',
+];
 
 type MonacoEditorInstance = Monaco.editor.IStandaloneCodeEditor;
 
@@ -82,6 +126,15 @@ function parseStoredSidebarWidth(rawWidth: unknown) {
     return clampSidebarWidth(width);
 }
 
+function parseStoredPositiveNumber(rawValue: unknown) {
+    const value = Number(rawValue);
+    if (!Number.isFinite(value) || value <= 0) {
+        return null;
+    }
+
+    return Math.round(value);
+}
+
 function getStoredSidebarCollapsed() {
     try {
         const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
@@ -118,14 +171,49 @@ function getStoredSidebarExpandedWidth() {
     return SIDEBAR_DEFAULT_WIDTH_PX;
 }
 
-function getInitialVerticalSizes(): number[] | undefined {
+function getStoredResultCollapsed() {
     try {
-        const saved = localStorage.getItem(EDITOR_SIZE_STORAGE_KEY);
-        if (saved) return JSON.parse(saved);
+        const saved = localStorage.getItem(RESULT_PANEL_COLLAPSED_STORAGE_KEY);
+        return saved !== 'false';
+    } catch {
+        return true;
+    }
+}
+
+function getStoredResultAutoOpen() {
+    try {
+        const saved = localStorage.getItem(RESULT_PANEL_AUTO_OPEN_STORAGE_KEY);
+        return saved !== 'false';
+    } catch {
+        return true;
+    }
+}
+
+function getStoredResultExpandedHeight() {
+    try {
+        const savedHeight = localStorage.getItem(RESULT_PANEL_EXPANDED_HEIGHT_STORAGE_KEY);
+        if (savedHeight) {
+            const parsedHeight = parseStoredPositiveNumber(savedHeight);
+            if (parsedHeight !== null) {
+                return Math.max(RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX, parsedHeight);
+            }
+        }
+
+        const legacySizes = localStorage.getItem(LEGACY_EDITOR_SIZE_STORAGE_KEY);
+        if (legacySizes) {
+            const parsed = JSON.parse(legacySizes);
+            if (Array.isArray(parsed) && parsed.length === 2) {
+                const legacyHeight = Number(parsed[1]);
+                if (Number.isFinite(legacyHeight) && legacyHeight >= RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX) {
+                    return Math.round(legacyHeight);
+                }
+            }
+        }
     } catch {
         // Ignore storage access failures and fall back to defaults.
     }
-    return undefined;
+
+    return RESULT_PANEL_DEFAULT_HEIGHT_PX;
 }
 
 function getHorizontalSizes(sidebarCollapsed: boolean, sidebarExpandedWidth: number, totalWidth?: number) {
@@ -142,6 +230,31 @@ function getHorizontalSizes(sidebarCollapsed: boolean, sidebarExpandedWidth: num
     const nextMainWidth = Math.max(QUERY_MAIN_MIN_WIDTH_PX, resolvedTotalWidth - nextSidebarWidth);
 
     return [nextSidebarWidth, nextMainWidth];
+}
+
+function getVerticalSizes(resultCollapsed: boolean, resultExpandedHeight: number, totalHeight?: number) {
+    const resolvedTotalHeight = Number.isFinite(totalHeight) && totalHeight && totalHeight > 0
+        ? totalHeight
+        : QUERY_EDITOR_DEFAULT_HEIGHT_PX + RESULT_PANEL_DEFAULT_HEIGHT_PX;
+
+    if (resultCollapsed) {
+        return [
+            Math.max(0, resolvedTotalHeight - RESULT_PANEL_COLLAPSED_HEIGHT_PX),
+            RESULT_PANEL_COLLAPSED_HEIGHT_PX,
+        ];
+    }
+
+    const maxResultHeight = Math.max(
+        RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX,
+        resolvedTotalHeight - QUERY_EDITOR_MIN_HEIGHT_PX,
+    );
+    const nextResultHeight = Math.min(
+        Math.max(RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX, Math.round(resultExpandedHeight)),
+        maxResultHeight,
+    );
+    const nextEditorHeight = Math.max(QUERY_EDITOR_MIN_HEIGHT_PX, resolvedTotalHeight - nextResultHeight);
+
+    return [nextEditorHeight, nextResultHeight];
 }
 
 export default function Query() {
@@ -191,9 +304,13 @@ export default function Query() {
     const tableKeywordCommittedRef = useRef('');
     const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
     const horizontalSplitterRef = useRef<AllotmentHandle | null>(null);
+    const verticalSplitterRef = useRef<AllotmentHandle | null>(null);
     const sidebarTransitionTimerRef = useRef<number | null>(null);
+    const resultTransitionTimerRef = useRef<number | null>(null);
     const horizontalLayoutSizesRef = useRef<number[] | null>(null);
     const querySplitterRef = useRef<HTMLDivElement | null>(null);
+    const verticalLayoutSizesRef = useRef<number[] | null>(null);
+    const queryContentRef = useRef<HTMLDivElement | null>(null);
     const [tableScrollElement, setTableScrollElement] = useState<HTMLDivElement | null>(null);
     const TABLE_PAGE_SIZE = 200;
 
@@ -207,10 +324,18 @@ export default function Query() {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(getStoredSidebarCollapsed);
     const [sidebarExpandedWidth, setSidebarExpandedWidth] = useState(getStoredSidebarExpandedWidth);
     const [sidebarTransitioning, setSidebarTransitioning] = useState(false);
+    const [resultCollapsed, setResultCollapsed] = useState(getStoredResultCollapsed);
+    const [resultExpandedHeight, setResultExpandedHeight] = useState(getStoredResultExpandedHeight);
+    const [resultAutoOpen, setResultAutoOpen] = useState(getStoredResultAutoOpen);
+    const [resultTransitioning, setResultTransitioning] = useState(false);
 
     const initialHorizontalSizes = useMemo(() => {
         return getHorizontalSizes(sidebarCollapsed, sidebarExpandedWidth);
     }, [sidebarCollapsed, sidebarExpandedWidth]);
+
+    const initialVerticalSizes = useMemo(() => {
+        return getVerticalSizes(resultCollapsed, resultExpandedHeight);
+    }, [resultCollapsed, resultExpandedHeight]);
 
     const virtualizer = useVirtualizer({
         count: tables.length,
@@ -242,6 +367,31 @@ export default function Query() {
         }
     }, []);
 
+    const persistResultCollapsed = useCallback((collapsed: boolean) => {
+        try {
+            localStorage.setItem(RESULT_PANEL_COLLAPSED_STORAGE_KEY, String(collapsed));
+        } catch {
+            // Ignore storage access failures and keep the in-memory state.
+        }
+    }, []);
+
+    const persistResultExpandedHeight = useCallback((height: number) => {
+        try {
+            localStorage.setItem(RESULT_PANEL_EXPANDED_HEIGHT_STORAGE_KEY, String(height));
+            localStorage.removeItem(LEGACY_EDITOR_SIZE_STORAGE_KEY);
+        } catch {
+            // Ignore storage access failures and keep the in-memory state.
+        }
+    }, []);
+
+    const persistResultAutoOpen = useCallback((autoOpen: boolean) => {
+        try {
+            localStorage.setItem(RESULT_PANEL_AUTO_OPEN_STORAGE_KEY, String(autoOpen));
+        } catch {
+            // Ignore storage access failures and keep the in-memory state.
+        }
+    }, []);
+
     const startSidebarTransition = useCallback(() => {
         if (sidebarTransitionTimerRef.current !== null) {
             window.clearTimeout(sidebarTransitionTimerRef.current);
@@ -263,6 +413,34 @@ export default function Query() {
         });
     }, [persistSidebarCollapsed, startSidebarTransition]);
 
+    const setResultPanelState = useCallback((collapsed: boolean, { manual = false }: { manual?: boolean } = {}) => {
+        setResultCollapsed(current => current === collapsed ? current : collapsed);
+        persistResultCollapsed(collapsed);
+
+        if (manual) {
+            const nextAutoOpen = !collapsed;
+            setResultAutoOpen(nextAutoOpen);
+            persistResultAutoOpen(nextAutoOpen);
+        }
+    }, [persistResultAutoOpen, persistResultCollapsed]);
+
+    const startResultTransition = useCallback(() => {
+        if (resultTransitionTimerRef.current !== null) {
+            window.clearTimeout(resultTransitionTimerRef.current);
+        }
+
+        setResultTransitioning(true);
+        resultTransitionTimerRef.current = window.setTimeout(() => {
+            setResultTransitioning(false);
+            resultTransitionTimerRef.current = null;
+        }, SIDEBAR_TOGGLE_TRANSITION_MS + 40);
+    }, []);
+
+    const toggleResultPanel = useCallback(() => {
+        startResultTransition();
+        setResultPanelState(!resultCollapsed, { manual: true });
+    }, [resultCollapsed, setResultPanelState, startResultTransition]);
+
     const getCurrentHorizontalTotalWidth = useCallback(() => {
         const cachedSizes = horizontalLayoutSizesRef.current;
         if (cachedSizes && cachedSizes.length === 2) {
@@ -280,6 +458,23 @@ export default function Query() {
         return QUERY_MAIN_DEFAULT_WIDTH_PX;
     }, []);
 
+    const getCurrentVerticalTotalHeight = useCallback(() => {
+        const cachedSizes = verticalLayoutSizesRef.current;
+        if (cachedSizes && cachedSizes.length === 2) {
+            const total = cachedSizes[0] + cachedSizes[1];
+            if (Number.isFinite(total) && total > 0) {
+                return total;
+            }
+        }
+
+        const measuredHeight = queryContentRef.current?.clientHeight;
+        if (typeof measuredHeight === 'number' && measuredHeight > 0) {
+            return measuredHeight;
+        }
+
+        return QUERY_EDITOR_DEFAULT_HEIGHT_PX + RESULT_PANEL_DEFAULT_HEIGHT_PX;
+    }, []);
+
     useLayoutEffect(() => {
         const nextSizes = getHorizontalSizes(
             sidebarCollapsed,
@@ -290,14 +485,31 @@ export default function Query() {
         horizontalSplitterRef.current?.resize(nextSizes);
     }, [getCurrentHorizontalTotalWidth, sidebarCollapsed, sidebarExpandedWidth]);
 
+    useLayoutEffect(() => {
+        const nextSizes = getVerticalSizes(
+            resultCollapsed,
+            resultExpandedHeight,
+            getCurrentVerticalTotalHeight(),
+        );
+        verticalLayoutSizesRef.current = nextSizes;
+        verticalSplitterRef.current?.resize(nextSizes);
+    }, [getCurrentVerticalTotalHeight, resultCollapsed, resultExpandedHeight]);
+
     useEffect(() => {
         persistSidebarExpandedWidth(sidebarExpandedWidth);
     }, [persistSidebarExpandedWidth, sidebarExpandedWidth]);
 
     useEffect(() => {
+        persistResultExpandedHeight(resultExpandedHeight);
+    }, [persistResultExpandedHeight, resultExpandedHeight]);
+
+    useEffect(() => {
         return () => {
             if (sidebarTransitionTimerRef.current !== null) {
                 window.clearTimeout(sidebarTransitionTimerRef.current);
+            }
+            if (resultTransitionTimerRef.current !== null) {
+                window.clearTimeout(resultTransitionTimerRef.current);
             }
         };
     }, []);
@@ -307,11 +519,16 @@ export default function Query() {
             if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
                 e.preventDefault();
                 toggleSidebar();
+                return;
+            }
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
+                e.preventDefault();
+                toggleResultPanel();
             }
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [toggleSidebar]);
+    }, [toggleResultPanel, toggleSidebar]);
 
     useEffect(() => {
         activeDsIdRef.current = selectedDsId;
@@ -327,6 +544,10 @@ export default function Query() {
 
     // Close export menu on backdrop click or Escape
     useEffect(() => {
+        if (resultCollapsed) {
+            setShowExportMenu(false);
+            return;
+        }
         if (!showExportMenu) return;
 
         const handleClickOutside = (e: MouseEvent) => {
@@ -347,7 +568,7 @@ export default function Query() {
             document.removeEventListener('mousedown', handleClickOutside);
             document.removeEventListener('keydown', handleEscape);
         };
-    }, [showExportMenu]);
+    }, [resultCollapsed, showExportMenu]);
 
     // Debounced search for DataSources
     useEffect(() => {
@@ -625,6 +846,32 @@ export default function Query() {
         Boolean(selectedDsId && selectedDb) &&
         (loadingTables || loadingMoreTables || tableTotal > 0);
 
+    const hasHiddenResultHint =
+        resultCollapsed &&
+        (loadingQuery || Boolean(queryError) || Boolean(result));
+
+    const resultStatusText = useMemo(() => {
+        if (loadingQuery) {
+            return '执行中...';
+        }
+        if (queryError) {
+            return '执行失败';
+        }
+        if (!result) {
+            return '运行 SQL 后显示';
+        }
+        if (result.columns.length > 0) {
+            return `${result.rows.length} 条记录${typeof result.executionTimeMs === 'number' ? ` • ${result.executionTimeMs}ms` : ''}`;
+        }
+        if (result.message && result.message !== 'Success') {
+            return '已返回执行信息';
+        }
+        if (typeof result.executionTimeMs === 'number') {
+            return `执行完成 • ${result.executionTimeMs}ms`;
+        }
+        return '执行完成';
+    }, [loadingQuery, queryError, result]);
+
     const handleRunQuery = useCallback(async (sqlToRun?: string) => {
         let finalSql = sqlToRun;
 
@@ -647,6 +894,10 @@ export default function Query() {
             alert('Nothing to run - 请输入 SQL 语句');
             return;
         }
+        setQueryError('');
+        if (resultAutoOpen) {
+            setResultPanelState(false);
+        }
         setLoadingQuery(true);
         try {
             const data = await executeQuery(Number(selectedDsId), finalSql, selectedDb);
@@ -658,10 +909,11 @@ export default function Query() {
                 || requestError.message
                 || '执行查询失败';
             setQueryError(message);
+            setResultPanelState(false);
         } finally {
             setLoadingQuery(false);
         }
-    }, [selectedDb, selectedDsId, sql]);
+    }, [resultAutoOpen, selectedDb, selectedDsId, setResultPanelState, sql]);
 
     // ── SQL Formatting ──────────────────────────────────────────────────────
     const handleFormat = async () => {
@@ -829,7 +1081,7 @@ export default function Query() {
         // Register custom completion provider for SQL
         completionProviderRef.current?.dispose();
         const provider = monaco.languages.registerCompletionItemProvider('sql', {
-            triggerCharacters: ['.'],
+            triggerCharacters: ['.', ' '],
             provideCompletionItems: (model, position) => {
                 const word = model.getWordUntilPosition(position);
                 const lineContent = model.getLineContent(position.lineNumber);
@@ -916,8 +1168,11 @@ export default function Query() {
                 }
 
                 // 3. Add General SQL Keywords and Functions from Dialect
-                if (currentDialect) {
-                    currentDialect.keywords.forEach(keyword => {
+                const keywordSuggestions = currentDialect?.keywords?.length
+                    ? currentDialect.keywords
+                    : FALLBACK_SQL_KEYWORDS;
+
+                keywordSuggestions.forEach(keyword => {
                         suggestions.push({
                             label: keyword,
                             kind: monaco.languages.CompletionItemKind.Keyword,
@@ -927,6 +1182,7 @@ export default function Query() {
                         });
                     });
 
+                if (currentDialect) {
                     currentDialect.dataTypes.forEach(dt => {
                         suggestions.push({
                             label: dt,
@@ -1185,7 +1441,7 @@ export default function Query() {
 
                 {/* 右侧主内容区 */}
                 <Allotment.Pane minSize={QUERY_MAIN_MIN_WIDTH_PX} preferredSize="100%" className="query-main-wrapper">
-                    <header className="query-toolbar">
+                    <header className={`query-toolbar ${sidebarCollapsed ? '' : 'has-left-separator'}`.trim()}>
                         <div className="toolbar-left">
                             <TooltipProvider delayDuration={400}>
                                 <Tooltip>
@@ -1285,17 +1541,27 @@ export default function Query() {
                         </div>
                     </header>
 
-                    <Allotment 
-                        vertical
-                        defaultSizes={getInitialVerticalSizes()}
-                        onDragEnd={(sizes) => {
-                            try {
-                                localStorage.setItem(EDITOR_SIZE_STORAGE_KEY, JSON.stringify(sizes));
-                            } catch {
-                                // Ignore storage access failures and keep the current splitter size.
-                            }
-                        }}
+                    <div
+                        ref={queryContentRef}
+                        className={`query-content-splitter ${resultTransitioning ? 'result-transitioning' : ''}`.trim()}
                     >
+                        <Allotment
+                            ref={verticalSplitterRef}
+                            vertical
+                            defaultSizes={initialVerticalSizes}
+                            onChange={(sizes) => {
+                                verticalLayoutSizesRef.current = sizes;
+                            }}
+                            onDragEnd={(sizes) => {
+                                verticalLayoutSizesRef.current = sizes;
+                                const resultPaneSize = sizes[1];
+                                if (typeof resultPaneSize === 'number' && resultPaneSize > RESULT_PANEL_COLLAPSED_HEIGHT_PX) {
+                                    const nextHeight = Math.max(RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX, Math.round(resultPaneSize));
+                                    setResultExpandedHeight(currentHeight => currentHeight === nextHeight ? currentHeight : nextHeight);
+                                    persistResultExpandedHeight(nextHeight);
+                                }
+                            }}
+                        >
                         <Allotment.Pane preferredSize="60%" className="query-editor-wrapper relative">
                             <section className="editor-section">
 
@@ -1312,6 +1578,13 @@ export default function Query() {
                                             options={{
                                                 minimap: { enabled: false },
                                                 fontSize: 14,
+                                                quickSuggestions: {
+                                                    other: true,
+                                                    comments: false,
+                                                    strings: false,
+                                                },
+                                                quickSuggestionsDelay: 120,
+                                                suggestOnTriggerCharacters: true,
                                                 lineNumbers: 'on',
                                                 lineNumbersMinChars: 2,
                                                 lineDecorationsWidth: 8,
@@ -1330,17 +1603,27 @@ export default function Query() {
                             </section>
                         </Allotment.Pane>
 
-                        <Allotment.Pane minSize={200} preferredSize="40%" className="query-result-wrapper">
-                            <section className="results-section">
+                        <Allotment.Pane
+                            minSize={RESULT_PANEL_COLLAPSED_HEIGHT_PX}
+                            preferredSize="40%"
+                            className={`query-result-wrapper ${resultCollapsed ? 'is-collapsed' : ''}`.trim()}
+                        >
+                            <section className={`results-section ${resultCollapsed ? 'collapsed' : ''}`.trim()}>
                                 <div className="section-header">
-                                    <span className="section-title">查询结果</span>
+                                    <div className="section-header-left">
+                                        <span className="section-title">查询结果</span>
+                                        <div className={`result-summary ${queryError ? 'is-error' : ''}`.trim()}>
+                                            {loadingQuery ? <Loader2 size={12} className="animate-spin" /> : null}
+                                            <span>{resultStatusText}</span>
+                                        </div>
+                                    </div>
                                     <div className="section-header-right">
-                                        {result && (
+                                        {!resultCollapsed && result && (
                                             <div className="result-info">
                                                 找到 {result.rows.length} 条记录 • 耗时 {result.executionTimeMs}ms
                                             </div>
                                         )}
-                                        {result && result.columns.length > 0 && (
+                                        {!resultCollapsed && result && result.columns.length > 0 && (
                                             <div className="export-wrapper" ref={exportMenuRef}>
                                                 <button
                                                     className="export-button"
@@ -1366,54 +1649,71 @@ export default function Query() {
                                                 )}
                                             </div>
                                         )}
+                                        <button
+                                            type="button"
+                                            className={`section-toggle-button ${hasHiddenResultHint ? 'has-notice' : ''}`.trim()}
+                                            onClick={toggleResultPanel}
+                                            aria-label={resultCollapsed ? '展开查询结果' : '收起查询结果'}
+                                        >
+                                            {resultCollapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                            {hasHiddenResultHint ? <span className="sidebar-toggle-notice" aria-hidden="true" /> : null}
+                                        </button>
                                     </div>
                                 </div>
-                                <div className="results-container">
-                                    {queryError ? (
-                                        <div className="result-error">
-                                            <span>执行失败：{queryError}</span>
-                                        </div>
-                                    ) : !result ? (
-                                        <div className="empty-results">
-                                            <Code2 size={48} className="empty-icon" />
-                                            <span>暂无查询结果。请运行 SQL 语句以查看数据。</span>
-                                        </div>
-                                    ) : result.message !== 'Success' && (!result.columns || result.columns.length === 0) ? (
-                                        <div className="result-message">
-                                            <strong>执行信息：</strong>
-                                            <pre>{result.message}</pre>
-                                        </div>
-                                    ) : (
-                                        <table className="results-table">
-                                            <thead>
-                                                <tr>
-                                                    {result.columns.map(col => (
-                                                        <th key={col.name}>
-                                                            <div className="th-content">
-                                                                <span className="th-name">{col.name}</span>
-                                                                <span className="th-type">{col.type}</span>
-                                                            </div>
-                                                        </th>
-                                                    ))}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {result.rows.map((row, idx) => (
-                                                    <tr key={idx}>
+                                {!resultCollapsed && (
+                                    <div className="results-container">
+                                        {loadingQuery && !result ? (
+                                            <div className="empty-results">
+                                                <Loader2 size={32} className="animate-spin empty-icon" />
+                                                <span>正在执行 SQL，请稍候...</span>
+                                            </div>
+                                        ) : queryError ? (
+                                            <div className="result-error">
+                                                <span>执行失败：{queryError}</span>
+                                            </div>
+                                        ) : !result ? (
+                                            <div className="empty-results">
+                                                <Code2 size={48} className="empty-icon" />
+                                                <span>暂无查询结果。请运行 SQL 语句以查看数据。</span>
+                                            </div>
+                                        ) : result.message !== 'Success' && (!result.columns || result.columns.length === 0) ? (
+                                            <div className="result-message">
+                                                <strong>执行信息：</strong>
+                                                <pre>{result.message}</pre>
+                                            </div>
+                                        ) : (
+                                            <table className="results-table">
+                                                <thead>
+                                                    <tr>
                                                         {result.columns.map(col => (
-                                                            <td key={col.name} title={String(row[col.name] ?? '')}>
-                                                                {String(row[col.name] ?? '')}
-                                                            </td>
+                                                            <th key={col.name}>
+                                                                <div className="th-content">
+                                                                    <span className="th-name">{col.name}</span>
+                                                                    <span className="th-type">{col.type}</span>
+                                                                </div>
+                                                            </th>
                                                         ))}
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    )}
-                                </div>
+                                                </thead>
+                                                <tbody>
+                                                    {result.rows.map((row, idx) => (
+                                                        <tr key={idx}>
+                                                            {result.columns.map(col => (
+                                                                <td key={col.name} title={String(row[col.name] ?? '')}>
+                                                                    {String(row[col.name] ?? '')}
+                                                                </td>
+                                                            ))}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
+                                    </div>
+                                )}
                             </section>
                         </Allotment.Pane>
                     </Allotment>
+                    </div>
                 </Allotment.Pane>
             </Allotment>
         </div>
