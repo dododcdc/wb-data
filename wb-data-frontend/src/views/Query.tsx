@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense, useCallback, useLayoutEffect } from 'react';
 import type * as Monaco from 'monaco-editor';
 import type { AllotmentHandle } from 'allotment';
-import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, ChevronUp, Search, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, ChevronUp, Search, PanelLeftClose, PanelLeft, Star } from 'lucide-react';
 import { getMetadataDatabases, getMetadataTables, getMetadataColumns, executeQuery, getDialectMetadata, TableSummary, ColumnMetadata, QueryResult, DialectMetadata } from '../api/query';
-import { getDataSourcePage, DataSource } from '../api/datasource';
+import { getDataSourcePage, getDataSourceById, DataSource } from '../api/datasource';
 import { DataSourceSelect } from '../components/DataSourceSelect';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -34,6 +34,9 @@ const LEGACY_EDITOR_SIZE_STORAGE_KEY = 'query-editor-size';
 const RESULT_PANEL_COLLAPSED_STORAGE_KEY = 'query-result-collapsed';
 const RESULT_PANEL_EXPANDED_HEIGHT_STORAGE_KEY = 'query-result-expanded-height';
 const RESULT_PANEL_AUTO_OPEN_STORAGE_KEY = 'query-result-auto-open';
+const DEFAULT_DATASOURCE_STORAGE_KEY = 'query-default-datasource-id';
+const LAST_DATASOURCE_STORAGE_KEY = 'query-last-datasource-id';
+const LAST_DATABASE_BY_DATASOURCE_STORAGE_KEY = 'query-last-database-by-datasource';
 const SIDEBAR_DEFAULT_WIDTH_PX = 300;
 const SIDEBAR_MIN_WIDTH_PX = 250;
 const SIDEBAR_MAX_WIDTH_PX = 600;
@@ -181,6 +184,13 @@ function isSelectListContext(statement: string, textBeforeCursor: string) {
     return cursorIndex >= selectMatch[0].length && cursorIndex <= fromMatch.index;
 }
 
+function isExpressionClauseContext(textBeforeCursor: string) {
+    return (
+        /\b(WHERE|AND|OR|ON|HAVING)\s+([a-zA-Z0-9_]*)$/i.test(textBeforeCursor) ||
+        /\b(GROUP\s+BY|ORDER\s+BY)\s+([a-zA-Z0-9_]*)$/i.test(textBeforeCursor)
+    );
+}
+
 function mergeDatabaseOptions(databases: string[], fallbackDatabase?: string) {
     const merged: string[] = [];
 
@@ -221,6 +231,59 @@ function parseStoredPositiveNumber(rawValue: unknown) {
     }
 
     return Math.round(value);
+}
+
+function getStoredDefaultDataSourceId() {
+    try {
+        return localStorage.getItem(DEFAULT_DATASOURCE_STORAGE_KEY) ?? '';
+    } catch {
+        return '';
+    }
+}
+
+function getStoredLastDataSourceId() {
+    try {
+        return localStorage.getItem(LAST_DATASOURCE_STORAGE_KEY) ?? '';
+    } catch {
+        return '';
+    }
+}
+
+function getStoredLastDatabaseByDataSource() {
+    try {
+        const rawValue = localStorage.getItem(LAST_DATABASE_BY_DATASOURCE_STORAGE_KEY);
+        if (!rawValue) {
+            return {};
+        }
+
+        const parsed = JSON.parse(rawValue);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            return {};
+        }
+
+        return Object.entries(parsed).reduce<Record<string, string>>((acc, [key, value]) => {
+            if (typeof value === 'string' && value.trim()) {
+                acc[key] = value;
+            }
+            return acc;
+        }, {});
+    } catch {
+        return {};
+    }
+}
+
+function shouldPreferDefaultDataSourceOnMount() {
+    if (typeof window === 'undefined') {
+        return false;
+    }
+
+    const navigationEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+    if (navigationEntry?.type) {
+        return navigationEntry.type === 'reload';
+    }
+
+    // Fallback for older browsers.
+    return performance.navigation?.type === performance.navigation.TYPE_RELOAD;
 }
 
 function getStoredSidebarCollapsed() {
@@ -351,6 +414,9 @@ export default function Query() {
     const [dataSources, setDataSources] = useState<DataSource[]>([]);
     const [selectedDsId, setSelectedDsId] = useState<string>('');
     const [selectedDs, setSelectedDs] = useState<DataSource | null>(null);
+    const [defaultDsId, setDefaultDsId] = useState(getStoredDefaultDataSourceId);
+    const [lastDsId, setLastDsId] = useState(getStoredLastDataSourceId);
+    const [lastDatabaseByDs, setLastDatabaseByDs] = useState<Record<string, string>>(getStoredLastDatabaseByDataSource);
     const [dsKeyword, setDsKeyword] = useState('');
     const [loadingDs, setLoadingDs] = useState(false);
     const [loadingDsMore, setLoadingDsMore] = useState(false);
@@ -380,6 +446,7 @@ export default function Query() {
     const editorRef = useRef<MonacoEditorInstance | null>(null);
     const composingRef = useRef(false);
     const dsRequestIdRef = useRef(0);
+    const preferredDsRequestIdRef = useRef(0);
     const databasesRequestIdRef = useRef(0);
     const dialectRequestIdRef = useRef(0);
     const exportMenuRef = useRef<HTMLDivElement>(null);
@@ -403,6 +470,12 @@ export default function Query() {
     const queryContentRef = useRef<HTMLDivElement | null>(null);
     const [tableScrollElement, setTableScrollElement] = useState<HTMLDivElement | null>(null);
     const TABLE_PAGE_SIZE = 200;
+    const preferDefaultDataSourceOnMountRef = useRef(shouldPreferDefaultDataSourceOnMount());
+    const preferredStoredDataSourceId = useMemo(() => {
+        return preferDefaultDataSourceOnMountRef.current
+            ? (defaultDsId || lastDsId)
+            : (lastDsId || defaultDsId);
+    }, [defaultDsId, lastDsId]);
 
     const getActiveDataSource = useCallback(() => {
         if (selectedDs && String(selectedDs.id) === selectedDsId) {
@@ -410,6 +483,24 @@ export default function Query() {
         }
         return dataSources.find(item => String(item.id) === selectedDsId) ?? null;
     }, [dataSources, selectedDs, selectedDsId]);
+
+    const applySelectedDataSource = useCallback((dataSourceId: string, option?: DataSource | null) => {
+        setSelectedDsId(dataSourceId);
+        setDsKeyword('');
+
+        if (!dataSourceId) {
+            setSelectedDs(null);
+            return;
+        }
+
+        if (option) {
+            setSelectedDs(option);
+            return;
+        }
+
+        const fallback = dataSources.find(ds => String(ds.id) === dataSourceId) || null;
+        setSelectedDs(fallback);
+    }, [dataSources]);
 
     const [sidebarCollapsed, setSidebarCollapsed] = useState(getStoredSidebarCollapsed);
     const [sidebarExpandedWidth, setSidebarExpandedWidth] = useState(getStoredSidebarExpandedWidth);
@@ -482,6 +573,42 @@ export default function Query() {
         }
     }, []);
 
+    const persistDefaultDataSourceId = useCallback((dataSourceId: string) => {
+        try {
+            if (dataSourceId) {
+                localStorage.setItem(DEFAULT_DATASOURCE_STORAGE_KEY, dataSourceId);
+            } else {
+                localStorage.removeItem(DEFAULT_DATASOURCE_STORAGE_KEY);
+            }
+        } catch {
+            // Ignore storage access failures and keep the in-memory state.
+        }
+    }, []);
+
+    const persistLastDataSourceId = useCallback((dataSourceId: string) => {
+        try {
+            if (dataSourceId) {
+                localStorage.setItem(LAST_DATASOURCE_STORAGE_KEY, dataSourceId);
+            } else {
+                localStorage.removeItem(LAST_DATASOURCE_STORAGE_KEY);
+            }
+        } catch {
+            // Ignore storage access failures and keep the in-memory state.
+        }
+    }, []);
+
+    const persistLastDatabaseByDataSource = useCallback((nextValue: Record<string, string>) => {
+        try {
+            if (Object.keys(nextValue).length > 0) {
+                localStorage.setItem(LAST_DATABASE_BY_DATASOURCE_STORAGE_KEY, JSON.stringify(nextValue));
+            } else {
+                localStorage.removeItem(LAST_DATABASE_BY_DATASOURCE_STORAGE_KEY);
+            }
+        } catch {
+            // Ignore storage access failures and keep the in-memory state.
+        }
+    }, []);
+
     const startSidebarTransition = useCallback(() => {
         if (sidebarTransitionTimerRef.current !== null) {
             window.clearTimeout(sidebarTransitionTimerRef.current);
@@ -530,6 +657,16 @@ export default function Query() {
         startResultTransition();
         setResultPanelState(!resultCollapsed, { manual: true });
     }, [resultCollapsed, setResultPanelState, startResultTransition]);
+
+    const toggleDefaultDataSource = useCallback(() => {
+        if (!selectedDsId) {
+            return;
+        }
+
+        const nextDefaultDataSourceId = defaultDsId === selectedDsId ? '' : selectedDsId;
+        setDefaultDsId(nextDefaultDataSourceId);
+        persistDefaultDataSourceId(nextDefaultDataSourceId);
+    }, [defaultDsId, persistDefaultDataSourceId, selectedDsId]);
 
     const getCurrentHorizontalTotalWidth = useCallback(() => {
         const cachedSizes = horizontalLayoutSizesRef.current;
@@ -629,6 +766,32 @@ export default function Query() {
     }, [selectedDb]);
 
     useEffect(() => {
+        if (!selectedDsId) {
+            return;
+        }
+
+        setLastDsId(selectedDsId);
+        persistLastDataSourceId(selectedDsId);
+    }, [persistLastDataSourceId, selectedDsId]);
+
+    useEffect(() => {
+        if (!selectedDsId || !selectedDb) {
+            return;
+        }
+
+        if (lastDatabaseByDs[selectedDsId] === selectedDb) {
+            return;
+        }
+
+        const nextValue = {
+            ...lastDatabaseByDs,
+            [selectedDsId]: selectedDb,
+        };
+        setLastDatabaseByDs(nextValue);
+        persistLastDatabaseByDataSource(nextValue);
+    }, [lastDatabaseByDs, persistLastDatabaseByDataSource, selectedDb, selectedDsId]);
+
+    useEffect(() => {
         tableKeywordCommittedRef.current = tableKeywordCommitted;
     }, [selectedDb, selectedDsId, tableKeywordCommitted]);
 
@@ -674,7 +837,92 @@ export default function Query() {
 
     useEffect(() => {
         if (selectedDsId) {
+            return;
+        }
+
+        const preferredDataSourceId = preferredStoredDataSourceId;
+        if (!preferredDataSourceId) {
+            return;
+        }
+
+        const existingDataSource = dataSources.find(ds => String(ds.id) === preferredDataSourceId);
+        if (existingDataSource) {
+            applySelectedDataSource(preferredDataSourceId, existingDataSource);
+            return;
+        }
+
+        const numericPreferredId = Number(preferredDataSourceId);
+        if (!Number.isFinite(numericPreferredId) || numericPreferredId <= 0) {
+            return;
+        }
+
+        const requestId = ++preferredDsRequestIdRef.current;
+        getDataSourceById(numericPreferredId)
+            .then((dataSource) => {
+                if (preferredDsRequestIdRef.current !== requestId) {
+                    return;
+                }
+
+                setDataSources(prev => prev.some(item => item.id === dataSource.id) ? prev : [dataSource, ...prev]);
+                applySelectedDataSource(preferredDataSourceId, dataSource);
+            })
+            .catch(() => {
+                if (preferredDsRequestIdRef.current !== requestId) {
+                    return;
+                }
+
+                if (defaultDsId === preferredDataSourceId) {
+                    setDefaultDsId('');
+                    persistDefaultDataSourceId('');
+                }
+                if (lastDsId === preferredDataSourceId) {
+                    setLastDsId('');
+                    persistLastDataSourceId('');
+                }
+            });
+    }, [
+        applySelectedDataSource,
+        dataSources,
+        persistDefaultDataSourceId,
+        persistLastDataSourceId,
+        preferredStoredDataSourceId,
+        selectedDsId,
+        defaultDsId,
+        lastDsId,
+    ]);
+
+    useEffect(() => {
+        if (selectedDsId) {
+            const matchedDataSource = dataSources.find(ds => String(ds.id) === selectedDsId);
+            if (matchedDataSource && (!selectedDs || String(selectedDs.id) !== selectedDsId)) {
+                setSelectedDs(matchedDataSource);
+            }
+            return;
+        }
+
+        if (dsKeyword.trim() || dataSources.length === 0) {
+            return;
+        }
+
+        const preferredDataSourceId = preferredStoredDataSourceId;
+        const preferredDataSource = preferredDataSourceId
+            ? dataSources.find(ds => String(ds.id) === preferredDataSourceId)
+            : null;
+
+        if (preferredDataSource) {
+            applySelectedDataSource(String(preferredDataSource.id), preferredDataSource);
+            return;
+        }
+
+        if (dataSources.length === 1) {
+            applySelectedDataSource(String(dataSources[0].id), dataSources[0]);
+        }
+    }, [applySelectedDataSource, dataSources, dsKeyword, preferredStoredDataSourceId, selectedDs, selectedDsId]);
+
+    useEffect(() => {
+        if (selectedDsId) {
             const activeDataSource = getActiveDataSource();
+            const preferredDatabase = lastDatabaseByDs[selectedDsId];
 
             setDbKeyword('');
             setSelectedDb('');
@@ -684,7 +932,7 @@ export default function Query() {
             setTableKeyword('');
             setTableKeywordCommitted('');
             setTableTotal(0);
-            loadDatabases(Number(selectedDsId), activeDataSource?.databaseName);
+            loadDatabases(Number(selectedDsId), preferredDatabase || activeDataSource?.databaseName);
             loadDialect(Number(selectedDsId));
         } else {
             setDatabases([]);
@@ -698,7 +946,7 @@ export default function Query() {
             setDialectMetadata(null);
             setSelectedDs(null);
         }
-    }, [getActiveDataSource, selectedDsId]);
+    }, [getActiveDataSource, lastDatabaseByDs, selectedDsId]);
 
     useEffect(() => {
         if (selectedDsId && selectedDb) {
@@ -1294,6 +1542,59 @@ export default function Query() {
                     });
                 };
 
+                const pushSourceColumnSuggestions = async (categoryRank: string) => {
+                    const sourceColumns = await Promise.all(statementSourceTables.map(async sourceTable => {
+                        const normalizedDatabase = sourceTable.databaseName?.toLowerCase();
+                        if (normalizedDatabase && normalizedDatabase !== selectedDatabase) {
+                            return { sourceTable, columns: null, resolvedTableName: sourceTable.tableName };
+                        }
+
+                        const matchedTable = currentTables.find(table => table.name.toLowerCase() === sourceTable.tableName.toLowerCase());
+                        const resolvedTableName = matchedTable?.name || sourceTable.tableName;
+                        let cachedCols = currentColumnCache.get(resolvedTableName) || currentColumnCache.get(sourceTable.tableName);
+
+                        if (!cachedCols) {
+                            const activeDsId = activeDsIdRef.current;
+                            const activeDb = activeDbRef.current;
+                            if (activeDsId && activeDb) {
+                                cachedCols = await loadColumns(
+                                    Number(activeDsId),
+                                    activeDb,
+                                    matchedTable?.name || sourceTable.tableName,
+                                ) || undefined;
+                            }
+                        }
+
+                        return { sourceTable, columns: cachedCols ?? null, resolvedTableName };
+                    }));
+
+                    sourceColumns.forEach(({ sourceTable, columns, resolvedTableName }) => {
+                        if (!columns) {
+                            return;
+                        }
+
+                        const needsQualifiedInsert = Boolean(sourceTable.alias) || statementSourceTables.length > 1;
+                        const qualifier = sourceTable.alias || resolvedTableName;
+
+                        columns.forEach(col => {
+                            const insertText = needsQualifiedInsert ? `${qualifier}.${col.name}` : col.name;
+                            const sourceLabel = sourceTable.alias
+                                ? `${sourceTable.alias} (${resolvedTableName})`
+                                : resolvedTableName;
+
+                            pushSuggestion({
+                                label: col.name,
+                                kind: monaco.languages.CompletionItemKind.Field,
+                                insertText,
+                                filterText: `${col.name} ${insertText} ${resolvedTableName}`,
+                                detail: `${sourceLabel} Column (${col.type})`,
+                                documentation: col.remarks,
+                                range,
+                            }, categoryRank, `source-column:${sourceLabel.toLowerCase()}:${col.name.toLowerCase()}`);
+                        });
+                    });
+                };
+
                 // 1. Column suggestions for "table." or "alias."
                 const lastDotIndex = textBeforeCursor.lastIndexOf('.');
                 if (lastDotIndex !== -1) {
@@ -1364,59 +1665,29 @@ export default function Query() {
 
                 // 2. Column suggestions inside SELECT list based on current statement source tables
                 if (isSelectListContext(currentStatement.text, textBeforeCursor) && statementSourceTables.length > 0) {
-                    const sourceColumns = await Promise.all(statementSourceTables.map(async sourceTable => {
-                        const normalizedDatabase = sourceTable.databaseName?.toLowerCase();
-                        if (normalizedDatabase && normalizedDatabase !== selectedDatabase) {
-                            return { sourceTable, columns: null, resolvedTableName: sourceTable.tableName };
-                        }
+                    await pushSourceColumnSuggestions('01');
+                }
 
-                        const matchedTable = currentTables.find(table => table.name.toLowerCase() === sourceTable.tableName.toLowerCase());
-                        const resolvedTableName = matchedTable?.name || sourceTable.tableName;
-                        let cachedCols = currentColumnCache.get(resolvedTableName) || currentColumnCache.get(sourceTable.tableName);
-
-                        if (!cachedCols) {
-                            const activeDsId = activeDsIdRef.current;
-                            const activeDb = activeDbRef.current;
-                            if (activeDsId && activeDb) {
-                                cachedCols = await loadColumns(
-                                    Number(activeDsId),
-                                    activeDb,
-                                    matchedTable?.name || sourceTable.tableName,
-                                ) || undefined;
-                            }
-                        }
-
-                        return { sourceTable, columns: cachedCols ?? null, resolvedTableName };
-                    }));
-
-                    sourceColumns.forEach(({ sourceTable, columns, resolvedTableName }) => {
-                        if (!columns) {
+                // 3. Column suggestions inside WHERE / ON / HAVING / GROUP BY / ORDER BY expressions
+                if (isExpressionClauseContext(textBeforeCursor) && statementSourceTables.length > 0) {
+                    statementSourceTables.forEach(sourceTable => {
+                        if (!sourceTable.alias) {
                             return;
                         }
 
-                        const needsQualifiedInsert = Boolean(sourceTable.alias) || statementSourceTables.length > 1;
-                        const qualifier = sourceTable.alias || resolvedTableName;
-
-                        columns.forEach(col => {
-                            const insertText = needsQualifiedInsert ? `${qualifier}.${col.name}` : col.name;
-                            const sourceLabel = sourceTable.alias
-                                ? `${sourceTable.alias} (${resolvedTableName})`
-                                : resolvedTableName;
-
-                            pushSuggestion({
-                                label: col.name,
-                                kind: monaco.languages.CompletionItemKind.Field,
-                                insertText,
-                                filterText: `${col.name} ${insertText} ${resolvedTableName}`,
-                                detail: `${sourceLabel} Column (${col.type})`,
-                                documentation: col.remarks,
-                                range,
-                            }, '01', `select-column:${sourceLabel.toLowerCase()}:${col.name.toLowerCase()}`);
-                        });
+                        pushSuggestion({
+                            label: sourceTable.alias,
+                            kind: monaco.languages.CompletionItemKind.Variable,
+                            insertText: sourceTable.alias,
+                            detail: `${sourceTable.alias} alias of ${sourceTable.tableName}`,
+                            range,
+                        }, '02', `alias:${sourceTable.alias.toLowerCase()}`);
                     });
+
+                    await pushSourceColumnSuggestions('01');
                 }
 
-                // 3. Context-aware database/table suggestions after relation keywords
+                // 4. Context-aware database/table suggestions after relation keywords
                 const relationContextMatch = /\b(FROM|JOIN|INTO|UPDATE|TABLE)\s+([a-zA-Z0-9_]*)$/i.exec(textBeforeCursor);
                 if (relationContextMatch) {
                     currentDatabases.forEach(database => {
@@ -1455,7 +1726,7 @@ export default function Query() {
                     return { suggestions };
                 }
 
-                // 4. Add General SQL Keywords and Functions from Dialect
+                // 5. Add General SQL Keywords and Functions from Dialect
                 const keywordSuggestions = currentDialect?.keywords?.length
                     ? currentDialect.keywords
                     : FALLBACK_SQL_KEYWORDS;
@@ -1759,14 +2030,7 @@ export default function Query() {
                                 value={String(selectedDsId)}
                                 selectedOption={selectedDsOption}
                                 onChange={(val, option) => {
-                                    setSelectedDsId(val);
-                                    setDsKeyword('');
-                                    if (option?.raw) {
-                                        setSelectedDs(option.raw as DataSource);
-                                        return;
-                                    }
-                                    const fallback = dataSources.find(ds => String(ds.id) === val) || null;
-                                    setSelectedDs(fallback);
+                                    applySelectedDataSource(val, (option?.raw as DataSource | undefined) ?? null);
                                 }}
                                 onInputChange={(val) => setDsKeyword(val)}
                                 loading={loadingDs}
@@ -1781,6 +2045,24 @@ export default function Query() {
                                 ariaLabel="数据源选择"
                                 emptyText={dsKeyword ? '未找到匹配的数据源' : '暂无数据源'}
                             />
+                            <TooltipProvider delayDuration={400}>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            type="button"
+                                            className={`default-ds-button ${selectedDsId && defaultDsId === selectedDsId ? 'is-active' : ''}`.trim()}
+                                            onClick={toggleDefaultDataSource}
+                                            aria-label={selectedDsId && defaultDsId === selectedDsId ? '取消默认数据源' : '设为默认数据源'}
+                                            disabled={!selectedDsId}
+                                        >
+                                            <Star size={15} />
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="tooltip-content" side="bottom">
+                                        {selectedDsId && defaultDsId === selectedDsId ? '取消默认数据源' : '设为默认数据源'}
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
                             {selectedDsId && (
                                 <>
                                     <span className="breadcrumb-divider">/</span>
