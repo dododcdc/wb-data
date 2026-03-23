@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense, useCallback, useLayoutEffect } from 'react';
 import type * as Monaco from 'monaco-editor';
 import type { AllotmentHandle } from 'allotment';
-import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, ChevronUp, Search, PanelLeftClose, PanelLeft, Star } from 'lucide-react';
+import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, ChevronUp, Search, PanelLeftClose, PanelLeft, Star, AlertTriangle, CheckCircle2, Clock3, Info } from 'lucide-react';
 import { getMetadataDatabases, getMetadataTables, getMetadataColumns, executeQuery, getDialectMetadata, TableSummary, ColumnMetadata, QueryResult, DialectMetadata } from '../api/query';
 import { getDataSourcePage, getDataSourceById, DataSource } from '../api/datasource';
 import { DataSourceSelect } from '../components/DataSourceSelect';
@@ -48,6 +48,7 @@ const RESULT_PANEL_COLLAPSED_HEIGHT_PX = 44;
 const RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX = RESULT_PANEL_COLLAPSED_HEIGHT_PX;
 const RESULT_PANEL_DEFAULT_HEIGHT_PX = 320;
 const SIDEBAR_TOGGLE_TRANSITION_MS = 160;
+const QUERY_EXECUTION_TIMEOUT_MS = 10_000;
 const FALLBACK_SQL_KEYWORDS = [
     'SELECT',
     'FROM',
@@ -88,11 +89,20 @@ const FALLBACK_SQL_KEYWORDS = [
 type MonacoEditorInstance = Monaco.editor.IStandaloneCodeEditor;
 
 type QueryEditorError = {
+    code?: string;
     response?: {
         data?: {
             message?: string;
         };
     };
+    message?: string;
+};
+
+type QueryFeedbackState = 'idle' | 'running' | 'success' | 'empty' | 'message' | 'error' | 'timeout';
+
+type ExportState = {
+    status: 'idle' | 'exporting' | 'success' | 'error';
+    format?: 'csv' | 'xlsx';
     message?: string;
 };
 
@@ -442,6 +452,7 @@ export default function Query() {
     const [result, setResult] = useState<QueryResult | null>(null);
     const [queryError, setQueryError] = useState<string>('');
     const [showExportMenu, setShowExportMenu] = useState(false);
+    const [exportState, setExportState] = useState<ExportState>({ status: 'idle' });
     const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
     const editorRef = useRef<MonacoEditorInstance | null>(null);
     const composingRef = useRef(false);
@@ -464,6 +475,7 @@ export default function Query() {
     const verticalSplitterRef = useRef<AllotmentHandle | null>(null);
     const sidebarTransitionTimerRef = useRef<number | null>(null);
     const resultTransitionTimerRef = useRef<number | null>(null);
+    const exportStateTimerRef = useRef<number | null>(null);
     const horizontalLayoutSizesRef = useRef<number[] | null>(null);
     const querySplitterRef = useRef<HTMLDivElement | null>(null);
     const verticalLayoutSizesRef = useRef<number[] | null>(null);
@@ -658,6 +670,22 @@ export default function Query() {
         setResultPanelState(!resultCollapsed, { manual: true });
     }, [resultCollapsed, setResultPanelState, startResultTransition]);
 
+    const showExportFeedback = useCallback((nextState: ExportState) => {
+        if (exportStateTimerRef.current !== null) {
+            window.clearTimeout(exportStateTimerRef.current);
+            exportStateTimerRef.current = null;
+        }
+
+        setExportState(nextState);
+
+        if (nextState.status === 'success' || nextState.status === 'error') {
+            exportStateTimerRef.current = window.setTimeout(() => {
+                setExportState({ status: 'idle' });
+                exportStateTimerRef.current = null;
+            }, 2800);
+        }
+    }, []);
+
     const toggleDefaultDataSource = useCallback(() => {
         if (!selectedDsId) {
             return;
@@ -737,6 +765,9 @@ export default function Query() {
             }
             if (resultTransitionTimerRef.current !== null) {
                 window.clearTimeout(resultTransitionTimerRef.current);
+            }
+            if (exportStateTimerRef.current !== null) {
+                window.clearTimeout(exportStateTimerRef.current);
             }
         };
     }, []);
@@ -1209,51 +1240,95 @@ export default function Query() {
         resultCollapsed &&
         (loadingQuery || Boolean(queryError) || Boolean(result));
 
-    const resultStatusText = useMemo(() => {
+    const queryFeedback = useMemo(() => {
+        const executionTimeSuffix = result && typeof result.executionTimeMs === 'number'
+            ? ` • ${result.executionTimeMs}ms`
+            : '';
+
         if (loadingQuery) {
-            return '执行中...';
+            return {
+                state: 'running' as QueryFeedbackState,
+                toneClass: 'is-running',
+                label: '运行中',
+                summary: '正在执行 SQL...',
+                title: '查询正在执行',
+                description: '结果区域会在查询返回后统一展示结果、执行信息或错误原因。',
+            };
         }
+
         if (queryError) {
-            return '执行失败';
+            const isTimeoutError =
+                queryError.includes('超时') ||
+                queryError.toLowerCase().includes('timeout');
+
+            return {
+                state: isTimeoutError ? 'timeout' as QueryFeedbackState : 'error' as QueryFeedbackState,
+                toneClass: 'is-error',
+                label: isTimeoutError ? '执行超时' : '错误输出',
+                summary: isTimeoutError ? `请求超过 ${QUERY_EXECUTION_TIMEOUT_MS / 1000} 秒未完成` : '执行失败',
+                title: isTimeoutError ? '查询执行超时' : '查询执行失败',
+                description: queryError,
+            };
         }
+
         if (!result) {
+            return {
+                state: 'idle' as QueryFeedbackState,
+                toneClass: 'is-idle',
+                label: '结果输出',
+                summary: '',
+                title: '等待执行 SQL',
+                description: '运行 SQL 后，这里会展示结果集、执行信息、错误明细和导出操作。',
+            };
+        }
+
+        if (result.columns.length > 0 && result.rows.length === 0) {
+            return {
+                state: 'empty' as QueryFeedbackState,
+                toneClass: 'is-ready',
+                label: '空结果',
+                summary: `0 条记录${executionTimeSuffix}`,
+                title: '查询执行成功，但没有返回记录',
+                description: '可以继续补充筛选条件，或检查当前数据库和查询条件是否正确。',
+            };
+        }
+
+        if (result.columns.length > 0) {
+            return {
+                state: 'success' as QueryFeedbackState,
+                toneClass: 'is-ready',
+                label: '结果集',
+                summary: `${result.rows.length} 条记录${executionTimeSuffix}`,
+                title: '查询执行成功',
+                description: result.message && result.message !== 'Success' ? result.message : '结果集已返回，可继续查看、筛选或导出。',
+            };
+        }
+
+        return {
+            state: 'message' as QueryFeedbackState,
+            toneClass: 'is-ready',
+            label: '执行信息',
+            summary: `已返回执行信息${executionTimeSuffix}`,
+            title: 'SQL 已执行',
+            description: result.message && result.message !== 'Success'
+                ? result.message
+                : '本次执行没有返回表格结果。',
+        };
+    }, [loadingQuery, queryError, result]);
+
+    const exportStatusText = useMemo(() => {
+        if (exportState.status === 'idle') {
             return '';
         }
-        if (result.columns.length > 0) {
-            return `${result.rows.length} 条记录${typeof result.executionTimeMs === 'number' ? ` • ${result.executionTimeMs}ms` : ''}`;
-        }
-        if (result.message && result.message !== 'Success') {
-            return '已返回执行信息';
-        }
-        if (typeof result.executionTimeMs === 'number') {
-            return `执行完成 • ${result.executionTimeMs}ms`;
-        }
-        return '执行完成';
-    }, [loadingQuery, queryError, result]);
 
-    const resultOutputLabel = useMemo(() => {
-        if (loadingQuery) {
-            return '运行中';
-        }
-        if (queryError) {
-            return '错误输出';
-        }
-        if (!result) {
-            return '结果输出';
-        }
-        if (result.columns.length > 0) {
-            return '结果集';
-        }
-        return '执行信息';
-    }, [loadingQuery, queryError, result]);
-
-    const resultToneClass = queryError
-        ? 'is-error'
-        : loadingQuery
-            ? 'is-running'
-            : result
-                ? 'is-ready'
-                : 'is-idle';
+        return exportState.message || (
+            exportState.status === 'exporting'
+                ? `正在导出 ${exportState.format === 'xlsx' ? 'Excel' : 'CSV'}`
+                : exportState.status === 'success'
+                    ? `已导出 ${exportState.format === 'xlsx' ? 'Excel' : 'CSV'}`
+                    : '导出失败'
+        );
+    }, [exportState]);
 
     const handleRunQuery = useCallback(async (sqlToRun?: string) => {
         let finalSql = sqlToRun;
@@ -1270,14 +1345,22 @@ export default function Query() {
         finalSql = finalSql ?? sql;
 
         if (!selectedDsId) {
-            alert('请先选择数据源');
+            setResult(null);
+            setQueryError('请先选择数据源后再执行 SQL。');
+            setResultPanelState(false);
             return;
         }
         if (!finalSql.trim()) {
-            alert('Nothing to run - 请输入 SQL 语句');
+            setResult(null);
+            setQueryError('请输入 SQL 语句后再执行。');
+            setResultPanelState(false);
             return;
         }
+
+        setResult(null);
         setQueryError('');
+        showExportFeedback({ status: 'idle' });
+        setShowExportMenu(false);
         if (resultAutoOpen) {
             setResultPanelState(false);
         }
@@ -1288,15 +1371,22 @@ export default function Query() {
             setQueryError('');
         } catch (error: unknown) {
             const requestError = error as QueryEditorError;
-            const message = requestError.response?.data?.message
+            const rawMessage = requestError.response?.data?.message
                 || requestError.message
                 || '执行查询失败';
+            const isTimeoutError =
+                requestError.code === 'ECONNABORTED'
+                || rawMessage.toLowerCase().includes('timeout')
+                || rawMessage.includes('超时');
+            const message = isTimeoutError
+                ? `查询超过 ${QUERY_EXECUTION_TIMEOUT_MS / 1000} 秒未完成，请检查 SQL 或数据源响应情况。`
+                : rawMessage;
             setQueryError(message);
             setResultPanelState(false);
         } finally {
             setLoadingQuery(false);
         }
-    }, [resultAutoOpen, selectedDb, selectedDsId, setResultPanelState, sql]);
+    }, [resultAutoOpen, selectedDb, selectedDsId, setResultPanelState, showExportFeedback, sql]);
 
     // ── SQL Formatting ──────────────────────────────────────────────────────
     const handleFormat = async () => {
@@ -1320,32 +1410,44 @@ export default function Query() {
 
     const exportCsv = () => {
         if (!result) return;
-        const header = result.columns.map(c => c.name).join(',');
-        const rows = result.rows.map(row =>
-            result.columns.map(c => {
-                const val = String(row[c.name] ?? '');
-                return val.includes(',') || val.includes('\n') || val.includes('"')
-                    ? `"${val.replace(/"/g, '""')}"` : val;
-            }).join(',')
-        );
-        const csv = [header, ...rows].join('\n');
-        const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
-        triggerDownload(blob, `${exportFileName()}.csv`);
-        setShowExportMenu(false);
+        showExportFeedback({ status: 'exporting', format: 'csv', message: '正在导出 CSV...' });
+        try {
+            const header = result.columns.map(c => c.name).join(',');
+            const rows = result.rows.map(row =>
+                result.columns.map(c => {
+                    const val = String(row[c.name] ?? '');
+                    return val.includes(',') || val.includes('\n') || val.includes('"')
+                        ? `"${val.replace(/"/g, '""')}"` : val;
+                }).join(',')
+            );
+            const csv = [header, ...rows].join('\n');
+            const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+            triggerDownload(blob, `${exportFileName()}.csv`);
+            setShowExportMenu(false);
+            showExportFeedback({ status: 'success', format: 'csv', message: 'CSV 导出成功' });
+        } catch {
+            showExportFeedback({ status: 'error', format: 'csv', message: 'CSV 导出失败，请重试。' });
+        }
     };
 
     const exportExcel = async () => {
         if (!result) return;
-        const XLSX = await import('xlsx');
-        const data = [
-            result.columns.map(c => c.name),
-            ...result.rows.map(row => result.columns.map(c => row[c.name] ?? ''))
-        ];
-        const ws = XLSX.utils.aoa_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Result');
-        XLSX.writeFile(wb, `${exportFileName()}.xlsx`);
-        setShowExportMenu(false);
+        showExportFeedback({ status: 'exporting', format: 'xlsx', message: '正在导出 Excel...' });
+        try {
+            const XLSX = await import('xlsx');
+            const data = [
+                result.columns.map(c => c.name),
+                ...result.rows.map(row => result.columns.map(c => row[c.name] ?? ''))
+            ];
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Result');
+            XLSX.writeFile(wb, `${exportFileName()}.xlsx`);
+            setShowExportMenu(false);
+            showExportFeedback({ status: 'success', format: 'xlsx', message: 'Excel 导出成功' });
+        } catch {
+            showExportFeedback({ status: 'error', format: 'xlsx', message: 'Excel 导出失败，请重试。' });
+        }
     };
 
     const triggerDownload = (blob: Blob, filename: string) => {
@@ -2025,44 +2127,46 @@ export default function Query() {
                                 </Tooltip>
                             </TooltipProvider>
                             <span className="toolbar-divider" />
-                            <DataSourceSelect
-                                options={dataSourceOptions}
-                                value={String(selectedDsId)}
-                                selectedOption={selectedDsOption}
-                                onChange={(val, option) => {
-                                    applySelectedDataSource(val, (option?.raw as DataSource | undefined) ?? null);
-                                }}
-                                onInputChange={(val) => setDsKeyword(val)}
-                                loading={loadingDs}
-                                loadingMore={loadingDsMore}
-                                hasMore={dsHasMore}
-                                onLoadMore={loadMoreDataSources}
-                                placeholder="搜索并选择数据源..."
-                                theme="light"
-                                disableClientFilter
-                                virtualize
-                                virtualItemSize={32}
-                                ariaLabel="数据源选择"
-                                emptyText={dsKeyword ? '未找到匹配的数据源' : '暂无数据源'}
-                            />
-                            <TooltipProvider delayDuration={400}>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <button
-                                            type="button"
-                                            className={`default-ds-button ${selectedDsId && defaultDsId === selectedDsId ? 'is-active' : ''}`.trim()}
-                                            onClick={toggleDefaultDataSource}
-                                            aria-label={selectedDsId && defaultDsId === selectedDsId ? '取消默认数据源' : '设为默认数据源'}
-                                            disabled={!selectedDsId}
-                                        >
-                                            <Star size={15} />
-                                        </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="tooltip-content" side="bottom">
-                                        {selectedDsId && defaultDsId === selectedDsId ? '取消默认数据源' : '设为默认数据源'}
-                                    </TooltipContent>
-                                </Tooltip>
-                            </TooltipProvider>
+                            <div className="toolbar-ds-group">
+                                <TooltipProvider delayDuration={400}>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className={`default-ds-button ${selectedDsId && defaultDsId === selectedDsId ? 'is-active' : ''}`.trim()}
+                                                onClick={toggleDefaultDataSource}
+                                                aria-label={selectedDsId && defaultDsId === selectedDsId ? '取消默认数据源' : '设为默认数据源'}
+                                                disabled={!selectedDsId}
+                                            >
+                                                <Star size={15} />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="tooltip-content" side="bottom">
+                                            {selectedDsId && defaultDsId === selectedDsId ? '取消默认数据源' : '设为默认数据源'}
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                                <DataSourceSelect
+                                    options={dataSourceOptions}
+                                    value={String(selectedDsId)}
+                                    selectedOption={selectedDsOption}
+                                    onChange={(val, option) => {
+                                        applySelectedDataSource(val, (option?.raw as DataSource | undefined) ?? null);
+                                    }}
+                                    onInputChange={(val) => setDsKeyword(val)}
+                                    loading={loadingDs}
+                                    loadingMore={loadingDsMore}
+                                    hasMore={dsHasMore}
+                                    onLoadMore={loadMoreDataSources}
+                                    placeholder="搜索并选择数据源..."
+                                    theme="light"
+                                    disableClientFilter
+                                    virtualize
+                                    virtualItemSize={32}
+                                    ariaLabel="数据源选择"
+                                    emptyText={dsKeyword ? '未找到匹配的数据源' : '暂无数据源'}
+                                />
+                            </div>
                             {selectedDsId && (
                                 <>
                                     <span className="breadcrumb-divider">/</span>
@@ -2186,21 +2290,34 @@ export default function Query() {
                             <section className={`results-section ${resultCollapsed ? 'collapsed' : ''}`.trim()}>
                                 <div className="section-header">
                                     <div className="section-header-left">
-                                        <div className={`result-output-tab ${resultToneClass}`.trim()}>
+                                        <div className={`result-output-tab ${queryFeedback.toneClass}`.trim()}>
                                             <span className="result-output-tab-dot" aria-hidden="true" />
-                                            <span>{resultOutputLabel}</span>
+                                            <span>{queryFeedback.label}</span>
                                         </div>
-                                        {resultStatusText ? (
-                                            <div className={`result-summary ${resultToneClass}`.trim()}>
-                                                {loadingQuery ? <Loader2 size={12} className="animate-spin" /> : null}
-                                                <span>{resultStatusText}</span>
+                                        {queryFeedback.summary ? (
+                                            <div className={`result-summary ${queryFeedback.toneClass}`.trim()}>
+                                                {queryFeedback.state === 'running' ? <Loader2 size={12} className="animate-spin" /> : null}
+                                                {queryFeedback.state === 'timeout' ? <Clock3 size={12} /> : null}
+                                                {queryFeedback.state === 'error' ? <AlertTriangle size={12} /> : null}
+                                                {queryFeedback.state === 'success' || queryFeedback.state === 'empty' || queryFeedback.state === 'message' ? <CheckCircle2 size={12} /> : null}
+                                                <span>{queryFeedback.summary}</span>
+                                            </div>
+                                        ) : null}
+                                        {exportStatusText ? (
+                                            <div className={`result-summary ${exportState.status === 'error' ? 'is-error' : exportState.status === 'exporting' ? 'is-running' : 'is-ready'}`.trim()}>
+                                                {exportState.status === 'exporting' ? <Loader2 size={12} className="animate-spin" /> : null}
+                                                {exportState.status === 'error' ? <AlertTriangle size={12} /> : null}
+                                                {exportState.status === 'success' ? <CheckCircle2 size={12} /> : null}
+                                                <span>{exportStatusText}</span>
                                             </div>
                                         ) : null}
                                     </div>
                                     <div className="section-header-right">
-                                        {!resultCollapsed && result && (
+                                        {!resultCollapsed && result && result.columns.length > 0 && (
                                             <div className="result-info">
-                                                找到 {result.rows.length} 条记录 • 耗时 {result.executionTimeMs}ms
+                                                {result.rows.length === 0
+                                                    ? `空结果 • 耗时 ${result.executionTimeMs}ms`
+                                                    : `找到 ${result.rows.length} 条记录 • 耗时 ${result.executionTimeMs}ms`}
                                             </div>
                                         )}
                                         {!resultCollapsed && result && result.columns.length > 0 && (
@@ -2211,9 +2328,10 @@ export default function Query() {
                                                     title="导出结果"
                                                     aria-haspopup="menu"
                                                     aria-expanded={showExportMenu}
+                                                    disabled={exportState.status === 'exporting'}
                                                 >
-                                                    <Download size={14} />
-                                                    <span>导出</span>
+                                                    {exportState.status === 'exporting' ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                                                    <span>{exportState.status === 'exporting' ? '导出中' : '导出'}</span>
                                                 </button>
                                                 {showExportMenu && (
                                                     <div className="export-menu" role="menu">
@@ -2251,26 +2369,7 @@ export default function Query() {
                                 </div>
                                 {!resultCollapsed && (
                                     <div className="results-container">
-                                        {loadingQuery && !result ? (
-                                            <div className="empty-results">
-                                                <Loader2 size={32} className="animate-spin empty-icon" />
-                                                <span>正在执行 SQL，请稍候...</span>
-                                            </div>
-                                        ) : queryError ? (
-                                            <div className="result-error">
-                                                <span>执行失败：{queryError}</span>
-                                            </div>
-                                        ) : !result ? (
-                                            <div className="empty-results">
-                                                <Code2 size={48} className="empty-icon" />
-                                                <span>暂无查询结果。请运行 SQL 语句以查看数据。</span>
-                                            </div>
-                                        ) : result.message !== 'Success' && (!result.columns || result.columns.length === 0) ? (
-                                            <div className="result-message">
-                                                <strong>执行信息：</strong>
-                                                <pre>{result.message}</pre>
-                                            </div>
-                                        ) : (
+                                        {result && result.columns.length > 0 && result.rows.length > 0 ? (
                                             <table className="results-table">
                                                 <thead>
                                                     <tr>
@@ -2296,6 +2395,28 @@ export default function Query() {
                                                     ))}
                                                 </tbody>
                                             </table>
+                                        ) : (
+                                            <div className={`result-feedback-card is-${queryFeedback.state}`.trim()}>
+                                                <div className="result-feedback-icon" aria-hidden="true">
+                                                    {queryFeedback.state === 'running' ? <Loader2 size={22} className="animate-spin" /> : null}
+                                                    {queryFeedback.state === 'timeout' ? <Clock3 size={22} /> : null}
+                                                    {queryFeedback.state === 'error' ? <AlertTriangle size={22} /> : null}
+                                                    {queryFeedback.state === 'message' ? <Info size={22} /> : null}
+                                                    {queryFeedback.state === 'success' || queryFeedback.state === 'empty' ? <CheckCircle2 size={22} /> : null}
+                                                    {queryFeedback.state === 'idle' ? <Code2 size={22} /> : null}
+                                                </div>
+                                                <div className="result-feedback-copy">
+                                                    <span className="result-feedback-kicker">{queryFeedback.label}</span>
+                                                    <h3>{queryFeedback.title}</h3>
+                                                    <p>{queryFeedback.description}</p>
+                                                    {queryFeedback.state === 'message' && result?.message ? (
+                                                        <pre className="result-feedback-detail">{result.message}</pre>
+                                                    ) : null}
+                                                    {(queryFeedback.state === 'error' || queryFeedback.state === 'timeout') && queryError ? (
+                                                        <pre className="result-feedback-detail">{queryError}</pre>
+                                                    ) : null}
+                                                </div>
+                                            </div>
                                         )}
                                     </div>
                                 )}

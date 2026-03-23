@@ -400,12 +400,48 @@
     border-radius: 10px;
     font-size: 0.84rem;
     line-height: 1.4;
+    max-width: min(100%, 440px);
 }
 
 .form-feedback-error {
     background: rgba(180, 35, 24, 0.08);
     color: var(--color-error);
     border: 1px solid rgba(180, 35, 24, 0.12);
+}
+
+.form-feedback-success {
+    min-height: auto;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--color-success);
+    border: none;
+    box-shadow: none;
+    font-weight: 600;
+}
+
+.form-feedback-info {
+    min-height: auto;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--color-link);
+    border: none;
+    box-shadow: none;
+}
+
+.form-feedback-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid color-mix(in srgb, var(--color-brand) 18%, transparent);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: formSpin 0.8s linear infinite;
+}
+
+.form-feedback-success span,
+.form-feedback-info span {
+    white-space: nowrap;
 }
 
 .footer-right {

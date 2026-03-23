@@ -9,6 +9,7 @@ import {
     DialogPortal,
     DialogTitle,
 } from '../components/ui/dialog';
+import { useDelayedBusy } from '../hooks/useDelayedBusy';
 import {
     DataSourcePluginDescriptor,
     PluginFieldDescriptor,
@@ -26,7 +27,21 @@ interface DataSourceFormProps {
     open: boolean;
     onOpenChange: (details: { open: boolean }) => void;
     dataSourceId: number | null;
-    onSuccess: (action: 'create' | 'edit') => void;
+    onSuccess: (details: DataSourceFormSuccessDetails) => void;
+}
+
+export interface DataSourceFormSuccessDetails {
+    action: 'create' | 'edit';
+    dataSourceId: number | null;
+    payload: {
+        name: string;
+        type: string;
+        description: string;
+        owner: string;
+        host: string;
+        port?: number;
+        databaseName: string;
+    };
 }
 
 type FormState = {
@@ -202,6 +217,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
     const connectionFields = selectedPlugin?.fields.filter((field) => field.section === 'connection') ?? [];
     const authenticationFields = selectedPlugin?.fields.filter((field) => field.section === 'authentication') ?? [];
     const pluginError = pluginQuery.error as Error | null;
+    const testingIndicatorVisible = useDelayedBusy(testing, { delayMs: 0, minVisibleMs: 420 });
 
     // Reset form when opened with no ID, or fetch data when opened with an ID
     useEffect(() => {
@@ -396,7 +412,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
 
         setTesting(true);
         setTestResult('none');
-        setTestMessage('');
+        setTestMessage('正在验证连接配置，请稍等...');
         setSaveError('');
         try {
             const requestPayload = {
@@ -410,7 +426,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
             };
             const result = await testNewConnection(requestPayload);
             setTestResult(result.success ? 'success' : 'fail');
-            setTestMessage(result.message || (result.success ? '连接成功' : '连接失败'));
+            setTestMessage(result.message || (result.success ? '连接测试通过，可以继续保存。' : '连接测试失败，请检查连接配置。'));
         } catch (error) {
             setTestResult('fail');
             setTestMessage(getErrorMessage(error, '连接校验失败，请稍后重试'));
@@ -439,10 +455,34 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
             };
             if (isEdit && dataSourceId) {
                 await updateDataSource(dataSourceId, payload);
-                onSuccess('edit');
+                onSuccess({
+                    action: 'edit',
+                    dataSourceId,
+                    payload: {
+                        name: payload.name,
+                        type: payload.type,
+                        description: payload.description,
+                        owner: payload.owner,
+                        host: payload.host ?? '',
+                        port: payload.port,
+                        databaseName: payload.databaseName ?? '',
+                    },
+                });
             } else {
                 await createDataSource(payload);
-                onSuccess('create');
+                onSuccess({
+                    action: 'create',
+                    dataSourceId: null,
+                    payload: {
+                        name: payload.name,
+                        type: payload.type,
+                        description: payload.description,
+                        owner: payload.owner,
+                        host: payload.host ?? '',
+                        port: payload.port,
+                        databaseName: payload.databaseName ?? '',
+                    },
+                });
             }
         } catch (error) {
             console.error(error);
@@ -607,14 +647,18 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                                         disabled={testing || isLoadingDetails || !supportsConnectionTest || !selectedPlugin}
                                         type="button"
                                     >
-                                        {testing ? '正在测试...' : supportsConnectionTest ? '测试连接' : '测试连接（待支持）'}
+                                        {testing || testingIndicatorVisible ? '正在测试...' : supportsConnectionTest ? '测试连接' : '测试连接（待支持）'}
                                     </button>
-                                    {testResult === 'success' && <div className="test-badge success"><CheckCircle size={14} /> 校验通过</div>}
-                                    {testResult === 'fail' && <div className="test-badge fail"><AlertCircle size={14} /> 校验失败</div>}
-                                    {testResult === 'fail' && testMessage ? (
-                                        <div className="form-feedback form-feedback-error">
-                                            <AlertCircle size={14} />
-                                            <span>{testMessage}</span>
+                                    {(testing || testingIndicatorVisible || testResult === 'success' || (testResult === 'fail' && testMessage)) ? (
+                                        <div
+                                            className={`form-feedback ${
+                                                testing || testingIndicatorVisible ? 'form-feedback-info' : testResult === 'success' ? 'form-feedback-success' : 'form-feedback-error'
+                                            }`}
+                                            role="status"
+                                            aria-live="polite"
+                                        >
+                                            {testing || testingIndicatorVisible ? <div className="form-feedback-spinner" aria-hidden="true" /> : testResult === 'success' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                                            <span>{testing || testingIndicatorVisible ? '正在验证连接配置，请稍等...' : testMessage}</span>
                                         </div>
                                     ) : null}
                                     {!selectedPlugin ? (
