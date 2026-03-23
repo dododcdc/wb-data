@@ -76,6 +76,7 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
     const isComposingRef = useRef(false);
     const skipNextInputRef = useRef(false);
     const [inputValue, setInputValue] = useState('');
+    const [open, setOpen] = useState(false);
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
 
@@ -98,12 +99,16 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
     }, []);
 
     useEffect(() => {
+        if (open) {
+            return;
+        }
+
         if (resolvedValue) {
             setInputValue(resolvedValue.label);
             return;
         }
         setInputValue('');
-    }, [resolvedValue]);
+    }, [open, resolvedValue]);
 
     const handleValueChange = (newOption: Option | null) => {
         if (newOption) {
@@ -129,6 +134,17 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
         }
         setInputValue(nextValue);
         onInputChange?.(nextValue);
+    };
+
+    const handleOpenChange = (nextOpen: boolean) => {
+        setOpen(nextOpen);
+
+        if (!nextOpen) {
+            setInputValue(resolvedValue?.label ?? '');
+            onInputChange?.('');
+        }
+
+        onOpenChange?.(nextOpen);
     };
 
     const handleCompositionStart = () => {
@@ -159,11 +175,11 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
 
     return (
         <Combobox<Option>
-            value={resolvedValue}
+            value={open ? null : resolvedValue}
             onValueChange={handleValueChange}
             onInputValueChange={handleInputValueChange}
             inputValue={inputValue}
-            onOpenChange={onOpenChange}
+            onOpenChange={handleOpenChange}
             disabled={disabled}
             itemToStringLabel={(item) => item ? item.label : ''}
             itemToStringValue={(item) => item ? item.value : ''}

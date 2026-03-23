@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { isRouteErrorResponse, Link, useRouteError } from 'react-router-dom';
+import { isDynamicImportPreloadError, recoverFromVitePreloadError } from '../utils/vitePreloadRecovery';
 import './RouteState.css';
 
 function getErrorCopy(error: unknown) {
@@ -29,6 +31,18 @@ function getErrorCopy(error: unknown) {
 export default function RouteErrorPage() {
     const error = useRouteError();
     const copy = getErrorCopy(error);
+
+    useEffect(() => {
+        if (!import.meta.env.DEV) {
+            return;
+        }
+
+        if (!isDynamicImportPreloadError(copy.message)) {
+            return;
+        }
+
+        recoverFromVitePreloadError();
+    }, [copy.message]);
 
     return (
         <div className="route-error-screen">

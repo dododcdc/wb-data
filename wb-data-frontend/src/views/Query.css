@@ -399,6 +399,41 @@
     height: 36px !important;
 }
 
+.default-ds-button {
+    width: 32px;
+    height: 32px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-muted);
+    background: transparent;
+    transition: color 0.16s ease, background-color 0.16s ease, border-color 0.16s ease;
+    flex-shrink: 0;
+}
+
+.default-ds-button:hover:not(:disabled) {
+    color: #a66a47;
+    background: rgba(166, 106, 71, 0.08);
+    border-color: rgba(166, 106, 71, 0.16);
+}
+
+.default-ds-button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.default-ds-button.is-active {
+    color: #a66a47;
+    background: rgba(166, 106, 71, 0.1);
+    border-color: rgba(166, 106, 71, 0.2);
+}
+
+.default-ds-button.is-active svg {
+    fill: currentColor;
+}
+
 .breadcrumb-divider {
     color: var(--color-text-muted);
     font-size: 0.75rem;
