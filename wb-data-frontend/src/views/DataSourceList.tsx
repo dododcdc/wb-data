@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DatabaseZap, Search } from 'lucide-react';
+import { AlertCircle, CheckCircle2, DatabaseZap, LoaderCircle, Search, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import {
     Dialog,
@@ -15,6 +15,7 @@ import {
     DataSource,
     deleteDataSource,
     getDataSourcePage,
+    PageResult,
     updateDataSourceStatus,
 } from '../api/datasource';
 import DataSourceForm from './DataSourceForm';
@@ -38,6 +39,27 @@ function buildNextSearchParams(
     return next;
 }
 
+type FeedbackTone = 'success' | 'error' | 'info';
+
+type OperationFeedback = {
+    tone: FeedbackTone;
+    title: string;
+    detail: string;
+};
+
+function patchCachedDataSourcePages(
+    queryClient: ReturnType<typeof useQueryClient>,
+    updater: (page: PageResult<DataSource>) => PageResult<DataSource>,
+) {
+    queryClient.setQueriesData<PageResult<DataSource>>({ queryKey: ['dataSources'] }, (current) => {
+        if (!current) {
+            return current;
+        }
+
+        return updater(current);
+    });
+}
+
 export default function DataSourceList() {
     const queryClient = useQueryClient();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -49,6 +71,8 @@ export default function DataSourceList() {
     const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
     const [pendingStatusId, setPendingStatusId] = useState<number | null>(null);
     const [pendingDeleteTarget, setPendingDeleteTarget] = useState<DataSource | null>(null);
+    const [operationFeedback, setOperationFeedback] = useState<OperationFeedback | null>(null);
+    const feedbackTimerRef = useRef<number | null>(null);
 
     const currentPage = parsePageParam(searchParams.get('page'));
     const pageSize = parsePageSizeParam(searchParams.get('size'));
@@ -128,14 +152,69 @@ export default function DataSourceList() {
         }
     }, [currentPage, pageData, searchParams, setSearchParams]);
 
+    useEffect(() => () => {
+        if (feedbackTimerRef.current != null) {
+            window.clearTimeout(feedbackTimerRef.current);
+        }
+    }, []);
+
+    const showOperationFeedback = (nextFeedback: OperationFeedback, durationMs = 3600) => {
+        setOperationFeedback(nextFeedback);
+        if (feedbackTimerRef.current != null) {
+            window.clearTimeout(feedbackTimerRef.current);
+        }
+
+        feedbackTimerRef.current = window.setTimeout(() => {
+            setOperationFeedback(null);
+            feedbackTimerRef.current = null;
+        }, durationMs);
+    };
+
     const deleteMutation = useMutation({
         mutationFn: deleteDataSource,
-        onMutate: (id) => {
+        onMutate: async (id) => {
             setPendingDeleteId(id);
+            await queryClient.cancelQueries({ queryKey: ['dataSources'] });
+
+            patchCachedDataSourcePages(queryClient, (current) => {
+                const nextRecords = current.records.filter((record) => record.id !== id);
+                if (nextRecords.length === current.records.length) {
+                    return current;
+                }
+
+                const nextTotal = Math.max(0, current.total - 1);
+
+                return {
+                    ...current,
+                    records: nextRecords,
+                    total: nextTotal,
+                    pages: Math.max(1, Math.ceil(nextTotal / current.size) || 1),
+                };
+            });
+
+            return {
+                previousPages: queryClient.getQueriesData<PageResult<DataSource>>({ queryKey: ['dataSources'] }),
+            };
         },
-        onSuccess: () => {
+        onSuccess: (_response, id) => {
+            const deletedName = pendingDeleteTarget?.name ?? `#${id}`;
             setPendingDeleteTarget(null);
-            queryClient.invalidateQueries({ queryKey: ['dataSources'] });
+            showOperationFeedback({
+                tone: 'success',
+                title: '数据源已删除',
+                detail: `${deletedName} 已从列表移除。`,
+            });
+            void queryClient.invalidateQueries({ queryKey: ['dataSources'] });
+        },
+        onError: (error, _id, context) => {
+            context?.previousPages.forEach(([queryKey, page]) => {
+                queryClient.setQueryData(queryKey, page);
+            });
+            showOperationFeedback({
+                tone: 'error',
+                title: '删除失败',
+                detail: (error as { message?: string } | null)?.message ?? '数据源删除失败，请稍后重试。',
+            }, 5000);
         },
         onSettled: () => {
             setPendingDeleteId(null);
@@ -144,11 +223,39 @@ export default function DataSourceList() {
 
     const toggleStatusMutation = useMutation({
         mutationFn: ({ id, status }: { id: number; status: string }) => updateDataSourceStatus(id, status),
-        onMutate: ({ id }) => {
+        onMutate: async ({ id, status }) => {
             setPendingStatusId(id);
+            await queryClient.cancelQueries({ queryKey: ['dataSources'] });
+
+            patchCachedDataSourcePages(queryClient, (current) => ({
+                ...current,
+                records: current.records.map((record) => record.id === id
+                    ? { ...record, status, updatedAt: new Date().toISOString() }
+                    : record),
+            }));
+
+            return {
+                nextStatus: status,
+                previousPages: queryClient.getQueriesData<PageResult<DataSource>>({ queryKey: ['dataSources'] }),
+            };
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['dataSources'] });
+        onSuccess: (_response, variables) => {
+            showOperationFeedback({
+                tone: 'success',
+                title: variables.status === 'ENABLED' ? '数据源已启用' : '数据源已停用',
+                detail: '列表状态已即时更新，并已在后台同步最新数据。',
+            });
+            void queryClient.invalidateQueries({ queryKey: ['dataSources'] });
+        },
+        onError: (error, _variables, context) => {
+            context?.previousPages.forEach(([queryKey, page]) => {
+                queryClient.setQueryData(queryKey, page);
+            });
+            showOperationFeedback({
+                tone: 'error',
+                title: '状态更新失败',
+                detail: (error as { message?: string } | null)?.message ?? '数据源状态更新失败，请稍后重试。',
+            }, 5000);
         },
         onSettled: () => {
             setPendingStatusId(null);
@@ -226,6 +333,32 @@ export default function DataSourceList() {
                 </div>
             </section>
 
+            {operationFeedback ? (
+                <section
+                    className={`datasource-operation-feedback is-${operationFeedback.tone} animate-enter animate-enter-delay-1`}
+                    role={operationFeedback.tone === 'error' ? 'alert' : 'status'}
+                    aria-live="polite"
+                >
+                    <div className="datasource-operation-feedback-main">
+                        <div className="datasource-operation-feedback-icon" aria-hidden="true">
+                            {operationFeedback.tone === 'success' ? <CheckCircle2 size={16} /> : operationFeedback.tone === 'error' ? <AlertCircle size={16} /> : <LoaderCircle size={16} />}
+                        </div>
+                        <div className="datasource-operation-feedback-copy">
+                            <strong>{operationFeedback.title}</strong>
+                            <p>{operationFeedback.detail}</p>
+                        </div>
+                    </div>
+                    <button
+                        className="datasource-operation-feedback-close"
+                        onClick={() => setOperationFeedback(null)}
+                        type="button"
+                        aria-label="关闭操作反馈"
+                    >
+                        <X size={16} />
+                    </button>
+                </section>
+            ) : null}
+
             <section className="datasource-table-panel animate-enter animate-enter-delay-1">
                 <DataSourceTable
                     data={records}
@@ -255,10 +388,31 @@ export default function DataSourceList() {
                 open={isFormOpen}
                 onOpenChange={(details) => setIsFormOpen(details.open)}
                 dataSourceId={editingId}
-                onSuccess={(action) => {
+                onSuccess={(details) => {
                     setIsFormOpen(false);
-                    queryClient.invalidateQueries({ queryKey: ['dataSources'] });
-                    if (action === 'create') {
+                    if (details.action === 'edit' && details.dataSourceId != null) {
+                        patchCachedDataSourcePages(queryClient, (current) => ({
+                            ...current,
+                            records: current.records.map((record) => record.id === details.dataSourceId
+                                ? {
+                                    ...record,
+                                    ...details.payload,
+                                    updatedAt: new Date().toISOString(),
+                                }
+                                : record),
+                        }));
+                    }
+
+                    showOperationFeedback({
+                        tone: 'success',
+                        title: details.action === 'create' ? '数据源已创建' : '数据源已更新',
+                        detail: details.action === 'create'
+                            ? `${details.payload.name} 已保存，列表正在同步最新记录。`
+                            : `${details.payload.name} 的配置已更新。`,
+                    });
+
+                    void queryClient.invalidateQueries({ queryKey: ['dataSources'] });
+                    if (details.action === 'create') {
                         patchSearchParams((params) => {
                             params.delete('page');
                         });
