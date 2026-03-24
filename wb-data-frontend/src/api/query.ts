@@ -34,6 +34,23 @@ export interface QueryResult {
     rows: Record<string, unknown>[];
     executionTimeMs: number;
     message: string;
+    truncated: boolean;
+    rowLimit: number;
+}
+
+export type QueryExportTaskStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+
+export interface QueryExportTask {
+    taskId: string;
+    format: string;
+    status: QueryExportTaskStatus;
+    fileName: string | null;
+    exportedRows: number | null;
+    rowLimit: number | null;
+    truncated: boolean;
+    errorMessage: string | null;
+    createdAt: string;
+    updatedAt: string;
 }
 
 export interface FunctionMetadata {
@@ -78,4 +95,25 @@ export const executeQuery = (dataSourceId: number, sql: string, database?: strin
 
 export const getDialectMetadata = (dataSourceId: number) => {
     return request.get<unknown, DialectMetadata>(`/api/v1/query/metadata/${dataSourceId}/dialect`);
+};
+
+export const createQueryExportTask = (dataSourceId: number, sql: string, database?: string, format = 'csv') => {
+    return request.post<unknown, QueryExportTask>(`/api/v1/query/export/${dataSourceId}/tasks`, {
+        sql,
+        database,
+        format,
+    }, {
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    });
+};
+
+export const listQueryExportTasks = () => {
+    return request.get<unknown, QueryExportTask[]>(`/api/v1/query/export/tasks`);
+};
+
+export const getQueryExportTaskDownloadUrl = (taskId: string) => {
+    const baseURL = request.defaults.baseURL || '';
+    return `${baseURL}/api/v1/query/export/tasks/${encodeURIComponent(taskId)}/download`;
 };

@@ -12,6 +12,7 @@ import {
     loadQueryModule,
 } from '../router/routeModules';
 import { useDelayedBusy } from '../hooks/useDelayedBusy';
+import { loadQueryEditorModule } from './queryEditorModule';
 import './Layout.css';
 
 export default function Layout() {
@@ -60,9 +61,14 @@ export default function Layout() {
 
             if (path === '/query') {
                 void loadQueryModule();
+                void loadQueryEditorModule();
             }
         };
     }, [queryClient]);
+
+    useEffect(() => {
+        warmRoute('/query');
+    }, [warmRoute]);
 
     const bindNavIntent = (path: string) => ({
         onClick: () => {

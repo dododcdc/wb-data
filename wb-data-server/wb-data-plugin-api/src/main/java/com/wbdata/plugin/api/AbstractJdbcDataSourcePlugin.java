@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ul>
  */
 public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
+    protected static final int DEFAULT_QUERY_ROW_LIMIT = 500;
 
     private static final Set<String> REGISTERED_DRIVERS = ConcurrentHashMap.newKeySet();
 
@@ -189,6 +190,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     public QueryResult executeQuery(QueryRequest request) {
         long startTime = System.currentTimeMillis();
         DataSourceConnectionInfo connInfo = request.connectionInfo();
+        int rowLimit = resolveRowLimit(request.rowLimit());
         try (Connection connection = getConnection(connInfo)) {
             if (connInfo.databaseName() != null && !connInfo.databaseName().isEmpty()) {
                 try {
@@ -198,16 +200,19 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                 }
             }
             try (java.sql.Statement statement = connection.createStatement()) {
+                statement.setMaxRows(rowLimit);
                 boolean hasResultSet = statement.execute(request.sql());
                 if (hasResultSet) {
-                    return buildQueryResult(statement, startTime);
+                    return buildQueryResult(statement, startTime, rowLimit);
                 } else {
                     int updateCount = statement.getUpdateCount();
                     return new QueryResult(
                             java.util.Collections.emptyList(),
                             java.util.Collections.emptyList(),
                             System.currentTimeMillis() - startTime,
-                            "Affected rows: " + updateCount);
+                            "Affected rows: " + updateCount,
+                            false,
+                            rowLimit);
                 }
             }
         } catch (Exception e) {
@@ -219,7 +224,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
      * 从 Statement 中读取 ResultSet，解析列信息和行数据，封装为 QueryResult。
      * 仅在 {@code statement.execute()} 返回 true（即有结果集）时调用。
      */
-    private QueryResult buildQueryResult(java.sql.Statement statement, long startTime) throws java.sql.SQLException {
+    private QueryResult buildQueryResult(java.sql.Statement statement, long startTime, int rowLimit) throws java.sql.SQLException {
         try (java.sql.ResultSet rs = statement.getResultSet()) {
             java.sql.ResultSetMetaData rsMeta = rs.getMetaData();
             int colCount = rsMeta.getColumnCount();
@@ -235,15 +240,36 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                         false));
             }
             java.util.List<java.util.Map<String, Object>> rows = new java.util.ArrayList<>();
+            boolean truncated = false;
             while (rs.next()) {
+                if (rows.size() >= rowLimit) {
+                    truncated = true;
+                    break;
+                }
                 java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
                 for (int i = 1; i <= colCount; i++) {
                     row.put(rsMeta.getColumnName(i), rs.getObject(i));
                 }
                 rows.add(row);
             }
-            return new QueryResult(columns, rows, System.currentTimeMillis() - startTime, "Success");
+            String message = truncated
+                    ? "Result truncated. Showing the first " + rowLimit + " rows."
+                    : "Success";
+            return new QueryResult(
+                    columns,
+                    rows,
+                    System.currentTimeMillis() - startTime,
+                    message,
+                    truncated,
+                    rowLimit);
         }
+    }
+
+    private int resolveRowLimit(Integer requestedRowLimit) {
+        if (requestedRowLimit == null || requestedRowLimit <= 0) {
+            return DEFAULT_QUERY_ROW_LIMIT;
+        }
+        return requestedRowLimit;
     }
 
     // -------------------------------------------------------------------------
