@@ -22,6 +22,11 @@ public class QueryServiceImpl implements QueryService {
 
     @Override
     public QueryResult executeQuery(Long dataSourceId, String sql, String database) {
+        return executeQuery(dataSourceId, sql, database, null);
+    }
+
+    @Override
+    public QueryResult executeQuery(Long dataSourceId, String sql, String database, Integer rowLimit) {
         DataSource ds = dataSourceService.getById(dataSourceId);
         if (ds == null) {
             throw new IllegalArgumentException("数据源不存在: " + dataSourceId);
@@ -40,7 +45,8 @@ public class QueryServiceImpl implements QueryService {
                                 ds.getUsername(),
                                 ds.getPassword(),
                                 ds.getConnectionParams()),
-                        sql
+                        sql,
+                        rowLimit
                 )))
                 .orElseThrow(() -> new IllegalArgumentException("未找到对应类型的插件: " + ds.getType()));
     }

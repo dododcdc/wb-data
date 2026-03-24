@@ -2,24 +2,45 @@ import { useState, useEffect, useRef, useMemo, lazy, Suspense, useCallback, useL
 import type * as Monaco from 'monaco-editor';
 import type { AllotmentHandle } from 'allotment';
 import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, ChevronUp, Search, PanelLeftClose, PanelLeft, Star, AlertTriangle, CheckCircle2, Clock3, Info } from 'lucide-react';
-import { getMetadataDatabases, getMetadataTables, getMetadataColumns, executeQuery, getDialectMetadata, TableSummary, ColumnMetadata, QueryResult, DialectMetadata } from '../api/query';
+import {
+    getMetadataDatabases,
+    getMetadataTables,
+    getMetadataColumns,
+    executeQuery,
+    getDialectMetadata,
+    createQueryExportTask,
+    listQueryExportTasks,
+    getQueryExportTaskDownloadUrl,
+    TableSummary,
+    ColumnMetadata,
+    QueryResult,
+    DialectMetadata,
+    QueryExportTask,
+    QueryExportTaskStatus,
+} from '../api/query';
 import { getDataSourcePage, getDataSourceById, DataSource } from '../api/datasource';
 import { DataSourceSelect } from '../components/DataSourceSelect';
+import { SimpleSelect } from '../components/SimpleSelect';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Allotment } from 'allotment';
 import 'allotment/dist/style.css';
 import { useKeyboardFocusMode } from '../hooks/useKeyboardFocusMode';
+import { useDelayedBusy } from '../hooks/useDelayedBusy';
+import { loadQueryEditorModule } from './queryEditorModule';
 import './Query.css';
 
 // Lazy load Monaco Editor for performance (~3MB savings on initial load)
-const Editor = lazy(() => import('@monaco-editor/react').then(mod => ({ default: mod.default })));
+const Editor = lazy(loadQueryEditorModule);
 
 function EditorLoader() {
     return (
-        <div className="editor-loader">
-            <Loader2 className="animate-spin" size={24} />
-            <span>加载编辑器...</span>
+        <div className="editor-loader" aria-hidden="true">
+            <div className="editor-loader-pulse">
+                <span className="editor-loader-pulse-dot" />
+                <span className="editor-loader-pulse-dot" />
+                <span className="editor-loader-pulse-dot" />
+            </div>
         </div>
     );
 }
@@ -37,6 +58,7 @@ const RESULT_PANEL_AUTO_OPEN_STORAGE_KEY = 'query-result-auto-open';
 const DEFAULT_DATASOURCE_STORAGE_KEY = 'query-default-datasource-id';
 const LAST_DATASOURCE_STORAGE_KEY = 'query-last-datasource-id';
 const LAST_DATABASE_BY_DATASOURCE_STORAGE_KEY = 'query-last-database-by-datasource';
+const EDITOR_THEME_STORAGE_KEY = 'query-editor-theme';
 const SIDEBAR_DEFAULT_WIDTH_PX = 300;
 const SIDEBAR_MIN_WIDTH_PX = 250;
 const SIDEBAR_MAX_WIDTH_PX = 600;
@@ -49,6 +71,8 @@ const RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX = RESULT_PANEL_COLLAPSED_HEIGHT_PX;
 const RESULT_PANEL_DEFAULT_HEIGHT_PX = 320;
 const SIDEBAR_TOGGLE_TRANSITION_MS = 160;
 const QUERY_EXECUTION_TIMEOUT_MS = 10_000;
+const EXPORT_TASK_POLL_INTERVAL_MS = 2_000;
+const EXPORT_MAX_ROWS = 100_000;
 const FALLBACK_SQL_KEYWORDS = [
     'SELECT',
     'FROM',
@@ -101,10 +125,12 @@ type QueryEditorError = {
 type QueryFeedbackState = 'idle' | 'running' | 'success' | 'empty' | 'message' | 'error' | 'timeout';
 
 type ExportState = {
-    status: 'idle' | 'exporting' | 'success' | 'error';
+    status: 'idle' | 'exporting' | 'error';
     format?: 'csv' | 'xlsx';
     message?: string;
 };
+
+type QueryEditorTheme = 'warm-parchment' | 'vs' | 'vs-dark' | 'hc-light';
 
 type SqlSourceTable = {
     databaseName?: string;
@@ -132,6 +158,86 @@ const SQL_ALIAS_RESERVED_WORDS = new Set([
     'BY',
 ]);
 
+const QUERY_EDITOR_THEME_OPTIONS: Array<{ label: string; value: QueryEditorTheme }> = [
+    { label: '纸感暖色', value: 'warm-parchment' },
+    { label: '经典浅色', value: 'vs' },
+    { label: '经典深色', value: 'vs-dark' },
+    { label: '高对比浅色', value: 'hc-light' },
+];
+
+function isQueryEditorTheme(value: string | null): value is QueryEditorTheme {
+    return QUERY_EDITOR_THEME_OPTIONS.some((option) => option.value === value);
+}
+
+function getStoredEditorTheme(): QueryEditorTheme {
+    try {
+        const saved = localStorage.getItem(EDITOR_THEME_STORAGE_KEY);
+        return isQueryEditorTheme(saved) ? saved : 'warm-parchment';
+    } catch {
+        return 'warm-parchment';
+    }
+}
+
+function persistEditorTheme(theme: QueryEditorTheme) {
+    try {
+        localStorage.setItem(EDITOR_THEME_STORAGE_KEY, theme);
+    } catch {
+        // Ignore persistence failures in restricted browsers.
+    }
+}
+
+function registerEditorThemes(monaco: typeof Monaco) {
+    monaco.editor.defineTheme('warm-parchment', {
+        base: 'vs',
+        inherit: true,
+        rules: [
+            { token: '', foreground: '3D3A36' },
+            { token: 'comment', foreground: 'A09A90', fontStyle: 'italic' },
+            { token: 'keyword', foreground: 'B85C3A' },
+            { token: 'string', foreground: '6B8E5A' },
+            { token: 'number', foreground: 'B07D48' },
+            { token: 'operator', foreground: '5B5B58' },
+            { token: 'identifier', foreground: '3D3A36' },
+            { token: 'type', foreground: '7A6B5D' },
+            { token: 'delimiter', foreground: '8A8A86' },
+            { token: 'predefined', foreground: 'B85C3A' },
+        ],
+        colors: {
+            'editor.background': '#F8F7F4',
+            'editor.foreground': '#3D3A36',
+            'editor.lineHighlightBackground': '#F0EDE6',
+            'editor.selectionBackground': '#E3D9CC',
+            'editor.inactiveSelectionBackground': '#EDE8E0',
+            'editorCursor.foreground': '#D97757',
+            'editorLineNumber.foreground': '#C5C0B8',
+            'editorLineNumber.activeForeground': '#8A8A86',
+            'editorIndentGuide.background': '#E8E4DC',
+            'editorIndentGuide.activeBackground': '#D5D0C8',
+            'editor.selectionHighlightBackground': '#E8DFD4',
+            'editorBracketMatch.background': '#E8DFD4',
+            'editorBracketMatch.border': '#C4A882',
+            'editorGutter.background': '#F8F7F4',
+            'editorWidget.background': '#F3F1EC',
+            'editorWidget.border': '#E3DED5',
+            'editorWidget.foreground': '#3D3A36',
+            'editorSuggestWidget.background': '#F8F7F4',
+            'editorSuggestWidget.border': '#E3DED5',
+            'editorSuggestWidget.selectedBackground': '#EFECE6',
+            'editorSuggestWidget.foreground': '#544C45',
+            'editorSuggestWidget.selectedForeground': '#4B433C',
+            'editorSuggestWidget.highlightForeground': '#82331A',
+            'editorSuggestWidget.focusHighlightForeground': '#7A2E17',
+            'editorSuggestWidget.selectedIconForeground': '#A66A47',
+            'list.highlightForeground': '#93401F',
+            'list.focusHighlightForeground': '#7A2E17',
+            'list.focusForeground': '#2F2B27',
+            'list.focusBackground': '#E9E2D7',
+            'list.hoverForeground': '#3D3A36',
+            'list.hoverBackground': '#F1ECE3',
+        },
+    });
+}
+
 function getCurrentStatement(fullText: string, cursorOffset: number) {
     const safeOffset = Math.max(0, Math.min(cursorOffset, fullText.length));
     const statementStart = fullText.lastIndexOf(';', Math.max(0, safeOffset - 1)) + 1;
@@ -143,6 +249,41 @@ function getCurrentStatement(fullText: string, cursorOffset: number) {
         textBeforeCursor: fullText.slice(statementStart, safeOffset),
         textAfterCursor: fullText.slice(safeOffset, statementEnd),
     };
+}
+
+function upsertExportTask(currentTasks: QueryExportTask[], nextTask: QueryExportTask) {
+    const remainingTasks = currentTasks.filter((task) => task.taskId !== nextTask.taskId);
+    return [nextTask, ...remainingTasks].sort((left, right) =>
+        new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+    );
+}
+
+function getExportTaskStatusMeta(status: QueryExportTaskStatus) {
+    switch (status) {
+        case 'PENDING':
+            return { label: '排队中', toneClass: 'is-pending' };
+        case 'RUNNING':
+            return { label: '导出中', toneClass: 'is-running' };
+        case 'SUCCESS':
+            return { label: '已完成', toneClass: 'is-success' };
+        case 'FAILED':
+            return { label: '失败', toneClass: 'is-error' };
+        default:
+            return { label: status, toneClass: 'is-pending' };
+    }
+}
+
+function formatTaskTimestamp(timestamp: string) {
+    try {
+        return new Intl.DateTimeFormat('zh-CN', {
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+        }).format(new Date(timestamp));
+    } catch {
+        return timestamp;
+    }
 }
 
 function parseSqlSourceTables(statement: string) {
@@ -449,18 +590,26 @@ export default function Query() {
     const [dialectMetadata, setDialectMetadata] = useState<DialectMetadata | null>(null);
     const [loadingQuery, setLoadingQuery] = useState(false);
     const [sql, setSql] = useState('');
+    const [editorTheme, setEditorTheme] = useState<QueryEditorTheme>(getStoredEditorTheme);
     const [result, setResult] = useState<QueryResult | null>(null);
     const [queryError, setQueryError] = useState<string>('');
     const [showExportMenu, setShowExportMenu] = useState(false);
+    const [showExportTasksMenu, setShowExportTasksMenu] = useState(false);
     const [exportState, setExportState] = useState<ExportState>({ status: 'idle' });
+    const [exportTasks, setExportTasks] = useState<QueryExportTask[]>([]);
+    const [loadingExportTasks, setLoadingExportTasks] = useState(false);
+    const [lastExecutedSql, setLastExecutedSql] = useState('');
+    const [lastExecutedDatabase, setLastExecutedDatabase] = useState('');
     const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
     const editorRef = useRef<MonacoEditorInstance | null>(null);
+    const monacoRef = useRef<typeof Monaco | null>(null);
     const composingRef = useRef(false);
     const dsRequestIdRef = useRef(0);
     const preferredDsRequestIdRef = useRef(0);
     const databasesRequestIdRef = useRef(0);
     const dialectRequestIdRef = useRef(0);
     const exportMenuRef = useRef<HTMLDivElement>(null);
+    const exportTasksMenuRef = useRef<HTMLDivElement>(null);
     const tableScrollRef = useRef<HTMLDivElement | null>(null);
     const tableLoadingRequestKeysRef = useRef<Set<string>>(new Set());
     const tableListPendingCountRef = useRef(0);
@@ -488,6 +637,20 @@ export default function Query() {
             ? (defaultDsId || lastDsId)
             : (lastDsId || defaultDsId);
     }, [defaultDsId, lastDsId]);
+    const queryLoadingVisible = useDelayedBusy(loadingQuery, { delayMs: 0, minVisibleMs: 420 });
+    const queryResultLoadingVisible = useDelayedBusy(loadingQuery && !result && !queryError, { delayMs: 120, minVisibleMs: 280 });
+    const activeExportTaskCount = useMemo(() => {
+        return exportTasks.filter((task) => task.status === 'PENDING' || task.status === 'RUNNING').length;
+    }, [exportTasks]);
+    const shouldShowExportTasksButton = exportTasks.length > 0 || loadingExportTasks;
+
+    useEffect(() => {
+        persistEditorTheme(editorTheme);
+        if (monacoRef.current) {
+            registerEditorThemes(monacoRef.current);
+            monacoRef.current.editor.setTheme(editorTheme);
+        }
+    }, [editorTheme]);
 
     const getActiveDataSource = useCallback(() => {
         if (selectedDs && String(selectedDs.id) === selectedDsId) {
@@ -678,13 +841,35 @@ export default function Query() {
 
         setExportState(nextState);
 
-        if (nextState.status === 'success' || nextState.status === 'error') {
+        if (nextState.status === 'error') {
             exportStateTimerRef.current = window.setTimeout(() => {
                 setExportState({ status: 'idle' });
                 exportStateTimerRef.current = null;
             }, 2800);
         }
     }, []);
+
+    const loadExportTasks = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+        if (!silent) {
+            setLoadingExportTasks(true);
+        }
+
+        try {
+            const tasks = await listQueryExportTasks();
+            setExportTasks(tasks);
+        } catch {
+            if (!silent) {
+                showExportFeedback({
+                    status: 'error',
+                    message: '导出任务列表加载失败，请稍后重试。',
+                });
+            }
+        } finally {
+            if (!silent) {
+                setLoadingExportTasks(false);
+            }
+        }
+    }, [showExportFeedback]);
 
     const toggleDefaultDataSource = useCallback(() => {
         if (!selectedDsId) {
@@ -773,6 +958,22 @@ export default function Query() {
     }, []);
 
     useEffect(() => {
+        void loadExportTasks({ silent: true });
+    }, [loadExportTasks]);
+
+    useEffect(() => {
+        if (activeExportTaskCount === 0) {
+            return;
+        }
+
+        const timer = window.setInterval(() => {
+            void loadExportTasks({ silent: true });
+        }, EXPORT_TASK_POLL_INTERVAL_MS);
+
+        return () => window.clearInterval(timer);
+    }, [activeExportTaskCount, loadExportTasks]);
+
+    useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
                 e.preventDefault();
@@ -830,19 +1031,25 @@ export default function Query() {
     useEffect(() => {
         if (resultCollapsed) {
             setShowExportMenu(false);
+            setShowExportTasksMenu(false);
             return;
         }
-        if (!showExportMenu) return;
+        if (!showExportMenu && !showExportTasksMenu) return;
 
         const handleClickOutside = (e: MouseEvent) => {
-            if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+            const target = e.target as Node;
+            const clickedInsideExportMenu = exportMenuRef.current?.contains(target);
+            const clickedInsideExportTasksMenu = exportTasksMenuRef.current?.contains(target);
+            if (!clickedInsideExportMenu && !clickedInsideExportTasksMenu) {
                 setShowExportMenu(false);
+                setShowExportTasksMenu(false);
             }
         };
 
         const handleEscape = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
                 setShowExportMenu(false);
+                setShowExportTasksMenu(false);
             }
         };
 
@@ -852,7 +1059,15 @@ export default function Query() {
             document.removeEventListener('mousedown', handleClickOutside);
             document.removeEventListener('keydown', handleEscape);
         };
-    }, [resultCollapsed, showExportMenu]);
+    }, [resultCollapsed, showExportMenu, showExportTasksMenu]);
+
+    useEffect(() => {
+        if (!showExportTasksMenu) {
+            return;
+        }
+
+        void loadExportTasks();
+    }, [loadExportTasks, showExportTasksMenu]);
 
     // Debounced search for DataSources
     useEffect(() => {
@@ -1238,21 +1453,21 @@ export default function Query() {
 
     const hasHiddenResultHint =
         resultCollapsed &&
-        (loadingQuery || Boolean(queryError) || Boolean(result));
+        (queryResultLoadingVisible || Boolean(queryError) || Boolean(result));
 
     const queryFeedback = useMemo(() => {
         const executionTimeSuffix = result && typeof result.executionTimeMs === 'number'
             ? ` • ${result.executionTimeMs}ms`
             : '';
 
-        if (loadingQuery) {
+        if (loadingQuery && !queryError && !result) {
             return {
                 state: 'running' as QueryFeedbackState,
                 toneClass: 'is-running',
                 label: '运行中',
-                summary: '正在执行 SQL...',
+                summary: '',
                 title: '查询正在执行',
-                description: '结果区域会在查询返回后统一展示结果、执行信息或错误原因。',
+                description: '',
             };
         }
 
@@ -1294,13 +1509,18 @@ export default function Query() {
         }
 
         if (result.columns.length > 0) {
+            const truncatedSuffix = result.truncated ? '（已截断）' : '';
+            const truncatedDescription = result.truncated
+                ? `当前仅展示前 ${result.rowLimit} 行结果。若需缩小范围，请在 SQL 中显式添加 LIMIT。`
+                : null;
             return {
                 state: 'success' as QueryFeedbackState,
                 toneClass: 'is-ready',
                 label: '结果集',
-                summary: `${result.rows.length} 条记录${executionTimeSuffix}`,
+                summary: `${result.rows.length} 条记录${truncatedSuffix}${executionTimeSuffix}`,
                 title: '查询执行成功',
-                description: result.message && result.message !== 'Success' ? result.message : '结果集已返回，可继续查看、筛选或导出。',
+                description: truncatedDescription
+                    ?? (result.message && result.message !== 'Success' ? result.message : '结果集已返回，可继续查看、筛选或导出。'),
             };
         }
 
@@ -1314,21 +1534,7 @@ export default function Query() {
                 ? result.message
                 : '本次执行没有返回表格结果。',
         };
-    }, [loadingQuery, queryError, result]);
-
-    const exportStatusText = useMemo(() => {
-        if (exportState.status === 'idle') {
-            return '';
-        }
-
-        return exportState.message || (
-            exportState.status === 'exporting'
-                ? `正在导出 ${exportState.format === 'xlsx' ? 'Excel' : 'CSV'}`
-                : exportState.status === 'success'
-                    ? `已导出 ${exportState.format === 'xlsx' ? 'Excel' : 'CSV'}`
-                    : '导出失败'
-        );
-    }, [exportState]);
+    }, [queryError, queryResultLoadingVisible, result]);
 
     const handleRunQuery = useCallback(async (sqlToRun?: string) => {
         let finalSql = sqlToRun;
@@ -1361,6 +1567,7 @@ export default function Query() {
         setQueryError('');
         showExportFeedback({ status: 'idle' });
         setShowExportMenu(false);
+        setShowExportTasksMenu(false);
         if (resultAutoOpen) {
             setResultPanelState(false);
         }
@@ -1368,6 +1575,8 @@ export default function Query() {
         try {
             const data = await executeQuery(Number(selectedDsId), finalSql, selectedDb);
             setResult(data);
+            setLastExecutedSql(finalSql.trim());
+            setLastExecutedDatabase(selectedDb);
             setQueryError('');
         } catch (error: unknown) {
             const requestError = error as QueryEditorError;
@@ -1402,62 +1611,36 @@ export default function Query() {
     };
 
     // ── Result Export ────────────────────────────────────────────────────────
-    const exportFileName = () => {
-        const ds = selectedDs || dataSources.find(d => String(d.id) === selectedDsId);
-        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        return `query-result-${ds?.name ?? 'export'}-${ts}`;
-    };
-
-    const exportCsv = () => {
-        if (!result) return;
-        showExportFeedback({ status: 'exporting', format: 'csv', message: '正在导出 CSV...' });
-        try {
-            const header = result.columns.map(c => c.name).join(',');
-            const rows = result.rows.map(row =>
-                result.columns.map(c => {
-                    const val = String(row[c.name] ?? '');
-                    return val.includes(',') || val.includes('\n') || val.includes('"')
-                        ? `"${val.replace(/"/g, '""')}"` : val;
-                }).join(',')
-            );
-            const csv = [header, ...rows].join('\n');
-            const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
-            triggerDownload(blob, `${exportFileName()}.csv`);
-            setShowExportMenu(false);
-            showExportFeedback({ status: 'success', format: 'csv', message: 'CSV 导出成功' });
-        } catch {
-            showExportFeedback({ status: 'error', format: 'csv', message: 'CSV 导出失败，请重试。' });
+    const createAsyncExportTask = useCallback(async (format: 'csv' | 'xlsx') => {
+        if (!selectedDsId || !lastExecutedSql) {
+            showExportFeedback({ status: 'error', format, message: '请先成功执行查询后再创建导出任务。' });
+            return;
         }
-    };
 
-    const exportExcel = async () => {
-        if (!result) return;
-        showExportFeedback({ status: 'exporting', format: 'xlsx', message: '正在导出 Excel...' });
+        const formatLabel = format === 'csv' ? 'CSV' : 'Excel';
+        showExportFeedback({ status: 'exporting', format, message: `正在创建 ${formatLabel} 导出任务...` });
         try {
-            const XLSX = await import('xlsx');
-            const data = [
-                result.columns.map(c => c.name),
-                ...result.rows.map(row => result.columns.map(c => row[c.name] ?? ''))
-            ];
-            const ws = XLSX.utils.aoa_to_sheet(data);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Result');
-            XLSX.writeFile(wb, `${exportFileName()}.xlsx`);
+            const task = await createQueryExportTask(Number(selectedDsId), lastExecutedSql, lastExecutedDatabase || undefined, format);
+            setExportTasks((currentTasks) => upsertExportTask(currentTasks, task));
             setShowExportMenu(false);
-            showExportFeedback({ status: 'success', format: 'xlsx', message: 'Excel 导出成功' });
-        } catch {
-            showExportFeedback({ status: 'error', format: 'xlsx', message: 'Excel 导出失败，请重试。' });
+            setShowExportTasksMenu(true);
+            showExportFeedback({ status: 'idle' });
+            void loadExportTasks({ silent: true });
+        } catch (error: unknown) {
+            const requestError = error as QueryEditorError;
+            showExportFeedback({
+                status: 'error',
+                format,
+                message: requestError.response?.data?.message || requestError.message || `${formatLabel} 导出任务创建失败，请重试。`,
+            });
         }
-    };
+    }, [lastExecutedDatabase, lastExecutedSql, loadExportTasks, selectedDsId, showExportFeedback]);
 
-    const triggerDownload = (blob: Blob, filename: string) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
-    };
+    const downloadExportTask = useCallback((taskId: string) => {
+        const link = document.createElement('a');
+        link.href = getQueryExportTaskDownloadUrl(taskId);
+        link.click();
+    }, []);
 
     /**
      * Extracts the SQL statement the cursor is currently on.
@@ -1529,58 +1712,9 @@ export default function Query() {
     }, [dialectMetadata]);
 
     const handleEditorDidMount = (editor: MonacoEditorInstance, monaco: typeof Monaco) => {
-        monaco.editor.defineTheme('warm-parchment', {
-            base: 'vs',
-            inherit: true,
-            rules: [
-                { token: '', foreground: '3D3A36' },
-                { token: 'comment', foreground: 'A09A90', fontStyle: 'italic' },
-                { token: 'keyword', foreground: 'B85C3A' },
-                { token: 'string', foreground: '6B8E5A' },
-                { token: 'number', foreground: 'B07D48' },
-                { token: 'operator', foreground: '5B5B58' },
-                { token: 'identifier', foreground: '3D3A36' },
-                { token: 'type', foreground: '7A6B5D' },
-                { token: 'delimiter', foreground: '8A8A86' },
-                { token: 'predefined', foreground: 'B85C3A' },
-            ],
-            colors: {
-                'editor.background': '#F8F7F4',
-                'editor.foreground': '#3D3A36',
-                'editor.lineHighlightBackground': '#F0EDE6',
-                'editor.selectionBackground': '#E3D9CC',
-                'editor.inactiveSelectionBackground': '#EDE8E0',
-                'editorCursor.foreground': '#D97757',
-                'editorLineNumber.foreground': '#C5C0B8',
-                'editorLineNumber.activeForeground': '#8A8A86',
-                'editorIndentGuide.background': '#E8E4DC',
-                'editorIndentGuide.activeBackground': '#D5D0C8',
-                'editor.selectionHighlightBackground': '#E8DFD4',
-                'editorBracketMatch.background': '#E8DFD4',
-                'editorBracketMatch.border': '#C4A882',
-                'editorGutter.background': '#F8F7F4',
-                'editorWidget.background': '#F3F1EC',
-                'editorWidget.border': '#E3DED5',
-                'editorWidget.foreground': '#3D3A36',
-                'editorSuggestWidget.background': '#F8F7F4',
-                'editorSuggestWidget.border': '#E3DED5',
-                'editorSuggestWidget.selectedBackground': '#EFECE6',
-                'editorSuggestWidget.foreground': '#544C45',
-                'editorSuggestWidget.selectedForeground': '#4B433C',
-                'editorSuggestWidget.highlightForeground': '#82331A',
-                'editorSuggestWidget.focusHighlightForeground': '#7A2E17',
-                'editorSuggestWidget.selectedIconForeground': '#A66A47',
-                'list.highlightForeground': '#93401F',
-                'list.focusHighlightForeground': '#7A2E17',
-                'list.focusForeground': '#2F2B27',
-                'list.focusBackground': '#E9E2D7',
-                'list.hoverForeground': '#3D3A36',
-                'list.hoverBackground': '#F1ECE3',
-            },
-        });
-
-        monaco.editor.setTheme('warm-parchment');
-
+        registerEditorThemes(monaco);
+        monacoRef.current = monaco;
+        monaco.editor.setTheme(editorTheme);
         editorRef.current = editor;
 
         // Register custom completion provider for SQL
@@ -2128,24 +2262,25 @@ export default function Query() {
                             </TooltipProvider>
                             <span className="toolbar-divider" />
                             <div className="toolbar-ds-group">
-                                <TooltipProvider delayDuration={400}>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className={`default-ds-button ${selectedDsId && defaultDsId === selectedDsId ? 'is-active' : ''}`.trim()}
-                                                onClick={toggleDefaultDataSource}
-                                                aria-label={selectedDsId && defaultDsId === selectedDsId ? '取消默认数据源' : '设为默认数据源'}
-                                                disabled={!selectedDsId}
-                                            >
-                                                <Star size={15} />
-                                            </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">
-                                            {selectedDsId && defaultDsId === selectedDsId ? '取消默认数据源' : '设为默认数据源'}
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </TooltipProvider>
+                                {selectedDsId ? (
+                                    <TooltipProvider delayDuration={400}>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className={`default-ds-button ${defaultDsId === selectedDsId ? 'is-active' : ''}`.trim()}
+                                                    onClick={toggleDefaultDataSource}
+                                                    aria-label={defaultDsId === selectedDsId ? '取消默认数据源' : '设为默认数据源'}
+                                                >
+                                                    <Star size={15} />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="tooltip-content" side="bottom">
+                                                {defaultDsId === selectedDsId ? '取消默认数据源' : '设为默认数据源'}
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                ) : null}
                                 <DataSourceSelect
                                     options={dataSourceOptions}
                                     value={String(selectedDsId)}
@@ -2187,6 +2322,20 @@ export default function Query() {
                             )}
                         </div>
                         <div className="toolbar-right">
+                            <div className="editor-theme-select">
+                                <SimpleSelect
+                                    id="query-editor-theme-select"
+                                    value={editorTheme}
+                                    onChange={(value) => {
+                                        if (isQueryEditorTheme(value)) {
+                                            setEditorTheme(value);
+                                        }
+                                    }}
+                                    options={QUERY_EDITOR_THEME_OPTIONS}
+                                    placeholder="编辑器主题"
+                                    menuPlacement="down"
+                                />
+                            </div>
                             <TooltipProvider delayDuration={400}>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
@@ -2209,7 +2358,7 @@ export default function Query() {
                                             onClick={() => handleRunQuery()}
                                             aria-label="执行 SQL"
                                         >
-                                            {loadingQuery ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} fill="white" />}
+                                            {queryLoadingVisible ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} fill="white" />}
                                         </button>
                                     </TooltipTrigger>
                                     <TooltipContent className="tooltip-content" side="bottom">
@@ -2249,10 +2398,10 @@ export default function Query() {
                                         <Editor
                                             height="100%"
                                             language="sql"
-                                            theme="warm-parchment"
+                                            theme={editorTheme}
                                             value={sql}
                                             loading={<EditorLoader />}
-                                            onChange={(value) => setSql(value || '')}
+                                            onChange={(value: string | undefined) => setSql(value || '')}
                                             onMount={handleEditorDidMount}
                                             options={{
                                                 minimap: { enabled: false },
@@ -2292,6 +2441,7 @@ export default function Query() {
                                     <div className="section-header-left">
                                         <div className={`result-output-tab ${queryFeedback.toneClass}`.trim()}>
                                             <span className="result-output-tab-dot" aria-hidden="true" />
+                                            {queryFeedback.state === 'running' ? <Loader2 size={12} className="result-output-tab-spinner animate-spin" /> : null}
                                             <span>{queryFeedback.label}</span>
                                         </div>
                                         {queryFeedback.summary ? (
@@ -2303,28 +2453,96 @@ export default function Query() {
                                                 <span>{queryFeedback.summary}</span>
                                             </div>
                                         ) : null}
-                                        {exportStatusText ? (
-                                            <div className={`result-summary ${exportState.status === 'error' ? 'is-error' : exportState.status === 'exporting' ? 'is-running' : 'is-ready'}`.trim()}>
-                                                {exportState.status === 'exporting' ? <Loader2 size={12} className="animate-spin" /> : null}
-                                                {exportState.status === 'error' ? <AlertTriangle size={12} /> : null}
-                                                {exportState.status === 'success' ? <CheckCircle2 size={12} /> : null}
-                                                <span>{exportStatusText}</span>
-                                            </div>
-                                        ) : null}
                                     </div>
                                     <div className="section-header-right">
-                                        {!resultCollapsed && result && result.columns.length > 0 && (
-                                            <div className="result-info">
-                                                {result.rows.length === 0
-                                                    ? `空结果 • 耗时 ${result.executionTimeMs}ms`
-                                                    : `找到 ${result.rows.length} 条记录 • 耗时 ${result.executionTimeMs}ms`}
+                                        {!resultCollapsed && shouldShowExportTasksButton ? (
+                                            <div className="export-wrapper" ref={exportTasksMenuRef}>
+                                                <button
+                                                    className={`export-button export-tasks-button ${showExportTasksMenu ? 'is-active' : ''}`.trim()}
+                                                    onClick={() => {
+                                                        setShowExportMenu(false);
+                                                        setShowExportTasksMenu((visible) => !visible);
+                                                    }}
+                                                    title="查看导出任务"
+                                                    aria-haspopup="dialog"
+                                                    aria-expanded={showExportTasksMenu}
+                                                >
+                                                    {loadingExportTasks && showExportTasksMenu ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                                                    <span>导出任务</span>
+                                                    {activeExportTaskCount > 0 ? <span className="export-task-badge">{activeExportTaskCount}</span> : null}
+                                                </button>
+                                                {showExportTasksMenu && (
+                                                    <div className="export-menu export-tasks-menu" role="dialog" aria-label="导出任务">
+                                                        <div className="export-tasks-header">
+                                                            <span>后台导出任务</span>
+                                                            <button
+                                                                type="button"
+                                                                className="export-tasks-refresh"
+                                                                onClick={() => void loadExportTasks()}
+                                                                disabled={loadingExportTasks}
+                                                            >
+                                                                {loadingExportTasks ? '刷新中...' : '刷新'}
+                                                            </button>
+                                                        </div>
+                                                        <div className="export-task-list">
+                                                            {exportTasks.length === 0 ? (
+                                                                <div className="export-task-empty">当前没有导出任务。</div>
+                                                            ) : exportTasks.map((task) => {
+                                                                const statusMeta = getExportTaskStatusMeta(task.status);
+                                                                const exportedRowsSummary = task.exportedRows
+                                                                    ? `${task.exportedRows.toLocaleString('zh-CN')} 条`
+                                                                    : null;
+                                                                const rowLimitSummary = task.truncated && task.rowLimit
+                                                                    ? `已触达 ${task.rowLimit.toLocaleString('zh-CN')} 条上限`
+                                                                    : null;
+
+                                                                return (
+                                                                    <div className="export-task-item" key={task.taskId}>
+                                                                        <div className="export-task-main">
+                                                                            <div className="export-task-topline">
+                                                                                <span className="export-task-name">{task.format.toUpperCase()} 导出</span>
+                                                                                <span className={`export-task-status ${statusMeta.toneClass}`.trim()}>
+                                                                                    {task.status === 'RUNNING' ? <Loader2 size={12} className="animate-spin" /> : null}
+                                                                                    {task.status === 'FAILED' ? <AlertTriangle size={12} /> : null}
+                                                                                    {task.status === 'SUCCESS' ? <CheckCircle2 size={12} /> : null}
+                                                                                    {task.status === 'PENDING' ? <Clock3 size={12} /> : null}
+                                                                                    <span>{statusMeta.label}</span>
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="export-task-meta">
+                                                                                <span>{formatTaskTimestamp(task.updatedAt)}</span>
+                                                                                {exportedRowsSummary ? <span>{exportedRowsSummary}</span> : null}
+                                                                                {rowLimitSummary ? <span>{rowLimitSummary}</span> : null}
+                                                                            </div>
+                                                                            {task.status === 'FAILED' && task.errorMessage ? (
+                                                                                <p className="export-task-error">{task.errorMessage}</p>
+                                                                            ) : null}
+                                                                        </div>
+                                                                        {task.status === 'SUCCESS' ? (
+                                                                            <button
+                                                                                type="button"
+                                                                                className="export-task-download"
+                                                                                onClick={() => downloadExportTask(task.taskId)}
+                                                                            >
+                                                                                下载
+                                                                            </button>
+                                                                        ) : null}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
-                                        )}
+                                        ) : null}
                                         {!resultCollapsed && result && result.columns.length > 0 && (
                                             <div className="export-wrapper" ref={exportMenuRef}>
                                                 <button
                                                     className="export-button"
-                                                    onClick={() => setShowExportMenu(v => !v)}
+                                                    onClick={() => {
+                                                        setShowExportTasksMenu(false);
+                                                        setShowExportMenu((visible) => !visible);
+                                                    }}
                                                     title="导出结果"
                                                     aria-haspopup="menu"
                                                     aria-expanded={showExportMenu}
@@ -2335,14 +2553,24 @@ export default function Query() {
                                                 </button>
                                                 {showExportMenu && (
                                                     <div className="export-menu" role="menu">
-                                                        <button className="export-menu-item" role="menuitem" onClick={exportCsv}>
+                                                        <button className="export-menu-item" role="menuitem" onClick={() => void createAsyncExportTask('csv')}>
                                                             <FileText size={14} />
                                                             <span>导出 CSV</span>
                                                         </button>
-                                                        <button className="export-menu-item" role="menuitem" onClick={exportExcel}>
+                                                        <button className="export-menu-item" role="menuitem" onClick={() => void createAsyncExportTask('xlsx')}>
                                                             <Sheet size={14} />
-                                                            <span>导出 Excel (.xlsx)</span>
+                                                            <span>导出 Excel</span>
                                                         </button>
+                                                        {result.truncated ? (
+                                                            <div className="export-menu-note">
+                                                                当前页面仅展示前 {result.rowLimit} 条。导出会按本次 SQL 最多导出 {EXPORT_MAX_ROWS.toLocaleString('zh-CN')} 条。
+                                                            </div>
+                                                        ) : null}
+                                                        {exportState.status !== 'idle' && exportState.message ? (
+                                                            <div className={`export-menu-feedback ${exportState.status === 'error' ? 'is-error' : ''}`.trim()}>
+                                                                {exportState.message}
+                                                            </div>
+                                                        ) : null}
                                                     </div>
                                                 )}
                                             </div>
@@ -2369,36 +2597,50 @@ export default function Query() {
                                 </div>
                                 {!resultCollapsed && (
                                     <div className="results-container">
+                                        {queryResultLoadingVisible ? (
+                                            <div className="result-loading-placeholder" aria-live="polite" aria-busy="true">
+                                                <div className="result-loading-placeholder-line short" />
+                                                <div className="result-loading-placeholder-line medium" />
+                                                <div className="result-loading-placeholder-line long" />
+                                            </div>
+                                        ) : null}
                                         {result && result.columns.length > 0 && result.rows.length > 0 ? (
-                                            <table className="results-table">
-                                                <thead>
-                                                    <tr>
-                                                        {result.columns.map(col => (
-                                                            <th key={col.name}>
-                                                                <div className="th-content">
-                                                                    <span className="th-name">{col.name}</span>
-                                                                    <span className="th-type">{col.type}</span>
-                                                                </div>
-                                                            </th>
-                                                        ))}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {result.rows.map((row, idx) => (
-                                                        <tr key={idx}>
+                                            <>
+                                                {result.truncated ? (
+                                                    <div className="result-limit-notice" role="status" aria-live="polite">
+                                                        <AlertTriangle size={14} />
+                                                        <span>当前仅展示前 {result.rowLimit} 行结果。大表查询建议显式添加 <code>LIMIT</code>。</span>
+                                                    </div>
+                                                ) : null}
+                                                <table className="results-table">
+                                                    <thead>
+                                                        <tr>
                                                             {result.columns.map(col => (
-                                                                <td key={col.name} title={String(row[col.name] ?? '')}>
-                                                                    {String(row[col.name] ?? '')}
-                                                                </td>
+                                                                <th key={col.name}>
+                                                                    <div className="th-content">
+                                                                        <span className="th-name">{col.name}</span>
+                                                                        <span className="th-type">{col.type}</span>
+                                                                    </div>
+                                                                </th>
                                                             ))}
                                                         </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        ) : (
+                                                    </thead>
+                                                    <tbody>
+                                                        {result.rows.map((row, idx) => (
+                                                            <tr key={idx}>
+                                                                {result.columns.map(col => (
+                                                                    <td key={col.name} title={String(row[col.name] ?? '')}>
+                                                                        {String(row[col.name] ?? '')}
+                                                                    </td>
+                                                                ))}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </>
+                                        ) : !queryResultLoadingVisible ? (
                                             <div className={`result-feedback-card is-${queryFeedback.state}`.trim()}>
                                                 <div className="result-feedback-icon" aria-hidden="true">
-                                                    {queryFeedback.state === 'running' ? <Loader2 size={22} className="animate-spin" /> : null}
                                                     {queryFeedback.state === 'timeout' ? <Clock3 size={22} /> : null}
                                                     {queryFeedback.state === 'error' ? <AlertTriangle size={22} /> : null}
                                                     {queryFeedback.state === 'message' ? <Info size={22} /> : null}
@@ -2417,7 +2659,7 @@ export default function Query() {
                                                     ) : null}
                                                 </div>
                                             </div>
-                                        )}
+                                        ) : null}
                                     </div>
                                 )}
                             </section>

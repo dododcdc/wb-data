@@ -7,5 +7,7 @@ public record QueryResult(
     List<ColumnMetadata> columns,
     List<Map<String, Object>> rows,
     long executionTimeMs,
-    String message
+    String message,
+    boolean truncated,
+    int rowLimit
 ) {}

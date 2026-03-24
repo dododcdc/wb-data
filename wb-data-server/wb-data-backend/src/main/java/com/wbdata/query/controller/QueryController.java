@@ -5,11 +5,21 @@ import com.wbdata.plugin.api.ColumnMetadata;
 import com.wbdata.plugin.api.PageResult;
 import com.wbdata.plugin.api.QueryResult;
 import com.wbdata.plugin.api.TableSummary;
+import com.wbdata.query.dto.QueryExportCreateRequest;
+import com.wbdata.query.dto.QueryExportTaskResponse;
 import com.wbdata.query.service.MetadataService;
+import com.wbdata.query.service.QueryExportService;
 import com.wbdata.query.service.QueryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.MediaTypeFactory;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -26,6 +36,7 @@ public class QueryController {
 
     private final MetadataService metadataService;
     private final QueryService queryService;
+    private final QueryExportService queryExportService;
 
     /**
      * 获取数据源下的所有数据库列表
@@ -64,6 +75,42 @@ public class QueryController {
     @PostMapping("/execute/{dataSourceId}")
     public Result<QueryResult> execute(@PathVariable Long dataSourceId, @RequestBody QueryRequest request) {
         return Result.success(queryService.executeQuery(dataSourceId, request.sql(), request.database()));
+    }
+
+    @Operation(summary = "创建异步导出任务")
+    @PostMapping("/export/{dataSourceId}/tasks")
+    public Result<QueryExportTaskResponse> createExportTask(@PathVariable Long dataSourceId,
+                                                            @Valid @RequestBody QueryExportCreateRequest request) {
+        String format = request.format() == null || request.format().isBlank()
+                ? "csv"
+                : request.format().toLowerCase();
+        if (!"csv".equals(format) && !"xlsx".equals(format)) {
+            throw new IllegalArgumentException("当前版本仅支持导出 CSV 或 Excel。");
+        }
+        return Result.success(queryExportService.createExportTask(dataSourceId, request.sql(), request.database(), format));
+    }
+
+    @Operation(summary = "获取导出任务列表")
+    @GetMapping("/export/tasks")
+    public Result<List<QueryExportTaskResponse>> listExportTasks() {
+        return Result.success(queryExportService.listTasks());
+    }
+
+    @Operation(summary = "获取导出任务详情")
+    @GetMapping("/export/tasks/{taskId}")
+    public Result<QueryExportTaskResponse> getExportTask(@PathVariable String taskId) {
+        return Result.success(queryExportService.getTask(taskId));
+    }
+
+    @Operation(summary = "下载导出文件")
+    @GetMapping("/export/tasks/{taskId}/download")
+    public ResponseEntity<Resource> downloadExportTask(@PathVariable String taskId) {
+        String fileName = queryExportService.getDownloadFileName(taskId);
+        Resource resource = queryExportService.getDownloadResource(taskId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(fileName).build().toString())
+                .contentType(MediaTypeFactory.getMediaType(fileName).orElse(MediaType.APPLICATION_OCTET_STREAM))
+                .body(resource);
     }
 
     /**
