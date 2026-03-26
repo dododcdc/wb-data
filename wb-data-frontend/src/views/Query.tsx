@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense, useCallback, useLayoutEffect } from 'react';
 import type * as Monaco from 'monaco-editor';
 import type { AllotmentHandle } from 'allotment';
-import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, ChevronUp, Search, PanelLeftClose, PanelLeft, Star, AlertTriangle, CheckCircle2, Clock3, Info } from 'lucide-react';
+import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, ChevronUp, Search, PanelLeftClose, PanelLeft, Star, AlertTriangle, CheckCircle2, Clock3, Info, Pin, X } from 'lucide-react';
 import {
     getMetadataDatabases,
     getMetadataTables,
@@ -20,7 +20,6 @@ import {
 } from '../api/query';
 import { getDataSourcePage, getDataSourceById, DataSource } from '../api/datasource';
 import { DataSourceSelect } from '../components/DataSourceSelect';
-import { SimpleSelect } from '../components/SimpleSelect';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Allotment } from 'allotment';
@@ -58,7 +57,6 @@ const RESULT_PANEL_AUTO_OPEN_STORAGE_KEY = 'query-result-auto-open';
 const DEFAULT_DATASOURCE_STORAGE_KEY = 'query-default-datasource-id';
 const LAST_DATASOURCE_STORAGE_KEY = 'query-last-datasource-id';
 const LAST_DATABASE_BY_DATASOURCE_STORAGE_KEY = 'query-last-database-by-datasource';
-const EDITOR_THEME_STORAGE_KEY = 'query-editor-theme';
 const SIDEBAR_DEFAULT_WIDTH_PX = 300;
 const SIDEBAR_MIN_WIDTH_PX = 250;
 const SIDEBAR_MAX_WIDTH_PX = 600;
@@ -73,6 +71,7 @@ const SIDEBAR_TOGGLE_TRANSITION_MS = 160;
 const QUERY_EXECUTION_TIMEOUT_MS = 10_000;
 const EXPORT_TASK_POLL_INTERVAL_MS = 2_000;
 const EXPORT_MAX_ROWS = 100_000;
+const PINNED_RESULT_LIMIT = 5;
 const FALLBACK_SQL_KEYWORDS = [
     'SELECT',
     'FROM',
@@ -130,12 +129,26 @@ type ExportState = {
     message?: string;
 };
 
-type QueryEditorTheme = 'warm-parchment' | 'vs' | 'vs-dark' | 'hc-light';
-
 type SqlSourceTable = {
     databaseName?: string;
     tableName: string;
     alias?: string;
+};
+
+type ResultTabId = 'current' | string;
+
+type SavedQueryResult = {
+    id: string;
+    tabNumber: number;
+    isPinned: boolean;
+    sql: string;
+    dataSourceId: string;
+    dataSourceName: string;
+    databaseName: string;
+    executedAt: string;
+    rowCount: number | null;
+    executionTimeMs: number | null;
+    result: QueryResult;
 };
 
 const SQL_ALIAS_RESERVED_WORDS = new Set([
@@ -157,34 +170,6 @@ const SQL_ALIAS_RESERVED_WORDS = new Set([
     'UNION',
     'BY',
 ]);
-
-const QUERY_EDITOR_THEME_OPTIONS: Array<{ label: string; value: QueryEditorTheme }> = [
-    { label: '纸感暖色', value: 'warm-parchment' },
-    { label: '经典浅色', value: 'vs' },
-    { label: '经典深色', value: 'vs-dark' },
-    { label: '高对比浅色', value: 'hc-light' },
-];
-
-function isQueryEditorTheme(value: string | null): value is QueryEditorTheme {
-    return QUERY_EDITOR_THEME_OPTIONS.some((option) => option.value === value);
-}
-
-function getStoredEditorTheme(): QueryEditorTheme {
-    try {
-        const saved = localStorage.getItem(EDITOR_THEME_STORAGE_KEY);
-        return isQueryEditorTheme(saved) ? saved : 'warm-parchment';
-    } catch {
-        return 'warm-parchment';
-    }
-}
-
-function persistEditorTheme(theme: QueryEditorTheme) {
-    try {
-        localStorage.setItem(EDITOR_THEME_STORAGE_KEY, theme);
-    } catch {
-        // Ignore persistence failures in restricted browsers.
-    }
-}
 
 function registerEditorThemes(monaco: typeof Monaco) {
     monaco.editor.defineTheme('warm-parchment', {
@@ -284,6 +269,101 @@ function formatTaskTimestamp(timestamp: string) {
     } catch {
         return timestamp;
     }
+}
+
+function formatResultTabLabel(tabNumber: number) {
+    return `结果 ${tabNumber}`;
+}
+
+function buildQueryFeedback({
+    result,
+    queryError,
+    loadingQuery,
+    queryLoadingVisible,
+}: {
+    result: QueryResult | null;
+    queryError: string;
+    loadingQuery: boolean;
+    queryLoadingVisible: boolean;
+}) {
+    const executionTimeSuffix = result && typeof result.executionTimeMs === 'number'
+        ? ` • ${result.executionTimeMs}ms`
+        : '';
+
+    if (loadingQuery && !queryError && !result && queryLoadingVisible) {
+        return {
+            state: 'running' as QueryFeedbackState,
+            toneClass: 'is-running',
+            label: '运行中',
+            summary: '',
+            title: '查询正在执行',
+            description: '',
+        };
+    }
+
+    if (queryError) {
+        const isTimeoutError =
+            queryError.includes('超时') ||
+            queryError.toLowerCase().includes('timeout');
+
+        return {
+            state: isTimeoutError ? 'timeout' as QueryFeedbackState : 'error' as QueryFeedbackState,
+            toneClass: 'is-error',
+            label: isTimeoutError ? '执行超时' : '错误输出',
+            summary: isTimeoutError ? `请求超过 ${QUERY_EXECUTION_TIMEOUT_MS / 1000} 秒未完成` : '执行失败',
+            title: isTimeoutError ? '查询执行超时' : '查询执行失败',
+            description: queryError,
+        };
+    }
+
+    if (!result) {
+        return {
+            state: 'idle' as QueryFeedbackState,
+            toneClass: 'is-idle',
+            label: '结果输出',
+            summary: '',
+            title: '等待执行 SQL',
+            description: '运行 SQL 后，这里会展示结果集、执行信息、错误明细和导出操作。',
+        };
+    }
+
+    if (result.columns.length > 0 && result.rows.length === 0) {
+        return {
+            state: 'empty' as QueryFeedbackState,
+            toneClass: 'is-ready',
+            label: '空结果',
+            summary: `0 条记录${executionTimeSuffix}`,
+            title: '查询执行成功，但没有返回记录',
+            description: '可以继续补充筛选条件，或检查当前数据库和查询条件是否正确。',
+        };
+    }
+
+    if (result.columns.length > 0) {
+        const truncatedSuffix = result.truncated ? '（已截断）' : '';
+        const truncatedDescription = result.truncated
+            ? `当前仅展示前 ${result.rowLimit} 行结果。若需缩小范围，请在 SQL 中显式添加 LIMIT。`
+            : null;
+        return {
+            state: 'success' as QueryFeedbackState,
+            toneClass: 'is-ready',
+            label: '结果集',
+            summary: `${result.rows.length} 条记录${truncatedSuffix}${executionTimeSuffix}`,
+            title: '查询执行成功',
+            description: truncatedDescription
+                ?? (result.message && result.message !== 'Success' ? result.message : '结果集已返回，可继续查看、筛选或导出。'),
+        };
+    }
+
+    return {
+        state: 'message' as QueryFeedbackState,
+        toneClass: 'is-ready',
+        label: '执行信息',
+        summary: `已返回执行信息${executionTimeSuffix}`,
+        title: 'SQL 已执行',
+        description: result.message && result.message !== 'Success'
+            ? result.message
+            : '本次执行没有返回表格结果。',
+    };
 }
 
 function parseSqlSourceTables(statement: string) {
@@ -590,7 +670,6 @@ export default function Query() {
     const [dialectMetadata, setDialectMetadata] = useState<DialectMetadata | null>(null);
     const [loadingQuery, setLoadingQuery] = useState(false);
     const [sql, setSql] = useState('');
-    const [editorTheme, setEditorTheme] = useState<QueryEditorTheme>(getStoredEditorTheme);
     const [result, setResult] = useState<QueryResult | null>(null);
     const [queryError, setQueryError] = useState<string>('');
     const [showExportMenu, setShowExportMenu] = useState(false);
@@ -599,7 +678,12 @@ export default function Query() {
     const [exportTasks, setExportTasks] = useState<QueryExportTask[]>([]);
     const [loadingExportTasks, setLoadingExportTasks] = useState(false);
     const [lastExecutedSql, setLastExecutedSql] = useState('');
+    const [lastExecutedDataSourceId, setLastExecutedDataSourceId] = useState('');
+    const [lastExecutedDataSourceName, setLastExecutedDataSourceName] = useState('');
     const [lastExecutedDatabase, setLastExecutedDatabase] = useState('');
+    const [savedResults, setSavedResults] = useState<SavedQueryResult[]>([]);
+    const [activeResultTab, setActiveResultTab] = useState<ResultTabId>('current');
+    const [currentResultTabNumber, setCurrentResultTabNumber] = useState<number | null>(null);
     const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
     const editorRef = useRef<MonacoEditorInstance | null>(null);
     const monacoRef = useRef<typeof Monaco | null>(null);
@@ -629,6 +713,7 @@ export default function Query() {
     const querySplitterRef = useRef<HTMLDivElement | null>(null);
     const verticalLayoutSizesRef = useRef<number[] | null>(null);
     const queryContentRef = useRef<HTMLDivElement | null>(null);
+    const resultTabSequenceRef = useRef(1);
     const [tableScrollElement, setTableScrollElement] = useState<HTMLDivElement | null>(null);
     const TABLE_PAGE_SIZE = 200;
     const preferDefaultDataSourceOnMountRef = useRef(shouldPreferDefaultDataSourceOnMount());
@@ -643,14 +728,20 @@ export default function Query() {
         return exportTasks.filter((task) => task.status === 'PENDING' || task.status === 'RUNNING').length;
     }, [exportTasks]);
     const shouldShowExportTasksButton = exportTasks.length > 0 || loadingExportTasks;
-
-    useEffect(() => {
-        persistEditorTheme(editorTheme);
-        if (monacoRef.current) {
-            registerEditorThemes(monacoRef.current);
-            monacoRef.current.editor.setTheme(editorTheme);
+    const activeSavedResult = useMemo(() => {
+        if (activeResultTab === 'current') {
+            return null;
         }
-    }, [editorTheme]);
+        return savedResults.find((item) => item.id === activeResultTab) ?? null;
+    }, [activeResultTab, savedResults]);
+    const hasCurrentResultTab = currentResultTabNumber !== null;
+    const displayedCurrentResult = hasCurrentResultTab ? result : null;
+    const displayedResult = activeSavedResult?.result ?? displayedCurrentResult;
+    const displayedQueryError = activeSavedResult ? '' : (hasCurrentResultTab ? queryError : '');
+    const currentResultCanPin = Boolean(result && result.columns.length > 0 && !queryError && savedResults.length < PINNED_RESULT_LIMIT);
+    const activeResultSql = activeSavedResult?.sql ?? (hasCurrentResultTab ? lastExecutedSql : '');
+    const activeResultDataSourceId = activeSavedResult?.dataSourceId ?? (hasCurrentResultTab ? lastExecutedDataSourceId : '');
+    const activeResultDatabase = activeSavedResult?.databaseName ?? (hasCurrentResultTab ? lastExecutedDatabase : '');
 
     const getActiveDataSource = useCallback(() => {
         if (selectedDs && String(selectedDs.id) === selectedDsId) {
@@ -1453,88 +1544,18 @@ export default function Query() {
 
     const hasHiddenResultHint =
         resultCollapsed &&
-        (queryResultLoadingVisible || Boolean(queryError) || Boolean(result));
+        (queryResultLoadingVisible || Boolean(displayedQueryError) || Boolean(displayedResult));
 
     const queryFeedback = useMemo(() => {
-        const executionTimeSuffix = result && typeof result.executionTimeMs === 'number'
-            ? ` • ${result.executionTimeMs}ms`
-            : '';
-
-        if (loadingQuery && !queryError && !result) {
-            return {
-                state: 'running' as QueryFeedbackState,
-                toneClass: 'is-running',
-                label: '运行中',
-                summary: '',
-                title: '查询正在执行',
-                description: '',
-            };
-        }
-
-        if (queryError) {
-            const isTimeoutError =
-                queryError.includes('超时') ||
-                queryError.toLowerCase().includes('timeout');
-
-            return {
-                state: isTimeoutError ? 'timeout' as QueryFeedbackState : 'error' as QueryFeedbackState,
-                toneClass: 'is-error',
-                label: isTimeoutError ? '执行超时' : '错误输出',
-                summary: isTimeoutError ? `请求超过 ${QUERY_EXECUTION_TIMEOUT_MS / 1000} 秒未完成` : '执行失败',
-                title: isTimeoutError ? '查询执行超时' : '查询执行失败',
-                description: queryError,
-            };
-        }
-
-        if (!result) {
-            return {
-                state: 'idle' as QueryFeedbackState,
-                toneClass: 'is-idle',
-                label: '结果输出',
-                summary: '',
-                title: '等待执行 SQL',
-                description: '运行 SQL 后，这里会展示结果集、执行信息、错误明细和导出操作。',
-            };
-        }
-
-        if (result.columns.length > 0 && result.rows.length === 0) {
-            return {
-                state: 'empty' as QueryFeedbackState,
-                toneClass: 'is-ready',
-                label: '空结果',
-                summary: `0 条记录${executionTimeSuffix}`,
-                title: '查询执行成功，但没有返回记录',
-                description: '可以继续补充筛选条件，或检查当前数据库和查询条件是否正确。',
-            };
-        }
-
-        if (result.columns.length > 0) {
-            const truncatedSuffix = result.truncated ? '（已截断）' : '';
-            const truncatedDescription = result.truncated
-                ? `当前仅展示前 ${result.rowLimit} 行结果。若需缩小范围，请在 SQL 中显式添加 LIMIT。`
-                : null;
-            return {
-                state: 'success' as QueryFeedbackState,
-                toneClass: 'is-ready',
-                label: '结果集',
-                summary: `${result.rows.length} 条记录${truncatedSuffix}${executionTimeSuffix}`,
-                title: '查询执行成功',
-                description: truncatedDescription
-                    ?? (result.message && result.message !== 'Success' ? result.message : '结果集已返回，可继续查看、筛选或导出。'),
-            };
-        }
-
-        return {
-            state: 'message' as QueryFeedbackState,
-            toneClass: 'is-ready',
-            label: '执行信息',
-            summary: `已返回执行信息${executionTimeSuffix}`,
-            title: 'SQL 已执行',
-            description: result.message && result.message !== 'Success'
-                ? result.message
-                : '本次执行没有返回表格结果。',
-        };
-    }, [queryError, queryResultLoadingVisible, result]);
+        return buildQueryFeedback({
+            result: displayedResult,
+            queryError: displayedQueryError,
+            loadingQuery: activeResultTab === 'current' && hasCurrentResultTab ? loadingQuery : false,
+            queryLoadingVisible: activeResultTab === 'current' && hasCurrentResultTab ? queryResultLoadingVisible : false,
+        });
+    }, [activeResultTab, displayedQueryError, displayedResult, hasCurrentResultTab, loadingQuery, queryResultLoadingVisible]);
+    const displayedResultHasTable = Boolean(displayedResult && displayedResult.columns.length > 0);
+    const displayedResultHasRows = Boolean(displayedResult && displayedResult.columns.length > 0 && displayedResult.rows.length > 0);
 
     const handleRunQuery = useCallback(async (sqlToRun?: string) => {
         let finalSql = sqlToRun;
@@ -1563,8 +1584,13 @@ export default function Query() {
             return;
         }
 
+        if (currentResultTabNumber === null) {
+            setCurrentResultTabNumber(resultTabSequenceRef.current++);
+        }
+
         setResult(null);
         setQueryError('');
+        setActiveResultTab('current');
         showExportFeedback({ status: 'idle' });
         setShowExportMenu(false);
         setShowExportTasksMenu(false);
@@ -1574,8 +1600,11 @@ export default function Query() {
         setLoadingQuery(true);
         try {
             const data = await executeQuery(Number(selectedDsId), finalSql, selectedDb);
+            const activeDataSource = getActiveDataSource();
             setResult(data);
             setLastExecutedSql(finalSql.trim());
+            setLastExecutedDataSourceId(selectedDsId);
+            setLastExecutedDataSourceName(activeDataSource?.name || '');
             setLastExecutedDatabase(selectedDb);
             setQueryError('');
         } catch (error: unknown) {
@@ -1595,7 +1624,7 @@ export default function Query() {
         } finally {
             setLoadingQuery(false);
         }
-    }, [resultAutoOpen, selectedDb, selectedDsId, setResultPanelState, showExportFeedback, sql]);
+    }, [currentResultTabNumber, getActiveDataSource, resultAutoOpen, selectedDb, selectedDsId, setResultPanelState, showExportFeedback, sql]);
 
     // ── SQL Formatting ──────────────────────────────────────────────────────
     const handleFormat = async () => {
@@ -1610,9 +1639,77 @@ export default function Query() {
         }
     };
 
+    const handlePinCurrentResult = useCallback(() => {
+        if (!result || queryError || !lastExecutedSql || !lastExecutedDataSourceId || savedResults.length >= PINNED_RESULT_LIMIT || currentResultTabNumber === null) {
+            return;
+        }
+
+        const executedAt = new Date().toISOString();
+        const savedResult: SavedQueryResult = {
+            id: `pinned-${Date.now()}-${currentResultTabNumber}`,
+            tabNumber: currentResultTabNumber,
+            isPinned: true,
+            sql: lastExecutedSql,
+            dataSourceId: lastExecutedDataSourceId,
+            dataSourceName: lastExecutedDataSourceName,
+            databaseName: lastExecutedDatabase,
+            executedAt,
+            rowCount: result.rows.length,
+            executionTimeMs: result.executionTimeMs,
+            result,
+        };
+
+        setSavedResults((currentResults) => [...currentResults, savedResult]);
+        setCurrentResultTabNumber(null);
+        setActiveResultTab(savedResult.id);
+        setShowExportMenu(false);
+        setShowExportTasksMenu(false);
+    }, [
+        currentResultTabNumber,
+        lastExecutedDataSourceId,
+        lastExecutedDataSourceName,
+        lastExecutedDatabase,
+        lastExecutedSql,
+        savedResults.length,
+        queryError,
+        result,
+    ]);
+
+    const handleCloseSavedResult = useCallback((tabId: string) => {
+        setSavedResults((currentResults) => {
+            const nextResults = currentResults.filter((item) => item.id !== tabId);
+            setActiveResultTab((currentTab) => {
+                if (currentTab !== tabId) {
+                    return currentTab;
+                }
+                if (hasCurrentResultTab) {
+                    return 'current';
+                }
+                return nextResults[0]?.id ?? 'current';
+            });
+            return nextResults;
+        });
+        setShowExportMenu(false);
+    }, [hasCurrentResultTab]);
+
+    const handleToggleSavedResultPin = useCallback((tabId: string) => {
+        setSavedResults((currentResults) => currentResults.map((item) => (
+            item.id === tabId ? { ...item, isPinned: !item.isPinned } : item
+        )));
+    }, []);
+
+    const handleFillSavedSql = useCallback(() => {
+        if (!activeSavedResult) {
+            return;
+        }
+
+        setSql(activeSavedResult.sql);
+        editorRef.current?.focus();
+    }, [activeSavedResult]);
+
     // ── Result Export ────────────────────────────────────────────────────────
     const createAsyncExportTask = useCallback(async (format: 'csv' | 'xlsx') => {
-        if (!selectedDsId || !lastExecutedSql) {
+        if (!activeResultDataSourceId || !activeResultSql) {
             showExportFeedback({ status: 'error', format, message: '请先成功执行查询后再创建导出任务。' });
             return;
         }
@@ -1620,7 +1717,12 @@ export default function Query() {
         const formatLabel = format === 'csv' ? 'CSV' : 'Excel';
         showExportFeedback({ status: 'exporting', format, message: `正在创建 ${formatLabel} 导出任务...` });
         try {
-            const task = await createQueryExportTask(Number(selectedDsId), lastExecutedSql, lastExecutedDatabase || undefined, format);
+            const task = await createQueryExportTask(
+                Number(activeResultDataSourceId),
+                activeResultSql,
+                activeResultDatabase || undefined,
+                format,
+            );
             setExportTasks((currentTasks) => upsertExportTask(currentTasks, task));
             setShowExportMenu(false);
             setShowExportTasksMenu(true);
@@ -1634,7 +1736,7 @@ export default function Query() {
                 message: requestError.response?.data?.message || requestError.message || `${formatLabel} 导出任务创建失败，请重试。`,
             });
         }
-    }, [lastExecutedDatabase, lastExecutedSql, loadExportTasks, selectedDsId, showExportFeedback]);
+    }, [activeResultDataSourceId, activeResultDatabase, activeResultSql, loadExportTasks, showExportFeedback]);
 
     const downloadExportTask = useCallback((taskId: string) => {
         const link = document.createElement('a');
@@ -1714,7 +1816,7 @@ export default function Query() {
     const handleEditorDidMount = (editor: MonacoEditorInstance, monaco: typeof Monaco) => {
         registerEditorThemes(monaco);
         monacoRef.current = monaco;
-        monaco.editor.setTheme(editorTheme);
+        monaco.editor.setTheme('warm-parchment');
         editorRef.current = editor;
 
         // Register custom completion provider for SQL
@@ -2322,20 +2424,6 @@ export default function Query() {
                             )}
                         </div>
                         <div className="toolbar-right">
-                            <div className="editor-theme-select">
-                                <SimpleSelect
-                                    id="query-editor-theme-select"
-                                    value={editorTheme}
-                                    onChange={(value) => {
-                                        if (isQueryEditorTheme(value)) {
-                                            setEditorTheme(value);
-                                        }
-                                    }}
-                                    options={QUERY_EDITOR_THEME_OPTIONS}
-                                    placeholder="编辑器主题"
-                                    menuPlacement="down"
-                                />
-                            </div>
                             <TooltipProvider delayDuration={400}>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
@@ -2398,7 +2486,7 @@ export default function Query() {
                                         <Editor
                                             height="100%"
                                             language="sql"
-                                            theme={editorTheme}
+                                            theme="warm-parchment"
                                             value={sql}
                                             loading={<EditorLoader />}
                                             onChange={(value: string | undefined) => setSql(value || '')}
@@ -2439,11 +2527,109 @@ export default function Query() {
                             <section className={`results-section ${resultCollapsed ? 'collapsed' : ''}`.trim()}>
                                 <div className="section-header">
                                     <div className="section-header-left">
-                                        <div className={`result-output-tab ${queryFeedback.toneClass}`.trim()}>
-                                            <span className="result-output-tab-dot" aria-hidden="true" />
-                                            {queryFeedback.state === 'running' ? <Loader2 size={12} className="result-output-tab-spinner animate-spin" /> : null}
-                                            <span>{queryFeedback.label}</span>
-                                        </div>
+                                        {savedResults.length > 0 || hasCurrentResultTab ? (
+                                            <div className="result-tabs" role="tablist" aria-label="查询结果视图">
+                                                {savedResults.map((item) => (
+                                                    <div
+                                                        key={item.id}
+                                                        role="tab"
+                                                        tabIndex={0}
+                                                        aria-selected={activeResultTab === item.id}
+                                                        className={`result-tab result-tab-pinned is-ready ${activeResultTab === item.id ? 'is-active' : ''}`.trim()}
+                                                        onClick={() => setActiveResultTab(item.id)}
+                                                        onKeyDown={(event) => {
+                                                            if (event.key === 'Enter' || event.key === ' ') {
+                                                                event.preventDefault();
+                                                                setActiveResultTab(item.id);
+                                                            }
+                                                        }}
+                                                    >
+                                                        <span className="result-tab-dot" aria-hidden="true" />
+                                                        <span className="result-tab-label">{formatResultTabLabel(item.tabNumber)}</span>
+                                                        <TooltipProvider delayDuration={300}>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <button
+                                                                        type="button"
+                                                                        className={`result-tab-pin-button ${item.isPinned ? 'is-active' : ''}`.trim()}
+                                                                        onClick={(event) => {
+                                                                            event.stopPropagation();
+                                                                            handleToggleSavedResultPin(item.id);
+                                                                        }}
+                                                                        aria-label={item.isPinned ? '取消钉住' : '钉住该结果'}
+                                                                    >
+                                                                        <Pin size={12} className={`result-tab-pin ${item.isPinned ? 'is-active' : ''}`.trim()} />
+                                                                    </button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent className="tooltip-content" side="top">
+                                                                    {item.isPinned ? '取消钉住' : '钉住该结果'}
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
+                                                        <button
+                                                            type="button"
+                                                            className="result-tab-close"
+                                                            aria-label={`关闭 ${formatResultTabLabel(item.tabNumber)}`}
+                                                            onClick={(event) => {
+                                                                event.stopPropagation();
+                                                                handleCloseSavedResult(item.id);
+                                                            }}
+                                                        >
+                                                            <X size={12} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                {hasCurrentResultTab ? (
+                                                    <div
+                                                        role="tab"
+                                                        tabIndex={0}
+                                                        aria-selected={activeResultTab === 'current'}
+                                                        className={`result-tab ${activeResultTab === 'current' ? 'is-active' : ''} ${queryFeedback.toneClass}`.trim()}
+                                                        onClick={() => setActiveResultTab('current')}
+                                                        onKeyDown={(event) => {
+                                                            if (event.key === 'Enter' || event.key === ' ') {
+                                                                event.preventDefault();
+                                                                setActiveResultTab('current');
+                                                            }
+                                                        }}
+                                                    >
+                                                        <span className="result-tab-dot" aria-hidden="true" />
+                                                        {activeResultTab === 'current' && queryFeedback.state === 'running'
+                                                            ? <Loader2 size={12} className="result-tab-spinner animate-spin" />
+                                                            : null}
+                                                        <span className="result-tab-label">{formatResultTabLabel(currentResultTabNumber!)}</span>
+                                                        <TooltipProvider delayDuration={300}>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <button
+                                                                        type="button"
+                                                                        className={`result-tab-pin-button ${currentResultCanPin ? '' : 'is-disabled'}`.trim()}
+                                                                        onClick={(event) => {
+                                                                            event.stopPropagation();
+                                                                            if (!currentResultCanPin) {
+                                                                                return;
+                                                                            }
+                                                                            handlePinCurrentResult();
+                                                                        }}
+                                                                        aria-label={currentResultCanPin ? '钉住当前结果' : `最多保留 ${PINNED_RESULT_LIMIT} 个结果`}
+                                                                    >
+                                                                        <Pin size={12} className="result-tab-pin" />
+                                                                    </button>
+                                                                </TooltipTrigger>
+                                                                        <TooltipContent className="tooltip-content" side="top">
+                                                                            {currentResultCanPin ? '钉住当前结果' : `最多保留 ${PINNED_RESULT_LIMIT} 个结果`}
+                                                                        </TooltipContent>
+                                                                    </Tooltip>
+                                                                </TooltipProvider>
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        ) : (
+                                            <div className={`result-status-chip ${queryFeedback.toneClass}`.trim()}>
+                                                <span className="result-tab-dot" aria-hidden="true" />
+                                                <span>{queryFeedback.label}</span>
+                                            </div>
+                                        )}
                                         {queryFeedback.summary ? (
                                             <div className={`result-summary ${queryFeedback.toneClass}`.trim()}>
                                                 {queryFeedback.state === 'running' ? <Loader2 size={12} className="animate-spin" /> : null}
@@ -2455,6 +2641,17 @@ export default function Query() {
                                         ) : null}
                                     </div>
                                     <div className="section-header-right">
+                                        {!resultCollapsed && activeSavedResult ? (
+                                            <button
+                                                type="button"
+                                                className="export-button result-secondary-action"
+                                                onClick={handleFillSavedSql}
+                                                title="回填 SQL 到编辑器"
+                                            >
+                                                <Code2 size={14} />
+                                                <span>回填 SQL</span>
+                                            </button>
+                                        ) : null}
                                         {!resultCollapsed && shouldShowExportTasksButton ? (
                                             <div className="export-wrapper" ref={exportTasksMenuRef}>
                                                 <button
@@ -2535,7 +2732,7 @@ export default function Query() {
                                                 )}
                                             </div>
                                         ) : null}
-                                        {!resultCollapsed && result && result.columns.length > 0 && (
+                                        {!resultCollapsed && displayedResultHasTable && (
                                             <div className="export-wrapper" ref={exportMenuRef}>
                                                 <button
                                                     className="export-button"
@@ -2561,9 +2758,9 @@ export default function Query() {
                                                             <Sheet size={14} />
                                                             <span>导出 Excel</span>
                                                         </button>
-                                                        {result.truncated ? (
+                                                        {displayedResult?.truncated ? (
                                                             <div className="export-menu-note">
-                                                                当前页面仅展示前 {result.rowLimit} 条。导出会按本次 SQL 最多导出 {EXPORT_MAX_ROWS.toLocaleString('zh-CN')} 条。
+                                                                当前页面仅展示前 {displayedResult.rowLimit} 条。导出会按该结果对应 SQL 最多导出 {EXPORT_MAX_ROWS.toLocaleString('zh-CN')} 条。
                                                             </div>
                                                         ) : null}
                                                         {exportState.status !== 'idle' && exportState.message ? (
@@ -2597,25 +2794,25 @@ export default function Query() {
                                 </div>
                                 {!resultCollapsed && (
                                     <div className="results-container">
-                                        {queryResultLoadingVisible ? (
+                                        {activeResultTab === 'current' && queryResultLoadingVisible ? (
                                             <div className="result-loading-placeholder" aria-live="polite" aria-busy="true">
                                                 <div className="result-loading-placeholder-line short" />
                                                 <div className="result-loading-placeholder-line medium" />
                                                 <div className="result-loading-placeholder-line long" />
                                             </div>
                                         ) : null}
-                                        {result && result.columns.length > 0 && result.rows.length > 0 ? (
+                                        {displayedResultHasRows ? (
                                             <>
-                                                {result.truncated ? (
+                                                {displayedResult?.truncated ? (
                                                     <div className="result-limit-notice" role="status" aria-live="polite">
                                                         <AlertTriangle size={14} />
-                                                        <span>当前仅展示前 {result.rowLimit} 行结果。大表查询建议显式添加 <code>LIMIT</code>。</span>
+                                                        <span>当前仅展示前 {displayedResult.rowLimit} 行结果。大表查询建议显式添加 <code>LIMIT</code>。</span>
                                                     </div>
                                                 ) : null}
                                                 <table className="results-table">
                                                     <thead>
                                                         <tr>
-                                                            {result.columns.map(col => (
+                                                            {displayedResult?.columns.map(col => (
                                                                 <th key={col.name}>
                                                                     <div className="th-content">
                                                                         <span className="th-name">{col.name}</span>
@@ -2626,9 +2823,9 @@ export default function Query() {
                                                         </tr>
                                                     </thead>
                                                     <tbody>
-                                                        {result.rows.map((row, idx) => (
+                                                        {displayedResult?.rows.map((row, idx) => (
                                                             <tr key={idx}>
-                                                                {result.columns.map(col => (
+                                                                {displayedResult.columns.map(col => (
                                                                     <td key={col.name} title={String(row[col.name] ?? '')}>
                                                                         {String(row[col.name] ?? '')}
                                                                     </td>
@@ -2638,7 +2835,7 @@ export default function Query() {
                                                     </tbody>
                                                 </table>
                                             </>
-                                        ) : !queryResultLoadingVisible ? (
+                                        ) : !(activeResultTab === 'current' && queryResultLoadingVisible) ? (
                                             <div className={`result-feedback-card is-${queryFeedback.state}`.trim()}>
                                                 <div className="result-feedback-icon" aria-hidden="true">
                                                     {queryFeedback.state === 'timeout' ? <Clock3 size={22} /> : null}
@@ -2651,11 +2848,18 @@ export default function Query() {
                                                     <span className="result-feedback-kicker">{queryFeedback.label}</span>
                                                     <h3>{queryFeedback.title}</h3>
                                                     <p>{queryFeedback.description}</p>
-                                                    {queryFeedback.state === 'message' && result?.message ? (
-                                                        <pre className="result-feedback-detail">{result.message}</pre>
+                                                    {activeSavedResult ? (
+                                                        <div className="result-feedback-meta">
+                                                            <span>{activeSavedResult.dataSourceName || '未知数据源'}</span>
+                                                            {activeSavedResult.databaseName ? <span>{activeSavedResult.databaseName}</span> : null}
+                                                            <span>{formatTaskTimestamp(activeSavedResult.executedAt)}</span>
+                                                        </div>
                                                     ) : null}
-                                                    {(queryFeedback.state === 'error' || queryFeedback.state === 'timeout') && queryError ? (
-                                                        <pre className="result-feedback-detail">{queryError}</pre>
+                                                    {queryFeedback.state === 'message' && displayedResult?.message ? (
+                                                        <pre className="result-feedback-detail">{displayedResult.message}</pre>
+                                                    ) : null}
+                                                    {(queryFeedback.state === 'error' || queryFeedback.state === 'timeout') && displayedQueryError ? (
+                                                        <pre className="result-feedback-detail">{displayedQueryError}</pre>
                                                     ) : null}
                                                 </div>
                                             </div>
