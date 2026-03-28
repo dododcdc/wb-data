@@ -425,9 +425,9 @@
 }
 
 .default-ds-button:hover:not(:disabled) {
-    color: #a66a47;
-    background: rgba(166, 106, 71, 0.08);
-    border-color: rgba(166, 106, 71, 0.16);
+    color: var(--color-accent-emphasis);
+    background: transparent;
+    border-color: transparent;
 }
 
 .default-ds-button:disabled {
@@ -436,9 +436,9 @@
 }
 
 .default-ds-button.is-active {
-    color: #a66a47;
-    background: rgba(166, 106, 71, 0.1);
-    border-color: rgba(166, 106, 71, 0.2);
+    color: var(--color-accent-emphasis-strong);
+    background: transparent;
+    border-color: transparent;
 }
 
 .default-ds-button.is-active svg {
@@ -502,7 +502,7 @@
     color: var(--color-tooltip-fg);
     white-space: nowrap;
     pointer-events: none;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-overlay);
     animation: tooltipFadeIn 150ms ease;
     display: flex;
     align-items: center;
@@ -519,9 +519,9 @@
     font-weight: 500;
     line-height: 1.4;
     color: var(--color-text-muted);
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--color-tooltip-kbd-bg);
     border-radius: 3px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--color-tooltip-kbd-border);
 }
 
 @keyframes tooltipFadeIn {
@@ -801,22 +801,22 @@
 }
 
 .result-tab.is-ready .result-tab-dot {
-    background: #2f855a;
+    background: var(--color-success);
 }
 
 .result-tab.is-error .result-tab-dot {
-    background: var(--color-danger, #dc2626);
+    background: var(--color-danger);
 }
 
 .result-tab-pin {
-    color: color-mix(in srgb, var(--color-text-muted) 72%, #8c5e3f);
+    color: color-mix(in srgb, var(--color-text-muted) 72%, var(--color-accent-emphasis-strong));
     flex-shrink: 0;
     opacity: 0.72;
     transition: color 0.16s ease, opacity 0.16s ease, transform 0.16s ease;
 }
 
 .result-tab-pin.is-active {
-    color: #9b5e38;
+    color: var(--color-accent-emphasis-strong);
     fill: currentColor;
     opacity: 1;
 }
@@ -848,24 +848,24 @@
 }
 
 .result-tab-pin-button:hover {
-    background: rgba(166, 106, 71, 0.08);
+    background: var(--color-accent-soft);
 }
 
 .result-tab-pin-button:hover .result-tab-pin {
-    color: #a66a47;
+    color: var(--color-accent-emphasis);
     opacity: 0.92;
 }
 
 .result-tab-pin-button.is-active {
-    background: rgba(166, 106, 71, 0.1);
+    background: var(--color-accent-soft-hover);
 }
 
 .result-tab-pin-button.is-active:hover {
-    background: rgba(166, 106, 71, 0.14);
+    background: var(--color-accent-soft-strong);
 }
 
 .result-tab-pin-button.is-active .result-tab-pin {
-    color: #9b5e38;
+    color: var(--color-accent-emphasis-strong);
     opacity: 1;
 }
 
@@ -930,13 +930,13 @@
 }
 
 .result-summary.is-ready {
-    background: color-mix(in srgb, #2f855a 10%, var(--color-bg-tertiary));
-    color: #2f855a;
+    background: color-mix(in srgb, var(--color-success) 10%, var(--color-bg-tertiary));
+    color: var(--color-success);
 }
 
 .result-summary.is-error {
-    background: color-mix(in srgb, var(--color-danger, #dc2626) 10%, var(--color-bg-tertiary));
-    color: var(--color-danger, #dc2626);
+    background: color-mix(in srgb, var(--color-danger) 10%, var(--color-bg-tertiary));
+    color: var(--color-danger);
 }
 
 .section-toggle-button {
@@ -1121,8 +1121,8 @@
 }
 
 .export-menu-feedback.is-error {
-    color: var(--color-danger, #dc2626);
-    background: color-mix(in srgb, var(--color-danger, #dc2626) 10%, var(--color-bg-tertiary));
+    color: var(--color-danger);
+    background: color-mix(in srgb, var(--color-danger) 10%, var(--color-bg-tertiary));
 }
 
 .export-tasks-header {
@@ -1227,13 +1227,13 @@
 }
 
 .export-task-status.is-success {
-    color: #2f855a;
-    background: color-mix(in srgb, #2f855a 10%, var(--color-bg-tertiary));
+    color: var(--color-success);
+    background: color-mix(in srgb, var(--color-success) 10%, var(--color-bg-tertiary));
 }
 
 .export-task-status.is-error {
-    color: var(--color-danger, #dc2626);
-    background: color-mix(in srgb, var(--color-danger, #dc2626) 10%, var(--color-bg-tertiary));
+    color: var(--color-danger);
+    background: color-mix(in srgb, var(--color-danger) 10%, var(--color-bg-tertiary));
 }
 
 .export-task-meta {
@@ -1247,7 +1247,7 @@
 
 .export-task-error {
     margin: 0;
-    color: var(--color-danger, #dc2626);
+    color: var(--color-danger);
     font-size: 0.74rem;
     line-height: 1.5;
     word-break: break-word;
@@ -1401,7 +1401,7 @@
 .result-limit-notice code {
     padding: 1px 6px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.72);
+    background: var(--color-code-chip-bg);
     color: inherit;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.82em;
@@ -1534,15 +1534,15 @@
 
 .result-feedback-card.is-error,
 .result-feedback-card.is-timeout {
-    border-color: color-mix(in srgb, var(--color-danger, #dc2626) 22%, var(--color-border));
-    background: color-mix(in srgb, var(--color-danger, #dc2626) 7%, var(--color-bg-primary));
+    border-color: color-mix(in srgb, var(--color-danger) 22%, var(--color-border));
+    background: color-mix(in srgb, var(--color-danger) 7%, var(--color-bg-primary));
 }
 
 .result-feedback-card.is-success,
 .result-feedback-card.is-empty,
 .result-feedback-card.is-message {
-    border-color: color-mix(in srgb, #2f855a 18%, var(--color-border));
-    background: color-mix(in srgb, #2f855a 6%, var(--color-bg-primary));
+    border-color: color-mix(in srgb, var(--color-success) 18%, var(--color-border));
+    background: color-mix(in srgb, var(--color-success) 6%, var(--color-bg-primary));
 }
 
 .result-feedback-icon {
@@ -1563,13 +1563,13 @@
 
 .result-feedback-card.is-error .result-feedback-icon,
 .result-feedback-card.is-timeout .result-feedback-icon {
-    color: var(--color-danger, #dc2626);
+    color: var(--color-danger);
 }
 
 .result-feedback-card.is-success .result-feedback-icon,
 .result-feedback-card.is-empty .result-feedback-icon,
 .result-feedback-card.is-message .result-feedback-icon {
-    color: #2f855a;
+    color: var(--color-success);
 }
 
 .result-feedback-copy {
@@ -1638,9 +1638,9 @@
     margin: 16px;
     padding: 16px 18px;
     border-radius: 10px;
-    border: 1px solid color-mix(in srgb, var(--color-danger, #dc2626) 20%, var(--color-border));
-    background: color-mix(in srgb, var(--color-danger, #dc2626) 8%, var(--color-bg-primary));
-    color: var(--color-danger, #dc2626);
+    border: 1px solid color-mix(in srgb, var(--color-danger) 20%, var(--color-border));
+    background: color-mix(in srgb, var(--color-danger) 8%, var(--color-bg-primary));
+    color: var(--color-danger);
     font-size: 0.85rem;
     line-height: 1.6;
 }
