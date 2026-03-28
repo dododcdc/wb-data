@@ -157,9 +157,13 @@
   /* ── Status ── */
   --color-success-bg: #F0F9F4;
   --color-success: #1A7A42;
+  --color-success-border: #B8DEC6;
   --color-error-bg: #FDF2F2;
   --color-error: #B42318;
   --color-error-border: #F5C6C6;
+  --color-danger: var(--color-error);
+  --color-danger-bg: var(--color-error-bg);
+  --color-danger-border: var(--color-error-border);
   --color-warning-bg: #FDF8EE;
   --color-warning: #B8860B;
   --color-warning-border: #E8D5A8;
@@ -167,6 +171,11 @@
   /* ── Interactive ── */
   --color-link: #C4613F;
   --color-link-hover: #A8502F;
+  --color-accent-emphasis: #A66A47;
+  --color-accent-emphasis-strong: #9B5E38;
+  --color-accent-soft: rgba(166, 106, 71, 0.08);
+  --color-accent-soft-hover: rgba(166, 106, 71, 0.10);
+  --color-accent-soft-strong: rgba(166, 106, 71, 0.14);
   --color-input-bg: #FAFAF8;
   --color-input-border: #DDD9D0;
   --color-input-placeholder: #B5B2AA;
@@ -188,6 +197,9 @@
   /* ── Tooltip ── */
   --color-tooltip-bg: #2C2926;
   --color-tooltip-fg: #F5F2ED;
+  --color-tooltip-kbd-bg: rgba(255, 255, 255, 0.10);
+  --color-tooltip-kbd-border: rgba(255, 255, 255, 0.08);
+  --color-code-chip-bg: rgba(255, 255, 255, 0.72);
 
   /* ── Typography ── */
   --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
@@ -211,6 +223,7 @@
   --shadow-md: 0 4px 12px rgba(80, 60, 40, 0.08);
   --shadow-lg: 0 12px 24px rgba(80, 60, 40, 0.06);
   --shadow-brand: 0 8px 16px rgba(217, 119, 87, 0.18);
+  --shadow-overlay: 0 4px 16px rgba(0, 0, 0, 0.20);
 
   /* ── Transitions ── */
   --transition-fast: 150ms ease;
@@ -265,15 +278,24 @@
 
   --color-success-bg: rgba(26, 122, 66, 0.15);
   --color-success: #6EE7A0;
+  --color-success-border: rgba(110, 231, 160, 0.24);
   --color-error-bg: rgba(180, 35, 24, 0.15);
   --color-error: #FCA5A5;
   --color-error-border: rgba(239, 68, 68, 0.25);
+  --color-danger: var(--color-error);
+  --color-danger-bg: var(--color-error-bg);
+  --color-danger-border: var(--color-error-border);
   --color-warning-bg: rgba(184, 134, 11, 0.15);
   --color-warning: #FCD34D;
   --color-warning-border: rgba(184, 134, 11, 0.25);
 
   --color-link: #E8936F;
   --color-link-hover: #F0A888;
+  --color-accent-emphasis: #E8936F;
+  --color-accent-emphasis-strong: #F0A888;
+  --color-accent-soft: rgba(232, 147, 111, 0.16);
+  --color-accent-soft-hover: rgba(232, 147, 111, 0.22);
+  --color-accent-soft-strong: rgba(232, 147, 111, 0.28);
   --color-input-bg: #262320;
   --color-input-border: #3D3935;
   --color-input-placeholder: #6B6560;
@@ -293,6 +315,10 @@
 
   --color-tooltip-bg: #2C2926;
   --color-tooltip-fg: #EDE9E3;
+  --color-tooltip-kbd-bg: rgba(255, 255, 255, 0.12);
+  --color-tooltip-kbd-border: rgba(255, 255, 255, 0.10);
+  --color-code-chip-bg: rgba(255, 255, 255, 0.12);
+  --shadow-overlay: 0 10px 24px rgba(0, 0, 0, 0.32);
 }
 
 @theme inline {
