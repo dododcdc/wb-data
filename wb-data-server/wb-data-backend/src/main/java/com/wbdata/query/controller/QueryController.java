@@ -1,5 +1,6 @@
 package com.wbdata.query.controller;
 
+import com.wbdata.auth.service.AuthorizedDataSourceService;
 import com.wbdata.common.Result;
 import com.wbdata.plugin.api.ColumnMetadata;
 import com.wbdata.plugin.api.PageResult;
@@ -37,13 +38,16 @@ public class QueryController {
     private final MetadataService metadataService;
     private final QueryService queryService;
     private final QueryExportService queryExportService;
+    private final AuthorizedDataSourceService authorizedDataSourceService;
 
     /**
      * 获取数据源下的所有数据库列表
      */
     @Operation(summary = "获取数据源下的所有数据库")
     @GetMapping("/metadata/{dataSourceId}/databases")
-    public Result<List<String>> getDatabases(@PathVariable Long dataSourceId) {
+    public Result<List<String>> getDatabases(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+                                             @PathVariable Long dataSourceId) {
+        authorizedDataSourceService.requireDataSource(authorization, dataSourceId, "query.use");
         return Result.success(metadataService.getDatabases(dataSourceId));
     }
 
@@ -52,19 +56,23 @@ public class QueryController {
      */
     @Operation(summary = "获取数据库下的表结构")
     @GetMapping("/metadata/{dataSourceId}/{databaseName}/tables")
-    public Result<PageResult<TableSummary>> getTables(@PathVariable Long dataSourceId,
-                                                 @PathVariable String databaseName,
-                                                 @RequestParam(required = false) String keyword,
-                                                 @RequestParam(defaultValue = "1") int page,
-                                                 @RequestParam(defaultValue = "200") int size) {
+    public Result<PageResult<TableSummary>> getTables(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+                                                      @PathVariable Long dataSourceId,
+                                                      @PathVariable String databaseName,
+                                                      @RequestParam(required = false) String keyword,
+                                                      @RequestParam(defaultValue = "1") int page,
+                                                      @RequestParam(defaultValue = "200") int size) {
+        authorizedDataSourceService.requireDataSource(authorization, dataSourceId, "query.use");
         return Result.success(metadataService.getTables(dataSourceId, databaseName, keyword, page, size));
     }
 
     @Operation(summary = "获取指定表的字段信息")
     @GetMapping("/metadata/{dataSourceId}/{databaseName}/tables/{tableName}/columns")
-    public Result<List<ColumnMetadata>> getColumns(@PathVariable Long dataSourceId,
-                                                    @PathVariable String databaseName,
-                                                    @PathVariable String tableName) {
+    public Result<List<ColumnMetadata>> getColumns(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+                                                   @PathVariable Long dataSourceId,
+                                                   @PathVariable String databaseName,
+                                                   @PathVariable String tableName) {
+        authorizedDataSourceService.requireDataSource(authorization, dataSourceId, "query.use");
         return Result.success(metadataService.getColumns(dataSourceId, databaseName, tableName));
     }
 
@@ -73,14 +81,19 @@ public class QueryController {
      */
     @Operation(summary = "执行SQL查询")
     @PostMapping("/execute/{dataSourceId}")
-    public Result<QueryResult> execute(@PathVariable Long dataSourceId, @RequestBody QueryRequest request) {
+    public Result<QueryResult> execute(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+                                       @PathVariable Long dataSourceId,
+                                       @RequestBody QueryRequest request) {
+        authorizedDataSourceService.requireDataSource(authorization, dataSourceId, "query.use");
         return Result.success(queryService.executeQuery(dataSourceId, request.sql(), request.database()));
     }
 
     @Operation(summary = "创建异步导出任务")
     @PostMapping("/export/{dataSourceId}/tasks")
-    public Result<QueryExportTaskResponse> createExportTask(@PathVariable Long dataSourceId,
+    public Result<QueryExportTaskResponse> createExportTask(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+                                                            @PathVariable Long dataSourceId,
                                                             @Valid @RequestBody QueryExportCreateRequest request) {
+        authorizedDataSourceService.requireDataSource(authorization, dataSourceId, "query.export");
         String format = request.format() == null || request.format().isBlank()
                 ? "csv"
                 : request.format().toLowerCase();
@@ -92,19 +105,24 @@ public class QueryController {
 
     @Operation(summary = "获取导出任务列表")
     @GetMapping("/export/tasks")
-    public Result<List<QueryExportTaskResponse>> listExportTasks() {
+    public Result<List<QueryExportTaskResponse>> listExportTasks(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
+        authorizedDataSourceService.requireContext(authorization);
         return Result.success(queryExportService.listTasks());
     }
 
     @Operation(summary = "获取导出任务详情")
     @GetMapping("/export/tasks/{taskId}")
-    public Result<QueryExportTaskResponse> getExportTask(@PathVariable String taskId) {
+    public Result<QueryExportTaskResponse> getExportTask(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+                                                      @PathVariable String taskId) {
+        authorizedDataSourceService.requireContext(authorization);
         return Result.success(queryExportService.getTask(taskId));
     }
 
     @Operation(summary = "下载导出文件")
     @GetMapping("/export/tasks/{taskId}/download")
-    public ResponseEntity<Resource> downloadExportTask(@PathVariable String taskId) {
+    public ResponseEntity<Resource> downloadExportTask(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+                                                     @PathVariable String taskId) {
+        authorizedDataSourceService.requireContext(authorization);
         String fileName = queryExportService.getDownloadFileName(taskId);
         Resource resource = queryExportService.getDownloadResource(taskId);
         return ResponseEntity.ok()
@@ -118,7 +136,9 @@ public class QueryController {
      */
     @Operation(summary = "获取数据源的SQL智能提示语言特性")
     @GetMapping("/metadata/{dataSourceId}/dialect")
-    public Result<com.wbdata.plugin.api.DialectMetadata> getDialectMetadata(@PathVariable Long dataSourceId) {
+    public Result<com.wbdata.plugin.api.DialectMetadata> getDialectMetadata(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+                                                                            @PathVariable Long dataSourceId) {
+        authorizedDataSourceService.requireDataSource(authorization, dataSourceId, "query.use");
         return Result.success(metadataService.getDialectMetadata(dataSourceId));
     }
 }

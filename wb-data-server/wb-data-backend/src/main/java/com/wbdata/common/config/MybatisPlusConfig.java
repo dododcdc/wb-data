@@ -8,7 +8,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@MapperScan("com.wbdata.datasource.mapper")
+@MapperScan({
+        "com.wbdata.datasource.mapper",
+        "com.wbdata.user.mapper",
+        "com.wbdata.group.mapper"
+})
 public class MybatisPlusConfig {
 
     /**
