@@ -5,7 +5,6 @@ import { Database, Home, Layers, LogOut, Search } from 'lucide-react';
 import { useAuthStore } from '../utils/auth';
 import { getDataSourcePage } from '../api/datasource';
 import { TopProgressBar } from '../components/loading/TopProgressBar';
-import { useUserStore } from '../store';
 import { buildDataSourcePageQueryKey, DEFAULT_PAGE_SIZE } from './datasources/config';
 import {
     loadDashboardModule,
@@ -17,7 +16,7 @@ import { loadQueryEditorModule } from './queryEditorModule';
 import './Layout.css';
 
 export default function Layout() {
-    const { userInfo } = useUserStore();
+    const userInfo = useAuthStore((s) => s.userInfo);
     const queryClient = useQueryClient();
     const location = useLocation();
     const clearAuth = useAuthStore((s) => s.clearAuth);
@@ -127,8 +126,8 @@ export default function Layout() {
                 </div>
                 <div className="navbar-right">
                     <div className="user-profile">
-                        <span className="user-avater">A</span>
-                        <span>{userInfo?.username || 'admin'}</span>
+                        <span className="user-avater">{userInfo?.displayName?.charAt(0).toUpperCase() || '?'}</span>
+                        <span>{userInfo?.displayName || userInfo?.username || '未知用户'}</span>
                     </div>
                     <button className="logout-btn" onClick={handleLogout} title="退出登录">
                         <LogOut size={16} />
