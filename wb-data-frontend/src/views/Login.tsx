@@ -19,6 +19,7 @@ export default function Login() {
         try {
             const res = await login({ username, password });
             useAuthStore.getState().setToken(res.accessToken);
+            useAuthStore.getState().setUserInfo(res.user);
             navigate('/', { replace: true });
         } catch (err) {
             const message = err instanceof Error ? err.message : '登录失败，请重试';
