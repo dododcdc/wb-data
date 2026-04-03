@@ -1,7 +1,8 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Database, Home, Layers, Search } from 'lucide-react';
+import { Database, Home, Layers, LogOut, Search } from 'lucide-react';
+import { useAuthStore } from '../utils/auth';
 import { getDataSourcePage } from '../api/datasource';
 import { TopProgressBar } from '../components/loading/TopProgressBar';
 import { useUserStore } from '../store';
@@ -19,6 +20,11 @@ export default function Layout() {
     const { userInfo } = useUserStore();
     const queryClient = useQueryClient();
     const location = useLocation();
+    const clearAuth = useAuthStore((s) => s.clearAuth);
+
+    const handleLogout = () => {
+        clearAuth();
+    };
     const isQueryPage = location.pathname.startsWith('/query');
     const [routeIntent, setRouteIntent] = useState<string | null>(null);
 
@@ -124,6 +130,9 @@ export default function Layout() {
                         <span className="user-avater">A</span>
                         <span>{userInfo?.username || 'admin'}</span>
                     </div>
+                    <button className="logout-btn" onClick={handleLogout} title="退出登录">
+                        <LogOut size={16} />
+                    </button>
                 </div>
             </header>
             <main className="main-content">
