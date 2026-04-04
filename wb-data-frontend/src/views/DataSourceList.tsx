@@ -18,6 +18,7 @@ import {
     PageResult,
     updateDataSourceStatus,
 } from '../api/datasource';
+import { useAuthStore } from '../utils/auth';
 import DataSourceForm from './DataSourceForm';
 import DataSourceListSkeleton from './datasources/DataSourceListSkeleton';
 import { buildDataSourcePageQueryKey, DEFAULT_PAGE_SIZE, parsePageParam, parsePageSizeParam } from './datasources/config';
@@ -63,6 +64,11 @@ function patchCachedDataSourcePages(
 export default function DataSourceList() {
     const queryClient = useQueryClient();
     const [searchParams, setSearchParams] = useSearchParams();
+    const currentGroup = useAuthStore((s) => s.currentGroup);
+    const permissions = useAuthStore((s) => s.permissions);
+    const systemAdmin = useAuthStore((s) => s.systemAdmin);
+    const canWrite = systemAdmin || permissions.includes('datasource.write');
+    const groupId = currentGroup?.id;
     const [keywordInput, setKeywordInput] = useState(searchParams.get('keyword') ?? '');
     const [isComposing, setIsComposing] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -126,14 +132,16 @@ export default function DataSourceList() {
     }, [suppressPaginationHover]);
 
     const pageQuery = useQuery({
-        queryKey: buildDataSourcePageQueryKey({ currentPage, pageSize, keyword }),
+        queryKey: buildDataSourcePageQueryKey({ currentPage, pageSize, keyword, groupId }),
         queryFn: () =>
             getDataSourcePage({
                 page: currentPage,
                 size: pageSize,
                 keyword: keyword || undefined,
+                groupId,
             }),
         placeholderData: (previousData) => previousData,
+        enabled: groupId != null,
     });
 
     const pageData = pageQuery.data;
@@ -326,10 +334,12 @@ export default function DataSourceList() {
                     />
                 </div>
                 <div className="datasource-toolbar-actions">
-                    <button className="datasource-primary-btn" onClick={() => { setEditingId(null); setIsFormOpen(true); }} type="button">
-                        <DatabaseZap size={16} />
-                        新建数据源
-                    </button>
+                    {canWrite && (
+                        <button className="datasource-primary-btn" onClick={() => { setEditingId(null); setIsFormOpen(true); }} type="button">
+                            <DatabaseZap size={16} />
+                            新建数据源
+                        </button>
+                    )}
                 </div>
             </section>
 
@@ -362,6 +372,7 @@ export default function DataSourceList() {
             <section className="datasource-table-panel animate-enter animate-enter-delay-1">
                 <DataSourceTable
                     data={records}
+                    canWrite={canWrite}
                     deletePendingId={pendingDeleteId}
                     errorMessage={errorMessage}
                     isRefreshing={isRefreshing}
@@ -388,6 +399,7 @@ export default function DataSourceList() {
                 open={isFormOpen}
                 onOpenChange={(details) => setIsFormOpen(details.open)}
                 dataSourceId={editingId}
+                groupId={groupId}
                 onSuccess={(details) => {
                     setIsFormOpen(false);
                     if (details.action === 'edit' && details.dataSourceId != null) {

@@ -5,6 +5,7 @@ import java.util.List;
 
 @Data
 public class DataSourceSearchQuery {
+    private Long groupId;
     private String keyword;
     private String type;
     private List<String> typeList;

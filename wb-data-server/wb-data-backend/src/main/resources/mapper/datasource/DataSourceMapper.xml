@@ -5,6 +5,9 @@
     <select id="selectDataSourceList" resultType="com.wbdata.datasource.entity.DataSource">
         SELECT * FROM datasource
         <where>
+            <if test="query.groupId != null">
+                AND group_id = #{query.groupId}
+            </if>
             <if test="query.keyword != null and query.keyword != ''">
                 AND (name LIKE CONCAT('%', #{query.keyword}, '%') 
                      OR description LIKE CONCAT('%', #{query.keyword}, '%')
