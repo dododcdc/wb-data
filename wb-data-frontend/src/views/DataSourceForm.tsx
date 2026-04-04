@@ -27,6 +27,7 @@ interface DataSourceFormProps {
     open: boolean;
     onOpenChange: (details: { open: boolean }) => void;
     dataSourceId: number | null;
+    groupId?: number;
     onSuccess: (details: DataSourceFormSuccessDetails) => void;
 }
 
@@ -178,7 +179,7 @@ function getFieldPlaceholder(field: PluginFieldDescriptor, isEdit: boolean) {
     return field.placeholder;
 }
 
-export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuccess }: DataSourceFormProps) {
+export default function DataSourceForm({ open, onOpenChange, dataSourceId, groupId, onSuccess }: DataSourceFormProps) {
     const isEdit = Boolean(dataSourceId);
     const detailRequestIdRef = useRef(0);
 
@@ -424,7 +425,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                 password: formData.password,
                 connectionParams: normalizeConnectionParams(formData.connectionParams),
             };
-            const result = await testNewConnection(requestPayload);
+            const result = await testNewConnection(requestPayload, groupId!);
             setTestResult(result.success ? 'success' : 'fail');
             setTestMessage(result.message || (result.success ? '连接测试通过，可以继续保存。' : '连接测试失败，请检查连接配置。'));
         } catch (error) {
@@ -469,7 +470,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, onSuc
                     },
                 });
             } else {
-                await createDataSource(payload);
+                await createDataSource(payload, groupId!);
                 onSuccess({
                     action: 'create',
                     dataSourceId: null,
