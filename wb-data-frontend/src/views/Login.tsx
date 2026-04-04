@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { AxiosError } from 'axios';
 
-import { login } from '@/api/auth';
+import { login, getAuthContext } from '@/api/auth';
 import { useAuthStore } from '@/utils/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -70,6 +70,10 @@ export default function Login() {
             const res = await login(values);
             useAuthStore.getState().setToken(res.accessToken);
             useAuthStore.getState().setUserInfo(res.user);
+
+            const ctx = await getAuthContext();
+            useAuthStore.getState().setAuthContext(ctx);
+
             navigate('/', { replace: true });
         } catch (error) {
             setServerError(getErrorMessage(error));

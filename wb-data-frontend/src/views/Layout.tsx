@@ -1,11 +1,20 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Database, Home, Layers, LogOut, Search } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { Database, FolderOpen, Home, Layers, LogOut, Search } from 'lucide-react';
 import { useAuthStore } from '../utils/auth';
+import { getAuthContext } from '../api/auth';
 import { getDataSourcePage } from '../api/datasource';
 import { TopProgressBar } from '../components/loading/TopProgressBar';
 import { buildDataSourcePageQueryKey, DEFAULT_PAGE_SIZE } from './datasources/config';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '../components/ui/select';
 import {
     loadDashboardModule,
     loadDataSourceListModule,
@@ -15,11 +24,54 @@ import { useDelayedBusy } from '../hooks/useDelayedBusy';
 import { loadQueryEditorModule } from './queryEditorModule';
 import './Layout.css';
 
+interface NavItem {
+    path: string;
+    label: string;
+    icon: LucideIcon;
+    end?: boolean;
+}
+
 export default function Layout() {
     const userInfo = useAuthStore((s) => s.userInfo);
+    const currentGroup = useAuthStore((s) => s.currentGroup);
+    const accessibleGroups = useAuthStore((s) => s.accessibleGroups);
+    const permissions = useAuthStore((s) => s.permissions);
+    const systemAdmin = useAuthStore((s) => s.systemAdmin);
     const queryClient = useQueryClient();
     const location = useLocation();
     const clearAuth = useAuthStore((s) => s.clearAuth);
+    const [switchingGroup, setSwitchingGroup] = useState(false);
+
+    const navItems = useMemo(() => {
+        const hasPermission = (perm: string) => systemAdmin || permissions.includes(perm);
+
+        const items: NavItem[] = [
+            { path: '/', label: '首页', icon: Home, end: true },
+        ];
+
+        if (hasPermission('datasource.read')) {
+            items.push({ path: '/datasources', label: '数据源管理', icon: Database });
+        }
+
+        if (hasPermission('query.use')) {
+            items.push({ path: '/query', label: '自助查询', icon: Search });
+        }
+
+        return items;
+    }, [permissions, systemAdmin]);
+
+    const handleGroupChange = useCallback(async (groupId: number) => {
+        if (groupId === currentGroup?.id) return;
+        setSwitchingGroup(true);
+        try {
+            const ctx = await getAuthContext(groupId);
+            useAuthStore.getState().setAuthContext(ctx);
+        } catch {
+            /* noop — keep current group on failure */
+        } finally {
+            setSwitchingGroup(false);
+        }
+    }, [currentGroup?.id]);
 
     const handleLogout = () => {
         clearAuth();
@@ -97,34 +149,50 @@ export default function Layout() {
                         <h2>WB Data</h2>
                     </div>
                     <nav className="nav-menu">
-                        <NavLink
-                            to="/"
-                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`.trim()}
-                            end
-                            {...bindNavIntent('/')}
-                        >
-                            <Home size={18} />
-                            <span>首页</span>
-                        </NavLink>
-                        <NavLink
-                            to="/datasources"
-                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`.trim()}
-                            {...bindNavIntent('/datasources')}
-                        >
-                            <Database size={18} />
-                            <span>数据源管理</span>
-                        </NavLink>
-                        <NavLink
-                            to="/query"
-                            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`.trim()}
-                            {...bindNavIntent('/query')}
-                        >
-                            <Search size={18} />
-                            <span>自助查询</span>
-                        </NavLink>
+                        {navItems.map((item) => (
+                            <NavLink
+                                key={item.path}
+                                to={item.path}
+                                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`.trim()}
+                                end={item.end}
+                                {...bindNavIntent(item.path)}
+                            >
+                                <item.icon size={18} />
+                                <span>{item.label}</span>
+                            </NavLink>
+                        ))}
                     </nav>
                 </div>
                 <div className="navbar-right">
+                    {accessibleGroups.length > 1 && currentGroup && (
+                        <Select
+                            value={currentGroup.id}
+                            onValueChange={(val: number) => handleGroupChange(val)}
+                            disabled={switchingGroup}
+                            items={accessibleGroups.map((g) => ({ value: g.id, label: g.name }))}
+                        >
+                            <SelectTrigger
+                                size="sm"
+                                className="group-switcher-trigger"
+                            >
+                                <FolderOpen className="size-3.5 text-muted-foreground" />
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent align="end">
+                                {accessibleGroups.map((g) => (
+                                    <SelectItem key={g.id} value={g.id}>
+                                        {g.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                    {accessibleGroups.length === 1 && currentGroup && (
+                        <div className="group-switcher-static">
+                            <FolderOpen size={14} className="text-muted-foreground" />
+                            <span>{currentGroup.name}</span>
+                        </div>
+                    )}
                     <div className="user-profile">
                         <span className="user-avater">{userInfo?.displayName?.charAt(0).toUpperCase() || '?'}</span>
                         <span>{userInfo?.displayName || userInfo?.username || '未知用户'}</span>

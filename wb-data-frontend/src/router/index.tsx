@@ -1,6 +1,7 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
+import { getAuthContext } from '../api/auth';
 import { useAuthStore } from '../utils/auth';
 import DashboardSkeleton from '../views/DashboardSkeleton';
 import DataSourceListSkeleton from '../views/datasources/DataSourceListSkeleton';
@@ -12,8 +13,10 @@ import {
     loadDashboardModule,
     loadDataSourceListModule,
     loadLoginModule,
+    loadNoGroupStateModule,
     loadNotFoundModule,
     loadQueryModule,
+    loadUnauthorizedModule,
 } from './routeModules';
 
 const Login = lazy(loadLoginModule);
@@ -21,6 +24,8 @@ const Dashboard = lazy(loadDashboardModule);
 const DataSourceList = lazy(loadDataSourceListModule);
 const Query = lazy(loadQueryModule);
 const NotFound = lazy(loadNotFoundModule);
+const NoGroupState = lazy(loadNoGroupStateModule);
+const Unauthorized = lazy(loadUnauthorizedModule);
 
 function withRouteSuspense(element: ReactNode, fallback: ReactNode = <RouteLoadingPage />) {
     return <Suspense fallback={fallback}>{element}</Suspense>;
@@ -28,7 +33,60 @@ function withRouteSuspense(element: ReactNode, fallback: ReactNode = <RouteLoadi
 
 function AuthGuard() {
     const token = useAuthStore((s) => s.token);
-    if (!token) return <Navigate to="/login" replace />;
+    const contextLoaded = useAuthStore((s) => s.contextLoaded);
+    const [failed, setFailed] = useState(false);
+
+    useEffect(() => {
+        if (!token || useAuthStore.getState().contextLoaded) return;
+
+        let cancelled = false;
+        getAuthContext()
+            .then((ctx) => {
+                if (!cancelled) useAuthStore.getState().setAuthContext(ctx);
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    useAuthStore.getState().clearAuth();
+                    setFailed(true);
+                }
+            });
+        return () => { cancelled = true; };
+    }, [token, contextLoaded]);
+
+    if (!token || failed) return <Navigate to="/login" replace />;
+    if (!contextLoaded) return <RouteLoadingPage />;
+    return <Outlet />;
+}
+
+/**
+ * Requires a current project group to be set.
+ * systemAdmin bypasses — they can access the app even without group membership.
+ * Users with no group see the NoGroupState page.
+ */
+function RequireGroup() {
+    const currentGroup = useAuthStore((s) => s.currentGroup);
+    const systemAdmin = useAuthStore((s) => s.systemAdmin);
+
+    if (!currentGroup && !systemAdmin) {
+        return withRouteSuspense(<NoGroupState />);
+    }
+
+    return <Outlet />;
+}
+
+/**
+ * Requires specific permissions to render children.
+ * systemAdmin always passes.
+ * Users without the required permission see the Unauthorized page.
+ */
+function RequirePermission({ required }: { required: string }) {
+    const permissions = useAuthStore((s) => s.permissions);
+    const systemAdmin = useAuthStore((s) => s.systemAdmin);
+
+    if (!systemAdmin && !permissions.includes(required)) {
+        return withRouteSuspense(<Unauthorized />);
+    }
+
     return <Outlet />;
 }
 
@@ -51,12 +109,29 @@ const router = createBrowserRouter([
                         element: withRouteSuspense(<Dashboard />, <DashboardSkeleton />),
                     },
                     {
-                        path: 'datasources',
-                        element: withRouteSuspense(<DataSourceList />, <DataSourceListSkeleton />),
-                    },
-                    {
-                        path: 'query',
-                        element: withRouteSuspense(<Query />, <QuerySkeleton />),
+                        element: <RequireGroup />,
+                        children: [
+                            {
+                                path: 'datasources',
+                                element: <RequirePermission required="datasource.read" />,
+                                children: [
+                                    {
+                                        index: true,
+                                        element: withRouteSuspense(<DataSourceList />, <DataSourceListSkeleton />),
+                                    },
+                                ],
+                            },
+                            {
+                                path: 'query',
+                                element: <RequirePermission required="query.use" />,
+                                children: [
+                                    {
+                                        index: true,
+                                        element: withRouteSuspense(<Query />, <QuerySkeleton />),
+                                    },
+                                ],
+                            },
+                        ],
                     },
                     {
                         path: '*',
