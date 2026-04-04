@@ -43,6 +43,7 @@ export interface DataSourceSearchQuery {
     type?: string;
     typeList?: string[];
     status?: string;
+    groupId?: number;
 }
 
 export interface PageResult<T> {
@@ -70,8 +71,8 @@ export const getDataSourceById = (id: number) => {
     return request.get<unknown, DataSource>(`/api/v1/datasources/${id}`);
 };
 
-export const createDataSource = (data: Partial<DataSource>) => {
-    return request.post<unknown, boolean>('/api/v1/datasources', data);
+export const createDataSource = (data: Partial<DataSource>, groupId: number) => {
+    return request.post<unknown, boolean>('/api/v1/datasources', data, { params: { groupId } });
 };
 
 export const updateDataSource = (id: number, data: Partial<DataSource>) => {
@@ -96,8 +97,8 @@ export interface DataSourceConnectionPayload {
     connectionParams?: Record<string, unknown>;
 }
 
-export const testNewConnection = (data: DataSourceConnectionPayload) => {
-    return request.post<unknown, ConnectionTestResult>('/api/v1/datasources/test-connection', data);
+export const testNewConnection = (data: DataSourceConnectionPayload, groupId: number) => {
+    return request.post<unknown, ConnectionTestResult>('/api/v1/datasources/test-connection', data, { params: { groupId } });
 };
 
 export const testExistingConnection = (id: number) => {

@@ -161,6 +161,32 @@
 .navbar-right {
     display: flex;
     align-items: center;
+    gap: 12px;
+}
+
+.group-switcher-trigger {
+    border-color: transparent !important;
+    background: var(--color-bg-secondary) !important;
+    font-weight: 600;
+    font-size: 0.82rem;
+    gap: 6px;
+}
+
+.group-switcher-trigger:hover {
+    background: var(--color-border) !important;
+}
+
+.group-switcher-static {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    height: 28px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-secondary);
+    border-radius: 8px;
 }
 
 .user-profile {
@@ -183,6 +209,26 @@
     justify-content: center;
     font-size: 0.75rem;
     font-weight: 700;
+}
+
+.logout-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    margin-left: 12px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.logout-btn:hover {
+    background: var(--color-bg-secondary);
+    color: var(--color-text-primary);
 }
 
 .main-content {

@@ -19,6 +19,7 @@ import {
     QueryExportTaskStatus,
 } from '../api/query';
 import { getDataSourcePage, getDataSourceById, DataSource } from '../api/datasource';
+import { useAuthStore } from '../utils/auth';
 import { DataSourceSelect } from '../components/DataSourceSelect';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -642,6 +643,12 @@ function getVerticalSizes(resultCollapsed: boolean, resultExpandedHeight: number
 export default function Query() {
     useKeyboardFocusMode();
 
+    const currentGroup = useAuthStore((s) => s.currentGroup);
+    const permissions = useAuthStore((s) => s.permissions);
+    const systemAdmin = useAuthStore((s) => s.systemAdmin);
+    const canExport = systemAdmin || permissions.includes('query.export');
+    const groupId = currentGroup?.id;
+
     const [dataSources, setDataSources] = useState<DataSource[]>([]);
     const [selectedDsId, setSelectedDsId] = useState<string>('');
     const [selectedDs, setSelectedDs] = useState<DataSource | null>(null);
@@ -1170,7 +1177,7 @@ export default function Query() {
             loadDataSources({ page: 1, keyword: dsKeyword, append: false });
         }, 300);
         return () => clearTimeout(timer);
-    }, [dsKeyword]);
+    }, [dsKeyword, groupId]);
 
     useEffect(() => {
         if (selectedDsId) {
@@ -1334,7 +1341,7 @@ export default function Query() {
             setLoadingDs(true);
         }
         try {
-            const data = await getDataSourcePage({ page, size: DS_PAGE_SIZE, keyword });
+            const data = await getDataSourcePage({ page, size: DS_PAGE_SIZE, keyword, groupId });
             if (requestId !== dsRequestIdRef.current) {
                 return;
             }
@@ -2652,7 +2659,7 @@ export default function Query() {
                                                 <span>回填 SQL</span>
                                             </button>
                                         ) : null}
-                                        {!resultCollapsed && shouldShowExportTasksButton ? (
+                                        {!resultCollapsed && shouldShowExportTasksButton && canExport ? (
                                             <div className="export-wrapper" ref={exportTasksMenuRef}>
                                                 <button
                                                     className={`export-button export-tasks-button ${showExportTasksMenu ? 'is-active' : ''}`.trim()}
@@ -2732,7 +2739,7 @@ export default function Query() {
                                                 )}
                                             </div>
                                         ) : null}
-                                        {!resultCollapsed && displayedResultHasTable && (
+                                        {!resultCollapsed && displayedResultHasTable && canExport && (
                                             <div className="export-wrapper" ref={exportMenuRef}>
                                                 <button
                                                     className="export-button"

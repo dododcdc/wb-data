@@ -18,6 +18,8 @@ public class DataSource {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    private Long groupId;
+
     private String name;
 
     private String type; // MYSQL, HIVE, etc.
@@ -41,6 +43,10 @@ public class DataSource {
     private String status; // ENABLED (启用), DISABLED (禁用)
 
     private String owner;
+
+    private Long createdBy;
+
+    private Long updatedBy;
 
     private LocalDateTime createdAt;
 
