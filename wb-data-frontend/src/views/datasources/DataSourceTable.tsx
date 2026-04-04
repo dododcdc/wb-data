@@ -4,6 +4,7 @@ import { formatConnection, formatTimestamp, getStatusLabel } from './config';
 
 interface DataSourceTableProps {
     data: DataSource[];
+    canWrite: boolean;
     isRefreshing: boolean;
     errorMessage: string;
     onEdit: (id: number) => void;
@@ -16,6 +17,7 @@ interface DataSourceTableProps {
 export function DataSourceTable(props: DataSourceTableProps) {
     const {
         data,
+        canWrite,
         isRefreshing,
         errorMessage,
         onEdit,
@@ -63,7 +65,7 @@ export function DataSourceTable(props: DataSourceTableProps) {
                             <th>状态</th>
                             <th className="datasource-owner-column">负责人</th>
                             <th className="datasource-updated-column">更新时间</th>
-                            <th className="datasource-actions-column">操作</th>
+                            {canWrite && <th className="datasource-actions-column">操作</th>}
                         </tr>
                     </thead>
                     <tbody>
@@ -87,39 +89,41 @@ export function DataSourceTable(props: DataSourceTableProps) {
                                 </td>
                                 <td className="datasource-owner datasource-owner-column">{item.owner || '--'}</td>
                                 <td className="datasource-updated-at datasource-updated-column">{formatTimestamp(item.updatedAt)}</td>
-                                <td className="datasource-actions-column">
-                                    <div className="datasource-actions">
-                                        <button
-                                            className="datasource-icon-btn"
-                                            onClick={() => onEdit(item.id)}
-                                            title="编辑数据源"
-                                            aria-label="编辑数据源"
-                                            type="button"
-                                        >
-                                            <Edit3 size={16} />
-                                        </button>
-                                        <button
-                                            className="datasource-icon-btn"
-                                            disabled={statusPendingId === item.id}
-                                            onClick={() => onToggleStatus(item)}
-                                            title={item.status === 'ENABLED' ? '停用' : '启用'}
-                                            aria-label={item.status === 'ENABLED' ? '停用数据源' : '启用数据源'}
-                                            type="button"
-                                        >
-                                            <Power size={16} />
-                                        </button>
-                                        <button
-                                            className="datasource-icon-btn danger"
-                                            disabled={deletePendingId === item.id}
-                                            onClick={() => onDelete(item)}
-                                            title="删除数据源"
-                                            aria-label="删除数据源"
-                                            type="button"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
-                                </td>
+                                {canWrite && (
+                                    <td className="datasource-actions-column">
+                                        <div className="datasource-actions">
+                                            <button
+                                                className="datasource-icon-btn"
+                                                onClick={() => onEdit(item.id)}
+                                                title="编辑数据源"
+                                                aria-label="编辑数据源"
+                                                type="button"
+                                            >
+                                                <Edit3 size={16} />
+                                            </button>
+                                            <button
+                                                className="datasource-icon-btn"
+                                                disabled={statusPendingId === item.id}
+                                                onClick={() => onToggleStatus(item)}
+                                                title={item.status === 'ENABLED' ? '停用' : '启用'}
+                                                aria-label={item.status === 'ENABLED' ? '停用数据源' : '启用数据源'}
+                                                type="button"
+                                            >
+                                                <Power size={16} />
+                                            </button>
+                                            <button
+                                                className="datasource-icon-btn danger"
+                                                disabled={deletePendingId === item.id}
+                                                onClick={() => onDelete(item)}
+                                                title="删除数据源"
+                                                aria-label="删除数据源"
+                                                type="button"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </td>
+                                )}
                             </tr>
                         ))}
                     </tbody>
