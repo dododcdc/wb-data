@@ -21,11 +21,11 @@ import {
 
 const loginSchema = z.object({
     username: z
-        .string({ required_error: '请输入用户名' })
+        .string({ error: '请输入用户名' })
         .min(1, '请输入用户名')
         .max(64, '用户名不能超过 64 个字符'),
     password: z
-        .string({ required_error: '请输入密码' })
+        .string({ error: '请输入密码' })
         .min(1, '请输入密码'),
 });
 
@@ -82,8 +82,8 @@ export default function Login() {
 
     return (
         <div className="flex min-h-svh items-start justify-center bg-muted/50 p-4 pt-[15vh] sm:items-center sm:pt-4">
-            <Card className="w-full max-w-[380px]">
-                <CardHeader className="pb-2 text-center">
+            <Card className="w-full max-w-[380px] shadow-lg">
+                <CardHeader className="pb-4 text-center">
                     <CardTitle className="text-2xl font-bold tracking-tight">
                         WB Data
                     </CardTitle>
@@ -102,30 +102,30 @@ export default function Login() {
                             </div>
                         )}
 
-                        <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="username">用户名</Label>
+                        <div className="flex flex-col">
                             <Input
                                 id="username"
                                 type="text"
-                                placeholder="请输入用户名"
+                                placeholder="用户名"
                                 autoComplete="username"
                                 autoFocus
+                                aria-label="用户名"
                                 aria-invalid={!!errors.username}
-                                className="h-10"
+                                className="h-11"
                                 {...register('username')}
                             />
                         </div>
 
-                        <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="password">密码</Label>
+                        <div className="flex flex-col">
                             <div className="relative">
                                 <Input
                                     id="password"
                                     type={showPassword ? 'text' : 'password'}
-                                    placeholder="请输入密码"
+                                    placeholder="密码"
                                     autoComplete="current-password"
+                                    aria-label="密码"
                                     aria-invalid={!!errors.password}
-                                    className="h-10 pr-10"
+                                    className="h-11 pr-10"
                                     {...register('password')}
                                 />
                                 <button
@@ -146,8 +146,7 @@ export default function Login() {
 
                         <Button
                             type="submit"
-                            size="lg"
-                            className="mt-1 w-full"
+                            className="mt-1 h-11 w-full text-base font-semibold"
                             disabled={isSubmitting}
                         >
                             {isSubmitting && (
