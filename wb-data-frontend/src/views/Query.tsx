@@ -47,6 +47,7 @@ import {
     getExportTaskStatusMeta,
     formatTaskTimestamp,
     getFormatLabel,
+    formatResultTabLabel,
 } from './query/exportUtils';
 import { registerEditorThemes } from './query/editorUtils';
 import { buildQueryFeedback, QueryFeedback } from './query/feedbackUtils';
@@ -185,6 +186,9 @@ export default function Query() {
         queryError,
         loadingQuery,
         setSql,
+        setResult,
+        setQueryError,
+        setLoadingQuery,
         executeQuery: executeQueryFromHook,
     } = useQueryEditor();
     const [showExportMenu, setShowExportMenu] = useState(false);
@@ -962,14 +966,28 @@ useKeyboardShortcuts({
         let finalSql = sqlToRun;
 
         // If no explicit SQL provided (e.g. from button click), check for selection
-        if (!finalSql && editorRef.current) {
-            const selection = editorRef.current.getSelection();
-            if (selection && !selection.isEmpty()) {
-                finalSql = editorRef.current.getModel()?.getValueInRange(selection);
+        const editor = editorRef.current;
+        const monacoInstance = monacoRef.current;
+
+        if (!finalSql) {
+            // Try to get SQL from editor
+            if (editor) {
+                const selection = editor.getSelection();
+                if (selection && !selection.isEmpty()) {
+                    finalSql = editor.getModel()?.getValueInRange(selection);
+                } else {
+                    finalSql = editor.getModel()?.getValue() ?? '';
+                }
+            } else if (monacoInstance) {
+                // Fallback: try to get from Monaco global
+                const editors = monacoInstance.editor.getEditors();
+                if (editors.length > 0) {
+                    finalSql = editors[0].getModel()?.getValue() ?? '';
+                }
             }
         }
 
-        // Fallback to full editor content if still no specific SQL
+        // Fallback to hook's sql state
         finalSql = finalSql ?? sql;
 
         if (!selectedDsId) {
@@ -1000,7 +1018,7 @@ useKeyboardShortcuts({
         }
         setLoadingQuery(true);
         try {
-            const data = await executeQuery(Number(selectedDsId), finalSql, selectedDb);
+            const data = await rawExecuteQuery(Number(selectedDsId), finalSql, selectedDb);
             const activeDataSource = getActiveDataSource();
             setResult(data);
             setLastExecutedSql(finalSql.trim());
