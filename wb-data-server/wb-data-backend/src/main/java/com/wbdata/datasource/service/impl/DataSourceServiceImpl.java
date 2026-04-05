@@ -3,6 +3,7 @@ package com.wbdata.datasource.service.impl;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.wbdata.datasource.plugin.DataSourceConnectionPoolManager;
 import com.wbdata.datasource.plugin.DataSourcePluginRegistry;
 import com.wbdata.datasource.dto.DataSourceSearchQuery;
 import com.wbdata.datasource.dto.TestConnectionRequest;
@@ -10,6 +11,7 @@ import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.datasource.mapper.DataSourceMapper;
 import com.wbdata.datasource.service.DataSourceService;
 import com.wbdata.plugin.api.ConnectionTestResult;
+import com.wbdata.plugin.api.DataSourceConnectionInfo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class DataSourceServiceImpl extends ServiceImpl<DataSourceMapper, DataSource> implements DataSourceService {
 
     private final DataSourcePluginRegistry pluginRegistry;
-    private final com.wbdata.datasource.plugin.DataSourceConnectionPoolManager poolManager;
+    private final DataSourceConnectionPoolManager poolManager;
 
     @Override
     public IPage<DataSource> getDataSourcePage(DataSourceSearchQuery query) {
@@ -44,7 +46,7 @@ public class DataSourceServiceImpl extends ServiceImpl<DataSourceMapper, DataSou
         }
 
         return pluginRegistry.getPlugin(request.getType())
-                .map(plugin -> plugin.testConnectionDetailed(new com.wbdata.plugin.api.DataSourceConnectionInfo(
+                .map(plugin -> plugin.testConnectionDetailed(new DataSourceConnectionInfo(
                         null,   // testConnection always bypasses the pool
                         request.getType(),
                         request.getHost(),

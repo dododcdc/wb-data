@@ -10,6 +10,7 @@ import {
     DialogTitle,
 } from '../../components/ui/dialog';
 import { resetUserPassword, UserRecord } from '../../api/user';
+import { getErrorMessage } from '../../utils/error';
 
 interface ResetPasswordDialogProps {
     open: boolean;
@@ -21,26 +22,6 @@ interface ResetPasswordDialogProps {
 type FormField = 'newPassword' | 'confirmPassword';
 
 const PASSWORD_PATTERN = /^(?=.*[a-zA-Z])(?=.*\d).{8,64}$/;
-
-function getErrorMessage(error: unknown, fallback: string) {
-    if (typeof error === 'object' && error !== null) {
-        const axiosMessage = (error as {
-            response?: { data?: { message?: string } };
-            message?: string;
-        }).response?.data?.message;
-
-        if (axiosMessage) {
-            return axiosMessage;
-        }
-
-        const message = (error as { message?: string }).message;
-        if (message) {
-            return message;
-        }
-    }
-
-    return fallback;
-}
 
 export default function ResetPasswordDialog(props: ResetPasswordDialogProps) {
     const { open, user, onOpenChange, onSuccess } = props;

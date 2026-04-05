@@ -7,18 +7,15 @@ import com.wbdata.plugin.api.DataSourceConnectionInfo;
 import com.wbdata.plugin.api.QueryRequest;
 import com.wbdata.plugin.api.QueryResult;
 import com.wbdata.query.service.QueryService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class QueryServiceImpl implements QueryService {
 
     private final DataSourceService dataSourceService;
     private final DataSourcePluginRegistry pluginRegistry;
-
-    public QueryServiceImpl(DataSourceService dataSourceService, DataSourcePluginRegistry pluginRegistry) {
-        this.dataSourceService = dataSourceService;
-        this.pluginRegistry = pluginRegistry;
-    }
 
     @Override
     public QueryResult executeQuery(Long dataSourceId, String sql, String database) {

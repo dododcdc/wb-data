@@ -1,5 +1,7 @@
 package com.wbdata.auth.service;
 
+import com.wbdata.auth.enums.GroupRole;
+import com.wbdata.auth.enums.Permission;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -7,25 +9,16 @@ import java.util.List;
 @Service
 public class PermissionService {
 
-    private static final List<String> GROUP_ADMIN_PERMISSIONS = List.of(
-            "datasource.read",
-            "datasource.write",
-            "query.use",
-            "query.export",
-            "offline.read",
-            "offline.write",
-            "member.read",
-            "member.manage",
-            "group.settings"
-    );
+    private static final List<String> GROUP_ADMIN_PERMISSIONS = java.util.Arrays.stream(Permission.values())
+            .map(Permission::code).toList();
 
     private static final List<String> DEVELOPER_PERMISSIONS = List.of(
-            "datasource.read",
-            "query.use",
-            "query.export",
-            "offline.read",
-            "offline.write",
-            "member.read"
+            Permission.DATASOURCE_READ.code(),
+            Permission.QUERY_USE.code(),
+            Permission.QUERY_EXPORT.code(),
+            Permission.OFFLINE_READ.code(),
+            Permission.OFFLINE_WRITE.code(),
+            Permission.MEMBER_READ.code()
     );
 
     public List<String> resolveProjectPermissions(String role, boolean systemAdmin) {
@@ -33,11 +26,11 @@ public class PermissionService {
             return GROUP_ADMIN_PERMISSIONS;
         }
 
-        if ("GROUP_ADMIN".equals(role)) {
+        if (GroupRole.GROUP_ADMIN.name().equals(role)) {
             return GROUP_ADMIN_PERMISSIONS;
         }
 
-        if ("DEVELOPER".equals(role)) {
+        if (GroupRole.DEVELOPER.name().equals(role)) {
             return DEVELOPER_PERMISSIONS;
         }
 

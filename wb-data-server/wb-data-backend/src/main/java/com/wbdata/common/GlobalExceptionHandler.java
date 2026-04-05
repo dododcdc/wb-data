@@ -1,6 +1,7 @@
 package com.wbdata.common;
 
 import com.wbdata.plugin.api.DataSourceException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -13,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -56,6 +58,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public Result<Void> handleAllExceptions(Exception ex) {
-        return Result.error(HttpStatus.INTERNAL_SERVER_ERROR.value(), "服务器内部错误: " + ex.getMessage());
+        log.error("Unhandled exception", ex);
+        return Result.error(HttpStatus.INTERNAL_SERVER_ERROR.value(), "服务器内部错误");
     }
 }

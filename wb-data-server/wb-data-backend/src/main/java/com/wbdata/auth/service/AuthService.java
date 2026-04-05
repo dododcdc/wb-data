@@ -1,7 +1,6 @@
 package com.wbdata.auth.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.wbdata.auth.dto.CurrentUserResponse;
 import com.wbdata.auth.dto.LoginRequest;
 import com.wbdata.auth.dto.LoginResponse;
 import com.wbdata.user.entity.WbUser;
@@ -42,9 +41,5 @@ public class AuthService {
         user.setLastLoginAt(update.getLastLoginAt());
 
         return authTokenService.issueToken(user);
-    }
-
-    public CurrentUserResponse getCurrentUser(String authorizationHeader) {
-        return authTokenService.getCurrentUser(authorizationHeader);
     }
 }

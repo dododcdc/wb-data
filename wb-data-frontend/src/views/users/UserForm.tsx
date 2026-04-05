@@ -13,6 +13,7 @@ import {
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { getUserGroups, createUser, getAllGroups, GroupSimple, updateUser, UserRecord } from '../../api/user';
 import { useAuthStore } from '../../utils/auth';
+import { getErrorMessage } from '../../utils/error';
 
 interface UserFormProps {
     open: boolean;
@@ -67,26 +68,6 @@ const EMPTY_FORM_STATE: FormState = {
     password: '',
     systemRole: 'USER',
 };
-
-function getErrorMessage(error: unknown, fallback: string) {
-    if (typeof error === 'object' && error !== null) {
-        const axiosMessage = (error as {
-            response?: { data?: { message?: string } };
-            message?: string;
-        }).response?.data?.message;
-
-        if (axiosMessage) {
-            return axiosMessage;
-        }
-
-        const message = (error as { message?: string }).message;
-        if (message) {
-            return message;
-        }
-    }
-
-    return fallback;
-}
 
 export default function UserForm(props: UserFormProps) {
     const { open, onOpenChange, editingUser, onSuccess } = props;

@@ -1,8 +1,8 @@
 package com.wbdata.user.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.wbdata.auth.dto.CurrentUserResponse;
-import com.wbdata.auth.service.AuthTokenService;
+import com.wbdata.auth.context.AuthContext;
+import com.wbdata.auth.service.AuthSession;
 import com.wbdata.common.Result;
 import com.wbdata.group.dto.CreateGroupRequest;
 import com.wbdata.group.dto.GroupDetailResponse;
@@ -11,7 +11,6 @@ import com.wbdata.user.dto.GroupSimpleResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,12 +18,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -35,16 +32,14 @@ import java.util.List;
 public class GroupController {
 
     private final GroupService groupService;
-    private final AuthTokenService authTokenService;
 
     @Operation(summary = "项目组列表（不传 page/size 返回全量简单列表，传则返回分页详情列表）")
     @GetMapping
     public Result<?> list(
-            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
             @RequestParam(required = false) String keyword) {
-        requireSystemAdmin(authorization);
+        AuthContext.requireSystemAdmin();
 
         if (page == null && size == null) {
             List<GroupSimpleResponse> all = groupService.listAll();
@@ -61,27 +56,16 @@ public class GroupController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Result<GroupDetailResponse> create(
-            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
             @Validated @RequestBody CreateGroupRequest request) {
-        CurrentUserResponse operator = requireSystemAdmin(authorization);
+        AuthSession operator = AuthContext.requireSystemAdmin();
         return Result.success(groupService.createGroup(request, operator.id()));
     }
 
     @Operation(summary = "删除项目组")
     @DeleteMapping("/{id}")
-    public Result<Void> delete(
-            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
-            @PathVariable Long id) {
-        requireSystemAdmin(authorization);
+    public Result<Void> delete(@PathVariable Long id) {
+        AuthContext.requireSystemAdmin();
         groupService.deleteGroup(id);
         return Result.success(null);
-    }
-
-    private CurrentUserResponse requireSystemAdmin(String authorization) {
-        CurrentUserResponse user = authTokenService.getCurrentUser(authorization);
-        if (!"SYSTEM_ADMIN".equals(user.systemRole())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "需要系统管理员权限");
-        }
-        return user;
     }
 }
