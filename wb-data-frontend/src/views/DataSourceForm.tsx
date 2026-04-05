@@ -184,7 +184,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
     const detailRequestIdRef = useRef(0);
 
     const [formData, setFormData] = useState<FormState>(createEmptyFormState);
-    const [fieldErrors, setFieldErrors] = useState<Partial<Record<FormField, string>>>({});
+    const [fieldErrors, setFieldErrors] = useState<Partial<Record<FormField, string | true>>>({});
     const [isLoadingDetails, setIsLoadingDetails] = useState(false);
     const [loadError, setLoadError] = useState('');
 
@@ -351,14 +351,14 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
     };
 
     const validateForm = (mode: 'test' | 'save') => {
-        const nextErrors: Partial<Record<FormField, string>> = {};
+        const nextErrors: Partial<Record<FormField, string | true>> = {};
 
         if (mode === 'save' && !formData.name.trim()) {
-            nextErrors.name = '数据源名称不能为空';
+            nextErrors.name = true;
         }
 
         if (!effectiveType) {
-            nextErrors.type = '请选择数据库类型';
+            nextErrors.type = true;
         }
 
         if (!selectedPlugin) {
@@ -377,7 +377,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
 
             if (fieldKey === 'port') {
                 if (!value) {
-                    nextErrors.port = `${field.label}不能为空`;
+                    nextErrors.port = true;
                     continue;
                 }
 
@@ -394,7 +394,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
             }
 
             if (!value) {
-                nextErrors[fieldKey] = `${field.label}不能为空`;
+                nextErrors[fieldKey] = true;
             }
         }
 
@@ -526,7 +526,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                         <div className={`input-group ${fieldErrors.name ? 'has-error' : ''}`}>
                                             <label htmlFor="ds-name">数据源名称 <span className="required">*</span></label>
                                             <input id="ds-name" type="text" value={formData.name} onChange={e => handleChange('name', e.target.value)} placeholder="如：生产环境主库" />
-                                            {fieldErrors.name ? <span className="input-error">{fieldErrors.name}</span> : null}
+                                            {typeof fieldErrors.name === 'string' ? <span className="input-error">{fieldErrors.name}</span> : null}
                                         </div>
                                         <div className={`input-group ${fieldErrors.type ? 'has-error' : ''}`}>
                                             <label htmlFor="datasource-form-type-select">数据库类型 <span className="required">*</span></label>
@@ -538,7 +538,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                                 options={typeOptions}
                                                 placeholder="选择数据库类型"
                                             />
-                                            {fieldErrors.type ? <span className="input-error">{fieldErrors.type}</span> : null}
+                                            {typeof fieldErrors.type === 'string' ? <span className="input-error">{fieldErrors.type}</span> : null}
                                         </div>
                                         {pluginError ? (
                                             <p className="config-section-tip">
@@ -595,7 +595,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                                             onChange={(event) => handlePluginFieldChange(fieldKey, event.target.value)}
                                                             placeholder={getFieldPlaceholder(field, isEdit)}
                                                         />
-                                                        {fieldErrors[fieldKey] ? <span className="input-error">{fieldErrors[fieldKey]}</span> : null}
+                                                        {typeof fieldErrors[fieldKey] === 'string' ? <span className="input-error">{fieldErrors[fieldKey]}</span> : null}
                                                     </div>
                                                 );
                                             })}
@@ -627,7 +627,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                                             onChange={(event) => handlePluginFieldChange(fieldKey, event.target.value)}
                                                             placeholder={getFieldPlaceholder(field, isEdit)}
                                                         />
-                                                        {fieldErrors[fieldKey] ? <span className="input-error">{fieldErrors[fieldKey]}</span> : null}
+                                                        {typeof fieldErrors[fieldKey] === 'string' ? <span className="input-error">{fieldErrors[fieldKey]}</span> : null}
                                                         {isEdit && fieldKey === 'password' ? (
                                                             <span className="input-help">留空则保持当前密码不变</span>
                                                         ) : null}
