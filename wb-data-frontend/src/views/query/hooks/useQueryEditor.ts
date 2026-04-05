@@ -31,6 +31,11 @@ export interface UseQueryEditorReturn {
   queryError: string;
   loadingQuery: boolean;
 
+  // Setters (for backward compatibility)
+  setResult: (result: QueryResult | null) => void;
+  setQueryError: (error: string) => void;
+  setLoadingQuery: (loading: boolean) => void;
+
   // Actions
   setSql: (sql: string) => void;
   executeQuery: (options?: {
@@ -107,11 +112,15 @@ export function useQueryEditor(): UseQueryEditorReturn {
   }, [sql]);
 
   return {
-    sql,
-    result,
-    queryError,
-    loadingQuery,
-    setSql,
-    executeQuery: executeQueryAction,
-  };
+  sql,
+  result,
+  queryError,
+  loadingQuery,
+  // Setters
+  setResult,
+  setQueryError,
+  setLoadingQuery,
+  setSql,
+  executeQuery: executeQueryAction,
+};
 }
