@@ -492,49 +492,6 @@
     }
 }
 
-/* Tooltip (dark inverted style) */
-.tooltip-content {
-    background: var(--color-tooltip-bg);
-    border: none;
-    border-radius: var(--radius-sm);
-    padding: 6px 10px;
-    font-size: 0.78rem;
-    color: var(--color-tooltip-fg);
-    white-space: nowrap;
-    pointer-events: none;
-    box-shadow: var(--shadow-overlay);
-    animation: tooltipFadeIn 150ms ease;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.tooltip-content kbd {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    padding: 1px 5px;
-    font-family: var(--font-sans);
-    font-size: 0.7rem;
-    font-weight: 500;
-    line-height: 1.4;
-    color: var(--color-text-muted);
-    background: var(--color-tooltip-kbd-bg);
-    border-radius: 3px;
-    border: 1px solid var(--color-tooltip-kbd-border);
-}
-
-@keyframes tooltipFadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(2px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
 .run-button {
     display: flex;
     align-items: center;
