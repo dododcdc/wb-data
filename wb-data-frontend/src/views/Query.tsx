@@ -25,6 +25,61 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../com
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Allotment } from 'allotment';
 import 'allotment/dist/style.css';
+import { useQueryEditor } from './query/hooks/useQueryEditor';
+import { useKeyboardShortcuts } from './query/hooks/useKeyboardShortcuts';
+import {
+    FALLBACK_SQL_KEYWORDS,
+    SQL_ALIAS_RESERVED_WORDS,
+    isMac,
+    DS_PAGE_SIZE,
+    TABLE_PAGE_SIZE,
+    QUERY_EXECUTION_TIMEOUT_MS,
+    PINNED_RESULT_LIMIT,
+} from './query/queryConstants';
+import {
+    getCurrentStatement,
+    parseSqlSourceTables,
+    isSelectListContext,
+    isExpressionClauseContext,
+} from './query/sqlUtils';
+import {
+    upsertExportTask,
+    getExportTaskStatusMeta,
+    formatTaskTimestamp,
+    getFormatLabel,
+} from './query/exportUtils';
+import { registerEditorThemes } from './query/editorUtils';
+import { buildQueryFeedback, QueryFeedback } from './query/feedbackUtils';
+import {
+    DEFAULT_DATASOURCE_STORAGE_KEY,
+    LAST_DATASOURCE_STORAGE_KEY,
+    LAST_DATABASE_BY_DATASOURCE_STORAGE_KEY,
+    getStoredDefaultDataSourceId,
+    getStoredLastDataSourceId,
+    getStoredLastDatabaseByDataSource,
+    shouldPreferDefaultDataSourceOnMount,
+    mergeDatabaseOptions,
+} from './query/storageUtils';
+import {
+    QueryFeedbackState,
+    ExportState,
+    SavedQueryResult,
+    ResultTabId,
+    MonacoEditorInstance,
+} from './query/types';
+import {
+    useLayoutPersistence,
+    getHorizontalSizes,
+    getVerticalSizes,
+    SIDEBAR_DEFAULT_WIDTH_PX,
+    SIDEBAR_MIN_WIDTH_PX,
+    SIDEBAR_MAX_WIDTH_PX,
+    QUERY_MAIN_MIN_WIDTH_PX,
+    RESULT_PANEL_COLLAPSED_HEIGHT_PX,
+    RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX,
+    RESULT_PANEL_DEFAULT_HEIGHT_PX,
+    QUERY_EDITOR_DEFAULT_HEIGHT_PX,
+} from './query/hooks/useLayoutPersistence';
 import { useKeyboardFocusMode } from '../hooks/useKeyboardFocusMode';
 import { useDelayedBusy } from '../hooks/useDelayedBusy';
 import { loadQueryEditorModule } from './queryEditorModule';
@@ -44,71 +99,6 @@ function EditorLoader() {
         </div>
     );
 }
-
-
-const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
-const DS_PAGE_SIZE = 50;
-const SIDEBAR_STORAGE_KEY = 'query-sidebar-collapsed';
-const LEGACY_SIDEBAR_SIZE_STORAGE_KEY = 'query-sidebar-size';
-const SIDEBAR_EXPANDED_WIDTH_STORAGE_KEY = 'query-sidebar-expanded-width';
-const LEGACY_EDITOR_SIZE_STORAGE_KEY = 'query-editor-size';
-const RESULT_PANEL_COLLAPSED_STORAGE_KEY = 'query-result-collapsed';
-const RESULT_PANEL_EXPANDED_HEIGHT_STORAGE_KEY = 'query-result-expanded-height';
-const RESULT_PANEL_AUTO_OPEN_STORAGE_KEY = 'query-result-auto-open';
-const DEFAULT_DATASOURCE_STORAGE_KEY = 'query-default-datasource-id';
-const LAST_DATASOURCE_STORAGE_KEY = 'query-last-datasource-id';
-const LAST_DATABASE_BY_DATASOURCE_STORAGE_KEY = 'query-last-database-by-datasource';
-const SIDEBAR_DEFAULT_WIDTH_PX = 300;
-const SIDEBAR_MIN_WIDTH_PX = 250;
-const SIDEBAR_MAX_WIDTH_PX = 600;
-const QUERY_MAIN_MIN_WIDTH_PX = 600;
-const QUERY_MAIN_DEFAULT_WIDTH_PX = 1100;
-const QUERY_EDITOR_DEFAULT_HEIGHT_PX = 520;
-const QUERY_EDITOR_MIN_HEIGHT_PX = 220;
-const RESULT_PANEL_COLLAPSED_HEIGHT_PX = 44;
-const RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX = RESULT_PANEL_COLLAPSED_HEIGHT_PX;
-const RESULT_PANEL_DEFAULT_HEIGHT_PX = 320;
-const SIDEBAR_TOGGLE_TRANSITION_MS = 160;
-const QUERY_EXECUTION_TIMEOUT_MS = 10_000;
-const EXPORT_TASK_POLL_INTERVAL_MS = 2_000;
-const EXPORT_MAX_ROWS = 100_000;
-const PINNED_RESULT_LIMIT = 5;
-const FALLBACK_SQL_KEYWORDS = [
-    'SELECT',
-    'FROM',
-    'WHERE',
-    'JOIN',
-    'LEFT JOIN',
-    'RIGHT JOIN',
-    'INNER JOIN',
-    'GROUP BY',
-    'ORDER BY',
-    'HAVING',
-    'LIMIT',
-    'INSERT',
-    'UPDATE',
-    'DELETE',
-    'CREATE',
-    'ALTER',
-    'DROP',
-    'COUNT',
-    'SUM',
-    'AVG',
-    'MIN',
-    'MAX',
-    'DISTINCT',
-    'AS',
-    'AND',
-    'OR',
-    'NOT',
-    'IN',
-    'EXISTS',
-    'CASE',
-    'WHEN',
-    'THEN',
-    'ELSE',
-    'END',
-];
 
 type MonacoEditorInstance = Monaco.editor.IStandaloneCodeEditor;
 
@@ -152,493 +142,6 @@ type SavedQueryResult = {
     result: QueryResult;
 };
 
-const SQL_ALIAS_RESERVED_WORDS = new Set([
-    'WHERE',
-    'ON',
-    'GROUP',
-    'ORDER',
-    'LEFT',
-    'RIGHT',
-    'INNER',
-    'OUTER',
-    'JOIN',
-    'SELECT',
-    'LIMIT',
-    'HAVING',
-    'AND',
-    'OR',
-    'AS',
-    'UNION',
-    'BY',
-]);
-
-function registerEditorThemes(monaco: typeof Monaco) {
-    monaco.editor.defineTheme('warm-parchment', {
-        base: 'vs',
-        inherit: true,
-        rules: [
-            { token: '', foreground: '3D3A36' },
-            { token: 'comment', foreground: 'A09A90', fontStyle: 'italic' },
-            { token: 'keyword', foreground: 'B85C3A' },
-            { token: 'string', foreground: '6B8E5A' },
-            { token: 'number', foreground: 'B07D48' },
-            { token: 'operator', foreground: '5B5B58' },
-            { token: 'identifier', foreground: '3D3A36' },
-            { token: 'type', foreground: '7A6B5D' },
-            { token: 'delimiter', foreground: '8A8A86' },
-            { token: 'predefined', foreground: 'B85C3A' },
-        ],
-        colors: {
-            'editor.background': '#F8F7F4',
-            'editor.foreground': '#3D3A36',
-            'editor.lineHighlightBackground': '#F0EDE6',
-            'editor.selectionBackground': '#E3D9CC',
-            'editor.inactiveSelectionBackground': '#EDE8E0',
-            'editorCursor.foreground': '#D97757',
-            'editorLineNumber.foreground': '#C5C0B8',
-            'editorLineNumber.activeForeground': '#8A8A86',
-            'editorIndentGuide.background': '#E8E4DC',
-            'editorIndentGuide.activeBackground': '#D5D0C8',
-            'editor.selectionHighlightBackground': '#E8DFD4',
-            'editorBracketMatch.background': '#E8DFD4',
-            'editorBracketMatch.border': '#C4A882',
-            'editorGutter.background': '#F8F7F4',
-            'editorWidget.background': '#F3F1EC',
-            'editorWidget.border': '#E3DED5',
-            'editorWidget.foreground': '#3D3A36',
-            'editorSuggestWidget.background': '#F8F7F4',
-            'editorSuggestWidget.border': '#E3DED5',
-            'editorSuggestWidget.selectedBackground': '#EFECE6',
-            'editorSuggestWidget.foreground': '#544C45',
-            'editorSuggestWidget.selectedForeground': '#4B433C',
-            'editorSuggestWidget.highlightForeground': '#82331A',
-            'editorSuggestWidget.focusHighlightForeground': '#7A2E17',
-            'editorSuggestWidget.selectedIconForeground': '#A66A47',
-            'list.highlightForeground': '#93401F',
-            'list.focusHighlightForeground': '#7A2E17',
-            'list.focusForeground': '#2F2B27',
-            'list.focusBackground': '#E9E2D7',
-            'list.hoverForeground': '#3D3A36',
-            'list.hoverBackground': '#F1ECE3',
-        },
-    });
-}
-
-function getCurrentStatement(fullText: string, cursorOffset: number) {
-    const safeOffset = Math.max(0, Math.min(cursorOffset, fullText.length));
-    const statementStart = fullText.lastIndexOf(';', Math.max(0, safeOffset - 1)) + 1;
-    const nextSemicolonIndex = fullText.indexOf(';', safeOffset);
-    const statementEnd = nextSemicolonIndex === -1 ? fullText.length : nextSemicolonIndex;
-
-    return {
-        text: fullText.slice(statementStart, statementEnd),
-        textBeforeCursor: fullText.slice(statementStart, safeOffset),
-        textAfterCursor: fullText.slice(safeOffset, statementEnd),
-    };
-}
-
-function upsertExportTask(currentTasks: QueryExportTask[], nextTask: QueryExportTask) {
-    const remainingTasks = currentTasks.filter((task) => task.taskId !== nextTask.taskId);
-    return [nextTask, ...remainingTasks].sort((left, right) =>
-        new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
-    );
-}
-
-function getExportTaskStatusMeta(status: QueryExportTaskStatus) {
-    switch (status) {
-        case 'PENDING':
-            return { label: '排队中', toneClass: 'is-pending' };
-        case 'RUNNING':
-            return { label: '导出中', toneClass: 'is-running' };
-        case 'SUCCESS':
-            return { label: '已完成', toneClass: 'is-success' };
-        case 'FAILED':
-            return { label: '失败', toneClass: 'is-error' };
-        default:
-            return { label: status, toneClass: 'is-pending' };
-    }
-}
-
-function formatTaskTimestamp(timestamp: string) {
-    try {
-        return new Intl.DateTimeFormat('zh-CN', {
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-        }).format(new Date(timestamp));
-    } catch {
-        return timestamp;
-    }
-}
-
-function formatResultTabLabel(tabNumber: number) {
-    return `结果 ${tabNumber}`;
-}
-
-function buildQueryFeedback({
-    result,
-    queryError,
-    loadingQuery,
-    queryLoadingVisible,
-}: {
-    result: QueryResult | null;
-    queryError: string;
-    loadingQuery: boolean;
-    queryLoadingVisible: boolean;
-}) {
-    const executionTimeSuffix = result && typeof result.executionTimeMs === 'number'
-        ? ` • ${result.executionTimeMs}ms`
-        : '';
-
-    if (loadingQuery && !queryError && !result && queryLoadingVisible) {
-        return {
-            state: 'running' as QueryFeedbackState,
-            toneClass: 'is-running',
-            label: '运行中',
-            summary: '',
-            title: '查询正在执行',
-            description: '',
-        };
-    }
-
-    if (queryError) {
-        const isTimeoutError =
-            queryError.includes('超时') ||
-            queryError.toLowerCase().includes('timeout');
-
-        return {
-            state: isTimeoutError ? 'timeout' as QueryFeedbackState : 'error' as QueryFeedbackState,
-            toneClass: 'is-error',
-            label: isTimeoutError ? '执行超时' : '错误输出',
-            summary: isTimeoutError ? `请求超过 ${QUERY_EXECUTION_TIMEOUT_MS / 1000} 秒未完成` : '执行失败',
-            title: isTimeoutError ? '查询执行超时' : '查询执行失败',
-            description: queryError,
-        };
-    }
-
-    if (!result) {
-        return {
-            state: 'idle' as QueryFeedbackState,
-            toneClass: 'is-idle',
-            label: '结果输出',
-            summary: '',
-            title: '等待执行 SQL',
-            description: '运行 SQL 后，这里会展示结果集、执行信息、错误明细和导出操作。',
-        };
-    }
-
-    if (result.columns.length > 0 && result.rows.length === 0) {
-        return {
-            state: 'empty' as QueryFeedbackState,
-            toneClass: 'is-ready',
-            label: '空结果',
-            summary: `0 条记录${executionTimeSuffix}`,
-            title: '查询执行成功，但没有返回记录',
-            description: '可以继续补充筛选条件，或检查当前数据库和查询条件是否正确。',
-        };
-    }
-
-    if (result.columns.length > 0) {
-        const truncatedSuffix = result.truncated ? '（已截断）' : '';
-        const truncatedDescription = result.truncated
-            ? `当前仅展示前 ${result.rowLimit} 行结果。若需缩小范围，请在 SQL 中显式添加 LIMIT。`
-            : null;
-        return {
-            state: 'success' as QueryFeedbackState,
-            toneClass: 'is-ready',
-            label: '结果集',
-            summary: `${result.rows.length} 条记录${truncatedSuffix}${executionTimeSuffix}`,
-            title: '查询执行成功',
-            description: truncatedDescription
-                ?? (result.message && result.message !== 'Success' ? result.message : '结果集已返回，可继续查看、筛选或导出。'),
-        };
-    }
-
-    return {
-        state: 'message' as QueryFeedbackState,
-        toneClass: 'is-ready',
-        label: '执行信息',
-        summary: `已返回执行信息${executionTimeSuffix}`,
-        title: 'SQL 已执行',
-        description: result.message && result.message !== 'Success'
-            ? result.message
-            : '本次执行没有返回表格结果。',
-    };
-}
-
-function parseSqlSourceTables(statement: string) {
-    const fromMatch = /\bFROM\b/i.exec(statement);
-    if (!fromMatch) {
-        return [];
-    }
-
-    const fromClause = statement.slice(fromMatch.index);
-    const sourceTables: SqlSourceTable[] = [];
-    const sourceKeys = new Set<string>();
-    const sourceRegex = /(?:\bFROM\b|\bJOIN\b|,)\s+(?:([a-zA-Z0-9_]+)\.)?([a-zA-Z0-9_]+)(?:\s+(?:AS\s+)?([a-zA-Z0-9_]+))?/gi;
-
-    let match: RegExpExecArray | null;
-    while ((match = sourceRegex.exec(fromClause)) !== null) {
-        const databaseName = match[1];
-        const tableName = match[2];
-        const alias = match[3];
-
-        if (SQL_ALIAS_RESERVED_WORDS.has(tableName.toUpperCase())) {
-            continue;
-        }
-
-        const normalizedAlias = alias && !SQL_ALIAS_RESERVED_WORDS.has(alias.toUpperCase()) ? alias : undefined;
-        const sourceKey = `${databaseName?.toLowerCase() || ''}:${tableName.toLowerCase()}:${normalizedAlias?.toLowerCase() || ''}`;
-        if (sourceKeys.has(sourceKey)) {
-            continue;
-        }
-
-        sourceKeys.add(sourceKey);
-        sourceTables.push({
-            databaseName,
-            tableName,
-            alias: normalizedAlias,
-        });
-    }
-
-    return sourceTables;
-}
-
-function isSelectListContext(statement: string, textBeforeCursor: string) {
-    const selectMatch = /^\s*SELECT\b/i.exec(statement);
-    const fromMatch = /\bFROM\b/i.exec(statement);
-    if (!selectMatch || !fromMatch) {
-        return false;
-    }
-
-    const cursorIndex = textBeforeCursor.length;
-    return cursorIndex >= selectMatch[0].length && cursorIndex <= fromMatch.index;
-}
-
-function isExpressionClauseContext(textBeforeCursor: string) {
-    return (
-        /\b(WHERE|AND|OR|ON|HAVING)\s+([a-zA-Z0-9_]*)$/i.test(textBeforeCursor) ||
-        /\b(GROUP\s+BY|ORDER\s+BY)\s+([a-zA-Z0-9_]*)$/i.test(textBeforeCursor)
-    );
-}
-
-function mergeDatabaseOptions(databases: string[], fallbackDatabase?: string) {
-    const merged: string[] = [];
-
-    const pushUnique = (database?: string) => {
-        const normalized = database?.trim();
-        if (!normalized) return;
-        if (merged.some(item => item.toLowerCase() === normalized.toLowerCase())) return;
-        merged.push(normalized);
-    };
-
-    pushUnique(fallbackDatabase);
-    databases.forEach(pushUnique);
-
-    return merged;
-}
-
-function clampSidebarWidth(width: number) {
-    if (!Number.isFinite(width)) {
-        return SIDEBAR_DEFAULT_WIDTH_PX;
-    }
-
-    return Math.min(SIDEBAR_MAX_WIDTH_PX, Math.max(SIDEBAR_MIN_WIDTH_PX, Math.round(width)));
-}
-
-function parseStoredSidebarWidth(rawWidth: unknown) {
-    const width = Number(rawWidth);
-    if (!Number.isFinite(width) || width <= 0) {
-        return null;
-    }
-
-    return clampSidebarWidth(width);
-}
-
-function parseStoredPositiveNumber(rawValue: unknown) {
-    const value = Number(rawValue);
-    if (!Number.isFinite(value) || value <= 0) {
-        return null;
-    }
-
-    return Math.round(value);
-}
-
-function getStoredDefaultDataSourceId() {
-    try {
-        return localStorage.getItem(DEFAULT_DATASOURCE_STORAGE_KEY) ?? '';
-    } catch {
-        return '';
-    }
-}
-
-function getStoredLastDataSourceId() {
-    try {
-        return localStorage.getItem(LAST_DATASOURCE_STORAGE_KEY) ?? '';
-    } catch {
-        return '';
-    }
-}
-
-function getStoredLastDatabaseByDataSource() {
-    try {
-        const rawValue = localStorage.getItem(LAST_DATABASE_BY_DATASOURCE_STORAGE_KEY);
-        if (!rawValue) {
-            return {};
-        }
-
-        const parsed = JSON.parse(rawValue);
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-            return {};
-        }
-
-        return Object.entries(parsed).reduce<Record<string, string>>((acc, [key, value]) => {
-            if (typeof value === 'string' && value.trim()) {
-                acc[key] = value;
-            }
-            return acc;
-        }, {});
-    } catch {
-        return {};
-    }
-}
-
-function shouldPreferDefaultDataSourceOnMount() {
-    if (typeof window === 'undefined') {
-        return false;
-    }
-
-    const navigationEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-    if (navigationEntry?.type) {
-        return navigationEntry.type === 'reload';
-    }
-
-    // Fallback for older browsers.
-    return performance.navigation?.type === performance.navigation.TYPE_RELOAD;
-}
-
-function getStoredSidebarCollapsed() {
-    try {
-        const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
-        return saved !== 'false'; // 默认隐藏，除非明确保存为 'false'
-    } catch {
-        return true;
-    }
-}
-
-function getStoredSidebarExpandedWidth() {
-    try {
-        const savedWidth = localStorage.getItem(SIDEBAR_EXPANDED_WIDTH_STORAGE_KEY);
-        if (savedWidth) {
-            const parsedWidth = parseStoredSidebarWidth(savedWidth);
-            if (parsedWidth !== null) {
-                return parsedWidth;
-            }
-        }
-
-        const legacySizes = localStorage.getItem(LEGACY_SIDEBAR_SIZE_STORAGE_KEY);
-        if (legacySizes) {
-            const parsed = JSON.parse(legacySizes);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-                const parsedWidth = parseStoredSidebarWidth(parsed[0]);
-                if (parsedWidth !== null) {
-                    return parsedWidth;
-                }
-            }
-        }
-    } catch {
-        // Ignore storage access failures and fall back to defaults.
-    }
-
-    return SIDEBAR_DEFAULT_WIDTH_PX;
-}
-
-function getStoredResultCollapsed() {
-    try {
-        const saved = localStorage.getItem(RESULT_PANEL_COLLAPSED_STORAGE_KEY);
-        return saved !== 'false';
-    } catch {
-        return true;
-    }
-}
-
-function getStoredResultAutoOpen() {
-    try {
-        const saved = localStorage.getItem(RESULT_PANEL_AUTO_OPEN_STORAGE_KEY);
-        return saved !== 'false';
-    } catch {
-        return true;
-    }
-}
-
-function getStoredResultExpandedHeight() {
-    try {
-        const savedHeight = localStorage.getItem(RESULT_PANEL_EXPANDED_HEIGHT_STORAGE_KEY);
-        if (savedHeight) {
-            const parsedHeight = parseStoredPositiveNumber(savedHeight);
-            if (parsedHeight !== null) {
-                return Math.max(RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX, parsedHeight);
-            }
-        }
-
-        const legacySizes = localStorage.getItem(LEGACY_EDITOR_SIZE_STORAGE_KEY);
-        if (legacySizes) {
-            const parsed = JSON.parse(legacySizes);
-            if (Array.isArray(parsed) && parsed.length === 2) {
-                const legacyHeight = Number(parsed[1]);
-                if (Number.isFinite(legacyHeight) && legacyHeight >= RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX) {
-                    return Math.round(legacyHeight);
-                }
-            }
-        }
-    } catch {
-        // Ignore storage access failures and fall back to defaults.
-    }
-
-    return RESULT_PANEL_DEFAULT_HEIGHT_PX;
-}
-
-function getHorizontalSizes(sidebarCollapsed: boolean, sidebarExpandedWidth: number, totalWidth?: number) {
-    const resolvedTotalWidth = Number.isFinite(totalWidth) && totalWidth && totalWidth > 0
-        ? totalWidth
-        : QUERY_MAIN_DEFAULT_WIDTH_PX;
-
-    if (sidebarCollapsed) {
-        return [0, resolvedTotalWidth];
-    }
-
-    const maxSidebarWidth = Math.max(0, resolvedTotalWidth - QUERY_MAIN_MIN_WIDTH_PX);
-    const nextSidebarWidth = Math.min(clampSidebarWidth(sidebarExpandedWidth), maxSidebarWidth);
-    const nextMainWidth = Math.max(QUERY_MAIN_MIN_WIDTH_PX, resolvedTotalWidth - nextSidebarWidth);
-
-    return [nextSidebarWidth, nextMainWidth];
-}
-
-function getVerticalSizes(resultCollapsed: boolean, resultExpandedHeight: number, totalHeight?: number) {
-    const resolvedTotalHeight = Number.isFinite(totalHeight) && totalHeight && totalHeight > 0
-        ? totalHeight
-        : QUERY_EDITOR_DEFAULT_HEIGHT_PX + RESULT_PANEL_DEFAULT_HEIGHT_PX;
-
-    if (resultCollapsed) {
-        return [
-            Math.max(0, resolvedTotalHeight - RESULT_PANEL_COLLAPSED_HEIGHT_PX),
-            RESULT_PANEL_COLLAPSED_HEIGHT_PX,
-        ];
-    }
-
-    const maxResultHeight = Math.max(
-        RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX,
-        resolvedTotalHeight - QUERY_EDITOR_MIN_HEIGHT_PX,
-    );
-    const nextResultHeight = Math.min(
-        Math.max(RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX, Math.round(resultExpandedHeight)),
-        maxResultHeight,
-    );
-    const nextEditorHeight = Math.max(QUERY_EDITOR_MIN_HEIGHT_PX, resolvedTotalHeight - nextResultHeight);
-
-    return [nextEditorHeight, nextResultHeight];
-}
 
 export default function Query() {
     useKeyboardFocusMode();
@@ -675,10 +178,15 @@ export default function Query() {
     const [columnCache, setColumnCache] = useState<Map<string, ColumnMetadata[]>>(new Map());
     const [loadingColumns, setLoadingColumns] = useState<Set<string>>(new Set());
     const [dialectMetadata, setDialectMetadata] = useState<DialectMetadata | null>(null);
-    const [loadingQuery, setLoadingQuery] = useState(false);
-    const [sql, setSql] = useState('');
-    const [result, setResult] = useState<QueryResult | null>(null);
-    const [queryError, setQueryError] = useState<string>('');
+    // SQL editor state
+    const {
+        sql,
+        result,
+        queryError,
+        loadingQuery,
+        setSql,
+        executeQuery: executeQueryFromHook,
+    } = useQueryEditor();
     const [showExportMenu, setShowExportMenu] = useState(false);
     const [showExportTasksMenu, setShowExportTasksMenu] = useState(false);
     const [exportState, setExportState] = useState<ExportState>({ status: 'idle' });
@@ -713,16 +221,14 @@ export default function Query() {
     const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
     const horizontalSplitterRef = useRef<AllotmentHandle | null>(null);
     const verticalSplitterRef = useRef<AllotmentHandle | null>(null);
-    const sidebarTransitionTimerRef = useRef<number | null>(null);
-    const resultTransitionTimerRef = useRef<number | null>(null);
-    const exportStateTimerRef = useRef<number | null>(null);
     const horizontalLayoutSizesRef = useRef<number[] | null>(null);
-    const querySplitterRef = useRef<HTMLDivElement | null>(null);
     const verticalLayoutSizesRef = useRef<number[] | null>(null);
+    const querySplitterRef = useRef<HTMLDivElement | null>(null);
     const queryContentRef = useRef<HTMLDivElement | null>(null);
+    const exportStateTimerRef = useRef<number | null>(null);
     const resultTabSequenceRef = useRef(1);
-    const [tableScrollElement, setTableScrollElement] = useState<HTMLDivElement | null>(null);
     const TABLE_PAGE_SIZE = 200;
+    const [tableScrollElement, setTableScrollElement] = useState<HTMLDivElement | null>(null);
     const preferDefaultDataSourceOnMountRef = useRef(shouldPreferDefaultDataSourceOnMount());
     const preferredStoredDataSourceId = useMemo(() => {
         return preferDefaultDataSourceOnMountRef.current
@@ -774,22 +280,24 @@ export default function Query() {
         const fallback = dataSources.find(ds => String(ds.id) === dataSourceId) || null;
         setSelectedDs(fallback);
     }, [dataSources]);
+    // Layout state management
+    const layout = useLayoutPersistence();
+    const {
+        sidebarCollapsed,
+        sidebarExpandedWidth,
+        sidebarTransitioning,
+        resultCollapsed,
+        resultExpandedHeight,
+        resultAutoOpen,
+        resultTransitioning,
+        toggleSidebar,
+        toggleResultPanel,
+        setResultPanelState,
+    } = layout;
+    const initialHorizontalSizes = useMemo(() => getHorizontalSizes(sidebarCollapsed, sidebarExpandedWidth), [sidebarCollapsed, sidebarExpandedWidth]);
+    const initialVerticalSizes = useMemo(() => getVerticalSizes(resultCollapsed, resultExpandedHeight), [resultCollapsed, resultExpandedHeight]);
+    const { setResultExpandedHeight } = layout;
 
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(getStoredSidebarCollapsed);
-    const [sidebarExpandedWidth, setSidebarExpandedWidth] = useState(getStoredSidebarExpandedWidth);
-    const [sidebarTransitioning, setSidebarTransitioning] = useState(false);
-    const [resultCollapsed, setResultCollapsed] = useState(getStoredResultCollapsed);
-    const [resultExpandedHeight, setResultExpandedHeight] = useState(getStoredResultExpandedHeight);
-    const [resultAutoOpen, setResultAutoOpen] = useState(getStoredResultAutoOpen);
-    const [resultTransitioning, setResultTransitioning] = useState(false);
-
-    const initialHorizontalSizes = useMemo(() => {
-        return getHorizontalSizes(sidebarCollapsed, sidebarExpandedWidth);
-    }, [sidebarCollapsed, sidebarExpandedWidth]);
-
-    const initialVerticalSizes = useMemo(() => {
-        return getVerticalSizes(resultCollapsed, resultExpandedHeight);
-    }, [resultCollapsed, resultExpandedHeight]);
 
     const virtualizer = useVirtualizer({
         count: tables.length,
@@ -804,47 +312,6 @@ export default function Query() {
         setTableScrollElement(node);
     }, []);
 
-    const persistSidebarCollapsed = useCallback((collapsed: boolean) => {
-        try {
-            localStorage.setItem(SIDEBAR_STORAGE_KEY, String(collapsed));
-        } catch {
-            // Ignore storage access failures and keep the in-memory state.
-        }
-    }, []);
-
-    const persistSidebarExpandedWidth = useCallback((width: number) => {
-        try {
-            localStorage.setItem(SIDEBAR_EXPANDED_WIDTH_STORAGE_KEY, String(width));
-            localStorage.removeItem(LEGACY_SIDEBAR_SIZE_STORAGE_KEY);
-        } catch {
-            // Ignore storage access failures and keep the in-memory state.
-        }
-    }, []);
-
-    const persistResultCollapsed = useCallback((collapsed: boolean) => {
-        try {
-            localStorage.setItem(RESULT_PANEL_COLLAPSED_STORAGE_KEY, String(collapsed));
-        } catch {
-            // Ignore storage access failures and keep the in-memory state.
-        }
-    }, []);
-
-    const persistResultExpandedHeight = useCallback((height: number) => {
-        try {
-            localStorage.setItem(RESULT_PANEL_EXPANDED_HEIGHT_STORAGE_KEY, String(height));
-            localStorage.removeItem(LEGACY_EDITOR_SIZE_STORAGE_KEY);
-        } catch {
-            // Ignore storage access failures and keep the in-memory state.
-        }
-    }, []);
-
-    const persistResultAutoOpen = useCallback((autoOpen: boolean) => {
-        try {
-            localStorage.setItem(RESULT_PANEL_AUTO_OPEN_STORAGE_KEY, String(autoOpen));
-        } catch {
-            // Ignore storage access failures and keep the in-memory state.
-        }
-    }, []);
 
     const persistDefaultDataSourceId = useCallback((dataSourceId: string) => {
         try {
@@ -881,55 +348,6 @@ export default function Query() {
             // Ignore storage access failures and keep the in-memory state.
         }
     }, []);
-
-    const startSidebarTransition = useCallback(() => {
-        if (sidebarTransitionTimerRef.current !== null) {
-            window.clearTimeout(sidebarTransitionTimerRef.current);
-        }
-
-        setSidebarTransitioning(true);
-        sidebarTransitionTimerRef.current = window.setTimeout(() => {
-            setSidebarTransitioning(false);
-            sidebarTransitionTimerRef.current = null;
-        }, SIDEBAR_TOGGLE_TRANSITION_MS + 40);
-    }, []);
-
-    const toggleSidebar = useCallback(() => {
-        startSidebarTransition();
-        setSidebarCollapsed(prev => {
-            const next = !prev;
-            persistSidebarCollapsed(next);
-            return next;
-        });
-    }, [persistSidebarCollapsed, startSidebarTransition]);
-
-    const setResultPanelState = useCallback((collapsed: boolean, { manual = false }: { manual?: boolean } = {}) => {
-        setResultCollapsed(current => current === collapsed ? current : collapsed);
-        persistResultCollapsed(collapsed);
-
-        if (manual) {
-            const nextAutoOpen = !collapsed;
-            setResultAutoOpen(nextAutoOpen);
-            persistResultAutoOpen(nextAutoOpen);
-        }
-    }, [persistResultAutoOpen, persistResultCollapsed]);
-
-    const startResultTransition = useCallback(() => {
-        if (resultTransitionTimerRef.current !== null) {
-            window.clearTimeout(resultTransitionTimerRef.current);
-        }
-
-        setResultTransitioning(true);
-        resultTransitionTimerRef.current = window.setTimeout(() => {
-            setResultTransitioning(false);
-            resultTransitionTimerRef.current = null;
-        }, SIDEBAR_TOGGLE_TRANSITION_MS + 40);
-    }, []);
-
-    const toggleResultPanel = useCallback(() => {
-        startResultTransition();
-        setResultPanelState(!resultCollapsed, { manual: true });
-    }, [resultCollapsed, setResultPanelState, startResultTransition]);
 
     const showExportFeedback = useCallback((nextState: ExportState) => {
         if (exportStateTimerRef.current !== null) {
@@ -1033,22 +451,9 @@ export default function Query() {
         verticalSplitterRef.current?.resize(nextSizes);
     }, [getCurrentVerticalTotalHeight, resultCollapsed, resultExpandedHeight]);
 
-    useEffect(() => {
-        persistSidebarExpandedWidth(sidebarExpandedWidth);
-    }, [persistSidebarExpandedWidth, sidebarExpandedWidth]);
-
-    useEffect(() => {
-        persistResultExpandedHeight(resultExpandedHeight);
-    }, [persistResultExpandedHeight, resultExpandedHeight]);
 
     useEffect(() => {
         return () => {
-            if (sidebarTransitionTimerRef.current !== null) {
-                window.clearTimeout(sidebarTransitionTimerRef.current);
-            }
-            if (resultTransitionTimerRef.current !== null) {
-                window.clearTimeout(resultTransitionTimerRef.current);
-            }
             if (exportStateTimerRef.current !== null) {
                 window.clearTimeout(exportStateTimerRef.current);
             }
@@ -1071,21 +476,10 @@ export default function Query() {
         return () => window.clearInterval(timer);
     }, [activeExportTaskCount, loadExportTasks]);
 
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
-                e.preventDefault();
-                toggleSidebar();
-                return;
-            }
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
-                e.preventDefault();
-                toggleResultPanel();
-            }
-        };
-        document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [toggleResultPanel, toggleSidebar]);
+useKeyboardShortcuts({
+    onToggleSidebar: toggleSidebar,
+    onToggleResultPanel: toggleResultPanel,
+});
 
     useEffect(() => {
         activeDsIdRef.current = selectedDsId;
