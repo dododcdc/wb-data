@@ -3,6 +3,7 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/source-serif-4";
+@import "./styles/animations.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -208,6 +209,14 @@
   /* ── Typography ── */
   --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   --font-serif: 'Source Serif 4 Variable', Georgia, 'Times New Roman', serif;
+
+  /* ── Font Sizes ── */
+  --text-xs: 0.72rem;
+  --text-sm: 0.82rem;
+  --text-md: 0.92rem;
+  --text-lg: 1rem;
+  --text-xl: 1.1rem;
+  --text-2xl: 1.35rem;
 
   /* ── Spacing ── */
   --space-1: 4px;
