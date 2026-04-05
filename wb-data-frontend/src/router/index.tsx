@@ -18,6 +18,8 @@ import {
     loadQueryModule,
     loadUnauthorizedModule,
     loadUserListModule,
+    loadGroupListModule,
+    loadGroupSettingsModule,
 } from './routeModules';
 
 const Login = lazy(loadLoginModule);
@@ -25,6 +27,8 @@ const Dashboard = lazy(loadDashboardModule);
 const DataSourceList = lazy(loadDataSourceListModule);
 const Query = lazy(loadQueryModule);
 const UserList = lazy(loadUserListModule);
+const GroupList = lazy(loadGroupListModule);
+const GroupSettings = lazy(loadGroupSettingsModule);
 const NotFound = lazy(loadNotFoundModule);
 const NoGroupState = lazy(loadNoGroupStateModule);
 const Unauthorized = lazy(loadUnauthorizedModule);
@@ -147,6 +151,16 @@ const router = createBrowserRouter([
                                     },
                                 ],
                             },
+                            {
+                                path: 'group-settings',
+                                element: <RequirePermission required="member.read" />,
+                                children: [
+                                    {
+                                        index: true,
+                                        element: withRouteSuspense(<GroupSettings />),
+                                    },
+                                ],
+                            },
                         ],
                     },
                     {
@@ -156,6 +170,16 @@ const router = createBrowserRouter([
                             {
                                 index: true,
                                 element: withRouteSuspense(<UserList />),
+                            },
+                        ],
+                    },
+                    {
+                        path: 'groups',
+                        element: <RequireSystemAdmin />,
+                        children: [
+                            {
+                                index: true,
+                                element: withRouteSuspense(<GroupList />),
                             },
                         ],
                     },

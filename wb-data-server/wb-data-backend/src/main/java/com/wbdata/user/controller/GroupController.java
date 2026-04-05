@@ -1,50 +1,87 @@
 package com.wbdata.user.controller;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.wbdata.auth.dto.CurrentUserResponse;
 import com.wbdata.auth.service.AuthTokenService;
 import com.wbdata.common.Result;
-import com.wbdata.group.entity.WbProjectGroup;
-import com.wbdata.group.mapper.WbProjectGroupMapper;
+import com.wbdata.group.dto.CreateGroupRequest;
+import com.wbdata.group.dto.GroupDetailResponse;
+import com.wbdata.group.service.GroupService;
 import com.wbdata.user.dto.GroupSimpleResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
-@Tag(name = "项目组", description = "项目组查询（SYSTEM_ADMIN 专属）")
+@Tag(name = "项目组", description = "项目组管理（SYSTEM_ADMIN 专属）")
 @RestController
 @RequestMapping("/api/v1/groups")
 @RequiredArgsConstructor
 public class GroupController {
 
-    private final WbProjectGroupMapper groupMapper;
+    private final GroupService groupService;
     private final AuthTokenService authTokenService;
 
-    @Operation(summary = "所有项目组列表")
+    @Operation(summary = "项目组列表（不传 page/size 返回全量简单列表，传则返回分页详情列表）")
     @GetMapping
-    public Result<List<GroupSimpleResponse>> listAll(
-            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
+    public Result<?> list(
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String keyword) {
         requireSystemAdmin(authorization);
-        List<WbProjectGroup> groups = groupMapper.selectList(null);
-        List<GroupSimpleResponse> result = groups.stream()
-                .map(GroupSimpleResponse::from)
-                .collect(Collectors.toList());
+
+        if (page == null && size == null) {
+            List<GroupSimpleResponse> all = groupService.listAll();
+            return Result.success(all);
+        }
+
+        int p = page != null ? page : 1;
+        int s = size != null ? size : 10;
+        IPage<GroupDetailResponse> result = groupService.listGroups(p, s, keyword);
         return Result.success(result);
     }
 
-    private void requireSystemAdmin(String authorization) {
+    @Operation(summary = "创建项目组")
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public Result<GroupDetailResponse> create(
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+            @Validated @RequestBody CreateGroupRequest request) {
+        CurrentUserResponse operator = requireSystemAdmin(authorization);
+        return Result.success(groupService.createGroup(request, operator.id()));
+    }
+
+    @Operation(summary = "删除项目组")
+    @DeleteMapping("/{id}")
+    public Result<Void> delete(
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+            @PathVariable Long id) {
+        requireSystemAdmin(authorization);
+        groupService.deleteGroup(id);
+        return Result.success(null);
+    }
+
+    private CurrentUserResponse requireSystemAdmin(String authorization) {
         CurrentUserResponse user = authTokenService.getCurrentUser(authorization);
         if (!"SYSTEM_ADMIN".equals(user.systemRole())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "需要系统管理员权限");
         }
+        return user;
     }
 }

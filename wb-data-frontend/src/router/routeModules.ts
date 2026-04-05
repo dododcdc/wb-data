@@ -3,6 +3,8 @@ export const loadDashboardModule = () => import('../views/Dashboard');
 export const loadDataSourceListModule = () => import('../views/DataSourceList');
 export const loadQueryModule = () => import('../views/Query');
 export const loadUserListModule = () => import('../views/UserList');
+export const loadGroupListModule = () => import('../views/GroupList');
+export const loadGroupSettingsModule = () => import('../views/group-settings/GroupSettingsPage');
 export const loadNotFoundModule = () => import('../views/NotFound');
 export const loadNoGroupStateModule = () => import('../views/NoGroupState');
 export const loadUnauthorizedModule = () => import('../views/Unauthorized');

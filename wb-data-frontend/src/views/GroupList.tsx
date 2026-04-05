@@ -6,7 +6,7 @@ import {
     ChevronsLeft,
     ChevronsRight,
     Search,
-    UserPlus,
+    FolderPlus,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useOperationFeedback } from '../hooks/useOperationFeedback';
@@ -21,22 +21,20 @@ import {
 import { SimpleSelect } from '../components/SimpleSelect';
 import { useDelayedBusy } from '../hooks/useDelayedBusy';
 import {
-    changeUserStatus,
-    getUserPage,
-    UserRecord,
-} from '../api/user';
-import type { PageResult } from '../api/datasource';
-import UserForm, { UserFormSuccessDetails } from './users/UserForm';
-import ResetPasswordDialog from './users/ResetPasswordDialog';
-import { UserTable } from './users/UserTable';
+    deleteGroup,
+    getGroupPage,
+    GroupDetail,
+} from '../api/group';
+import GroupForm from './groups/GroupForm';
+import { GroupTable } from './groups/GroupTable';
 import {
-    buildUserPageQueryKey,
+    buildGroupPageQueryKey,
     DEFAULT_PAGE_SIZE,
     PAGE_SIZE_OPTIONS,
     parsePageParam,
     parsePageSizeParam,
-} from './users/config';
-import './UserList.css';
+} from './groups/config';
+import './GroupList.css';
 
 function buildNextSearchParams(currentSearchParams: URLSearchParams, mutate: (next: URLSearchParams) => void) {
     const next = new URLSearchParams(currentSearchParams);
@@ -49,19 +47,7 @@ function buildNextSearchParams(currentSearchParams: URLSearchParams, mutate: (ne
     return next;
 }
 
-function patchCachedUserPages(
-    queryClient: ReturnType<typeof useQueryClient>,
-    updater: (page: PageResult<UserRecord>) => PageResult<UserRecord>,
-) {
-    queryClient.setQueriesData<PageResult<UserRecord>>({ queryKey: ['users'] }, (current) => {
-        if (!current) {
-            return current;
-        }
-        return updater(current);
-    });
-}
-
-export default function UserList() {
+export default function GroupList() {
     const queryClient = useQueryClient();
     const { showFeedback } = useOperationFeedback();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -69,10 +55,8 @@ export default function UserList() {
     const [isComposing, setIsComposing] = useState(false);
     const [suppressPaginationHover, setSuppressPaginationHover] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
-    const [resetPasswordUser, setResetPasswordUser] = useState<UserRecord | null>(null);
-    const [pendingStatusId, setPendingStatusId] = useState<number | null>(null);
-    const [pendingDisableTarget, setPendingDisableTarget] = useState<UserRecord | null>(null);
+    const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+    const [pendingDeleteTarget, setPendingDeleteTarget] = useState<GroupDetail | null>(null);
 
     const currentPage = parsePageParam(searchParams.get('page'));
     const pageSize = parsePageSizeParam(searchParams.get('size'));
@@ -126,8 +110,8 @@ export default function UserList() {
     }, [suppressPaginationHover]);
 
     const pageQuery = useQuery({
-        queryKey: buildUserPageQueryKey({ currentPage, pageSize, keyword }),
-        queryFn: () => getUserPage({ page: currentPage, size: pageSize, keyword: keyword || undefined }),
+        queryKey: buildGroupPageQueryKey({ currentPage, pageSize, keyword }),
+        queryFn: () => getGroupPage({ page: currentPage, size: pageSize, keyword: keyword || undefined }),
         placeholderData: (previousData) => previousData,
     });
 
@@ -147,45 +131,32 @@ export default function UserList() {
         }
     }, [currentPage, pageData, searchParams, setSearchParams]);
 
-    const toggleStatusMutation = useMutation({
-        mutationFn: ({ id, status }: { id: number; status: string }) => changeUserStatus(id, { status }),
-        onMutate: async ({ id, status }) => {
-            setPendingStatusId(id);
-            await queryClient.cancelQueries({ queryKey: ['users'] });
-
-            patchCachedUserPages(queryClient, (current) => ({
-                ...current,
-                records: current.records.map((record) => (record.id === id ? { ...record, status } : record)),
-            }));
-
-            return {
-                previousPages: queryClient.getQueriesData<PageResult<UserRecord>>({ queryKey: ['users'] }),
-            };
+    const deleteMutation = useMutation({
+        mutationFn: (id: number) => deleteGroup(id),
+        onMutate: (id) => {
+            setPendingDeleteId(id);
         },
-        onSuccess: (_response, variables) => {
+        onSuccess: () => {
             showFeedback({
                 tone: 'success',
-                title: variables.status === 'ACTIVE' ? '用户已启用' : '用户已禁用',
-                detail: '列表状态已即时更新，并已在后台同步最新数据。',
+                title: '项目组已删除',
+                detail: `项目组 ${pendingDeleteTarget?.name} 及其关联数据已被成功删除。`,
             });
-            void queryClient.invalidateQueries({ queryKey: ['users'] });
+            void queryClient.invalidateQueries({ queryKey: ['groups'] });
+            setPendingDeleteTarget(null);
         },
-        onError: (error, _variables, context) => {
-            context?.previousPages.forEach(([queryKey, page]) => {
-                queryClient.setQueryData(queryKey, page);
-            });
+        onError: (error) => {
             showFeedback(
                 {
                     tone: 'error',
-                    title: '状态更新失败',
-                    detail: (error as { message?: string } | null)?.message ?? '用户状态更新失败，请稍后重试。',
+                    title: '项目组删除失败',
+                    detail: (error as { message?: string } | null)?.message ?? '无法删除该项目组，请稍后重试。',
                 },
                 5000,
             );
         },
         onSettled: () => {
-            setPendingStatusId(null);
-            setPendingDisableTarget(null);
+            setPendingDeleteId(null);
         },
     });
 
@@ -212,13 +183,8 @@ export default function UserList() {
         });
     };
 
-    const handleToggleStatus = (item: UserRecord) => {
-        const nextStatus = item.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE';
-        if (nextStatus === 'DISABLED') {
-            setPendingDisableTarget(item);
-            return;
-        }
-        toggleStatusMutation.mutate({ id: item.id, status: nextStatus });
+    const handleDelete = (item: GroupDetail) => {
+        setPendingDeleteTarget(item);
     };
 
     const queryError = pageQuery.error as { message?: string } | null;
@@ -230,48 +196,29 @@ export default function UserList() {
     const pageCount = total === 0 ? 0 : pageEnd - pageStart + 1;
     const pageSizeOptions = PAGE_SIZE_OPTIONS.map((value) => ({ label: `${value} 条`, value: String(value) }));
 
-    const handleFormSuccess = (details: UserFormSuccessDetails) => {
+    const handleFormSuccess = (name: string) => {
         setIsFormOpen(false);
-        if (details.action === 'edit' && details.userId != null) {
-            patchCachedUserPages(queryClient, (current) => ({
-                ...current,
-                records: current.records.map((record) =>
-                    record.id === details.userId
-                        ? {
-                            ...record,
-                            username: details.payload.username,
-                            displayName: details.payload.displayName,
-                            systemRole: details.payload.systemRole,
-                        }
-                        : record,
-                ),
-            }));
-        }
 
         showFeedback({
             tone: 'success',
-            title: details.action === 'create' ? '用户已创建' : '用户已更新',
-            detail: details.action === 'create'
-                ? `${details.payload.username} 已创建，列表正在同步最新记录。`
-                : `${details.payload.username} 的用户信息已更新。`,
+            title: '项目组已创建',
+            detail: `${name} 已创建，列表正在同步最新记录。`,
         });
 
-        void queryClient.invalidateQueries({ queryKey: ['users'] });
-        if (details.action === 'create') {
-            patchSearchParams((params) => {
-                params.delete('page');
-            });
-        }
+        void queryClient.invalidateQueries({ queryKey: ['groups'] });
+        patchSearchParams((params) => {
+            params.delete('page');
+        });
     };
 
     return (
-        <div className="user-page">
-            <section className="user-toolbar animate-enter">
-                <div className="user-search-shell">
+        <div className="group-page">
+            <section className="group-toolbar animate-enter">
+                <div className="group-search-shell">
                     <Search size={16} />
                     <input
-                        aria-label="搜索用户"
-                        placeholder="搜索用户名、展示名"
+                        aria-label="搜索项目组"
+                        placeholder="搜索项目组名称"
                         value={keywordInput}
                         onChange={(event) => setKeywordInput(event.target.value)}
                         onCompositionStart={() => {
@@ -283,45 +230,39 @@ export default function UserList() {
                         }}
                     />
                 </div>
-                <div className="user-toolbar-actions">
+                <div className="group-toolbar-actions">
                     <button
-                        className="user-primary-btn"
+                        className="group-primary-btn"
                         onClick={() => {
-                            setEditingUser(null);
                             setIsFormOpen(true);
                         }}
                         type="button"
                     >
-                        <UserPlus size={16} />
-                        新建用户
+                        <FolderPlus size={16} />
+                        新建项目组
                     </button>
                 </div>
             </section>
 
-            <section className="user-table-panel animate-enter animate-enter-delay-1">
-                <UserTable
+            <section className="group-table-panel animate-enter animate-enter-delay-1">
+                <GroupTable
                     data={records}
                     errorMessage={errorMessage}
                     isRefreshing={isRefreshing}
-                    onEdit={(user) => {
-                        setEditingUser(user);
-                        setIsFormOpen(true);
-                    }}
-                    onToggleStatus={handleToggleStatus}
-                    onResetPassword={(user) => setResetPasswordUser(user)}
-                    statusPendingId={pendingStatusId}
+                    onDelete={handleDelete}
+                    deletePendingId={pendingDeleteId}
                 />
 
                 {total > 0 ? (
-                    <div className={`user-pagination user-pagination-admin ${suppressPaginationHover ? 'hover-locked' : ''}`}>
-                        <div className="user-page-info">本页 {pageCount} 条，共 {total} 条</div>
+                    <div className={`group-pagination group-pagination-admin ${suppressPaginationHover ? 'hover-locked' : ''}`}>
+                        <div className="group-page-info">本页 {pageCount} 条，共 {total} 条</div>
 
-                        <div className="user-pagination-controls" aria-label="用户分页导航">
-                            <div className="user-page-size-group">
-                                <span className="user-pagination-label">每页</span>
-                                <div className="user-page-size-select">
+                        <div className="group-pagination-controls" aria-label="项目组分页导航">
+                            <div className="group-page-size-group">
+                                <span className="group-pagination-label">每页</span>
+                                <div className="group-page-size-select">
                                     <SimpleSelect
-                                        id="user-page-size"
+                                        id="group-page-size"
                                         value={String(pageSize)}
                                         options={pageSizeOptions}
                                         disabled={pageQuery.isFetching}
@@ -336,13 +277,13 @@ export default function UserList() {
                                 </div>
                             </div>
 
-                            <div className="user-page-status">
+                            <div className="group-page-status">
                                 第 {currentPage} / {totalPages} 页
                             </div>
 
-                            <div className="user-page-actions">
+                            <div className="group-page-actions">
                                 <button
-                                    className="user-page-icon-btn"
+                                    className="group-page-icon-btn"
                                     type="button"
                                     aria-label="第一页"
                                     aria-disabled={prevDisabled}
@@ -352,7 +293,7 @@ export default function UserList() {
                                     <ChevronsLeft size={16} />
                                 </button>
                                 <button
-                                    className="user-page-icon-btn"
+                                    className="group-page-icon-btn"
                                     type="button"
                                     aria-label="上一页"
                                     aria-disabled={prevDisabled}
@@ -362,7 +303,7 @@ export default function UserList() {
                                     <ChevronLeft size={16} />
                                 </button>
                                 <button
-                                    className="user-page-icon-btn"
+                                    className="group-page-icon-btn"
                                     type="button"
                                     aria-label="下一页"
                                     aria-disabled={nextDisabled}
@@ -372,7 +313,7 @@ export default function UserList() {
                                     <ChevronRight size={16} />
                                 </button>
                                 <button
-                                    className="user-page-icon-btn"
+                                    className="group-page-icon-btn"
                                     type="button"
                                     aria-label="最后一页"
                                     aria-disabled={nextDisabled}
@@ -387,74 +328,55 @@ export default function UserList() {
                 ) : null}
             </section>
 
-            <UserForm
+            <GroupForm
                 open={isFormOpen}
-                editingUser={editingUser}
                 onOpenChange={(details) => setIsFormOpen(details.open)}
                 onSuccess={handleFormSuccess}
             />
 
-            <ResetPasswordDialog
-                open={Boolean(resetPasswordUser)}
-                user={resetPasswordUser}
-                onOpenChange={(details) => {
-                    if (!details.open) {
-                        setResetPasswordUser(null);
-                    }
-                }}
-                onSuccess={(details) => {
-                    setResetPasswordUser(null);
-                    showFeedback({
-                        tone: 'success',
-                        title: '密码已重置',
-                        detail: `用户 ${details.username} 的密码已更新。`,
-                    });
-                }}
-            />
-
             <Dialog
-                open={Boolean(pendingDisableTarget)}
+                open={Boolean(pendingDeleteTarget)}
                 onOpenChange={(nextOpen) => {
-                    if (!nextOpen && pendingStatusId == null) {
-                        setPendingDisableTarget(null);
+                    if (!nextOpen && pendingDeleteId == null) {
+                        setPendingDeleteTarget(null);
                     }
                 }}
             >
                 <DialogPortal>
                     <DialogOverlay className="dialog-backdrop" />
                     <DialogContent className="dialog-positioner">
-                        <div className="user-confirm-dialog">
-                            <DialogTitle className="user-confirm-title">禁用用户</DialogTitle>
-                            <DialogDescription className="user-confirm-description">
-                                {pendingDisableTarget ? (
+                        <div className="group-confirm-dialog">
+                            <DialogTitle className="group-confirm-title">删除项目组</DialogTitle>
+                            <DialogDescription className="group-confirm-description">
+                                {pendingDeleteTarget ? (
                                     <>
-                                        确定要禁用用户 <strong>{pendingDisableTarget.username}</strong> 吗？
+                                        确定要删除项目组 <strong>{pendingDeleteTarget.name}</strong> 吗？
                                         <br />
-                                        禁用后该用户将无法登录系统，但其已有数据不会被删除。
+                                        删除后不可恢复。
                                     </>
                                 ) : (
                                     ''
                                 )}
                             </DialogDescription>
-                            <div className="user-confirm-actions">
+                            <div className="group-confirm-actions">
                                 <button
-                                    className="user-secondary-btn"
-                                    disabled={pendingStatusId != null}
-                                    onClick={() => setPendingDisableTarget(null)}
+                                    className="group-secondary-btn"
+                                    disabled={pendingDeleteId != null}
+                                    onClick={() => setPendingDeleteTarget(null)}
                                     type="button"
                                 >
                                     取消
                                 </button>
                                 <button
-                                    className="user-danger-btn"
-                                    disabled={!pendingDisableTarget || pendingStatusId != null}
+                                    className="group-danger-btn"
+                                    disabled={!pendingDeleteTarget || pendingDeleteId != null}
                                     onClick={() => {
-                                        if (!pendingDisableTarget) return;
-                                        toggleStatusMutation.mutate({ id: pendingDisableTarget.id, status: 'DISABLED' });
+                                        if (!pendingDeleteTarget) return;
+                                        deleteMutation.mutate(pendingDeleteTarget.id);
                                     }}
                                     type="button"
                                 >
-                                    {pendingStatusId != null ? '禁用中...' : '确认禁用'}
+                                    {pendingDeleteId != null ? '删除中...' : '确认删除'}
                                 </button>
                             </div>
                         </div>
