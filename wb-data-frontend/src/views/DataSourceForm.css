@@ -280,14 +280,14 @@
 
 .input-group input:hover,
 .input-group textarea:hover {
-    border-color: var(--color-brand);
+    border-color: var(--color-focus);
 }
 
 .input-group input:focus,
 .input-group textarea:focus {
-    border-color: var(--color-brand);
+    border-color: var(--color-focus);
     outline: none;
-    box-shadow: 0 0 0 3px var(--color-accent-glow);
+    box-shadow: 0 0 0 3px var(--color-focus-glow);
 }
 
 .input-group.has-error input,

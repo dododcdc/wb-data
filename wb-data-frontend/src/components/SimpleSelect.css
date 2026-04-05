@@ -21,14 +21,14 @@
 }
 
 .simple-select-trigger:hover:not(:disabled) {
-    border-color: var(--color-brand);
+    border-color: var(--color-focus);
 }
 
 .simple-select-trigger:focus-visible,
 .simple-select.is-open .simple-select-trigger {
-    border-color: var(--color-brand);
+    border-color: var(--color-focus);
     outline: none;
-    box-shadow: 0 0 0 3px var(--color-accent-glow);
+    box-shadow: 0 0 0 3px var(--color-focus-glow);
 }
 
 .simple-select-trigger:disabled {
