@@ -2,7 +2,7 @@ import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { LucideIcon } from 'lucide-react';
-import { Database, FolderOpen, Home, Layers, LogOut, Search } from 'lucide-react';
+import { Database, FolderOpen, Home, Layers, LogOut, Search, Users } from 'lucide-react';
 import { useAuthStore } from '../utils/auth';
 import { getAuthContext } from '../api/auth';
 import { getDataSourcePage } from '../api/datasource';
@@ -19,6 +19,7 @@ import {
     loadDashboardModule,
     loadDataSourceListModule,
     loadQueryModule,
+    loadUserListModule,
 } from '../router/routeModules';
 import { useDelayedBusy } from '../hooks/useDelayedBusy';
 import { loadQueryEditorModule } from './queryEditorModule';
@@ -55,6 +56,10 @@ export default function Layout() {
 
         if (hasPermission('query.use')) {
             items.push({ path: '/query', label: '自助查询', icon: Search });
+        }
+
+        if (systemAdmin) {
+            items.push({ path: '/users', label: '用户管理', icon: Users });
         }
 
         return items;
@@ -119,6 +124,11 @@ export default function Layout() {
             if (path === '/query') {
                 void loadQueryModule();
                 void loadQueryEditorModule();
+                return;
+            }
+
+            if (path === '/users') {
+                void loadUserListModule();
             }
         };
     }, [queryClient]);
@@ -167,7 +177,7 @@ export default function Layout() {
                     {accessibleGroups.length > 1 && currentGroup && (
                         <Select
                             value={currentGroup.id}
-                            onValueChange={(val: number) => handleGroupChange(val)}
+                            onValueChange={(val: number | null) => { if (val != null) handleGroupChange(val); }}
                             disabled={switchingGroup}
                             items={accessibleGroups.map((g) => ({ value: g.id, label: g.name }))}
                         >

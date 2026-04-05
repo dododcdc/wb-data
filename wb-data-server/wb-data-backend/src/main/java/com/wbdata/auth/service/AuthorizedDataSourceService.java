@@ -15,6 +15,10 @@ public class AuthorizedDataSourceService {
     private final DataSourceService dataSourceService;
     private final AuthContextService authContextService;
 
+    public AuthContextResponse requireContext(String authorization) {
+        return authContextService.getContext(authorization, null);
+    }
+
     public DataSource requireDataSource(String authorization, Long dataSourceId, String permission) {
         DataSource dataSource = dataSourceService.getById(dataSourceId);
         if (dataSource == null) {
