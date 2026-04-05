@@ -1,18 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    AlertCircle,
-    CheckCircle2,
     ChevronLeft,
     ChevronRight,
     ChevronsLeft,
     ChevronsRight,
-    LoaderCircle,
     Search,
     UserPlus,
-    X,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import { useOperationFeedback } from '../hooks/useOperationFeedback';
 import {
     Dialog,
     DialogContent,
@@ -52,14 +49,6 @@ function buildNextSearchParams(currentSearchParams: URLSearchParams, mutate: (ne
     return next;
 }
 
-type FeedbackTone = 'success' | 'error' | 'info';
-
-type OperationFeedback = {
-    tone: FeedbackTone;
-    title: string;
-    detail: string;
-};
-
 function patchCachedUserPages(
     queryClient: ReturnType<typeof useQueryClient>,
     updater: (page: PageResult<UserRecord>) => PageResult<UserRecord>,
@@ -74,6 +63,7 @@ function patchCachedUserPages(
 
 export default function UserList() {
     const queryClient = useQueryClient();
+    const { showFeedback } = useOperationFeedback();
     const [searchParams, setSearchParams] = useSearchParams();
     const [keywordInput, setKeywordInput] = useState(searchParams.get('keyword') ?? '');
     const [isComposing, setIsComposing] = useState(false);
@@ -83,8 +73,6 @@ export default function UserList() {
     const [resetPasswordUser, setResetPasswordUser] = useState<UserRecord | null>(null);
     const [pendingStatusId, setPendingStatusId] = useState<number | null>(null);
     const [pendingDisableTarget, setPendingDisableTarget] = useState<UserRecord | null>(null);
-    const [operationFeedback, setOperationFeedback] = useState<OperationFeedback | null>(null);
-    const feedbackTimerRef = useRef<number | null>(null);
 
     const currentPage = parsePageParam(searchParams.get('page'));
     const pageSize = parsePageSizeParam(searchParams.get('size'));
@@ -159,24 +147,6 @@ export default function UserList() {
         }
     }, [currentPage, pageData, searchParams, setSearchParams]);
 
-    useEffect(() => () => {
-        if (feedbackTimerRef.current != null) {
-            window.clearTimeout(feedbackTimerRef.current);
-        }
-    }, []);
-
-    const showOperationFeedback = (nextFeedback: OperationFeedback, durationMs = 3600) => {
-        setOperationFeedback(nextFeedback);
-        if (feedbackTimerRef.current != null) {
-            window.clearTimeout(feedbackTimerRef.current);
-        }
-
-        feedbackTimerRef.current = window.setTimeout(() => {
-            setOperationFeedback(null);
-            feedbackTimerRef.current = null;
-        }, durationMs);
-    };
-
     const toggleStatusMutation = useMutation({
         mutationFn: ({ id, status }: { id: number; status: string }) => changeUserStatus(id, { status }),
         onMutate: async ({ id, status }) => {
@@ -193,7 +163,7 @@ export default function UserList() {
             };
         },
         onSuccess: (_response, variables) => {
-            showOperationFeedback({
+            showFeedback({
                 tone: 'success',
                 title: variables.status === 'ACTIVE' ? '用户已启用' : '用户已禁用',
                 detail: '列表状态已即时更新，并已在后台同步最新数据。',
@@ -204,7 +174,7 @@ export default function UserList() {
             context?.previousPages.forEach(([queryKey, page]) => {
                 queryClient.setQueryData(queryKey, page);
             });
-            showOperationFeedback(
+            showFeedback(
                 {
                     tone: 'error',
                     title: '状态更新失败',
@@ -278,7 +248,7 @@ export default function UserList() {
             }));
         }
 
-        showOperationFeedback({
+        showFeedback({
             tone: 'success',
             title: details.action === 'create' ? '用户已创建' : '用户已更新',
             detail: details.action === 'create'
@@ -327,38 +297,6 @@ export default function UserList() {
                     </button>
                 </div>
             </section>
-
-            {operationFeedback ? (
-                <section
-                    className={`user-operation-feedback is-${operationFeedback.tone} animate-enter animate-enter-delay-1`}
-                    role={operationFeedback.tone === 'error' ? 'alert' : 'status'}
-                    aria-live="polite"
-                >
-                    <div className="user-operation-feedback-main">
-                        <div className="user-operation-feedback-icon" aria-hidden="true">
-                            {operationFeedback.tone === 'success' ? (
-                                <CheckCircle2 size={16} />
-                            ) : operationFeedback.tone === 'error' ? (
-                                <AlertCircle size={16} />
-                            ) : (
-                                <LoaderCircle size={16} />
-                            )}
-                        </div>
-                        <div className="user-operation-feedback-copy">
-                            <strong>{operationFeedback.title}</strong>
-                            <p>{operationFeedback.detail}</p>
-                        </div>
-                    </div>
-                    <button
-                        className="user-operation-feedback-close"
-                        onClick={() => setOperationFeedback(null)}
-                        type="button"
-                        aria-label="关闭操作反馈"
-                    >
-                        <X size={16} />
-                    </button>
-                </section>
-            ) : null}
 
             <section className="user-table-panel animate-enter animate-enter-delay-1">
                 <UserTable
@@ -466,7 +404,7 @@ export default function UserList() {
                 }}
                 onSuccess={(details) => {
                     setResetPasswordUser(null);
-                    showOperationFeedback({
+                    showFeedback({
                         tone: 'success',
                         title: '密码已重置',
                         detail: `用户 ${details.username} 的密码已更新。`,
