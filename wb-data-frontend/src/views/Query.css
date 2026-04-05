@@ -1421,7 +1421,6 @@
 
 .results-table td {
     padding: 8px 12px;
-    
     border-right: 1px solid var(--color-border);
     white-space: nowrap;
     max-width: 300px;

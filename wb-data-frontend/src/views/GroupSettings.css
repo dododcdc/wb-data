@@ -366,7 +366,7 @@
     border-radius: inherit;
     background: linear-gradient(90deg, rgba(217, 119, 87, 0.16), var(--color-brand), rgba(217, 119, 87, 0.22));
     box-shadow: 0 0 18px rgba(217, 119, 87, 0.18);
-    animation: datasourceProgressSweep 1.1s cubic-bezier(0.2, 0.9, 0.24, 1) infinite;
+    animation: progressSweep 1.1s cubic-bezier(0.2, 0.9, 0.24, 1) infinite;
 }
 
 .gs-table-shell.is-refreshing .gs-table-progress {
@@ -522,7 +522,7 @@
     border-radius: 50%;
     background: var(--color-brand);
     box-shadow: 0 0 0 0 rgba(217, 119, 87, 0.28);
-    animation: datasourceRefreshPulse 1.3s ease infinite;
+    animation: refreshPulse 1.3s ease infinite;
 }
 
 .gs-pagination {
