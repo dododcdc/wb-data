@@ -1,3 +1,28 @@
+/* Dialog Styles */
+.dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.4);
+    z-index: 1000;
+}
+
+.dialog-positioner {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1001;
+    padding: 24px;
+}
+
+.dialog-backdrop[hidden],
+.dialog-positioner[hidden],
+.dialog-backdrop[data-state="closed"],
+.dialog-positioner[data-state="closed"] {
+    display: none !important;
+}
+
 .gs-page {
     display: flex;
     flex-direction: column;
