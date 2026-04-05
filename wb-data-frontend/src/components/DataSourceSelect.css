@@ -72,7 +72,7 @@
 }
 
 .ds-select-trigger:hover:not([data-disabled]) {
-    border-color: var(--color-brand);
+    border-color: var(--color-focus);
 }
 
 .ds-select-trigger[data-focus] {
@@ -202,7 +202,7 @@
 
 .ds-dark.ds-select-trigger:hover,
 .ds-select-root.ds-dark .ds-select-trigger:hover {
-    border-color: var(--color-brand);
+    border-color: var(--color-focus);
     background-color: var(--color-bg-tertiary);
 }
 

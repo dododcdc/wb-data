@@ -138,6 +138,10 @@
   --color-accent: #D97757;
   --color-accent-glow: rgba(217, 119, 87, 0.12);
 
+  /* ── Focus ── */
+  --color-focus: #4A90D9;
+  --color-focus-glow: rgba(74, 144, 217, 0.15);
+
   /* ── Text ── */
   --color-text-primary: #1A1A1A;
   --color-text-secondary: #5B5B58;
@@ -319,6 +323,49 @@
   --color-tooltip-kbd-border: rgba(255, 255, 255, 0.10);
   --color-code-chip-bg: rgba(255, 255, 255, 0.12);
   --shadow-overlay: 0 10px 24px rgba(0, 0, 0, 0.32);
+}
+
+/* ── Global Tooltip ── */
+.tooltip-content {
+    background: var(--color-tooltip-bg);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    color: var(--color-tooltip-fg);
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: var(--shadow-overlay);
+    animation: tooltipFadeIn 150ms ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tooltip-content kbd {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 1px 5px;
+    font-family: var(--font-sans);
+    font-size: 0.7rem;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--color-text-muted);
+    background: var(--color-tooltip-kbd-bg);
+    border-radius: 3px;
+    border: 1px solid var(--color-tooltip-kbd-border);
+}
+
+@keyframes tooltipFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(2px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 @theme inline {
