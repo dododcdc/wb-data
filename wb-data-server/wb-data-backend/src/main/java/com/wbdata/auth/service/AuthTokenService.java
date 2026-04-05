@@ -5,7 +5,6 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.wbdata.auth.dto.CurrentUserResponse;
 import com.wbdata.auth.dto.LoginResponse;
 import com.wbdata.user.entity.WbUser;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -41,6 +40,19 @@ public class AuthTokenService {
         return requireSession(authorizationHeader).toCurrentUserResponse();
     }
 
+    public AuthSession resolveToken(String token) {
+        if (token == null || token.isBlank()) {
+            return null;
+        }
+        return sessions.getIfPresent(token);
+    }
+
+    public void invalidateToken(String token) {
+        if (token != null) {
+            sessions.invalidate(token);
+        }
+    }
+
     private AuthSession requireSession(String authorizationHeader) {
         if (authorizationHeader == null || authorizationHeader.isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "缺少 Authorization 请求头");
@@ -56,23 +68,11 @@ public class AuthTokenService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "访问令牌不能为空");
         }
 
-        AuthSession session = sessions.getIfPresent(token);
+        AuthSession session = resolveToken(token);
         if (session == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录状态已失效，请重新登录");
         }
 
         return session;
-    }
-
-    private record AuthSession(
-            Long id,
-            String username,
-            String displayName,
-            String systemRole,
-            Instant expiresAt
-    ) {
-        CurrentUserResponse toCurrentUserResponse() {
-            return new CurrentUserResponse(id, username, displayName, systemRole);
-        }
     }
 }

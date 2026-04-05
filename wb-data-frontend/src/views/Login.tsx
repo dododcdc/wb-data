@@ -4,10 +4,10 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
-import { AxiosError } from 'axios';
 
 import { login, getAuthContext } from '@/api/auth';
 import { useAuthStore } from '@/utils/auth';
+import { getErrorMessage } from '@/utils/error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -29,18 +29,6 @@ const loginSchema = z.object({
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
-
-function getErrorMessage(error: unknown): string {
-    if (error instanceof AxiosError) {
-        const data = error.response?.data;
-        if (data?.message) return data.message;
-        if (error.response?.status === 401) return '用户名或密码错误';
-        if (error.response?.status === 429) return '请求过于频繁，请稍后再试';
-        if (!error.response) return '网络连接失败，请检查网络';
-    }
-    if (error instanceof Error) return error.message;
-    return '登录失败，请稍后重试';
-}
 
 export default function Login() {
     const navigate = useNavigate();
@@ -75,7 +63,7 @@ export default function Login() {
 
             navigate('/', { replace: true });
         } catch (error) {
-            setServerError(getErrorMessage(error));
+            setServerError(getErrorMessage(error, '登录失败，请稍后重试'));
         }
     }
 

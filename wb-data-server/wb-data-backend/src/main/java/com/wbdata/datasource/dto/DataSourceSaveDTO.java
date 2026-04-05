@@ -10,8 +10,8 @@ import lombok.Data;
 import java.util.Map;
 
 @Data
-@Schema(description = "数据源更新请求")
-public class DataSourceUpdateDTO {
+@Schema(description = "数据源保存请求（创建/更新共用）")
+public class DataSourceSaveDTO {
 
     @NotBlank(message = "数据源名称不能为空")
     @Schema(description = "数据源名称", requiredMode = Schema.RequiredMode.REQUIRED)

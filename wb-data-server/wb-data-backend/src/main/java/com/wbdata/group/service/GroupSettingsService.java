@@ -3,6 +3,7 @@ package com.wbdata.group.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.wbdata.auth.enums.GroupRole;
 import com.wbdata.group.dto.*;
 import com.wbdata.group.entity.WbProjectGroup;
 import com.wbdata.group.entity.WbProjectGroupMember;
@@ -201,10 +202,10 @@ public class GroupSettingsService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不可修改自己的角色");
         }
 
-        if ("GROUP_ADMIN".equals(member.getRole()) && "DEVELOPER".equals(req.getRole())) {
+        if (GroupRole.GROUP_ADMIN.name().equals(member.getRole()) && GroupRole.DEVELOPER.name().equals(req.getRole())) {
             long adminCount = memberMapper.selectCount(new LambdaQueryWrapper<WbProjectGroupMember>()
                     .eq(WbProjectGroupMember::getGroupId, member.getGroupId())
-                    .eq(WbProjectGroupMember::getRole, "GROUP_ADMIN"));
+                    .eq(WbProjectGroupMember::getRole, GroupRole.GROUP_ADMIN.name()));
             if (adminCount <= 1) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "该成员是唯一的项目组管理员，无法降级");
             }
@@ -229,10 +230,10 @@ public class GroupSettingsService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不可移除自己");
         }
 
-        if ("GROUP_ADMIN".equals(member.getRole())) {
+        if (GroupRole.GROUP_ADMIN.name().equals(member.getRole())) {
             long adminCount = memberMapper.selectCount(new LambdaQueryWrapper<WbProjectGroupMember>()
                     .eq(WbProjectGroupMember::getGroupId, member.getGroupId())
-                    .eq(WbProjectGroupMember::getRole, "GROUP_ADMIN"));
+                    .eq(WbProjectGroupMember::getRole, GroupRole.GROUP_ADMIN.name()));
             if (adminCount <= 1) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "该成员是唯一的项目组管理员，无法移除");
             }

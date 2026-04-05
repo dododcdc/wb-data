@@ -29,15 +29,7 @@ public class MetadataServiceImpl implements MetadataService {
         }
 
         return pluginRegistry.getPlugin(ds.getType())
-                .map(plugin -> plugin.getDatabases(new DataSourceConnectionInfo(
-                        ds.getId(),
-                        ds.getType(),
-                        ds.getHost(),
-                        ds.getPort(),
-                        ds.getDatabaseName(),
-                        ds.getUsername(),
-                        ds.getPassword(),
-                        ds.getConnectionParams())))
+                .map(plugin -> plugin.getDatabases(buildConnectionInfo(ds)))
                 .orElse(Collections.emptyList());
     }
 
@@ -49,15 +41,7 @@ public class MetadataServiceImpl implements MetadataService {
         }
 
         return pluginRegistry.getPlugin(ds.getType())
-                .map(plugin -> plugin.getTables(new DataSourceConnectionInfo(
-                        ds.getId(),
-                        ds.getType(),
-                        ds.getHost(),
-                        ds.getPort(),
-                        ds.getDatabaseName(),
-                        ds.getUsername(),
-                        ds.getPassword(),
-                        ds.getConnectionParams()), databaseName, keyword, page, size))
+                .map(plugin -> plugin.getTables(buildConnectionInfo(ds), databaseName, keyword, page, size))
                 .orElse(new PageResult<>(Collections.emptyList(), 0, page, size));
     }
 
@@ -69,15 +53,7 @@ public class MetadataServiceImpl implements MetadataService {
         }
 
         return pluginRegistry.getPlugin(ds.getType())
-                .map(plugin -> plugin.getColumns(new DataSourceConnectionInfo(
-                        ds.getId(),
-                        ds.getType(),
-                        ds.getHost(),
-                        ds.getPort(),
-                        ds.getDatabaseName(),
-                        ds.getUsername(),
-                        ds.getPassword(),
-                        ds.getConnectionParams()), databaseName, tableName))
+                .map(plugin -> plugin.getColumns(buildConnectionInfo(ds), databaseName, tableName))
                 .orElse(Collections.emptyList());
     }
 
@@ -91,5 +67,18 @@ public class MetadataServiceImpl implements MetadataService {
         return pluginRegistry.getPlugin(ds.getType())
                 .map(com.wbdata.plugin.api.DataSourcePlugin::getDialectMetadata)
                 .orElseGet(() -> new com.wbdata.plugin.api.DialectMetadata(null, null, null));
+    }
+
+    private DataSourceConnectionInfo buildConnectionInfo(DataSource ds) {
+        return new DataSourceConnectionInfo(
+                ds.getId(),
+                ds.getType(),
+                ds.getHost(),
+                ds.getPort(),
+                ds.getDatabaseName(),
+                ds.getUsername(),
+                ds.getPassword(),
+                ds.getConnectionParams()
+        );
     }
 }

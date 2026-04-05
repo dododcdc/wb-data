@@ -1,3 +1,5 @@
+import { parsePageParam as _parsePageParam, parsePageSizeParam as _parsePageSizeParam, formatTimestamp as _formatTimestamp } from '../../utils/pagination';
+
 export const STATUS_FILTER_OPTIONS = [
     { label: '全部状态', value: '' },
     { label: '已启用', value: 'ENABLED' },
@@ -21,15 +23,9 @@ export function buildDataSourcePageQueryKey(params: {
     }] as const;
 }
 
-export function parsePageParam(value: string | null) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-}
-
-export function parsePageSizeParam(value: string | null) {
-    const parsed = Number(value);
-    return PAGE_SIZE_OPTIONS.includes(parsed) ? parsed : DEFAULT_PAGE_SIZE;
-}
+export { _parsePageParam as parsePageParam };
+export { _parsePageSizeParam as parsePageSizeParam };
+export { _formatTimestamp as formatTimestamp };
 
 export function parseTypeParam(value: string | null) {
     return value?.split(',').map((item) => item.trim()).filter(Boolean) ?? [];
@@ -38,22 +34,6 @@ export function parseTypeParam(value: string | null) {
 export function parseStatusParam(value: string | null) {
     if (value === 'ENABLED' || value === 'DISABLED') return value;
     return '';
-}
-
-export function formatTimestamp(value?: string) {
-    if (!value) return '--';
-
-    const parsedDate = new Date(value);
-    if (Number.isNaN(parsedDate.getTime())) return value;
-
-    const year = parsedDate.getFullYear();
-    const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
-    const day = String(parsedDate.getDate()).padStart(2, '0');
-    const hours = String(parsedDate.getHours()).padStart(2, '0');
-    const minutes = String(parsedDate.getMinutes()).padStart(2, '0');
-    const seconds = String(parsedDate.getSeconds()).padStart(2, '0');
-
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 export function formatConnection(host?: string, port?: number, databaseName?: string) {

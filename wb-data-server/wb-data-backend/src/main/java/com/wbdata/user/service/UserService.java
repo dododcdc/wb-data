@@ -3,6 +3,8 @@ package com.wbdata.user.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.wbdata.auth.enums.GroupRole;
+import com.wbdata.auth.enums.SystemRole;
 import com.wbdata.group.entity.WbProjectGroup;
 import com.wbdata.group.entity.WbProjectGroupMember;
 import com.wbdata.group.mapper.WbProjectGroupMapper;
@@ -35,8 +37,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class UserService {
 
-    private static final Set<String> VALID_SYSTEM_ROLES = Set.of("SYSTEM_ADMIN", "USER");
-    private static final Set<String> VALID_GROUP_ROLES = Set.of("GROUP_ADMIN", "DEVELOPER");
+    private static final Set<String> VALID_SYSTEM_ROLES =
+            java.util.Arrays.stream(SystemRole.values()).map(Enum::name).collect(Collectors.toUnmodifiableSet());
+    private static final Set<String> VALID_GROUP_ROLES =
+            java.util.Arrays.stream(GroupRole.values()).map(Enum::name).collect(Collectors.toUnmodifiableSet());
 
     private final WbUserMapper userMapper;
     private final WbProjectGroupMapper groupMapper;
@@ -229,7 +233,7 @@ public class UserService {
         userMapper.updateById(update);
     }
 
-    public void resetPassword(Long userId, ResetPasswordRequest req) {
+    public void resetPassword(Long userId, ResetPasswordRequest req, Long operatorId) {
         WbUser existing = userMapper.selectById(userId);
         if (existing == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在");
@@ -238,6 +242,7 @@ public class UserService {
         WbUser update = new WbUser();
         update.setId(userId);
         update.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
+        update.setUpdatedBy(operatorId);
         userMapper.updateById(update);
     }
 

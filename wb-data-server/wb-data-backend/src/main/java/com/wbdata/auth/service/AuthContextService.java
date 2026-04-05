@@ -3,8 +3,8 @@ package com.wbdata.auth.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.wbdata.auth.dto.AuthContextResponse;
-import com.wbdata.auth.dto.CurrentUserResponse;
 import com.wbdata.auth.dto.ProjectGroupContextItem;
+import com.wbdata.auth.enums.SystemRole;
 import com.wbdata.group.entity.WbProjectGroup;
 import com.wbdata.group.entity.WbProjectGroupMember;
 import com.wbdata.group.entity.WbUserGroupPreference;
@@ -29,30 +29,28 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AuthContextService {
 
-    private final AuthService authService;
     private final WbProjectGroupMapper wbProjectGroupMapper;
     private final WbProjectGroupMemberMapper wbProjectGroupMemberMapper;
     private final WbUserGroupPreferenceMapper wbUserGroupPreferenceMapper;
     private final PermissionService permissionService;
 
-    public AuthContextResponse getContext(String authorizationHeader, Long requestedGroupId) {
-        CurrentUserResponse user = authService.getCurrentUser(authorizationHeader);
-        boolean systemAdmin = "SYSTEM_ADMIN".equals(user.systemRole());
+    public AuthContextResponse getContext(AuthSession session, Long requestedGroupId) {
+        boolean systemAdmin = SystemRole.SYSTEM_ADMIN.name().equals(session.systemRole());
 
         List<ProjectGroupContextItem> accessibleGroups = systemAdmin
                 ? loadSystemAdminGroups()
-                : loadUserGroups(user.id());
+                : loadUserGroups(session.id());
 
-        ProjectGroupContextItem currentGroup = resolveCurrentGroup(user.id(), systemAdmin, accessibleGroups, requestedGroupId);
+        ProjectGroupContextItem currentGroup = resolveCurrentGroup(session.id(), systemAdmin, accessibleGroups, requestedGroupId);
         if (currentGroup != null) {
-            touchPreference(user.id(), currentGroup.id());
+            touchPreference(session.id(), currentGroup.id());
         }
 
         List<String> permissions = currentGroup == null
                 ? List.of()
                 : permissionService.resolveProjectPermissions(currentGroup.role(), systemAdmin);
 
-        return new AuthContextResponse(user, systemAdmin, currentGroup, accessibleGroups, permissions);
+        return new AuthContextResponse(session.toCurrentUserResponse(), systemAdmin, currentGroup, accessibleGroups, permissions);
     }
 
     private List<ProjectGroupContextItem> loadSystemAdminGroups() {

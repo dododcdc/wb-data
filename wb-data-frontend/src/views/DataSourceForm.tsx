@@ -21,6 +21,7 @@ import {
 } from '../api/datasource';
 import { CheckCircle, AlertCircle, X } from 'lucide-react';
 import { SimpleSelect } from '../components/SimpleSelect';
+import { getErrorMessage } from '../utils/error';
 import './DataSourceForm.css';
 
 interface DataSourceFormProps {
@@ -149,26 +150,6 @@ function getFieldLayoutClass(field: PluginFieldDescriptor) {
     }
 
     return 'input-group';
-}
-
-function getErrorMessage(error: unknown, fallback: string) {
-    if (typeof error === 'object' && error !== null) {
-        const axiosMessage = (error as {
-            response?: { data?: { message?: string } };
-            message?: string;
-        }).response?.data?.message;
-
-        if (axiosMessage) {
-            return axiosMessage;
-        }
-
-        const message = (error as { message?: string }).message;
-        if (message) {
-            return message;
-        }
-    }
-
-    return fallback;
 }
 
 function getFieldPlaceholder(field: PluginFieldDescriptor, isEdit: boolean) {
