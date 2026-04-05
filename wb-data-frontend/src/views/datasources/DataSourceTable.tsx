@@ -1,4 +1,5 @@
 import { Database, Edit3, Power, Trash2 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { DataSource } from '../../api/datasource';
 import { formatConnection, formatTimestamp, getStatusLabel } from './config';
 
@@ -91,37 +92,53 @@ export function DataSourceTable(props: DataSourceTableProps) {
                                 <td className="datasource-updated-at datasource-updated-column">{formatTimestamp(item.updatedAt)}</td>
                                 {canWrite && (
                                     <td className="datasource-actions-column">
+                                        <TooltipProvider delayDuration={400}>
                                         <div className="datasource-actions">
-                                            <button
-                                                className="datasource-icon-btn"
-                                                onClick={() => onEdit(item.id)}
-                                                title="编辑数据源"
-                                                aria-label="编辑数据源"
-                                                type="button"
-                                            >
-                                                <Edit3 size={16} />
-                                            </button>
-                                            <button
-                                                className="datasource-icon-btn"
-                                                disabled={statusPendingId === item.id}
-                                                onClick={() => onToggleStatus(item)}
-                                                title={item.status === 'ENABLED' ? '停用' : '启用'}
-                                                aria-label={item.status === 'ENABLED' ? '停用数据源' : '启用数据源'}
-                                                type="button"
-                                            >
-                                                <Power size={16} />
-                                            </button>
-                                            <button
-                                                className="datasource-icon-btn danger"
-                                                disabled={deletePendingId === item.id}
-                                                onClick={() => onDelete(item)}
-                                                title="删除数据源"
-                                                aria-label="删除数据源"
-                                                type="button"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <button
+                                                        className="datasource-icon-btn"
+                                                        onClick={() => onEdit(item.id)}
+                                                        aria-label="编辑数据源"
+                                                        type="button"
+                                                    >
+                                                        <Edit3 size={16} />
+                                                    </button>
+                                                </TooltipTrigger>
+                                                <TooltipContent className="tooltip-content" side="bottom">编辑数据源</TooltipContent>
+                                            </Tooltip>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <button
+                                                        className="datasource-icon-btn"
+                                                        disabled={statusPendingId === item.id}
+                                                        onClick={() => onToggleStatus(item)}
+                                                        aria-label={item.status === 'ENABLED' ? '停用数据源' : '启用数据源'}
+                                                        type="button"
+                                                    >
+                                                        <Power size={16} />
+                                                    </button>
+                                                </TooltipTrigger>
+                                                <TooltipContent className="tooltip-content" side="bottom">
+                                                    {item.status === 'ENABLED' ? '停用' : '启用'}
+                                                </TooltipContent>
+                                            </Tooltip>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <button
+                                                        className="datasource-icon-btn danger"
+                                                        disabled={deletePendingId === item.id}
+                                                        onClick={() => onDelete(item)}
+                                                        aria-label="删除数据源"
+                                                        type="button"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </TooltipTrigger>
+                                                <TooltipContent className="tooltip-content" side="bottom">删除数据源</TooltipContent>
+                                            </Tooltip>
                                         </div>
+                                        </TooltipProvider>
                                     </td>
                                 )}
                             </tr>
