@@ -17,12 +17,14 @@ import {
     loadNotFoundModule,
     loadQueryModule,
     loadUnauthorizedModule,
+    loadUserListModule,
 } from './routeModules';
 
 const Login = lazy(loadLoginModule);
 const Dashboard = lazy(loadDashboardModule);
 const DataSourceList = lazy(loadDataSourceListModule);
 const Query = lazy(loadQueryModule);
+const UserList = lazy(loadUserListModule);
 const NotFound = lazy(loadNotFoundModule);
 const NoGroupState = lazy(loadNoGroupStateModule);
 const Unauthorized = lazy(loadUnauthorizedModule);
@@ -90,6 +92,20 @@ function RequirePermission({ required }: { required: string }) {
     return <Outlet />;
 }
 
+/**
+ * Requires SYSTEM_ADMIN role to render children.
+ * Non-admin users see the Unauthorized page.
+ */
+function RequireSystemAdmin() {
+    const systemAdmin = useAuthStore((s) => s.systemAdmin);
+
+    if (!systemAdmin) {
+        return withRouteSuspense(<Unauthorized />);
+    }
+
+    return <Outlet />;
+}
+
 const router = createBrowserRouter([
     {
         path: '/login',
@@ -130,6 +146,16 @@ const router = createBrowserRouter([
                                         element: withRouteSuspense(<Query />, <QuerySkeleton />),
                                     },
                                 ],
+                            },
+                        ],
+                    },
+                    {
+                        path: 'users',
+                        element: <RequireSystemAdmin />,
+                        children: [
+                            {
+                                index: true,
+                                element: withRouteSuspense(<UserList />),
                             },
                         ],
                     },
