@@ -26,7 +26,7 @@ export function buildQueryFeedback({
     queryLoadingVisible,
 }: {
     result: QueryResult | null;
-    queryError: string;
+    queryError: string | null;
     loadingQuery: boolean;
     queryLoadingVisible: boolean;
 }): QueryFeedback {
