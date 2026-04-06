@@ -3,23 +3,14 @@ import type * as Monaco from 'monaco-editor';
 import type { AllotmentHandle } from 'allotment';
 import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, ChevronUp, Search, PanelLeftClose, PanelLeft, Star, AlertTriangle, CheckCircle2, Clock3, Info, Pin, X } from 'lucide-react';
 import {
-    getMetadataDatabases,
-    getMetadataTables,
-    getMetadataColumns,
     executeQuery,
-    getDialectMetadata,
     createQueryExportTask,
     listQueryExportTasks,
     getQueryExportTaskDownloadUrl,
-    TableSummary,
-    ColumnMetadata,
-    QueryResult,
-    DialectMetadata,
     QueryExportTask,
-    QueryExportTaskStatus,
 } from '../api/query';
-import { getDataSourcePage, getDataSourceById, DataSource } from '../api/datasource';
-import { useAuthStore } from '../utils/auth';
+import { DataSource } from '../api/datasource';
+import { useAuthStore, getToken } from '../utils/auth';
 import { DataSourceSelect } from '../components/DataSourceSelect';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -28,41 +19,22 @@ import 'allotment/dist/style.css';
 import { useQueryEditor } from './query/hooks/useQueryEditor';
 import { useKeyboardShortcuts } from './query/hooks/useKeyboardShortcuts';
 import {
-    FALLBACK_SQL_KEYWORDS,
-    SQL_ALIAS_RESERVED_WORDS,
     isMac,
-    DS_PAGE_SIZE,
-    TABLE_PAGE_SIZE,
     QUERY_EXECUTION_TIMEOUT_MS,
     PINNED_RESULT_LIMIT,
+    EXPORT_TASK_POLL_INTERVAL_MS,
+    EXPORT_MAX_ROWS,
 } from './query/queryConstants';
-import {
-    getCurrentStatement,
-    parseSqlSourceTables,
-    isSelectListContext,
-    isExpressionClauseContext,
-} from './query/sqlUtils';
 import {
     upsertExportTask,
     getExportTaskStatusMeta,
     formatTaskTimestamp,
-    getFormatLabel,
     formatResultTabLabel,
 } from './query/exportUtils';
 import { registerEditorThemes } from './query/editorUtils';
-import { buildQueryFeedback, QueryFeedback } from './query/feedbackUtils';
+import { buildQueryFeedback } from './query/feedbackUtils';
 import {
-    DEFAULT_DATASOURCE_STORAGE_KEY,
-    LAST_DATASOURCE_STORAGE_KEY,
-    LAST_DATABASE_BY_DATASOURCE_STORAGE_KEY,
-    getStoredDefaultDataSourceId,
-    getStoredLastDataSourceId,
-    getStoredLastDatabaseByDataSource,
-    shouldPreferDefaultDataSourceOnMount,
-    mergeDatabaseOptions,
-} from './query/storageUtils';
-import {
-    QueryFeedbackState,
+    QueryEditorError,
     ExportState,
     SavedQueryResult,
     ResultTabId,
@@ -76,11 +48,14 @@ import {
     SIDEBAR_MIN_WIDTH_PX,
     SIDEBAR_MAX_WIDTH_PX,
     QUERY_MAIN_MIN_WIDTH_PX,
+    QUERY_MAIN_DEFAULT_WIDTH_PX,
     RESULT_PANEL_COLLAPSED_HEIGHT_PX,
     RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX,
     RESULT_PANEL_DEFAULT_HEIGHT_PX,
     QUERY_EDITOR_DEFAULT_HEIGHT_PX,
 } from './query/hooks/useLayoutPersistence';
+import { useSqlCompletion } from './query/hooks/useSqlCompletion';
+import { useMetadata } from './query/hooks/useMetadata';
 import { useKeyboardFocusMode } from '../hooks/useKeyboardFocusMode';
 import { useDelayedBusy } from '../hooks/useDelayedBusy';
 import { loadQueryEditorModule } from './queryEditorModule';
@@ -101,47 +76,6 @@ function EditorLoader() {
     );
 }
 
-type MonacoEditorInstance = Monaco.editor.IStandaloneCodeEditor;
-
-type QueryEditorError = {
-    code?: string;
-    response?: {
-        data?: {
-            message?: string;
-        };
-    };
-    message?: string;
-};
-
-type QueryFeedbackState = 'idle' | 'running' | 'success' | 'empty' | 'message' | 'error' | 'timeout';
-
-type ExportState = {
-    status: 'idle' | 'exporting' | 'error';
-    format?: 'csv' | 'xlsx';
-    message?: string;
-};
-
-type SqlSourceTable = {
-    databaseName?: string;
-    tableName: string;
-    alias?: string;
-};
-
-type ResultTabId = 'current' | string;
-
-type SavedQueryResult = {
-    id: string;
-    tabNumber: number;
-    isPinned: boolean;
-    sql: string;
-    dataSourceId: string;
-    dataSourceName: string;
-    databaseName: string;
-    executedAt: string;
-    rowCount: number | null;
-    executionTimeMs: number | null;
-    result: QueryResult;
-};
 
 
 export default function Query() {
@@ -153,44 +87,42 @@ export default function Query() {
     const canExport = systemAdmin || permissions.includes('query.export');
     const groupId = currentGroup?.id;
 
-    const [dataSources, setDataSources] = useState<DataSource[]>([]);
-    const [selectedDsId, setSelectedDsId] = useState<string>('');
-    const [selectedDs, setSelectedDs] = useState<DataSource | null>(null);
-    const [defaultDsId, setDefaultDsId] = useState(getStoredDefaultDataSourceId);
-    const [lastDsId, setLastDsId] = useState(getStoredLastDataSourceId);
-    const [lastDatabaseByDs, setLastDatabaseByDs] = useState<Record<string, string>>(getStoredLastDatabaseByDataSource);
-    const [dsKeyword, setDsKeyword] = useState('');
-    const [loadingDs, setLoadingDs] = useState(false);
-    const [loadingDsMore, setLoadingDsMore] = useState(false);
-    const [dsPage, setDsPage] = useState(1);
-    const [dsHasMore, setDsHasMore] = useState(true);
-    const [databases, setDatabases] = useState<string[]>([]);
-    const [selectedDb, setSelectedDb] = useState<string>('');
-    const [dbKeyword, setDbKeyword] = useState('');
-    const [loadingDatabases, setLoadingDatabases] = useState(false);
-    const [tables, setTables] = useState<TableSummary[]>([]);
-    const [tableKeyword, setTableKeyword] = useState('');
-    const [tableKeywordCommitted, setTableKeywordCommitted] = useState('');
-    const [tablePage, setTablePage] = useState(1);
-    const [tableHasMore, setTableHasMore] = useState(true);
-    const [tableTotal, setTableTotal] = useState(0);
-    const [loadingTables, setLoadingTables] = useState(false);
-    const [loadingMoreTables, setLoadingMoreTables] = useState(false);
-    const [columnCache, setColumnCache] = useState<Map<string, ColumnMetadata[]>>(new Map());
-    const [loadingColumns, setLoadingColumns] = useState<Set<string>>(new Set());
-    const [dialectMetadata, setDialectMetadata] = useState<DialectMetadata | null>(null);
-    // SQL editor state
+    // ---- Metadata (data sources, databases, tables, columns, dialect) ----
+    const metadata = useMetadata(groupId);
     const {
-        sql,
-        result,
-        queryError,
-        loadingQuery,
-        setSql,
-        setResult,
-        setQueryError,
-        setLoadingQuery,
-        executeQuery: executeQueryFromHook,
+        dataSources, selectedDsId, selectedDs, defaultDsId,
+        dsKeyword, loadingDs, loadingDsMore, dsHasMore,
+        selectedDsOption, dataSourceOptions,
+        setDsKeyword, setSelectedDb,
+        applySelectedDataSource, loadMoreDataSources, toggleDefaultDataSource, getActiveDataSource,
+        databases, selectedDb, dbKeyword, loadingDatabases,
+        filteredDatabases, databaseOptions, selectedDbOption, setDbKeyword,
+        tables, tableKeyword, tableKeywordCommitted, tableTotal,
+        loadingTables, loadingMoreTables, tableHasMore, expandedTables,
+        setTableKeyword, setTableKeywordCommitted,
+        handleTableScroll, handleTableScrollRef, toggleTableExpand, tableScrollElement,
+        columnCache, loadingColumns, loadColumns,
+        dialectMetadata,
+        activeDsIdRef, activeDbRef,
+    } = metadata;
+
+    // ---- Layout state ----
+    const layout = useLayoutPersistence();
+    const {
+        sidebarCollapsed, sidebarExpandedWidth, sidebarTransitioning,
+        resultCollapsed, resultExpandedHeight, resultAutoOpen, resultTransitioning,
+        toggleSidebar, setSidebarWidth, toggleResultPanel, setResultPanelState,
+        setResultExpandedHeight,
+    } = layout;
+    const initialHorizontalSizes = useMemo(() => getHorizontalSizes(sidebarCollapsed, sidebarExpandedWidth), [sidebarCollapsed, sidebarExpandedWidth]);
+    const initialVerticalSizes = useMemo(() => getVerticalSizes(resultCollapsed, resultExpandedHeight), [resultCollapsed, resultExpandedHeight]);
+
+    // ---- SQL editor state ----
+    const {
+        sql, result, queryError, loadingQuery,
+        setSql, setResult, setQueryError, setLoadingQuery,
     } = useQueryEditor();
+
     const [showExportMenu, setShowExportMenu] = useState(false);
     const [showExportTasksMenu, setShowExportTasksMenu] = useState(false);
     const [exportState, setExportState] = useState<ExportState>({ status: 'idle' });
@@ -203,25 +135,11 @@ export default function Query() {
     const [savedResults, setSavedResults] = useState<SavedQueryResult[]>([]);
     const [activeResultTab, setActiveResultTab] = useState<ResultTabId>('current');
     const [currentResultTabNumber, setCurrentResultTabNumber] = useState<number | null>(null);
-    const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
     const editorRef = useRef<MonacoEditorInstance | null>(null);
     const monacoRef = useRef<typeof Monaco | null>(null);
     const composingRef = useRef(false);
-    const dsRequestIdRef = useRef(0);
-    const preferredDsRequestIdRef = useRef(0);
-    const databasesRequestIdRef = useRef(0);
-    const dialectRequestIdRef = useRef(0);
     const exportMenuRef = useRef<HTMLDivElement>(null);
     const exportTasksMenuRef = useRef<HTMLDivElement>(null);
-    const tableScrollRef = useRef<HTMLDivElement | null>(null);
-    const tableLoadingRequestKeysRef = useRef<Set<string>>(new Set());
-    const tableListPendingCountRef = useRef(0);
-    const tableMorePendingCountRef = useRef(0);
-    const activeDsIdRef = useRef('');
-    const activeDbRef = useRef('');
-    const tableKeywordCommittedRef = useRef('');
-    const loadingColumnsRef = useRef(loadingColumns);
-    const columnLoadPromisesRef = useRef<Map<string, Promise<ColumnMetadata[] | null>>>(new Map());
     const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
     const horizontalSplitterRef = useRef<AllotmentHandle | null>(null);
     const verticalSplitterRef = useRef<AllotmentHandle | null>(null);
@@ -231,14 +149,7 @@ export default function Query() {
     const queryContentRef = useRef<HTMLDivElement | null>(null);
     const exportStateTimerRef = useRef<number | null>(null);
     const resultTabSequenceRef = useRef(1);
-    const TABLE_PAGE_SIZE = 200;
-    const [tableScrollElement, setTableScrollElement] = useState<HTMLDivElement | null>(null);
-    const preferDefaultDataSourceOnMountRef = useRef(shouldPreferDefaultDataSourceOnMount());
-    const preferredStoredDataSourceId = useMemo(() => {
-        return preferDefaultDataSourceOnMountRef.current
-            ? (defaultDsId || lastDsId)
-            : (lastDsId || defaultDsId);
-    }, [defaultDsId, lastDsId]);
+
     const queryLoadingVisible = useDelayedBusy(loadingQuery, { delayMs: 0, minVisibleMs: 420 });
     const queryResultLoadingVisible = useDelayedBusy(loadingQuery && !result && !queryError, { delayMs: 120, minVisibleMs: 280 });
     const activeExportTaskCount = useMemo(() => {
@@ -260,49 +171,6 @@ export default function Query() {
     const activeResultDataSourceId = activeSavedResult?.dataSourceId ?? (hasCurrentResultTab ? lastExecutedDataSourceId : '');
     const activeResultDatabase = activeSavedResult?.databaseName ?? (hasCurrentResultTab ? lastExecutedDatabase : '');
 
-    const getActiveDataSource = useCallback(() => {
-        if (selectedDs && String(selectedDs.id) === selectedDsId) {
-            return selectedDs;
-        }
-        return dataSources.find(item => String(item.id) === selectedDsId) ?? null;
-    }, [dataSources, selectedDs, selectedDsId]);
-
-    const applySelectedDataSource = useCallback((dataSourceId: string, option?: DataSource | null) => {
-        setSelectedDsId(dataSourceId);
-        setDsKeyword('');
-
-        if (!dataSourceId) {
-            setSelectedDs(null);
-            return;
-        }
-
-        if (option) {
-            setSelectedDs(option);
-            return;
-        }
-
-        const fallback = dataSources.find(ds => String(ds.id) === dataSourceId) || null;
-        setSelectedDs(fallback);
-    }, [dataSources]);
-    // Layout state management
-    const layout = useLayoutPersistence();
-    const {
-        sidebarCollapsed,
-        sidebarExpandedWidth,
-        sidebarTransitioning,
-        resultCollapsed,
-        resultExpandedHeight,
-        resultAutoOpen,
-        resultTransitioning,
-        toggleSidebar,
-        toggleResultPanel,
-        setResultPanelState,
-    } = layout;
-    const initialHorizontalSizes = useMemo(() => getHorizontalSizes(sidebarCollapsed, sidebarExpandedWidth), [sidebarCollapsed, sidebarExpandedWidth]);
-    const initialVerticalSizes = useMemo(() => getVerticalSizes(resultCollapsed, resultExpandedHeight), [resultCollapsed, resultExpandedHeight]);
-    const { setResultExpandedHeight } = layout;
-
-
     const virtualizer = useVirtualizer({
         count: tables.length,
         getScrollElement: () => tableScrollElement,
@@ -310,48 +178,8 @@ export default function Query() {
         overscan: 10,
     });
 
-    const handleTableScrollRef = useCallback((node: HTMLDivElement | null) => {
-        if (tableScrollRef.current === node) return;
-        tableScrollRef.current = node;
-        setTableScrollElement(node);
-    }, []);
 
 
-    const persistDefaultDataSourceId = useCallback((dataSourceId: string) => {
-        try {
-            if (dataSourceId) {
-                localStorage.setItem(DEFAULT_DATASOURCE_STORAGE_KEY, dataSourceId);
-            } else {
-                localStorage.removeItem(DEFAULT_DATASOURCE_STORAGE_KEY);
-            }
-        } catch {
-            // Ignore storage access failures and keep the in-memory state.
-        }
-    }, []);
-
-    const persistLastDataSourceId = useCallback((dataSourceId: string) => {
-        try {
-            if (dataSourceId) {
-                localStorage.setItem(LAST_DATASOURCE_STORAGE_KEY, dataSourceId);
-            } else {
-                localStorage.removeItem(LAST_DATASOURCE_STORAGE_KEY);
-            }
-        } catch {
-            // Ignore storage access failures and keep the in-memory state.
-        }
-    }, []);
-
-    const persistLastDatabaseByDataSource = useCallback((nextValue: Record<string, string>) => {
-        try {
-            if (Object.keys(nextValue).length > 0) {
-                localStorage.setItem(LAST_DATABASE_BY_DATASOURCE_STORAGE_KEY, JSON.stringify(nextValue));
-            } else {
-                localStorage.removeItem(LAST_DATABASE_BY_DATASOURCE_STORAGE_KEY);
-            }
-        } catch {
-            // Ignore storage access failures and keep the in-memory state.
-        }
-    }, []);
 
     const showExportFeedback = useCallback((nextState: ExportState) => {
         if (exportStateTimerRef.current !== null) {
@@ -391,15 +219,6 @@ export default function Query() {
         }
     }, [showExportFeedback]);
 
-    const toggleDefaultDataSource = useCallback(() => {
-        if (!selectedDsId) {
-            return;
-        }
-
-        const nextDefaultDataSourceId = defaultDsId === selectedDsId ? '' : selectedDsId;
-        setDefaultDsId(nextDefaultDataSourceId);
-        persistDefaultDataSourceId(nextDefaultDataSourceId);
-    }, [defaultDsId, persistDefaultDataSourceId, selectedDsId]);
 
     const getCurrentHorizontalTotalWidth = useCallback(() => {
         const cachedSizes = horizontalLayoutSizesRef.current;
@@ -469,9 +288,7 @@ export default function Query() {
     }, [loadExportTasks]);
 
     useEffect(() => {
-        if (activeExportTaskCount === 0) {
-            return;
-        }
+        if (activeExportTaskCount === 0) return;
 
         const timer = window.setInterval(() => {
             void loadExportTasks({ silent: true });
@@ -480,48 +297,11 @@ export default function Query() {
         return () => window.clearInterval(timer);
     }, [activeExportTaskCount, loadExportTasks]);
 
-useKeyboardShortcuts({
-    onToggleSidebar: toggleSidebar,
-    onToggleResultPanel: toggleResultPanel,
-});
+    useKeyboardShortcuts({
+        onToggleSidebar: toggleSidebar,
+        onToggleResultPanel: toggleResultPanel,
+    });
 
-    useEffect(() => {
-        activeDsIdRef.current = selectedDsId;
-    }, [selectedDsId]);
-
-    useEffect(() => {
-        activeDbRef.current = selectedDb;
-    }, [selectedDb]);
-
-    useEffect(() => {
-        if (!selectedDsId) {
-            return;
-        }
-
-        setLastDsId(selectedDsId);
-        persistLastDataSourceId(selectedDsId);
-    }, [persistLastDataSourceId, selectedDsId]);
-
-    useEffect(() => {
-        if (!selectedDsId || !selectedDb) {
-            return;
-        }
-
-        if (lastDatabaseByDs[selectedDsId] === selectedDb) {
-            return;
-        }
-
-        const nextValue = {
-            ...lastDatabaseByDs,
-            [selectedDsId]: selectedDb,
-        };
-        setLastDatabaseByDs(nextValue);
-        persistLastDatabaseByDataSource(nextValue);
-    }, [lastDatabaseByDs, persistLastDatabaseByDataSource, selectedDb, selectedDsId]);
-
-    useEffect(() => {
-        tableKeywordCommittedRef.current = tableKeywordCommitted;
-    }, [selectedDb, selectedDsId, tableKeywordCommitted]);
 
     // Close export menu on backdrop click or Escape
     useEffect(() => {
@@ -565,382 +345,7 @@ useKeyboardShortcuts({
         void loadExportTasks();
     }, [loadExportTasks, showExportTasksMenu]);
 
-    // Debounced search for DataSources
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            setDataSources([]);
-            setDsHasMore(true);
-            setDsPage(1);
-            setLoadingDsMore(false);
-            loadDataSources({ page: 1, keyword: dsKeyword, append: false });
-        }, 300);
-        return () => clearTimeout(timer);
-    }, [dsKeyword, groupId]);
 
-    useEffect(() => {
-        if (selectedDsId) {
-            return;
-        }
-
-        const preferredDataSourceId = preferredStoredDataSourceId;
-        if (!preferredDataSourceId) {
-            return;
-        }
-
-        const existingDataSource = dataSources.find(ds => String(ds.id) === preferredDataSourceId);
-        if (existingDataSource) {
-            applySelectedDataSource(preferredDataSourceId, existingDataSource);
-            return;
-        }
-
-        const numericPreferredId = Number(preferredDataSourceId);
-        if (!Number.isFinite(numericPreferredId) || numericPreferredId <= 0) {
-            return;
-        }
-
-        const requestId = ++preferredDsRequestIdRef.current;
-        getDataSourceById(numericPreferredId)
-            .then((dataSource) => {
-                if (preferredDsRequestIdRef.current !== requestId) {
-                    return;
-                }
-
-                setDataSources(prev => prev.some(item => item.id === dataSource.id) ? prev : [dataSource, ...prev]);
-                applySelectedDataSource(preferredDataSourceId, dataSource);
-            })
-            .catch(() => {
-                if (preferredDsRequestIdRef.current !== requestId) {
-                    return;
-                }
-
-                if (defaultDsId === preferredDataSourceId) {
-                    setDefaultDsId('');
-                    persistDefaultDataSourceId('');
-                }
-                if (lastDsId === preferredDataSourceId) {
-                    setLastDsId('');
-                    persistLastDataSourceId('');
-                }
-            });
-    }, [
-        applySelectedDataSource,
-        dataSources,
-        persistDefaultDataSourceId,
-        persistLastDataSourceId,
-        preferredStoredDataSourceId,
-        selectedDsId,
-        defaultDsId,
-        lastDsId,
-    ]);
-
-    useEffect(() => {
-        if (selectedDsId) {
-            const matchedDataSource = dataSources.find(ds => String(ds.id) === selectedDsId);
-            if (matchedDataSource && (!selectedDs || String(selectedDs.id) !== selectedDsId)) {
-                setSelectedDs(matchedDataSource);
-            }
-            return;
-        }
-
-        if (dsKeyword.trim() || dataSources.length === 0) {
-            return;
-        }
-
-        const preferredDataSourceId = preferredStoredDataSourceId;
-        const preferredDataSource = preferredDataSourceId
-            ? dataSources.find(ds => String(ds.id) === preferredDataSourceId)
-            : null;
-
-        if (preferredDataSource) {
-            applySelectedDataSource(String(preferredDataSource.id), preferredDataSource);
-            return;
-        }
-
-        if (dataSources.length === 1) {
-            applySelectedDataSource(String(dataSources[0].id), dataSources[0]);
-        }
-    }, [applySelectedDataSource, dataSources, dsKeyword, preferredStoredDataSourceId, selectedDs, selectedDsId]);
-
-    useEffect(() => {
-        if (selectedDsId) {
-            const activeDataSource = getActiveDataSource();
-            const preferredDatabase = lastDatabaseByDs[selectedDsId];
-
-            setDbKeyword('');
-            setSelectedDb('');
-            setDatabases([]);
-            setTables([]);
-            setColumnCache(new Map());
-            setTableKeyword('');
-            setTableKeywordCommitted('');
-            setTableTotal(0);
-            loadDatabases(Number(selectedDsId), preferredDatabase || activeDataSource?.databaseName);
-            loadDialect(Number(selectedDsId));
-        } else {
-            setDatabases([]);
-            setSelectedDb('');
-            setDbKeyword('');
-            setTables([]);
-            setColumnCache(new Map());
-            setTableKeyword('');
-            setTableKeywordCommitted('');
-            setTableTotal(0);
-            setDialectMetadata(null);
-            setSelectedDs(null);
-        }
-    }, [getActiveDataSource, lastDatabaseByDs, selectedDsId]);
-
-    useEffect(() => {
-        if (selectedDsId && selectedDb) {
-            setTableKeyword('');
-            setTableKeywordCommitted('');
-            setTablePage(1);
-            setTableHasMore(true);
-            setTableTotal(0);
-            setColumnCache(new Map());
-            loadTables(Number(selectedDsId), selectedDb);
-        }
-    }, [selectedDsId, selectedDb]);
-
-    useEffect(() => {
-        if (!selectedDsId || !selectedDb) return;
-        const timer = setTimeout(() => {
-            setTablePage(1);
-            setTableHasMore(true);
-            loadTables(Number(selectedDsId), selectedDb, tableKeywordCommitted, 1, false);
-        }, 300);
-        return () => clearTimeout(timer);
-    }, [selectedDb, selectedDsId, tableKeywordCommitted]);
-
-    useEffect(() => {
-        setExpandedTables(new Set());
-    }, [selectedDsId, selectedDb]);
-
-    const toggleTableExpand = (tableName: string) => {
-        setExpandedTables(prev => {
-            const next = new Set(prev);
-            if (next.has(tableName)) {
-                next.delete(tableName);
-            } else {
-                next.add(tableName);
-                if (!columnCache.has(tableName) && selectedDsId && selectedDb) {
-                    loadColumns(Number(selectedDsId), selectedDb, tableName);
-                }
-            }
-            return next;
-        });
-    };
-
-    const loadDataSources = async ({ page, keyword, append }: { page: number; keyword: string; append: boolean; }) => {
-        const requestId = ++dsRequestIdRef.current;
-        if (append) {
-            setLoadingDsMore(true);
-        } else {
-            setLoadingDs(true);
-        }
-        try {
-            const data = await getDataSourcePage({ page, size: DS_PAGE_SIZE, keyword, groupId });
-            if (requestId !== dsRequestIdRef.current) {
-                return;
-            }
-            setDataSources((prev) => {
-                if (!append) {
-                    return data.records;
-                }
-                const existingIds = new Set(prev.map(item => item.id));
-                const merged = [...prev, ...data.records.filter(item => !existingIds.has(item.id))];
-                return merged;
-            });
-            const hasMore = data.pages ? data.current < data.pages : data.records.length === DS_PAGE_SIZE;
-            setDsPage(data.current || page);
-            setDsHasMore(hasMore);
-        } catch (error) {
-            console.error('Failed to load data sources', error);
-        } finally {
-            if (requestId === dsRequestIdRef.current) {
-                if (append) {
-                    setLoadingDsMore(false);
-                } else {
-                    setLoadingDs(false);
-                }
-            }
-        }
-    };
-
-    const loadMoreDataSources = () => {
-        if (loadingDs || loadingDsMore || !dsHasMore) {
-            return;
-        }
-        loadDataSources({ page: dsPage + 1, keyword: dsKeyword, append: true });
-    };
-
-    const loadDialect = async (id: number) => {
-        const requestId = ++dialectRequestIdRef.current;
-        try {
-            const data = await getDialectMetadata(id);
-            if (requestId !== dialectRequestIdRef.current) return;
-            if (activeDsIdRef.current !== String(id)) return;
-            setDialectMetadata(data);
-        } catch (error) {
-            console.error('Failed to load dialect metadata', error);
-        }
-    };
-
-    const loadDatabases = async (id: number, fallbackDatabase?: string) => {
-        const requestId = ++databasesRequestIdRef.current;
-        setLoadingDatabases(true);
-        try {
-            const data = await getMetadataDatabases(id);
-            if (requestId !== databasesRequestIdRef.current) return;
-            if (activeDsIdRef.current !== String(id)) return;
-            const mergedDatabases = mergeDatabaseOptions(data, fallbackDatabase);
-            setDatabases(mergedDatabases);
-            setSelectedDb(mergedDatabases[0] ?? '');
-        } catch (error) {
-            console.error('Failed to load databases', error);
-        } finally {
-            if (requestId === databasesRequestIdRef.current) {
-                setLoadingDatabases(false);
-            }
-        }
-    };
-
-    const loadTables = async (dsId: number, dbName: string, keyword?: string, page: number = 1, append: boolean = false) => {
-        const normalizedKeyword = (keyword ?? '').trim();
-        const requestKey = `${dsId}::${dbName}::${normalizedKeyword}::${page}`;
-        if (tableLoadingRequestKeysRef.current.has(requestKey)) {
-            return;
-        }
-        tableLoadingRequestKeysRef.current.add(requestKey);
-
-        if (append) {
-            tableMorePendingCountRef.current += 1;
-            setLoadingMoreTables(true);
-        } else {
-            tableListPendingCountRef.current += 1;
-            setLoadingTables(true);
-        }
-        try {
-            const result = await getMetadataTables(dsId, dbName, normalizedKeyword || undefined, page, TABLE_PAGE_SIZE);
-            const isStale =
-                activeDsIdRef.current !== String(dsId) ||
-                activeDbRef.current !== dbName ||
-                tableKeywordCommittedRef.current.trim() !== normalizedKeyword;
-            if (isStale) {
-                return;
-            }
-
-            if (append) {
-                setTables(prev => {
-                    const existing = new Set(prev.map(table => table.name));
-                    const next = result.data.filter(table => !existing.has(table.name));
-                    return [...prev, ...next];
-                });
-            } else {
-                setTables(result.data);
-            }
-            setTableTotal(result.total);
-            const loadedSoFar = append ? (page - 1) * TABLE_PAGE_SIZE + result.data.length : result.data.length;
-            setTableHasMore(loadedSoFar < result.total);
-            setTablePage(prev => (append ? Math.max(prev, page) : page));
-        } catch (error) {
-            console.error('Failed to load tables', error);
-        } finally {
-            tableLoadingRequestKeysRef.current.delete(requestKey);
-            if (append) {
-                tableMorePendingCountRef.current = Math.max(0, tableMorePendingCountRef.current - 1);
-                if (tableMorePendingCountRef.current === 0) {
-                    setLoadingMoreTables(false);
-                }
-            } else {
-                tableListPendingCountRef.current = Math.max(0, tableListPendingCountRef.current - 1);
-                if (tableListPendingCountRef.current === 0) {
-                    setLoadingTables(false);
-                }
-            }
-        }
-    };
-
-    const loadColumns = async (dsId: number, dbName: string, tableName: string) => {
-        const cachedColumns = columnCacheRef.current.get(tableName);
-        if (cachedColumns) {
-            return cachedColumns;
-        }
-
-        const requestKey = `${dsId}::${dbName}::${tableName}`;
-        const existingPromise = columnLoadPromisesRef.current.get(requestKey);
-        if (existingPromise) {
-            return existingPromise;
-        }
-
-        setLoadingColumns(prev => new Set(prev).add(tableName));
-
-        const requestPromise = (async () => {
-            try {
-                const cols = await getMetadataColumns(dsId, dbName, tableName);
-                if (activeDsIdRef.current === String(dsId) && activeDbRef.current === dbName) {
-                    setColumnCache(prev => new Map(prev).set(tableName, cols));
-                }
-                return cols;
-            } catch (error) {
-                console.error('Failed to load columns for', tableName, error);
-                return null;
-            } finally {
-                columnLoadPromisesRef.current.delete(requestKey);
-                setLoadingColumns(prev => {
-                    const next = new Set(prev);
-                    next.delete(tableName);
-                    return next;
-                });
-            }
-        })();
-
-        columnLoadPromisesRef.current.set(requestKey, requestPromise);
-        return requestPromise;
-    };
-
-    const handleTableScroll = useCallback(() => {
-        const el = tableScrollRef.current;
-        if (!el || loadingMoreTables || !tableHasMore || !selectedDsId || !selectedDb) return;
-        const { scrollTop, scrollHeight, clientHeight } = el;
-        if (scrollHeight - scrollTop - clientHeight < 100) {
-            loadTables(Number(selectedDsId), selectedDb, tableKeywordCommitted || undefined, tablePage + 1, true);
-        }
-    }, [loadingMoreTables, tableHasMore, selectedDsId, selectedDb, tableKeywordCommitted, tablePage]);
-
-    const selectedDsOption = useMemo(() => {
-        if (!selectedDs) {
-            return null;
-        }
-        return { label: selectedDs.name, value: String(selectedDs.id), type: selectedDs.type, raw: selectedDs };
-    }, [selectedDs]);
-
-    const dataSourceOptions = useMemo(() => {
-        const base = dataSources.map(ds => ({ label: ds.name, value: String(ds.id), type: ds.type, raw: ds }));
-        if (!selectedDs || base.some(opt => opt.value === String(selectedDs.id))) {
-            return base;
-        }
-        return [{ label: selectedDs.name, value: String(selectedDs.id), type: selectedDs.type, raw: selectedDs }, ...base];
-    }, [dataSources, selectedDs]);
-
-    const filteredDatabases = useMemo(() => {
-        if (!dbKeyword) {
-            return databases;
-        }
-        const normalized = dbKeyword.toLowerCase();
-        return databases.filter(db => db.toLowerCase().includes(normalized));
-    }, [databases, dbKeyword]);
-
-    const databaseOptions = useMemo(() => {
-        return filteredDatabases.map(db => ({ label: db, value: db }));
-    }, [filteredDatabases]);
-
-    const selectedDbOption = useMemo(() => {
-        if (!selectedDb) {
-            return null;
-        }
-        return { label: selectedDb, value: selectedDb };
-    }, [selectedDb]);
 
     const hasHiddenMetadataHint =
         sidebarCollapsed &&
@@ -1018,7 +423,7 @@ useKeyboardShortcuts({
         }
         setLoadingQuery(true);
         try {
-            const data = await rawExecuteQuery(Number(selectedDsId), finalSql, selectedDb);
+            const data = await executeQuery(Number(selectedDsId), finalSql, selectedDb);
             const activeDataSource = getActiveDataSource();
             setResult(data);
             setLastExecutedSql(finalSql.trim());
@@ -1157,10 +562,26 @@ useKeyboardShortcuts({
         }
     }, [activeResultDataSourceId, activeResultDatabase, activeResultSql, loadExportTasks, showExportFeedback]);
 
-    const downloadExportTask = useCallback((taskId: string) => {
-        const link = document.createElement('a');
-        link.href = getQueryExportTaskDownloadUrl(taskId);
-        link.click();
+    const downloadExportTask = useCallback(async (taskId: string) => {
+        try {
+            const response = await fetch(getQueryExportTaskDownloadUrl(taskId), {
+                headers: {
+                    Authorization: `Bearer ${getToken()}`,
+                },
+            });
+            if (!response.ok) throw new Error('Download failed');
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = '';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('Download error:', err);
+        }
     }, []);
 
     /**
@@ -1208,29 +629,16 @@ useKeyboardShortcuts({
         getStatementAtCursorRef.current = getStatementAtCursor;
     }, [getStatementAtCursor]);
 
-    const tablesRef = useRef(tables);
-    useEffect(() => {
-        tablesRef.current = tables;
-    }, [tables]);
 
-    const databasesRef = useRef(databases);
-    useEffect(() => {
-        databasesRef.current = databases;
-    }, [databases]);
-
-    const columnCacheRef = useRef(columnCache);
-    useEffect(() => {
-        columnCacheRef.current = columnCache;
-    }, [columnCache]);
-
-    useEffect(() => {
-        loadingColumnsRef.current = loadingColumns;
-    }, [loadingColumns]);
-
-    const dialectMetadataRef = useRef(dialectMetadata);
-    useEffect(() => {
-        dialectMetadataRef.current = dialectMetadata;
-    }, [dialectMetadata]);
+    const { registerCompletionProvider } = useSqlCompletion({
+        tables,
+        databases,
+        columnCache,
+        dialectMetadata,
+        activeDsId: activeDsIdRef.current,
+        activeDb: activeDbRef.current,
+        loadColumns,
+    });
 
     const handleEditorDidMount = (editor: MonacoEditorInstance, monaco: typeof Monaco) => {
         registerEditorThemes(monaco);
@@ -1240,328 +648,7 @@ useKeyboardShortcuts({
 
         // Register custom completion provider for SQL
         completionProviderRef.current?.dispose();
-        const provider = monaco.languages.registerCompletionItemProvider('sql', {
-            triggerCharacters: ['.', ' '],
-            provideCompletionItems: async (model, position) => {
-                const word = model.getWordUntilPosition(position);
-                const fullText = model.getValue();
-                const cursorOffset = model.getOffsetAt(position);
-                const currentStatement = getCurrentStatement(fullText, cursorOffset);
-                const textBeforeCursor = currentStatement.textBeforeCursor;
-                const statementSourceTables = parseSqlSourceTables(currentStatement.text);
-
-                const range: Monaco.IRange = {
-                    startLineNumber: position.lineNumber,
-                    endLineNumber: position.lineNumber,
-                    startColumn: word.startColumn,
-                    endColumn: word.endColumn,
-                };
-
-                const suggestions: Monaco.languages.CompletionItem[] = [];
-                const suggestionKeys = new Set<string>();
-                const currentTables = tablesRef.current;
-                const currentDatabases = databasesRef.current;
-                const currentColumnCache = columnCacheRef.current;
-                const currentDialect = dialectMetadataRef.current;
-                const normalizedWord = (word.word || '').toLowerCase();
-                const selectedDatabase = activeDbRef.current.toLowerCase();
-                const aliases = statementSourceTables.reduce<Record<string, string>>((acc, sourceTable) => {
-                    if (sourceTable.alias) {
-                        acc[sourceTable.alias.toLowerCase()] = sourceTable.tableName.toLowerCase();
-                    }
-                    return acc;
-                }, {});
-
-                const buildPrefixRank = (candidate: string) => {
-                    const normalizedCandidate = candidate.toLowerCase();
-                    if (!normalizedWord) return '2';
-                    if (normalizedCandidate === normalizedWord) return '0';
-                    if (normalizedCandidate.startsWith(normalizedWord)) return '1';
-                    if (normalizedCandidate.includes(normalizedWord)) return '2';
-                    return '3';
-                };
-
-                const pushSuggestion = (
-                    item: Monaco.languages.CompletionItem,
-                    categoryRank: string,
-                    dedupeKey?: string,
-                ) => {
-                    const labelText = typeof item.label === 'string' ? item.label : item.label.label;
-                    const key = dedupeKey ?? `${item.kind}:${labelText.toLowerCase()}:${item.detail ?? ''}`;
-                    if (suggestionKeys.has(key)) {
-                        return;
-                    }
-
-                    suggestionKeys.add(key);
-                    suggestions.push({
-                        ...item,
-                        sortText: `${categoryRank}${buildPrefixRank(labelText)}-${labelText.toLowerCase()}`,
-                    });
-                };
-
-                const pushSourceColumnSuggestions = async (categoryRank: string) => {
-                    const sourceColumns = await Promise.all(statementSourceTables.map(async sourceTable => {
-                        const normalizedDatabase = sourceTable.databaseName?.toLowerCase();
-                        if (normalizedDatabase && normalizedDatabase !== selectedDatabase) {
-                            return { sourceTable, columns: null, resolvedTableName: sourceTable.tableName };
-                        }
-
-                        const matchedTable = currentTables.find(table => table.name.toLowerCase() === sourceTable.tableName.toLowerCase());
-                        const resolvedTableName = matchedTable?.name || sourceTable.tableName;
-                        let cachedCols = currentColumnCache.get(resolvedTableName) || currentColumnCache.get(sourceTable.tableName);
-
-                        if (!cachedCols) {
-                            const activeDsId = activeDsIdRef.current;
-                            const activeDb = activeDbRef.current;
-                            if (activeDsId && activeDb) {
-                                cachedCols = await loadColumns(
-                                    Number(activeDsId),
-                                    activeDb,
-                                    matchedTable?.name || sourceTable.tableName,
-                                ) || undefined;
-                            }
-                        }
-
-                        return { sourceTable, columns: cachedCols ?? null, resolvedTableName };
-                    }));
-
-                    sourceColumns.forEach(({ sourceTable, columns, resolvedTableName }) => {
-                        if (!columns) {
-                            return;
-                        }
-
-                        const needsQualifiedInsert = Boolean(sourceTable.alias) || statementSourceTables.length > 1;
-                        const qualifier = sourceTable.alias || resolvedTableName;
-
-                        columns.forEach(col => {
-                            const insertText = needsQualifiedInsert ? `${qualifier}.${col.name}` : col.name;
-                            const sourceLabel = sourceTable.alias
-                                ? `${sourceTable.alias} (${resolvedTableName})`
-                                : resolvedTableName;
-
-                            pushSuggestion({
-                                label: col.name,
-                                kind: monaco.languages.CompletionItemKind.Field,
-                                insertText,
-                                filterText: `${col.name} ${insertText} ${resolvedTableName}`,
-                                detail: `${sourceLabel} Column (${col.type})`,
-                                documentation: col.remarks,
-                                range,
-                            }, categoryRank, `source-column:${sourceLabel.toLowerCase()}:${col.name.toLowerCase()}`);
-                        });
-                    });
-                };
-
-                // 1. Column suggestions for "table." or "alias."
-                const lastDotIndex = textBeforeCursor.lastIndexOf('.');
-                if (lastDotIndex !== -1) {
-                    const parts = textBeforeCursor.trim().split(/[\s,()=<>]+/); // Split by boundary characters
-                    const lastPart = parts[parts.length - 1]; // e.g. "t1" or "t1." or "t1.id."
-
-                    const dotParts = lastPart.split('.');
-                    // If we have at least one dot, the identifier is the part just before the last dot
-                    if (dotParts.length >= 2) {
-                        const identifier = dotParts[dotParts.length - 2].toLowerCase();
-                        const isDatabaseQualifier = currentDatabases.some(db => db.toLowerCase() === identifier);
-                        if (isDatabaseQualifier) {
-                            if (identifier === selectedDatabase) {
-                                currentTables.forEach(table => {
-                                    pushSuggestion({
-                                        label: table.name,
-                                        kind: monaco.languages.CompletionItemKind.Struct,
-                                        insertText: table.name,
-                                        detail: `Table in ${identifier}`,
-                                        documentation: table.remarks,
-                                        range,
-                                    }, '10', `db-table:${identifier}:${table.name.toLowerCase()}`);
-                                });
-                            }
-                            return { suggestions };
-                        }
-
-                        const actualTableName = aliases[identifier] || identifier;
-
-                        const table = currentTables.find(t => t.name.toLowerCase() === actualTableName);
-                        let cachedCols = currentColumnCache.get(actualTableName) || currentColumnCache.get(table?.name || '');
-                        if (cachedCols) {
-                            cachedCols.forEach(col => {
-                                pushSuggestion({
-                                    label: col.name,
-                                    kind: monaco.languages.CompletionItemKind.Field,
-                                    insertText: col.name,
-                                    detail: `${actualTableName} Column (${col.type})`,
-                                    documentation: col.remarks,
-                                    range,
-                                }, '00', `column:${actualTableName}:${col.name.toLowerCase()}`);
-                            });
-                            return { suggestions };
-                        }
-
-                        const matchedTable = currentTables.find(t => t.name.toLowerCase() === actualTableName);
-                        const activeDsId = activeDsIdRef.current;
-                        const activeDb = activeDbRef.current;
-                        if (matchedTable && activeDsId && activeDb) {
-                            cachedCols = await loadColumns(Number(activeDsId), activeDb, matchedTable.name) || undefined;
-                        }
-
-                        if (cachedCols) {
-                            cachedCols.forEach(col => {
-                                pushSuggestion({
-                                    label: col.name,
-                                    kind: monaco.languages.CompletionItemKind.Field,
-                                    insertText: col.name,
-                                    detail: `${actualTableName} Column (${col.type})`,
-                                    documentation: col.remarks,
-                                    range,
-                                }, '00', `column:${actualTableName}:${col.name.toLowerCase()}`);
-                            });
-                        }
-                        return { suggestions };
-                    }
-                }
-
-                // 2. Column suggestions inside SELECT list based on current statement source tables
-                if (isSelectListContext(currentStatement.text, textBeforeCursor) && statementSourceTables.length > 0) {
-                    await pushSourceColumnSuggestions('01');
-                }
-
-                // 3. Column suggestions inside WHERE / ON / HAVING / GROUP BY / ORDER BY expressions
-                if (isExpressionClauseContext(textBeforeCursor) && statementSourceTables.length > 0) {
-                    statementSourceTables.forEach(sourceTable => {
-                        if (!sourceTable.alias) {
-                            return;
-                        }
-
-                        pushSuggestion({
-                            label: sourceTable.alias,
-                            kind: monaco.languages.CompletionItemKind.Variable,
-                            insertText: sourceTable.alias,
-                            detail: `${sourceTable.alias} alias of ${sourceTable.tableName}`,
-                            range,
-                        }, '02', `alias:${sourceTable.alias.toLowerCase()}`);
-                    });
-
-                    await pushSourceColumnSuggestions('01');
-                }
-
-                // 4. Context-aware database/table suggestions after relation keywords
-                const relationContextMatch = /\b(FROM|JOIN|INTO|UPDATE|TABLE)\s+([a-zA-Z0-9_]*)$/i.exec(textBeforeCursor);
-                if (relationContextMatch) {
-                    currentDatabases.forEach(database => {
-                        pushSuggestion({
-                            label: database,
-                            kind: monaco.languages.CompletionItemKind.Module,
-                            insertText: database,
-                            detail: 'Database',
-                            range,
-                        }, '05', `database:${database.toLowerCase()}`);
-                    });
-                    currentTables.forEach(table => {
-                        pushSuggestion({
-                            label: table.name,
-                            kind: monaco.languages.CompletionItemKind.Struct,
-                            insertText: table.name,
-                            detail: `Table (${table.type})`,
-                            documentation: table.remarks,
-                            range,
-                        }, '08', `table:${table.name.toLowerCase()}`);
-                    });
-                    return { suggestions };
-                }
-
-                const useContextMatch = /\b(USE|DATABASE|SCHEMA)\s+([a-zA-Z0-9_]*)$/i.exec(textBeforeCursor);
-                if (useContextMatch) {
-                    currentDatabases.forEach(database => {
-                        pushSuggestion({
-                            label: database,
-                            kind: monaco.languages.CompletionItemKind.Module,
-                            insertText: database,
-                            detail: 'Database',
-                            range,
-                        }, '02', `database:${database.toLowerCase()}`);
-                    });
-                    return { suggestions };
-                }
-
-                // 5. Add General SQL Keywords and Functions from Dialect
-                const keywordSuggestions = currentDialect?.keywords?.length
-                    ? currentDialect.keywords
-                    : FALLBACK_SQL_KEYWORDS;
-
-                keywordSuggestions.forEach(keyword => {
-                    pushSuggestion({
-                        label: keyword,
-                        kind: monaco.languages.CompletionItemKind.Keyword,
-                        insertText: keyword,
-                        range,
-                    }, '70', `keyword:${keyword.toLowerCase()}`);
-                });
-
-                if (currentDialect) {
-                    currentDialect.dataTypes.forEach(dt => {
-                        pushSuggestion({
-                            label: dt,
-                            kind: monaco.languages.CompletionItemKind.TypeParameter,
-                            insertText: dt,
-                            detail: 'Data Type',
-                            range,
-                        }, '60', `datatype:${dt.toLowerCase()}`);
-                    });
-
-                    currentDialect.functions.forEach(func => {
-                        pushSuggestion({
-                            label: func.name,
-                            kind: monaco.languages.CompletionItemKind.Function,
-                            insertText: func.signature || `${func.name}($0)`,
-                            insertTextRules: (func.signature || `${func.name}($0)`).includes('$')
-                                ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
-                                : undefined,
-                            detail: 'Function',
-                            documentation: func.description,
-                            range,
-                        }, '50', `function:${func.name.toLowerCase()}`);
-                    });
-                }
-
-                currentDatabases.forEach(database => {
-                    pushSuggestion({
-                        label: database,
-                        kind: monaco.languages.CompletionItemKind.Module,
-                        insertText: database,
-                        detail: 'Database',
-                        range,
-                    }, '20', `database:${database.toLowerCase()}`);
-                });
-
-                currentTables.forEach(table => {
-                    pushSuggestion({
-                        label: table.name,
-                        kind: monaco.languages.CompletionItemKind.Struct,
-                        insertText: table.name,
-                        detail: `Table (${table.type})`,
-                        documentation: table.remarks,
-                        range,
-                    }, '30', `table:${table.name.toLowerCase()}`);
-                });
-
-                currentColumnCache.forEach((cols, tblName) => {
-                    cols.forEach(col => {
-                        pushSuggestion({
-                            label: col.name,
-                            kind: monaco.languages.CompletionItemKind.Field,
-                            insertText: col.name,
-                            detail: `Column of ${tblName} (${col.type})`,
-                            range,
-                        }, '40', `column:${tblName}:${col.name.toLowerCase()}`);
-                    });
-                });
-
-                return { suggestions };
-            },
-        });
-
-        // Store provider to dispose on unmount
-        completionProviderRef.current = provider;
+        completionProviderRef.current = registerCompletionProvider(monaco);
 
         // Add Cmd+Enter / Ctrl+Enter: run selection if exists, else only the statement under the cursor
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
@@ -1610,16 +697,15 @@ useKeyboardShortcuts({
                     horizontalLayoutSizesRef.current = sizes;
                     const sidebarSize = sizes[0];
                     if (typeof sidebarSize === 'number' && sidebarSize > 0) {
-                        const nextWidth = clampSidebarWidth(sidebarSize);
-                        setSidebarExpandedWidth(currentWidth => currentWidth === nextWidth ? currentWidth : nextWidth);
-                        persistSidebarExpandedWidth(nextWidth);
+                        setSidebarWidth(sidebarSize);
                     }
                 }}
                 onVisibleChange={(index, visible) => {
                     if (index === 0) {
                         const nextCollapsed = !visible;
-                        setSidebarCollapsed(current => current === nextCollapsed ? current : nextCollapsed);
-                        persistSidebarCollapsed(nextCollapsed);
+                        if (nextCollapsed !== sidebarCollapsed) {
+                            toggleSidebar();
+                        }
                     }
                 }}
             >
@@ -1892,8 +978,7 @@ useKeyboardShortcuts({
                                 const resultPaneSize = sizes[1];
                                 if (typeof resultPaneSize === 'number' && resultPaneSize > RESULT_PANEL_COLLAPSED_HEIGHT_PX) {
                                     const nextHeight = Math.max(RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX, Math.round(resultPaneSize));
-                                    setResultExpandedHeight(currentHeight => currentHeight === nextHeight ? currentHeight : nextHeight);
-                                    persistResultExpandedHeight(nextHeight);
+                                    setResultExpandedHeight(nextHeight);
                                 }
                             }}
                         >
