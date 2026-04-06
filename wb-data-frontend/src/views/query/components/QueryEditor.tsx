@@ -1,15 +1,23 @@
 import { lazy, Suspense } from 'react';
-import { Loader2 } from 'lucide-react';
 import type * as Monaco from 'monaco-editor';
 import { loadQueryEditorModule } from '../../queryEditorModule';
+import '../../RouteSkeletons.css';
+
 
 const Editor = lazy(loadQueryEditorModule);
 
 function EditorLoader() {
     return (
-        <div className="flex h-full w-full items-center justify-center p-8 text-gray-500 bg-white">
-            <Loader2 className="mr-2 h-6 w-6 animate-spin opacity-50" />
-            <span className="text-sm font-medium">配置查询编辑器...</span>
+        <div className="route-skeleton-query-editor h-full w-full absolute inset-0">
+            <div className="route-skeleton-query-gutter" />
+            <div className="route-skeleton-query-editor-lines">
+                <div className="route-skeleton-block route-skeleton-query-line long" />
+                <div className="route-skeleton-block route-skeleton-query-line medium" />
+                <div className="route-skeleton-block route-skeleton-query-line short" />
+                <div className="route-skeleton-block route-skeleton-query-line long" style={{ opacity: 0.8 }} />
+                <div className="route-skeleton-block route-skeleton-query-line medium" style={{ opacity: 0.6 }} />
+                <div className="route-skeleton-block route-skeleton-query-line short" style={{ opacity: 0.4 }} />
+            </div>
         </div>
     );
 }
