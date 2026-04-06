@@ -1,45 +1,30 @@
-import { useState, useEffect, useRef, useMemo, lazy, Suspense, useCallback, useLayoutEffect } from 'react';
+import { useEffect, useRef, useMemo, lazy, Suspense, useCallback, useLayoutEffect } from 'react';
 import type * as Monaco from 'monaco-editor';
 import type { AllotmentHandle } from 'allotment';
 import { Play, Loader2, Code2, Wand2, Download, FileText, Sheet, Database, ChevronRight, ChevronDown, ChevronUp, Search, PanelLeftClose, PanelLeft, Star, AlertTriangle, CheckCircle2, Clock3, Info, Pin, X } from 'lucide-react';
-import {
-    executeQuery,
-    createQueryExportTask,
-    listQueryExportTasks,
-    getQueryExportTaskDownloadUrl,
-    QueryExportTask,
-} from '../api/query';
 import { DataSource } from '../api/datasource';
-import { useAuthStore, getToken } from '../utils/auth';
+import { useAuthStore } from '../utils/auth';
 import { DataSourceSelect } from '../components/DataSourceSelect';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Allotment } from 'allotment';
 import 'allotment/dist/style.css';
 import { useQueryEditor } from './query/hooks/useQueryEditor';
+import { useQueryExecution } from './query/hooks/useQueryExecution';
 import { useKeyboardShortcuts } from './query/hooks/useKeyboardShortcuts';
 import {
     isMac,
-    QUERY_EXECUTION_TIMEOUT_MS,
     PINNED_RESULT_LIMIT,
-    EXPORT_TASK_POLL_INTERVAL_MS,
     EXPORT_MAX_ROWS,
 } from './query/queryConstants';
 import {
-    upsertExportTask,
     getExportTaskStatusMeta,
     formatTaskTimestamp,
     formatResultTabLabel,
 } from './query/exportUtils';
 import { registerEditorThemes } from './query/editorUtils';
 import { buildQueryFeedback } from './query/feedbackUtils';
-import {
-    QueryEditorError,
-    ExportState,
-    SavedQueryResult,
-    ResultTabId,
-    MonacoEditorInstance,
-} from './query/types';
+import { MonacoEditorInstance } from './query/types';
 import {
     useLayoutPersistence,
     getHorizontalSizes,
@@ -90,15 +75,15 @@ export default function Query() {
     // ---- Metadata (data sources, databases, tables, columns, dialect) ----
     const metadata = useMetadata(groupId);
     const {
-        dataSources, selectedDsId, selectedDs, defaultDsId,
+        selectedDsId, defaultDsId,
         dsKeyword, loadingDs, loadingDsMore, dsHasMore,
         selectedDsOption, dataSourceOptions,
         setDsKeyword, setSelectedDb,
         applySelectedDataSource, loadMoreDataSources, toggleDefaultDataSource, getActiveDataSource,
         databases, selectedDb, dbKeyword, loadingDatabases,
-        filteredDatabases, databaseOptions, selectedDbOption, setDbKeyword,
-        tables, tableKeyword, tableKeywordCommitted, tableTotal,
-        loadingTables, loadingMoreTables, tableHasMore, expandedTables,
+        databaseOptions, selectedDbOption, setDbKeyword,
+        tables, tableKeyword, tableTotal,
+        loadingTables, loadingMoreTables, expandedTables,
         setTableKeyword, setTableKeywordCommitted,
         handleTableScroll, handleTableScrollRef, toggleTableExpand, tableScrollElement,
         columnCache, loadingColumns, loadColumns,
@@ -123,23 +108,32 @@ export default function Query() {
         setSql, setResult, setQueryError, setLoadingQuery,
     } = useQueryEditor();
 
-    const [showExportMenu, setShowExportMenu] = useState(false);
-    const [showExportTasksMenu, setShowExportTasksMenu] = useState(false);
-    const [exportState, setExportState] = useState<ExportState>({ status: 'idle' });
-    const [exportTasks, setExportTasks] = useState<QueryExportTask[]>([]);
-    const [loadingExportTasks, setLoadingExportTasks] = useState(false);
-    const [lastExecutedSql, setLastExecutedSql] = useState('');
-    const [lastExecutedDataSourceId, setLastExecutedDataSourceId] = useState('');
-    const [lastExecutedDataSourceName, setLastExecutedDataSourceName] = useState('');
-    const [lastExecutedDatabase, setLastExecutedDatabase] = useState('');
-    const [savedResults, setSavedResults] = useState<SavedQueryResult[]>([]);
-    const [activeResultTab, setActiveResultTab] = useState<ResultTabId>('current');
-    const [currentResultTabNumber, setCurrentResultTabNumber] = useState<number | null>(null);
     const editorRef = useRef<MonacoEditorInstance | null>(null);
     const monacoRef = useRef<typeof Monaco | null>(null);
     const composingRef = useRef(false);
-    const exportMenuRef = useRef<HTMLDivElement>(null);
-    const exportTasksMenuRef = useRef<HTMLDivElement>(null);
+
+    const execution = useQueryExecution({
+        sql, result, queryError, loadingQuery,
+        setSql, setResult, setQueryError, setLoadingQuery,
+        selectedDsId, selectedDb, getActiveDataSource,
+        resultAutoOpen, resultCollapsed, setResultPanelState,
+        editorRef, monacoRef,
+    });
+
+    const {
+        showExportMenu, setShowExportMenu,
+        showExportTasksMenu, setShowExportTasksMenu,
+        exportMenuRef, exportTasksMenuRef,
+        exportState, exportTasks, loadingExportTasks,
+        activeExportTaskCount, shouldShowExportTasksButton,
+        savedResults, activeResultTab, setActiveResultTab, currentResultTabNumber,
+        activeSavedResult, hasCurrentResultTab,
+        displayedResult, displayedQueryError, currentResultCanPin,
+        handleRunQuery, handleFormat, handlePinCurrentResult,
+        handleCloseSavedResult, handleToggleSavedResultPin, handleFillSavedSql,
+        createAsyncExportTask, downloadExportTask, loadExportTasks,
+    } = execution;
+
     const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
     const horizontalSplitterRef = useRef<AllotmentHandle | null>(null);
     const verticalSplitterRef = useRef<AllotmentHandle | null>(null);
@@ -147,29 +141,9 @@ export default function Query() {
     const verticalLayoutSizesRef = useRef<number[] | null>(null);
     const querySplitterRef = useRef<HTMLDivElement | null>(null);
     const queryContentRef = useRef<HTMLDivElement | null>(null);
-    const exportStateTimerRef = useRef<number | null>(null);
-    const resultTabSequenceRef = useRef(1);
 
     const queryLoadingVisible = useDelayedBusy(loadingQuery, { delayMs: 0, minVisibleMs: 420 });
     const queryResultLoadingVisible = useDelayedBusy(loadingQuery && !result && !queryError, { delayMs: 120, minVisibleMs: 280 });
-    const activeExportTaskCount = useMemo(() => {
-        return exportTasks.filter((task) => task.status === 'PENDING' || task.status === 'RUNNING').length;
-    }, [exportTasks]);
-    const shouldShowExportTasksButton = exportTasks.length > 0 || loadingExportTasks;
-    const activeSavedResult = useMemo(() => {
-        if (activeResultTab === 'current') {
-            return null;
-        }
-        return savedResults.find((item) => item.id === activeResultTab) ?? null;
-    }, [activeResultTab, savedResults]);
-    const hasCurrentResultTab = currentResultTabNumber !== null;
-    const displayedCurrentResult = hasCurrentResultTab ? result : null;
-    const displayedResult = activeSavedResult?.result ?? displayedCurrentResult;
-    const displayedQueryError = activeSavedResult ? '' : (hasCurrentResultTab ? queryError : '');
-    const currentResultCanPin = Boolean(result && result.columns.length > 0 && !queryError && savedResults.length < PINNED_RESULT_LIMIT);
-    const activeResultSql = activeSavedResult?.sql ?? (hasCurrentResultTab ? lastExecutedSql : '');
-    const activeResultDataSourceId = activeSavedResult?.dataSourceId ?? (hasCurrentResultTab ? lastExecutedDataSourceId : '');
-    const activeResultDatabase = activeSavedResult?.databaseName ?? (hasCurrentResultTab ? lastExecutedDatabase : '');
 
     const virtualizer = useVirtualizer({
         count: tables.length,
@@ -181,43 +155,7 @@ export default function Query() {
 
 
 
-    const showExportFeedback = useCallback((nextState: ExportState) => {
-        if (exportStateTimerRef.current !== null) {
-            window.clearTimeout(exportStateTimerRef.current);
-            exportStateTimerRef.current = null;
-        }
 
-        setExportState(nextState);
-
-        if (nextState.status === 'error') {
-            exportStateTimerRef.current = window.setTimeout(() => {
-                setExportState({ status: 'idle' });
-                exportStateTimerRef.current = null;
-            }, 2800);
-        }
-    }, []);
-
-    const loadExportTasks = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
-        if (!silent) {
-            setLoadingExportTasks(true);
-        }
-
-        try {
-            const tasks = await listQueryExportTasks();
-            setExportTasks(tasks);
-        } catch {
-            if (!silent) {
-                showExportFeedback({
-                    status: 'error',
-                    message: '导出任务列表加载失败，请稍后重试。',
-                });
-            }
-        } finally {
-            if (!silent) {
-                setLoadingExportTasks(false);
-            }
-        }
-    }, [showExportFeedback]);
 
 
     const getCurrentHorizontalTotalWidth = useCallback(() => {
@@ -275,27 +213,7 @@ export default function Query() {
     }, [getCurrentVerticalTotalHeight, resultCollapsed, resultExpandedHeight]);
 
 
-    useEffect(() => {
-        return () => {
-            if (exportStateTimerRef.current !== null) {
-                window.clearTimeout(exportStateTimerRef.current);
-            }
-        };
-    }, []);
 
-    useEffect(() => {
-        void loadExportTasks({ silent: true });
-    }, [loadExportTasks]);
-
-    useEffect(() => {
-        if (activeExportTaskCount === 0) return;
-
-        const timer = window.setInterval(() => {
-            void loadExportTasks({ silent: true });
-        }, EXPORT_TASK_POLL_INTERVAL_MS);
-
-        return () => window.clearInterval(timer);
-    }, [activeExportTaskCount, loadExportTasks]);
 
     useKeyboardShortcuts({
         onToggleSidebar: toggleSidebar,
@@ -303,47 +221,7 @@ export default function Query() {
     });
 
 
-    // Close export menu on backdrop click or Escape
-    useEffect(() => {
-        if (resultCollapsed) {
-            setShowExportMenu(false);
-            setShowExportTasksMenu(false);
-            return;
-        }
-        if (!showExportMenu && !showExportTasksMenu) return;
 
-        const handleClickOutside = (e: MouseEvent) => {
-            const target = e.target as Node;
-            const clickedInsideExportMenu = exportMenuRef.current?.contains(target);
-            const clickedInsideExportTasksMenu = exportTasksMenuRef.current?.contains(target);
-            if (!clickedInsideExportMenu && !clickedInsideExportTasksMenu) {
-                setShowExportMenu(false);
-                setShowExportTasksMenu(false);
-            }
-        };
-
-        const handleEscape = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                setShowExportMenu(false);
-                setShowExportTasksMenu(false);
-            }
-        };
-
-        document.addEventListener('mousedown', handleClickOutside);
-        document.addEventListener('keydown', handleEscape);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-            document.removeEventListener('keydown', handleEscape);
-        };
-    }, [resultCollapsed, showExportMenu, showExportTasksMenu]);
-
-    useEffect(() => {
-        if (!showExportTasksMenu) {
-            return;
-        }
-
-        void loadExportTasks();
-    }, [loadExportTasks, showExportTasksMenu]);
 
 
 
@@ -367,222 +245,7 @@ export default function Query() {
     const displayedResultHasTable = Boolean(displayedResult && displayedResult.columns.length > 0);
     const displayedResultHasRows = Boolean(displayedResult && displayedResult.columns.length > 0 && displayedResult.rows.length > 0);
 
-    const handleRunQuery = useCallback(async (sqlToRun?: string) => {
-        let finalSql = sqlToRun;
 
-        // If no explicit SQL provided (e.g. from button click), check for selection
-        const editor = editorRef.current;
-        const monacoInstance = monacoRef.current;
-
-        if (!finalSql) {
-            // Try to get SQL from editor
-            if (editor) {
-                const selection = editor.getSelection();
-                if (selection && !selection.isEmpty()) {
-                    finalSql = editor.getModel()?.getValueInRange(selection);
-                } else {
-                    finalSql = editor.getModel()?.getValue() ?? '';
-                }
-            } else if (monacoInstance) {
-                // Fallback: try to get from Monaco global
-                const editors = monacoInstance.editor.getEditors();
-                if (editors.length > 0) {
-                    finalSql = editors[0].getModel()?.getValue() ?? '';
-                }
-            }
-        }
-
-        // Fallback to hook's sql state
-        finalSql = finalSql ?? sql;
-
-        if (!selectedDsId) {
-            setResult(null);
-            setQueryError('请先选择数据源后再执行 SQL。');
-            setResultPanelState(false);
-            return;
-        }
-        if (!finalSql.trim()) {
-            setResult(null);
-            setQueryError('请输入 SQL 语句后再执行。');
-            setResultPanelState(false);
-            return;
-        }
-
-        if (currentResultTabNumber === null) {
-            setCurrentResultTabNumber(resultTabSequenceRef.current++);
-        }
-
-        setResult(null);
-        setQueryError('');
-        setActiveResultTab('current');
-        showExportFeedback({ status: 'idle' });
-        setShowExportMenu(false);
-        setShowExportTasksMenu(false);
-        if (resultAutoOpen) {
-            setResultPanelState(false);
-        }
-        setLoadingQuery(true);
-        try {
-            const data = await executeQuery(Number(selectedDsId), finalSql, selectedDb);
-            const activeDataSource = getActiveDataSource();
-            setResult(data);
-            setLastExecutedSql(finalSql.trim());
-            setLastExecutedDataSourceId(selectedDsId);
-            setLastExecutedDataSourceName(activeDataSource?.name || '');
-            setLastExecutedDatabase(selectedDb);
-            setQueryError('');
-        } catch (error: unknown) {
-            const requestError = error as QueryEditorError;
-            const rawMessage = requestError.response?.data?.message
-                || requestError.message
-                || '执行查询失败';
-            const isTimeoutError =
-                requestError.code === 'ECONNABORTED'
-                || rawMessage.toLowerCase().includes('timeout')
-                || rawMessage.includes('超时');
-            const message = isTimeoutError
-                ? `查询超过 ${QUERY_EXECUTION_TIMEOUT_MS / 1000} 秒未完成，请检查 SQL 或数据源响应情况。`
-                : rawMessage;
-            setQueryError(message);
-            setResultPanelState(false);
-        } finally {
-            setLoadingQuery(false);
-        }
-    }, [currentResultTabNumber, getActiveDataSource, resultAutoOpen, selectedDb, selectedDsId, setResultPanelState, showExportFeedback, sql]);
-
-    // ── SQL Formatting ──────────────────────────────────────────────────────
-    const handleFormat = async () => {
-        if (!editorRef.current) return;
-        const raw = editorRef.current.getValue();
-        try {
-            const { format } = await import('sql-formatter');
-            const formatted = format(raw, { language: 'sql', tabWidth: 4, keywordCase: 'upper' });
-            editorRef.current.setValue(formatted);
-        } catch {
-            // If sql-formatter can't parse it, leave as-is
-        }
-    };
-
-    const handlePinCurrentResult = useCallback(() => {
-        if (!result || queryError || !lastExecutedSql || !lastExecutedDataSourceId || savedResults.length >= PINNED_RESULT_LIMIT || currentResultTabNumber === null) {
-            return;
-        }
-
-        const executedAt = new Date().toISOString();
-        const savedResult: SavedQueryResult = {
-            id: `pinned-${Date.now()}-${currentResultTabNumber}`,
-            tabNumber: currentResultTabNumber,
-            isPinned: true,
-            sql: lastExecutedSql,
-            dataSourceId: lastExecutedDataSourceId,
-            dataSourceName: lastExecutedDataSourceName,
-            databaseName: lastExecutedDatabase,
-            executedAt,
-            rowCount: result.rows.length,
-            executionTimeMs: result.executionTimeMs,
-            result,
-        };
-
-        setSavedResults((currentResults) => [...currentResults, savedResult]);
-        setCurrentResultTabNumber(null);
-        setActiveResultTab(savedResult.id);
-        setShowExportMenu(false);
-        setShowExportTasksMenu(false);
-    }, [
-        currentResultTabNumber,
-        lastExecutedDataSourceId,
-        lastExecutedDataSourceName,
-        lastExecutedDatabase,
-        lastExecutedSql,
-        savedResults.length,
-        queryError,
-        result,
-    ]);
-
-    const handleCloseSavedResult = useCallback((tabId: string) => {
-        setSavedResults((currentResults) => {
-            const nextResults = currentResults.filter((item) => item.id !== tabId);
-            setActiveResultTab((currentTab) => {
-                if (currentTab !== tabId) {
-                    return currentTab;
-                }
-                if (hasCurrentResultTab) {
-                    return 'current';
-                }
-                return nextResults[0]?.id ?? 'current';
-            });
-            return nextResults;
-        });
-        setShowExportMenu(false);
-    }, [hasCurrentResultTab]);
-
-    const handleToggleSavedResultPin = useCallback((tabId: string) => {
-        setSavedResults((currentResults) => currentResults.map((item) => (
-            item.id === tabId ? { ...item, isPinned: !item.isPinned } : item
-        )));
-    }, []);
-
-    const handleFillSavedSql = useCallback(() => {
-        if (!activeSavedResult) {
-            return;
-        }
-
-        setSql(activeSavedResult.sql);
-        editorRef.current?.focus();
-    }, [activeSavedResult]);
-
-    // ── Result Export ────────────────────────────────────────────────────────
-    const createAsyncExportTask = useCallback(async (format: 'csv' | 'xlsx') => {
-        if (!activeResultDataSourceId || !activeResultSql) {
-            showExportFeedback({ status: 'error', format, message: '请先成功执行查询后再创建导出任务。' });
-            return;
-        }
-
-        const formatLabel = format === 'csv' ? 'CSV' : 'Excel';
-        showExportFeedback({ status: 'exporting', format, message: `正在创建 ${formatLabel} 导出任务...` });
-        try {
-            const task = await createQueryExportTask(
-                Number(activeResultDataSourceId),
-                activeResultSql,
-                activeResultDatabase || undefined,
-                format,
-            );
-            setExportTasks((currentTasks) => upsertExportTask(currentTasks, task));
-            setShowExportMenu(false);
-            setShowExportTasksMenu(true);
-            showExportFeedback({ status: 'idle' });
-            void loadExportTasks({ silent: true });
-        } catch (error: unknown) {
-            const requestError = error as QueryEditorError;
-            showExportFeedback({
-                status: 'error',
-                format,
-                message: requestError.response?.data?.message || requestError.message || `${formatLabel} 导出任务创建失败，请重试。`,
-            });
-        }
-    }, [activeResultDataSourceId, activeResultDatabase, activeResultSql, loadExportTasks, showExportFeedback]);
-
-    const downloadExportTask = useCallback(async (taskId: string) => {
-        try {
-            const response = await fetch(getQueryExportTaskDownloadUrl(taskId), {
-                headers: {
-                    Authorization: `Bearer ${getToken()}`,
-                },
-            });
-            if (!response.ok) throw new Error('Download failed');
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = '';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
-        } catch (err) {
-            console.error('Download error:', err);
-        }
-    }, []);
 
     /**
      * Extracts the SQL statement the cursor is currently on.
