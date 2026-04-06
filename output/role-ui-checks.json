@@ -1,0 +1,268 @@
+{
+  "cases": {
+    "admin": {
+      "nav": [
+        "首页",
+        "系统管理",
+        "数据源管理",
+        "自助查询",
+        "成员管理",
+        "项目组设置"
+      ],
+      "pathChecks": {
+        "/system-admin": {
+          "expected": "/system-admin",
+          "actual": "/system-admin",
+          "ok": true
+        },
+        "/members": {
+          "expected": "/members",
+          "actual": "/members",
+          "ok": true
+        },
+        "/group-settings": {
+          "expected": "/group-settings",
+          "actual": "/group-settings",
+          "ok": true
+        },
+        "/datasources": {
+          "expected": "/datasources",
+          "actual": "/datasources",
+          "ok": true
+        },
+        "/query": {
+          "expected": "/query",
+          "actual": "/query",
+          "ok": true
+        }
+      },
+      "buttonChecks": {
+        "/datasources": {
+          "新建数据源": {
+            "expected": true,
+            "actual": true,
+            "ok": true
+          }
+        }
+      },
+      "screenshot": "/Users/wenbin/Projects/wb-data/output/playwright/role-ui-admin.png",
+      "navOk": true,
+      "expectedNav": [
+        "首页",
+        "系统管理",
+        "数据源管理",
+        "自助查询",
+        "成员管理",
+        "项目组设置"
+      ]
+    },
+    "group_admin_smoke": {
+      "nav": [
+        "首页",
+        "数据源管理",
+        "自助查询",
+        "成员管理",
+        "项目组设置"
+      ],
+      "pathChecks": {
+        "/system-admin": {
+          "expected": "/",
+          "actual": "/",
+          "ok": true
+        },
+        "/members": {
+          "expected": "/members",
+          "actual": "/members",
+          "ok": true
+        },
+        "/group-settings": {
+          "expected": "/group-settings",
+          "actual": "/group-settings",
+          "ok": true
+        },
+        "/datasources": {
+          "expected": "/datasources",
+          "actual": "/datasources",
+          "ok": true
+        },
+        "/query": {
+          "expected": "/query",
+          "actual": "/query",
+          "ok": true
+        }
+      },
+      "buttonChecks": {
+        "/datasources": {
+          "新建数据源": {
+            "expected": true,
+            "actual": true,
+            "ok": true
+          }
+        }
+      },
+      "screenshot": "/Users/wenbin/Projects/wb-data/output/playwright/role-ui-group_admin_smoke.png",
+      "navOk": true,
+      "expectedNav": [
+        "首页",
+        "数据源管理",
+        "自助查询",
+        "成员管理",
+        "项目组设置"
+      ]
+    },
+    "developer_smoke": {
+      "nav": [
+        "首页",
+        "数据源管理",
+        "自助查询",
+        "成员管理"
+      ],
+      "pathChecks": {
+        "/system-admin": {
+          "expected": "/",
+          "actual": "/",
+          "ok": true
+        },
+        "/members": {
+          "expected": "/members",
+          "actual": "/members",
+          "ok": true
+        },
+        "/group-settings": {
+          "expected": "/",
+          "actual": "/",
+          "ok": true
+        },
+        "/datasources": {
+          "expected": "/datasources",
+          "actual": "/datasources",
+          "ok": true
+        },
+        "/query": {
+          "expected": "/query",
+          "actual": "/query",
+          "ok": true
+        }
+      },
+      "buttonChecks": {
+        "/datasources": {
+          "新建数据源": {
+            "expected": false,
+            "actual": false,
+            "ok": true
+          }
+        }
+      },
+      "screenshot": "/Users/wenbin/Projects/wb-data/output/playwright/role-ui-developer_smoke.png",
+      "navOk": true,
+      "expectedNav": [
+        "首页",
+        "数据源管理",
+        "自助查询",
+        "成员管理"
+      ]
+    },
+    "analyst_smoke": {
+      "nav": [
+        "首页",
+        "数据源管理",
+        "自助查询",
+        "成员管理"
+      ],
+      "pathChecks": {
+        "/system-admin": {
+          "expected": "/",
+          "actual": "/",
+          "ok": true
+        },
+        "/members": {
+          "expected": "/members",
+          "actual": "/members",
+          "ok": true
+        },
+        "/group-settings": {
+          "expected": "/",
+          "actual": "/",
+          "ok": true
+        },
+        "/datasources": {
+          "expected": "/datasources",
+          "actual": "/datasources",
+          "ok": true
+        },
+        "/query": {
+          "expected": "/query",
+          "actual": "/query",
+          "ok": true
+        }
+      },
+      "buttonChecks": {
+        "/datasources": {
+          "新建数据源": {
+            "expected": false,
+            "actual": false,
+            "ok": true
+          }
+        }
+      },
+      "screenshot": "/Users/wenbin/Projects/wb-data/output/playwright/role-ui-analyst_smoke.png",
+      "navOk": true,
+      "expectedNav": [
+        "首页",
+        "数据源管理",
+        "自助查询",
+        "成员管理"
+      ]
+    },
+    "viewer_role_smoke": {
+      "nav": [
+        "首页",
+        "数据源管理",
+        "成员管理"
+      ],
+      "pathChecks": {
+        "/system-admin": {
+          "expected": "/",
+          "actual": "/",
+          "ok": true
+        },
+        "/members": {
+          "expected": "/members",
+          "actual": "/members",
+          "ok": true
+        },
+        "/group-settings": {
+          "expected": "/",
+          "actual": "/",
+          "ok": true
+        },
+        "/datasources": {
+          "expected": "/datasources",
+          "actual": "/datasources",
+          "ok": true
+        },
+        "/query": {
+          "expected": "/",
+          "actual": "/",
+          "ok": true
+        }
+      },
+      "buttonChecks": {
+        "/datasources": {
+          "新建数据源": {
+            "expected": false,
+            "actual": false,
+            "ok": true
+          }
+        }
+      },
+      "screenshot": "/Users/wenbin/Projects/wb-data/output/playwright/role-ui-viewer_role_smoke.png",
+      "navOk": true,
+      "expectedNav": [
+        "首页",
+        "数据源管理",
+        "成员管理"
+      ]
+    }
+  }
+}

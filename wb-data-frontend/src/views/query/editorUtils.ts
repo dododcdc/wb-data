@@ -2,6 +2,8 @@
  * Query 页面 Monaco Editor 工具
  */
 
+import type * as Monaco from 'monaco-editor';
+
 /**
  * 注册自定义主题 "warm-parchment"
  * 温暖的羊皮纸色调，视觉上更柔和

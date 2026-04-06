@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react';
 import type * as Monaco from 'monaco-editor';
-import { loadQueryEditorModule } from '../../queryEditorModule';
-import '../../RouteSkeletons.css';
+import { loadQueryEditorModule } from '../queryEditorModule';
+import '../../core/RouteSkeletons.css';
 
 
 const Editor = lazy(loadQueryEditorModule);

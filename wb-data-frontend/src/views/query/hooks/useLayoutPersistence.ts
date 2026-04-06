@@ -4,6 +4,15 @@
  */
 
 import { useState, useCallback, useRef, useMemo } from 'react';
+const SIDEBAR_STORAGE_KEY = 'querySidebarCollapsed';
+const SIDEBAR_EXPANDED_WIDTH_STORAGE_KEY = 'querySidebarExpandedWidth';
+const LEGACY_SIDEBAR_SIZE_STORAGE_KEY = 'querySidebarSize'; // 兼容旧版
+
+const RESULT_PANEL_COLLAPSED_STORAGE_KEY = 'queryResultCollapsed';
+const RESULT_PANEL_AUTO_OPEN_STORAGE_KEY = 'queryResultAutoOpen';
+const RESULT_PANEL_EXPANDED_HEIGHT_STORAGE_KEY = 'queryResultExpandedHeight';
+const LEGACY_EDITOR_SIZE_STORAGE_KEY = 'queryEditorSize'; // 兼容旧版
+
 
 // ==================== 常量 ====================
 

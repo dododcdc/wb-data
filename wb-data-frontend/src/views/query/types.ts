@@ -3,6 +3,7 @@
  */
 
 import { QueryResult } from '../../api/query';
+import type * as Monaco from 'monaco-editor';
 
 // ==================== Monaco Editor ====================
 

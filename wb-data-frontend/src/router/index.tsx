@@ -3,12 +3,12 @@ import type { ReactNode } from 'react';
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { getAuthContext } from '../api/auth';
 import { useAuthStore } from '../utils/auth';
-import DashboardSkeleton from '../views/DashboardSkeleton';
+import DashboardSkeleton from '../views/dashboard/DashboardSkeleton';
 import DataSourceListSkeleton from '../views/datasources/DataSourceListSkeleton';
-import Layout from '../views/Layout';
-import QuerySkeleton from '../views/QuerySkeleton';
-import RouteErrorPage from '../views/RouteErrorPage';
-import RouteLoadingPage from '../views/RouteLoadingPage';
+import Layout from '../views/layout/Layout';
+import QuerySkeleton from '../views/query/QuerySkeleton';
+import RouteErrorPage from '../views/core/RouteErrorPage';
+import RouteLoadingPage from '../views/core/RouteLoadingPage';
 import {
     loadDashboardModule,
     loadDataSourceListModule,

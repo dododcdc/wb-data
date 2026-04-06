@@ -1,22 +1,22 @@
 import { useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react';
 import type * as Monaco from 'monaco-editor';
 import type { AllotmentHandle } from 'allotment';
-import { useAuthStore } from '../utils/auth';
+import { useAuthStore } from '../../utils/auth';
 
 
 
 import { Allotment } from 'allotment';
 import 'allotment/dist/style.css';
-import { useQueryEditor } from './query/hooks/useQueryEditor';
-import { useQueryExecution } from './query/hooks/useQueryExecution';
-import { useKeyboardShortcuts } from './query/hooks/useKeyboardShortcuts';
-import { isMac } from './query/queryConstants';
-import { QuerySidebar } from './query/components/QuerySidebar';
-import { QueryToolbar } from './query/components/QueryToolbar';
-import { QueryEditor } from './query/components/QueryEditor';
-import { registerEditorThemes } from './query/editorUtils';
-import { MonacoEditorInstance } from './query/types';
-import { QueryResultsPanel } from './query/components/QueryResultsPanel';
+import { useQueryEditor } from './hooks/useQueryEditor';
+import { useQueryExecution } from './hooks/useQueryExecution';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { isMac } from './queryConstants';
+import { QuerySidebar } from './components/QuerySidebar';
+import { QueryToolbar } from './components/QueryToolbar';
+import { QueryEditor } from './components/QueryEditor';
+import { registerEditorThemes } from './editorUtils';
+import { MonacoEditorInstance } from './types';
+import { QueryResultsPanel } from './components/QueryResultsPanel';
 import {
     useLayoutPersistence,
     getHorizontalSizes,
@@ -30,11 +30,11 @@ import {
     RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX,
     RESULT_PANEL_DEFAULT_HEIGHT_PX,
     QUERY_EDITOR_DEFAULT_HEIGHT_PX,
-} from './query/hooks/useLayoutPersistence';
-import { useSqlCompletion } from './query/hooks/useSqlCompletion';
-import { useMetadata } from './query/hooks/useMetadata';
-import { useKeyboardFocusMode } from '../hooks/useKeyboardFocusMode';
-import { useDelayedBusy } from '../hooks/useDelayedBusy';
+} from './hooks/useLayoutPersistence';
+import { useSqlCompletion } from './hooks/useSqlCompletion';
+import { useMetadata } from './hooks/useMetadata';
+import { useKeyboardFocusMode } from '../../hooks/useKeyboardFocusMode';
+import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import './Query.css';
 
 

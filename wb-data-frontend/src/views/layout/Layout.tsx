@@ -3,18 +3,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { LucideIcon } from 'lucide-react';
 import { ChevronDown, Database, FolderOpen, Home, Layers, LogOut, Search, Settings, Shield, Users } from 'lucide-react';
-import { useAuthStore } from '../utils/auth';
-import { getAuthContext } from '../api/auth';
-import { getDataSourcePage } from '../api/datasource';
-import { TopProgressBar } from '../components/loading/TopProgressBar';
-import { buildDataSourcePageQueryKey, DEFAULT_PAGE_SIZE } from './datasources/config';
+import { useAuthStore } from '../../utils/auth';
+import { getAuthContext } from '../../api/auth';
+import { getDataSourcePage } from '../../api/datasource';
+import { TopProgressBar } from '../../components/loading/TopProgressBar';
+import { buildDataSourcePageQueryKey, DEFAULT_PAGE_SIZE } from '../datasources/config';
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from '../components/ui/select';
+} from '../../components/ui/select';
 import {
     loadDashboardModule,
     loadDataSourceListModule,
@@ -22,10 +22,10 @@ import {
     loadGroupSettingsModule,
     loadQueryModule,
     loadUserListModule,
-} from '../router/routeModules';
-import { useDelayedBusy } from '../hooks/useDelayedBusy';
-import { OperationFeedback } from '../components/OperationFeedback';
-import { loadQueryEditorModule } from './queryEditorModule';
+} from '../../router/routeModules';
+import { useDelayedBusy } from '../../hooks/useDelayedBusy';
+import { OperationFeedback } from '../../components/OperationFeedback';
+import { loadQueryEditorModule } from '../query/queryEditorModule';
 import './Layout.css';
 
 interface NavItem {
