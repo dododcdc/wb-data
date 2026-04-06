@@ -1,18 +1,19 @@
 import { useEffect, useRef, useMemo, lazy, Suspense, useCallback, useLayoutEffect } from 'react';
 import type * as Monaco from 'monaco-editor';
 import type { AllotmentHandle } from 'allotment';
-import { Play, Loader2, Database, ChevronRight, ChevronDown, PanelLeftClose, PanelLeft, Star, Search, Wand2 } from 'lucide-react';
+import { Play, Loader2, PanelLeftClose, PanelLeft, Star, Wand2 } from 'lucide-react';
 import { DataSource } from '../api/datasource';
 import { useAuthStore } from '../utils/auth';
 import { DataSourceSelect } from '../components/DataSourceSelect';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
-import { useVirtualizer } from '@tanstack/react-virtual';
+
 import { Allotment } from 'allotment';
 import 'allotment/dist/style.css';
 import { useQueryEditor } from './query/hooks/useQueryEditor';
 import { useQueryExecution } from './query/hooks/useQueryExecution';
 import { useKeyboardShortcuts } from './query/hooks/useKeyboardShortcuts';
 import { isMac } from './query/queryConstants';
+import { QuerySidebar } from './query/components/QuerySidebar';
 import { registerEditorThemes } from './query/editorUtils';
 import { MonacoEditorInstance } from './query/types';
 import { QueryResultsPanel } from './query/components/QueryResultsPanel';
@@ -101,7 +102,7 @@ export default function Query() {
 
     const editorRef = useRef<MonacoEditorInstance | null>(null);
     const monacoRef = useRef<typeof Monaco | null>(null);
-    const composingRef = useRef(false);
+
 
     const execution = useQueryExecution({
         sql, result, queryError, loadingQuery,
@@ -136,12 +137,7 @@ export default function Query() {
     const queryLoadingVisible = useDelayedBusy(loadingQuery, { delayMs: 0, minVisibleMs: 420 });
     const queryResultLoadingVisible = useDelayedBusy(loadingQuery && !result && !queryError, { delayMs: 120, minVisibleMs: 280 });
 
-    const virtualizer = useVirtualizer({
-        count: tables.length,
-        getScrollElement: () => tableScrollElement,
-        estimateSize: () => 36,
-        overscan: 10,
-    });
+
 
 
 
@@ -354,133 +350,25 @@ export default function Query() {
                     visible={!sidebarCollapsed}
                     className="metadata-panel-wrapper"
                 >
-                    <aside className={`metadata-panel ${sidebarCollapsed ? 'sidebar-hidden' : 'sidebar-visible'}`}>
-                        <div className="metadata-header">
-                            <span className="metadata-title">表结构</span>
-                            {selectedDsId && selectedDb && tableTotal > 0 && (
-                                <span className="metadata-total-count">共 {tableTotal} 张表</span>
-                            )}
-                        </div>
-                        {selectedDsId && selectedDb && (
-                            <div className="metadata-search">
-                                <Search size={14} className="metadata-search-icon" />
-                                <input
-                                    type="text"
-                                    className="metadata-search-input"
-                                    aria-label="搜索表名"
-                                    placeholder="搜索表名..."
-                                    value={tableKeyword}
-                                    onChange={(e) => {
-                                        setTableKeyword(e.target.value);
-                                        if (!composingRef.current) {
-                                            setTableKeywordCommitted(e.target.value);
-                                        }
-                                    }}
-                                    onCompositionStart={() => { composingRef.current = true; }}
-                                    onCompositionEnd={(e) => {
-                                        composingRef.current = false;
-                                        const val = (e.target as HTMLInputElement).value;
-                                        setTableKeyword(val);
-                                        setTableKeywordCommitted(val);
-                                    }}
-                                />
-                            </div>
-                        )}
-                        <div
-                            className="metadata-content"
-                            ref={handleTableScrollRef}
-                            onScroll={handleTableScroll}
-                        >
-                            {loadingTables ? (
-                                <div className="metadata-empty">
-                                    <Loader2 size={24} className="animate-spin" />
-                                    <span>加载中...</span>
-                                </div>
-                            ) : tables.length === 0 ? (
-                                <div className="metadata-empty">
-                                    <Database size={32} className="metadata-empty-icon" />
-                                    <span>{selectedDsId && selectedDb ? (tableKeyword ? '未找到匹配的表' : '该数据库下没有表') : '请先选择数据源和数据库'}</span>
-                                </div>
-                            ) : (
-                                <div
-                                    style={{
-                                        height: `${virtualizer.getTotalSize()}px`,
-                                        width: '100%',
-                                        position: 'relative',
-                                    }}
-                                >
-                                    {virtualizer.getVirtualItems().map(virtualRow => {
-                                        const table = tables[virtualRow.index];
-                                        if (!table) return null;
-                                        const isExpanded = expandedTables.has(table.name);
-                                        const cols = columnCache.get(table.name);
-                                        const isLoadingCols = loadingColumns.has(table.name);
-                                        return (
-                                            <div
-                                                key={table.name}
-                                                data-index={virtualRow.index}
-                                                ref={virtualizer.measureElement}
-                                                style={{
-                                                    position: 'absolute',
-                                                    top: 0,
-                                                    left: 0,
-                                                    width: '100%',
-                                                    transform: `translateY(${virtualRow.start}px)`,
-                                                }}
-                                            >
-                                                <div className="metadata-item">
-                                                    <button
-                                                        type="button"
-                                                        className="metadata-item-header"
-                                                        onClick={() => toggleTableExpand(table.name)}
-                                                        aria-expanded={isExpanded}
-                                                        aria-label={`${isExpanded ? '收起' : '展开'} ${table.name} 字段`}
-                                                    >
-                                                        {isExpanded
-                                                            ? <ChevronDown size={14} className="metadata-chevron" />
-                                                            : <ChevronRight size={14} className="metadata-chevron" />
-                                                        }
-                                                        <Database size={14} className="metadata-icon" />
-                                                        <span className="metadata-item-name">{table.name}</span>
-                                                    </button>
-                                                    {isExpanded && (
-                                                        <ul className="metadata-columns">
-                                                            {isLoadingCols ? (
-                                                                <li className="metadata-column-loading">
-                                                                    <Loader2 size={12} className="animate-spin" />
-                                                                    <span>加载字段...</span>
-                                                                </li>
-                                                            ) : cols ? (
-                                                                <>
-                                                                    {cols.slice(0, 50).map(col => (
-                                                                        <li key={col.name} className="metadata-column">
-                                                                            <span className="column-name">{col.name}</span>
-                                                                            <span className="column-type">{col.type}</span>
-                                                                        </li>
-                                                                    ))}
-                                                                    {cols.length > 50 && (
-                                                                        <li className="metadata-more">
-                                                                            还有 {cols.length - 50} 个字段...
-                                                                        </li>
-                                                                    )}
-                                                                </>
-                                                            ) : null}
-                                                        </ul>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                            {loadingMoreTables && (
-                                <div className="metadata-loading-more">
-                                    <Loader2 size={14} className="animate-spin" />
-                                    <span>加载更多...</span>
-                                </div>
-                            )}
-                        </div>
-                    </aside>
+                    <QuerySidebar
+                        sidebarCollapsed={sidebarCollapsed}
+                        selectedDsId={selectedDsId}
+                        selectedDb={selectedDb}
+                        tableTotal={tableTotal}
+                        tableKeyword={tableKeyword}
+                        setTableKeyword={setTableKeyword}
+                        setTableKeywordCommitted={setTableKeywordCommitted}
+                        loadingTables={loadingTables}
+                        tables={tables}
+                        loadingMoreTables={loadingMoreTables}
+                        expandedTables={expandedTables}
+                        columnCache={columnCache}
+                        loadingColumns={loadingColumns}
+                        toggleTableExpand={toggleTableExpand}
+                        handleTableScrollRef={handleTableScrollRef}
+                        tableScrollElement={tableScrollElement}
+                        handleTableScroll={handleTableScroll}
+                    />
                 </Allotment.Pane>
 
                 {/* 右侧主内容区 */}
