@@ -1,11 +1,9 @@
-import { useEffect, useRef, useMemo, lazy, Suspense, useCallback, useLayoutEffect } from 'react';
+import { useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react';
 import type * as Monaco from 'monaco-editor';
 import type { AllotmentHandle } from 'allotment';
-import { Play, Loader2, PanelLeftClose, PanelLeft, Star, Wand2 } from 'lucide-react';
-import { DataSource } from '../api/datasource';
 import { useAuthStore } from '../utils/auth';
-import { DataSourceSelect } from '../components/DataSourceSelect';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
+
+
 
 import { Allotment } from 'allotment';
 import 'allotment/dist/style.css';
@@ -14,6 +12,8 @@ import { useQueryExecution } from './query/hooks/useQueryExecution';
 import { useKeyboardShortcuts } from './query/hooks/useKeyboardShortcuts';
 import { isMac } from './query/queryConstants';
 import { QuerySidebar } from './query/components/QuerySidebar';
+import { QueryToolbar } from './query/components/QueryToolbar';
+import { QueryEditor } from './query/components/QueryEditor';
 import { registerEditorThemes } from './query/editorUtils';
 import { MonacoEditorInstance } from './query/types';
 import { QueryResultsPanel } from './query/components/QueryResultsPanel';
@@ -35,23 +35,8 @@ import { useSqlCompletion } from './query/hooks/useSqlCompletion';
 import { useMetadata } from './query/hooks/useMetadata';
 import { useKeyboardFocusMode } from '../hooks/useKeyboardFocusMode';
 import { useDelayedBusy } from '../hooks/useDelayedBusy';
-import { loadQueryEditorModule } from './queryEditorModule';
 import './Query.css';
 
-// Lazy load Monaco Editor for performance (~3MB savings on initial load)
-const Editor = lazy(loadQueryEditorModule);
-
-function EditorLoader() {
-    return (
-        <div className="editor-loader" aria-hidden="true">
-            <div className="editor-loader-pulse">
-                <span className="editor-loader-pulse-dot" />
-                <span className="editor-loader-pulse-dot" />
-                <span className="editor-loader-pulse-dot" />
-            </div>
-        </div>
-    );
-}
 
 
 
@@ -373,119 +358,34 @@ export default function Query() {
 
                 {/* 右侧主内容区 */}
                 <Allotment.Pane minSize={QUERY_MAIN_MIN_WIDTH_PX} preferredSize="100%" className="query-main-wrapper">
-                    <header className={`query-toolbar ${sidebarCollapsed ? '' : 'has-left-separator'}`.trim()}>
-                        <div className="toolbar-left">
-                            <TooltipProvider delayDuration={400}>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <button
-                                            className={`sidebar-toggle-button toolbar-sidebar-toggle ${hasHiddenMetadataHint ? 'has-notice' : ''}`}
-                                            onClick={toggleSidebar}
-                                            aria-label={sidebarCollapsed ? '展开表结构' : '收起表结构'}
-                                        >
-                                            {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
-                                            {hasHiddenMetadataHint ? <span className="sidebar-toggle-notice" aria-hidden="true" /> : null}
-                                        </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="tooltip-content" side="bottom">
-                                        {sidebarCollapsed ? '展开表结构' : '收起表结构'} <kbd>{isMac ? '⌘' : 'Ctrl'}+B</kbd>
-                                    </TooltipContent>
-                                </Tooltip>
-                            </TooltipProvider>
-                            <span className="toolbar-divider" />
-                            <div className="toolbar-ds-group">
-                                {selectedDsId ? (
-                                    <TooltipProvider delayDuration={400}>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className={`default-ds-button ${defaultDsId === selectedDsId ? 'is-active' : ''}`.trim()}
-                                                    onClick={toggleDefaultDataSource}
-                                                    aria-label={defaultDsId === selectedDsId ? '取消默认数据源' : '设为默认数据源'}
-                                                >
-                                                    <Star size={15} />
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                {defaultDsId === selectedDsId ? '取消默认数据源' : '设为默认数据源'}
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    </TooltipProvider>
-                                ) : null}
-                                <DataSourceSelect
-                                    options={dataSourceOptions}
-                                    value={String(selectedDsId)}
-                                    selectedOption={selectedDsOption}
-                                    onChange={(val, option) => {
-                                        applySelectedDataSource(val, (option?.raw as DataSource | undefined) ?? null);
-                                    }}
-                                    onInputChange={(val) => setDsKeyword(val)}
-                                    loading={loadingDs}
-                                    loadingMore={loadingDsMore}
-                                    hasMore={dsHasMore}
-                                    onLoadMore={loadMoreDataSources}
-                                    placeholder="搜索并选择数据源..."
-                                    theme="light"
-                                    disableClientFilter
-                                    virtualize
-                                    virtualItemSize={32}
-                                    ariaLabel="数据源选择"
-                                    emptyText={dsKeyword ? '未找到匹配的数据源' : '暂无数据源'}
-                                />
-                            </div>
-                            {selectedDsId && (
-                                <>
-                                    <span className="breadcrumb-divider">/</span>
-                                    <DataSourceSelect
-                                        options={databaseOptions}
-                                        value={selectedDb}
-                                        selectedOption={selectedDbOption}
-                                        onChange={(val) => setSelectedDb(val)}
-                                        onInputChange={(val) => setDbKeyword(val)}
-                                        loading={loadingDatabases}
-                                        placeholder="选择数据库"
-                                        theme="light"
-                                        disableClientFilter
-                                        ariaLabel="数据库选择"
-                                        emptyText={dbKeyword ? '未找到匹配数据库' : '暂无数据库'}
-                                    />
-                                </>
-                            )}
-                        </div>
-                        <div className="toolbar-right">
-                            <TooltipProvider delayDuration={400}>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <button
-                                            className="format-button-inline"
-                                            onClick={handleFormat}
-                                            aria-label="格式化 SQL"
-                                        >
-                                            <Wand2 size={16} />
-                                        </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="tooltip-content" side="bottom">
-                                        格式化 <kbd>{isMac ? '⌘' : 'Ctrl'}+⇧+F</kbd>
-                                    </TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <button
-                                            className="run-button"
-                                            onClick={() => handleRunQuery()}
-                                            aria-label="执行 SQL"
-                                        >
-                                            {queryLoadingVisible ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} fill="white" />}
-                                        </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="tooltip-content" side="bottom">
-                                        执行 <kbd>{isMac ? '⌘' : 'Ctrl'}+↵</kbd>
-                                    </TooltipContent>
-                                </Tooltip>
-                            </TooltipProvider>
-                        </div>
-                    </header>
+                    <QueryToolbar
+                        sidebarCollapsed={sidebarCollapsed}
+                        hasHiddenMetadataHint={hasHiddenMetadataHint}
+                        toggleSidebar={toggleSidebar}
+                        isMac={isMac}
+                        selectedDsId={selectedDsId}
+                        defaultDsId={defaultDsId}
+                        toggleDefaultDataSource={toggleDefaultDataSource}
+                        dataSourceOptions={dataSourceOptions}
+                        selectedDsOption={selectedDsOption}
+                        applySelectedDataSource={applySelectedDataSource}
+                        setDsKeyword={setDsKeyword}
+                        loadingDs={loadingDs}
+                        loadingDsMore={loadingDsMore}
+                        dsHasMore={dsHasMore}
+                        loadMoreDataSources={loadMoreDataSources}
+                        dsKeyword={dsKeyword}
+                        databaseOptions={databaseOptions}
+                        selectedDb={selectedDb}
+                        selectedDbOption={selectedDbOption}
+                        setSelectedDb={setSelectedDb}
+                        setDbKeyword={setDbKeyword}
+                        loadingDatabases={loadingDatabases}
+                        dbKeyword={dbKeyword}
+                        handleFormat={handleFormat}
+                        handleRunQuery={handleRunQuery}
+                        queryLoadingVisible={queryLoadingVisible}
+                    />
 
                     <div
                         ref={queryContentRef}
@@ -508,44 +408,7 @@ export default function Query() {
                             }}
                         >
                         <Allotment.Pane preferredSize="60%" className="query-editor-wrapper relative">
-                            <section className="editor-section">
-
-                                <div className="editor-wrapper">
-                                    <Suspense fallback={<EditorLoader />}>
-                                        <Editor
-                                            height="100%"
-                                            language="sql"
-                                            theme="warm-parchment"
-                                            value={sql}
-                                            loading={<EditorLoader />}
-                                            onChange={(value: string | undefined) => setSql(value || '')}
-                                            onMount={handleEditorDidMount}
-                                            options={{
-                                                minimap: { enabled: false },
-                                                fontSize: 14,
-                                                quickSuggestions: {
-                                                    other: true,
-                                                    comments: false,
-                                                    strings: false,
-                                                },
-                                                quickSuggestionsDelay: 120,
-                                                suggestOnTriggerCharacters: true,
-                                                lineNumbers: 'on',
-                                                lineNumbersMinChars: 2,
-                                                lineDecorationsWidth: 8,
-                                                glyphMargin: false,
-                                                scrollBeyondLastLine: false,
-                                                automaticLayout: true,
-                                                padding: { top: 12, bottom: 12 },
-                                                fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                                                roundedSelection: false,
-                                                cursorStyle: 'line',
-                                                renderLineHighlight: 'all',
-                                            }}
-                                        />
-                                    </Suspense>
-                                </div>
-                            </section>
+                            <QueryEditor sql={sql} setSql={setSql} handleEditorDidMount={handleEditorDidMount} />
                         </Allotment.Pane>
 
                         <Allotment.Pane
