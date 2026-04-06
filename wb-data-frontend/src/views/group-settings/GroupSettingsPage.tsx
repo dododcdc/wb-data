@@ -42,7 +42,7 @@ import {
     parsePageParam,
     parsePageSizeParam,
 } from './config';
-import '../GroupSettings.css';
+import './GroupSettings.css';
 
 function buildNextSearchParams(currentSearchParams: URLSearchParams, mutate: (next: URLSearchParams) => void) {
     const next = new URLSearchParams(currentSearchParams);

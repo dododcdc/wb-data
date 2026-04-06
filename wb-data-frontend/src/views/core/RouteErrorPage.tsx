@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { isRouteErrorResponse, Link, useRouteError } from 'react-router-dom';
-import { isDynamicImportPreloadError, recoverFromVitePreloadError } from '../utils/vitePreloadRecovery';
+import { isDynamicImportPreloadError, recoverFromVitePreloadError } from '../../utils/vitePreloadRecovery';
 import './RouteState.css';
 
 function getErrorCopy(error: unknown) {

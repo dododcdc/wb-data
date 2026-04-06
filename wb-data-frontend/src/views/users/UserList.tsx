@@ -9,7 +9,7 @@ import {
     UserPlus,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import { useOperationFeedback } from '../hooks/useOperationFeedback';
+import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import {
     Dialog,
     DialogContent,
@@ -17,25 +17,25 @@ import {
     DialogOverlay,
     DialogPortal,
     DialogTitle,
-} from '../components/ui/dialog';
-import { SimpleSelect } from '../components/SimpleSelect';
-import { useDelayedBusy } from '../hooks/useDelayedBusy';
+} from '../../components/ui/dialog';
+import { SimpleSelect } from '../../components/SimpleSelect';
+import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import {
     changeUserStatus,
     getUserPage,
     UserRecord,
-} from '../api/user';
-import type { PageResult } from '../api/datasource';
-import UserForm, { UserFormSuccessDetails } from './users/UserForm';
-import ResetPasswordDialog from './users/ResetPasswordDialog';
-import { UserTable } from './users/UserTable';
+} from '../../api/user';
+import type { PageResult } from '../../api/datasource';
+import UserForm, { UserFormSuccessDetails } from './UserForm';
+import ResetPasswordDialog from './ResetPasswordDialog';
+import { UserTable } from './UserTable';
 import {
     buildUserPageQueryKey,
     DEFAULT_PAGE_SIZE,
     PAGE_SIZE_OPTIONS,
     parsePageParam,
     parsePageSizeParam,
-} from './users/config';
+} from './config';
 import './UserList.css';
 
 function buildNextSearchParams(currentSearchParams: URLSearchParams, mutate: (next: URLSearchParams) => void) {

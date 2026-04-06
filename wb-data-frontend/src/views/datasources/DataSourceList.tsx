@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DatabaseZap, Search } from 'lucide-react';
-import { useOperationFeedback } from '../hooks/useOperationFeedback';
+import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { useSearchParams } from 'react-router-dom';
 import {
     Dialog,
@@ -10,21 +10,21 @@ import {
     DialogOverlay,
     DialogPortal,
     DialogTitle,
-} from '../components/ui/dialog';
-import { useDelayedBusy } from '../hooks/useDelayedBusy';
+} from '../../components/ui/dialog';
+import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import {
     DataSource,
     deleteDataSource,
     getDataSourcePage,
     PageResult,
     updateDataSourceStatus,
-} from '../api/datasource';
-import { useAuthStore } from '../utils/auth';
+} from '../../api/datasource';
+import { useAuthStore } from '../../utils/auth';
 import DataSourceForm from './DataSourceForm';
-import DataSourceListSkeleton from './datasources/DataSourceListSkeleton';
-import { buildDataSourcePageQueryKey, DEFAULT_PAGE_SIZE, parsePageParam, parsePageSizeParam } from './datasources/config';
-import { DataSourcePagination } from './datasources/DataSourcePagination';
-import { DataSourceTable } from './datasources/DataSourceTable';
+import DataSourceListSkeleton from './DataSourceListSkeleton';
+import { buildDataSourcePageQueryKey, DEFAULT_PAGE_SIZE, parsePageParam, parsePageSizeParam } from './config';
+import { DataSourcePagination } from './DataSourcePagination';
+import { DataSourceTable } from './DataSourceTable';
 import './DataSourceList.css';
 
 function buildNextSearchParams(

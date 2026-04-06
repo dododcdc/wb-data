@@ -9,7 +9,7 @@ import {
     FolderPlus,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import { useOperationFeedback } from '../hooks/useOperationFeedback';
+import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import {
     Dialog,
     DialogContent,
@@ -17,23 +17,23 @@ import {
     DialogOverlay,
     DialogPortal,
     DialogTitle,
-} from '../components/ui/dialog';
-import { SimpleSelect } from '../components/SimpleSelect';
-import { useDelayedBusy } from '../hooks/useDelayedBusy';
+} from '../../components/ui/dialog';
+import { SimpleSelect } from '../../components/SimpleSelect';
+import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import {
     deleteGroup,
     getGroupPage,
     GroupDetail,
-} from '../api/group';
-import GroupForm from './groups/GroupForm';
-import { GroupTable } from './groups/GroupTable';
+} from '../../api/group';
+import GroupForm from './GroupForm';
+import { GroupTable } from './GroupTable';
 import {
     buildGroupPageQueryKey,
     DEFAULT_PAGE_SIZE,
     PAGE_SIZE_OPTIONS,
     parsePageParam,
     parsePageSizeParam,
-} from './groups/config';
+} from './config';
 import './GroupList.css';
 
 function buildNextSearchParams(currentSearchParams: URLSearchParams, mutate: (next: URLSearchParams) => void) {

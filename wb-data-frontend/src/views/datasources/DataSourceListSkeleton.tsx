@@ -1,4 +1,4 @@
-import '../DataSourceList.css';
+import './DataSourceList.css';
 
 const SKELETON_ROWS = 6;
 

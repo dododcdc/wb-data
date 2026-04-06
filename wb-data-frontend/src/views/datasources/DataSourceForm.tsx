@@ -8,8 +8,8 @@ import {
     DialogOverlay,
     DialogPortal,
     DialogTitle,
-} from '../components/ui/dialog';
-import { useDelayedBusy } from '../hooks/useDelayedBusy';
+} from '../../components/ui/dialog';
+import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import {
     DataSourcePluginDescriptor,
     PluginFieldDescriptor,
@@ -18,10 +18,10 @@ import {
     getDataSourcePlugins,
     testNewConnection,
     updateDataSource,
-} from '../api/datasource';
+} from '../../api/datasource';
 import { CheckCircle, AlertCircle, X } from 'lucide-react';
-import { SimpleSelect } from '../components/SimpleSelect';
-import { getErrorMessage } from '../utils/error';
+import { SimpleSelect } from '../../components/SimpleSelect';
+import { getErrorMessage } from '../../utils/error';
 import './DataSourceForm.css';
 
 interface DataSourceFormProps {
