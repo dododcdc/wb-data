@@ -354,6 +354,7 @@ export function useLayoutPersistence(options: UseLayoutPersistenceOptions = {}):
     toggleSidebar,
     setSidebarWidth,
     toggleResultPanel,
+    setResultPanelState,
     setResultExpandedHeight: handleSetResultExpandedHeight,
   };
 }
