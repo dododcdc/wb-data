@@ -7,6 +7,7 @@ import {
     ChevronsRight,
     Search,
     UserPlus,
+    GitBranch,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
@@ -34,6 +35,7 @@ import GroupInfoCard from './GroupInfoCard';
 import MemberTable from './MemberTable';
 import AddMemberDialog from './AddMemberDialog';
 import ChangeRoleDialog from './ChangeRoleDialog';
+import GitSettingsTab from './GitSettingsTab';
 import {
     buildMemberPageQueryKey,
     DEFAULT_PAGE_SIZE,
@@ -76,6 +78,7 @@ export default function GroupSettingsPage() {
     const [pendingRemoveTarget, setPendingRemoveTarget] = useState<MemberRecord | null>(null);
     const [pendingRemoveId, setPendingRemoveId] = useState<number | null>(null);
     const addMemberDisplayNameRef = useRef<string>('');
+    const [activeTab, setActiveTab] = useState<'members' | 'git'>('members');
 
     const currentPage = parsePageParam(searchParams.get('page'));
     const pageSize = parsePageSizeParam(searchParams.get('size'));
@@ -300,123 +303,145 @@ export default function GroupSettingsPage() {
 
             <section className="gs-members-panel animate-enter animate-enter-delay-1">
                 <div className="gs-members-header">
-                    <h2 className="gs-members-title">项目组成员</h2>
-                </div>
-
-                <div className="gs-members-search-row">
-                    <div className="gs-search-shell">
-                        <Search size={16} />
-                        <input
-                            aria-label="搜索成员"
-                            placeholder="搜索用户名、展示名"
-                            value={keywordInput}
-                            onChange={(event) => setKeywordInput(event.target.value)}
-                            onCompositionStart={() => {
-                                setIsComposing(true);
-                            }}
-                            onCompositionEnd={(event) => {
-                                setIsComposing(false);
-                                setKeywordInput(event.currentTarget.value);
-                            }}
-                        />
-                    </div>
-                    {canManage ? (
+                    <div className="gs-tab-group">
                         <button
-                            className="gs-primary-btn"
-                            onClick={() => setIsAddMemberOpen(true)}
                             type="button"
+                            className={`gs-tab-btn ${activeTab === 'members' ? 'is-active' : ''}`}
+                            onClick={() => setActiveTab('members')}
                         >
-                            <UserPlus size={16} />
-                            添加成员
+                            成员管理
                         </button>
-                    ) : null}
+                        <button
+                            type="button"
+                            className={`gs-tab-btn ${activeTab === 'git' ? 'is-active' : ''}`}
+                            onClick={() => setActiveTab('git')}
+                        >
+                            <GitBranch size={14} />
+                            远程仓库
+                        </button>
+                    </div>
                 </div>
 
-                <div className="gs-members-body">
-                    <MemberTable
-                        data={records}
-                        isRefreshing={isRefreshing}
-                        errorMessage={errorMessage}
-                        canManage={canManage}
-                        currentUserId={userInfo?.id ?? null}
-                        onChangeRole={(member) => setChangeRoleMember(member)}
-                        onRemove={handleRemove}
-                    />
+                {activeTab === 'git' ? (
+                    <GitSettingsTab groupId={groupId!} />
+                ) : (
+                    <div className="gs-members-content">
+                        <div className="gs-members-search-row">
+                            <div className="gs-search-shell">
+                                <Search size={16} />
+                                <input
+                                    aria-label="搜索成员"
+                                    placeholder="搜索用户名、展示名"
+                                    value={keywordInput}
+                                    onChange={(event) => setKeywordInput(event.target.value)}
+                                    onCompositionStart={() => {
+                                        setIsComposing(true);
+                                    }}
+                                    onCompositionEnd={(event) => {
+                                        setIsComposing(false);
+                                        setKeywordInput(event.currentTarget.value);
+                                    }}
+                                />
+                            </div>
+                            {canManage ? (
+                                <button
+                                    className="gs-primary-btn"
+                                    onClick={() => setIsAddMemberOpen(true)}
+                                    type="button"
+                                >
+                                    <UserPlus size={16} />
+                                    添加成员
+                                </button>
+                            ) : null}
+                        </div>
 
-                    {total > 0 ? (
-                        <div className={`gs-pagination ${suppressPaginationHover ? 'hover-locked' : ''}`}>
-                            <div className="gs-page-info">本页 {pageCount} 条，共 {total} 条</div>
+                        <div className="gs-members-body">
+                            <MemberTable
+                                data={records}
+                                isRefreshing={isRefreshing}
+                                errorMessage={errorMessage}
+                                canManage={canManage}
+                                currentUserId={userInfo?.id ?? null}
+                                onChangeRole={(member) => setChangeRoleMember(member)}
+                                onRemove={handleRemove}
+                            />
 
-                            <div className="gs-pagination-controls" aria-label="成员分页导航">
-                                <div className="gs-page-size-group">
-                                    <span className="gs-pagination-label">每页</span>
-                                    <div className="gs-page-size-select">
-                                        <SimpleSelect
-                                            id="gs-page-size"
-                                            value={String(pageSize)}
-                                            options={pageSizeOptions}
-                                            disabled={memberQuery.isFetching}
-                                            menuPlacement="up"
-                                            onChange={(value) => {
-                                                const parsed = Number(value);
-                                                if (Number.isFinite(parsed) && parsed !== pageSize) {
-                                                    handlePageSizeChange(parsed);
-                                                }
-                                            }}
-                                        />
+                            {total > 0 ? (
+                                <div className={`gs-pagination ${suppressPaginationHover ? 'hover-locked' : ''}`}>
+                                    <div className="gs-page-info">本页 {pageCount} 条，共 {total} 条</div>
+
+                                    <div className="gs-pagination-controls" aria-label="成员分页导航">
+                                        <div className="gs-page-size-group">
+                                            <span className="gs-pagination-label">每页</span>
+                                            <div className="gs-page-size-select">
+                                                <SimpleSelect
+                                                    id="gs-page-size"
+                                                    value={String(pageSize)}
+                                                    options={pageSizeOptions}
+                                                    disabled={memberQuery.isFetching}
+                                                    menuPlacement="up"
+                                                    onChange={(value) => {
+                                                        const parsed = Number(value);
+                                                        if (Number.isFinite(parsed) && parsed !== pageSize) {
+                                                            handlePageSizeChange(parsed);
+                                                        }
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="gs-page-status">
+                                            第 {currentPage} / {totalPages} 页
+                                        </div>
+
+                                        <div className="gs-page-actions">
+                                            <button
+                                                className="gs-page-icon-btn"
+                                                type="button"
+                                                aria-label="第一页"
+                                                aria-disabled={prevDisabled}
+                                                disabled={prevDisabled}
+                                                onClick={() => handlePageChange(1)}
+                                            >
+                                                <ChevronsLeft size={16} />
+                                            </button>
+                                            <button
+                                                className="gs-page-icon-btn"
+                                                type="button"
+                                                aria-label="上一页"
+                                                aria-disabled={prevDisabled}
+                                                disabled={prevDisabled}
+                                                onClick={() => handlePageChange(currentPage - 1)}
+                                            >
+                                                <ChevronLeft size={16} />
+                                            </button>
+                                            <button
+                                                className="gs-page-icon-btn"
+                                                type="button"
+                                                aria-label="下一页"
+                                                aria-disabled={nextDisabled}
+                                                disabled={nextDisabled}
+                                                onClick={() => handlePageChange(currentPage + 1)}
+                                            >
+                                                <ChevronRight size={16} />
+                                            </button>
+                                            <button
+                                                className="gs-page-icon-btn"
+                                                type="button"
+                                                aria-label="最后一页"
+                                                aria-disabled={nextDisabled}
+                                                disabled={nextDisabled}
+                                                onClick={() => handlePageChange(totalPages)}
+                                            >
+                                                <ChevronsRight size={16} />
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-
-                                <div className="gs-page-status">
-                                    第 {currentPage} / {totalPages} 页
-                                </div>
-
-                                <div className="gs-page-actions">
-                                    <button
-                                        className="gs-page-icon-btn"
-                                        type="button"
-                                        aria-label="第一页"
-                                        aria-disabled={prevDisabled}
-                                        disabled={prevDisabled}
-                                        onClick={() => handlePageChange(1)}
-                                    >
-                                        <ChevronsLeft size={16} />
-                                    </button>
-                                    <button
-                                        className="gs-page-icon-btn"
-                                        type="button"
-                                        aria-label="上一页"
-                                        aria-disabled={prevDisabled}
-                                        disabled={prevDisabled}
-                                        onClick={() => handlePageChange(currentPage - 1)}
-                                    >
-                                        <ChevronLeft size={16} />
-                                    </button>
-                                    <button
-                                        className="gs-page-icon-btn"
-                                        type="button"
-                                        aria-label="下一页"
-                                        aria-disabled={nextDisabled}
-                                        disabled={nextDisabled}
-                                        onClick={() => handlePageChange(currentPage + 1)}
-                                    >
-                                        <ChevronRight size={16} />
-                                    </button>
-                                    <button
-                                        className="gs-page-icon-btn"
-                                        type="button"
-                                        aria-label="最后一页"
-                                        aria-disabled={nextDisabled}
-                                        disabled={nextDisabled}
-                                        onClick={() => handlePageChange(totalPages)}
-                                    >
-                                        <ChevronsRight size={16} />
-                                    </button>
-                                </div>
-                            </div>
+                            ) : null}
                         </div>
-                    ) : null}
-                </div>
+                    </div>
+                )}
             </section>
 
             {groupId != null ? (
