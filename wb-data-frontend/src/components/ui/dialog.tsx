@@ -29,7 +29,7 @@ const DialogContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Content
     ref={ref}
-    className={cn("z-50 outline-none", className)}
+    className={cn("z-50 outline-none max-h-[85vh] overflow-y-auto", className)}
     {...props}
   />
 ))

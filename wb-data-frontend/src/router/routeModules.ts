@@ -2,6 +2,7 @@ export const loadLoginModule = () => import('../views/core/Login');
 export const loadDashboardModule = () => import('../views/dashboard/Dashboard');
 export const loadDataSourceListModule = () => import('../views/datasources/DataSourceList');
 export const loadQueryModule = () => import('../views/query/Query');
+export const loadOfflineWorkbenchModule = () => import('../views/offline/OfflineWorkbench');
 export const loadUserListModule = () => import('../views/users/UserList');
 export const loadGroupListModule = () => import('../views/groups/GroupList');
 export const loadGroupSettingsModule = () => import('../views/group-settings/GroupSettingsPage');

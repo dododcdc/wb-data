@@ -15,6 +15,7 @@ import {
     loadLoginModule,
     loadNoGroupStateModule,
     loadNotFoundModule,
+    loadOfflineWorkbenchModule,
     loadQueryModule,
     loadUnauthorizedModule,
     loadUserListModule,
@@ -25,6 +26,7 @@ import {
 const Login = lazy(loadLoginModule);
 const Dashboard = lazy(loadDashboardModule);
 const DataSourceList = lazy(loadDataSourceListModule);
+const OfflineWorkbench = lazy(loadOfflineWorkbenchModule);
 const Query = lazy(loadQueryModule);
 const UserList = lazy(loadUserListModule);
 const GroupList = lazy(loadGroupListModule);
@@ -148,6 +150,16 @@ const router = createBrowserRouter([
                                     {
                                         index: true,
                                         element: withRouteSuspense(<Query />, <QuerySkeleton />),
+                                    },
+                                ],
+                            },
+                            {
+                                path: 'offline',
+                                element: <RequirePermission required="offline.read" />,
+                                children: [
+                                    {
+                                        index: true,
+                                        element: withRouteSuspense(<OfflineWorkbench />),
                                     },
                                 ],
                             },

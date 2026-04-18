@@ -1,0 +1,57 @@
+.git-settings-page {
+    padding: 24px;
+    max-width: 560px;
+}
+
+.git-settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.git-settings-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--foreground);
+}
+
+.git-settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.git-settings-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.git-settings-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--foreground);
+}
+
+.git-settings-input {
+    max-width: 400px;
+}
+
+.git-settings-select {
+    max-width: 200px;
+}
+
+.git-settings-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.git-settings-loading {
+    display: flex;
+    justify-content: center;
+    padding: 40px;
+    color: var(--muted-foreground);
+}
