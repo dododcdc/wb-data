@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
+import { CircleAlert } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 
 export interface FlowCanvasNodeData {
@@ -10,6 +11,7 @@ export interface FlowCanvasNodeData {
     isEditing?: boolean;
     onRename?: (newId: string) => void;
     onCancelRename?: () => void;
+    validationError?: string | null;
     [key: string]: unknown;
 }
 
@@ -165,6 +167,23 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
                 <span className={`flow-canvas-node-kind is-${data.kind.toLowerCase()}`}>
                     {data.kind === 'SQL' ? 'SQL' : 'Shell'}
                 </span>
+                {data.validationError && (
+                    <TooltipProvider delayDuration={100}>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="flow-canvas-node-error-icon">
+                                    <CircleAlert size={14} />
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent 
+                                className="tooltip-content is-danger" 
+                                side="bottom"
+                            >
+                                {data.validationError}
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                )}
             </div>
             <Handle
                 type="source"
