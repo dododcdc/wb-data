@@ -41,6 +41,7 @@ interface FlowCanvasProps {
     onDoubleClickNode: (taskId: string) => void;
     onAddNode?: (kind: 'SQL' | 'SHELL', position: { x: number; y: number }) => void;
     onRenameNode?: (oldId: string, newId: string) => void;
+    nodeIssues?: Record<string, string | null>;
 }
 
 function flattenNodes(doc: OfflineFlowDocument): OfflineFlowNode[] {
@@ -51,6 +52,7 @@ function buildInitialNodes(
     doc: OfflineFlowDocument,
     selectedTaskIds: string[],
     onToggleTaskSelection: (taskId: string) => void,
+    nodeIssues?: Record<string, string | null>,
 ): Node[] {
     const allNodes = flattenNodes(doc);
     const hasLayout = doc.layout && Object.keys(doc.layout).length > 0;
@@ -69,6 +71,7 @@ function buildInitialNodes(
                 kind: node.kind,
                 selected: selectedTaskIds.includes(node.taskId),
                 onToggleSelection: onToggleTaskSelection,
+                validationError: nodeIssues?.[node.taskId] ?? null,
             } satisfies FlowCanvasNodeData,
         };
     });
@@ -110,6 +113,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
         onDoubleClickNode,
         onAddNode,
         onRenameNode,
+        nodeIssues,
     } = props;
     const containerRef = useRef<HTMLDivElement>(null);
     const { screenToFlowPosition } = useReactFlow();
@@ -136,7 +140,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
 
     // Build initial data
     const initialNodes = useMemo(() => {
-        let nodesToLayout = buildInitialNodes(flowDocument, selectedTaskIds, onToggleTaskSelection);
+        let nodesToLayout = buildInitialNodes(flowDocument, selectedTaskIds, onToggleTaskSelection, nodeIssues);
         const edges = buildInitialEdges(flowDocument);
         const hasLayout = flowDocument.layout && Object.keys(flowDocument.layout).length > 0;
         if (!hasLayout && nodesToLayout.length > 0) {
@@ -145,7 +149,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
 
         return nodesToLayout;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [flowDocument, onToggleTaskSelection, selectedTaskIds]);
+    }, [flowDocument, onToggleTaskSelection, selectedTaskIds, nodeIssues]);
 
     const initialEdges = useMemo(
         () => buildInitialEdges(flowDocument),
@@ -195,10 +199,12 @@ export default function FlowCanvas(props: FlowCanvasProps) {
             result = result.map((n) => {
                 const isSelected = selectedTaskIds.includes(n.id);
                 const isEditing = n.id === editingNodeId;
+                const validationError = nodeIssues?.[n.id] ?? null;
                 if (
                     n.data.selected !== isSelected || 
                     n.data.onToggleSelection !== onToggleTaskSelection || 
-                    n.data.isEditing !== isEditing
+                    n.data.isEditing !== isEditing ||
+                    n.data.validationError !== validationError
                 ) {
                     changed = true;
                     return {
@@ -208,6 +214,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                             selected: isSelected,
                             onToggleSelection: onToggleTaskSelection,
                             isEditing,
+                            validationError,
                             onRename: (newId: string) => handleInlineRenameCommit(n.id, newId),
                             onCancelRename: handleInlineRenameCancel,
                         },
@@ -238,6 +245,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                             isEditing: node.taskId === editingNodeId,
                             onRename: (newId: string) => handleInlineRenameCommit(node.taskId, newId),
                             onCancelRename: handleInlineRenameCancel,
+                            validationError: nodeIssues?.[node.taskId] ?? null,
                         },
                     };
                 });

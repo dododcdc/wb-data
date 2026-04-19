@@ -9,9 +9,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../
 import {
     AlertTriangle,
     ArrowUpRight,
-    ChevronDown,
     ChevronRight,
     Clock3,
+    Database,
     FileCode2,
     FolderOpen,
     FolderPlus,
@@ -64,7 +64,6 @@ import {
     type OfflineRepoTreeResponse,
     type OfflineScheduleResponse,
 } from '../../api/offline';
-import { getDataSourcePage, type DataSource } from '../../api/datasource';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import {
@@ -85,6 +84,14 @@ import {
     buildFlowDocumentSignature,
     buildLayoutFromCanvasNodes,
 } from './flowCanvasState';
+import {
+    buildNodeEditorDataSourceOptions,
+    findFirstSqlNodeMissingDataSource,
+    validateSqlNodeDataSourceRequirement,
+} from './nodeEditorDataSourceRules';
+import { OfflineDataSourcePicker } from './OfflineDataSourcePicker';
+import { useNodeEditorDataSources } from './useNodeEditorDataSources';
+import { cn } from '../../lib/utils';
 import './OfflineWorkbench.css';
 
 interface FlowDocumentDraft {
@@ -382,9 +389,9 @@ interface RepoTreeBranchProps {
 
 function GitPushIcon({ dirty }: { dirty: boolean }) {
     return (
-        <span style={{ position: 'relative', display: 'flex' }}>
+        <span style={{ position: 'relative', display: 'inline-flex' }}>
             <ArrowUpRight size={16} />
-            {dirty && <span className="offline-toolbar-dot" />}
+            {dirty && <span className="offline-toolbar-dot is-brand" />}
         </span>
     );
 }
@@ -782,8 +789,6 @@ export default function OfflineWorkbench() {
     const [committing, setCommitting] = useState(false);
     const [expandedTreeIds, setExpandedTreeIds] = useState<string[]>([]);
     const [activeFlowPath, setActiveFlowPath] = useState<string | null>(null);
-    const [dataSources, setDataSources] = useState<DataSource[]>([]);
-    const [dataSourcesLoading, setDataSourcesLoading] = useState(false);
     const [flowLoading, setFlowLoading] = useState(false);
     const [savingFlow, setSavingFlow] = useState(false);
     const [flowDocument, setFlowDocument] = useState<OfflineFlowDocument | null>(null);
@@ -848,6 +853,22 @@ export default function OfflineWorkbench() {
     const activeNode = useMemo(() => flattenDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null, [activeNodeId, flowDocument]);
     const nodeCount = useMemo(() => flattenDocumentNodes(flowDocument).length, [flowDocument]);
     const isDirty = flowDocument !== null && buildFlowDocumentSignature(flowDocument) !== originalDocumentSignature;
+
+    const nodeIssues = useMemo(() => {
+        if (!flowDocument) return {};
+        const issues: Record<string, string | null> = {};
+        flattenDocumentNodes(flowDocument).forEach(node => {
+            const validation = validateSqlNodeDataSourceRequirement({
+                kind: node.kind,
+                dataSourceId: node.dataSourceId,
+                strict: true,
+            });
+            if (!validation.allowed && validation.feedback) {
+                issues[node.taskId] = validation.feedback.detail || validation.feedback.title;
+            }
+        });
+        return issues;
+    }, [flowDocument]);
     const branchLabel = repoStatus?.gitInitialized ? repoStatus.branch ?? 'main' : '未初始化';
 
     const refreshRepoStatus = useCallback(async () => {
@@ -893,27 +914,13 @@ export default function OfflineWorkbench() {
         }
     }, [groupId]);
 
-    const refreshDataSources = useCallback(async () => {
-        if (!groupId) return;
-        setDataSourcesLoading(true);
-        try {
-            const result = await getDataSourcePage({ groupId, size: 1000, status: 'ENABLED' });
-            setDataSources(result.records);
-        } catch (error) {
-            console.error('获取数据源列表失败', error);
-        } finally {
-            setDataSourcesLoading(false);
-        }
-    }, [groupId]);
-
     const refreshWorkspace = useCallback(async () => {
         await Promise.all([
             refreshRepoStatus(),
             refreshRepoTree(),
             refreshRemoteStatus(),
-            refreshDataSources(),
         ]);
-    }, [refreshRepoStatus, refreshRepoTree, refreshRemoteStatus, refreshDataSources]);
+    }, [refreshRepoStatus, refreshRepoTree, refreshRemoteStatus]);
 
     const loadScheduleSnapshot = useCallback(async (path: string) => {
         if (!groupId) return;
@@ -1020,6 +1027,18 @@ export default function OfflineWorkbench() {
 
     const handleCommit = useCallback(async () => {
         if (!groupId) return;
+        const invalidNode = findFirstSqlNodeMissingDataSource(flowDocument);
+        if (invalidNode) {
+            const validation = validateSqlNodeDataSourceRequirement({
+                kind: invalidNode.kind,
+                dataSourceId: invalidNode.dataSourceId,
+                strict: true,
+            });
+            if (!validation.allowed && validation.feedback) {
+                showFeedback(validation.feedback);
+                return;
+            }
+        }
         setCommitting(true);
         try {
             const result = await commitOfflineRepo(groupId, commitMessage);
@@ -1036,7 +1055,7 @@ export default function OfflineWorkbench() {
         } finally {
             setCommitting(false);
         }
-    }, [groupId, commitMessage, showFeedback, refreshRepoStatus]);
+    }, [groupId, flowDocument, commitMessage, showFeedback, refreshRepoStatus]);
 
     const handleCreateFlow = useCallback(async () => {
         if (!groupId || !newFlowName.trim()) return;
@@ -1407,6 +1426,12 @@ export default function OfflineWorkbench() {
 
     const handleNodeEditorSave = useCallback((content: string, dataSourceId?: number, dataSourceType?: string) => {
         if (!activeNodeId || !flowDocument) return;
+        const activeEditingNode = flattenDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null;
+        const validation = validateSqlNodeDataSourceRequirement({
+            kind: activeEditingNode?.kind ?? 'SHELL',
+            dataSourceId,
+            strict: false,
+        });
         setFlowDocument((current) => {
             if (!current) return current;
             return {
@@ -1421,11 +1446,20 @@ export default function OfflineWorkbench() {
                 })),
             };
         });
+        if (validation.feedback) {
+            showFeedback(validation.feedback);
+        }
         setNodeEditorOpen(false);
-    }, [activeNodeId, flowDocument]);
+    }, [activeNodeId, flowDocument, showFeedback]);
 
     const handleNodeEditorTempSave = useCallback((content: string, dataSourceId?: number, dataSourceType?: string) => {
         if (!activeNodeId || !flowDocument) return;
+        const activeEditingNode = flattenDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null;
+        const validation = validateSqlNodeDataSourceRequirement({
+            kind: activeEditingNode?.kind ?? 'SHELL',
+            dataSourceId,
+            strict: false,
+        });
         setFlowDocument((current) => {
             if (!current) return current;
             return {
@@ -1440,7 +1474,7 @@ export default function OfflineWorkbench() {
                 })),
             };
         });
-        showFeedback({ tone: 'success', title: '暂存成功', detail: '已更新至内存，尚未落盘保存。' });
+        showFeedback(validation.feedback ?? { tone: 'success', title: '暂存成功', detail: '已更新至内存，尚未落盘保存。' });
     }, [activeNodeId, flowDocument, showFeedback]);
 
     const handleRenameNode = useCallback((oldId: string, newId: string) => {
@@ -1623,8 +1657,33 @@ export default function OfflineWorkbench() {
         });
     }, []);
 
+    const validateDocumentForAction = useCallback((nodeOverride?: { taskId: string; content: string; dataSourceId?: number; dataSourceType?: string }) => {
+        if (!flowDocument) return true;
+        
+        const invalidNode = findFirstSqlNodeMissingDataSource(flowDocument, nodeOverride);
+        if (invalidNode) {
+            const validation = validateSqlNodeDataSourceRequirement({
+                kind: invalidNode.kind,
+                dataSourceId: invalidNode.dataSourceId,
+                strict: true,
+            });
+            if (!validation.allowed && validation.feedback) {
+                showFeedback({
+                    ...validation.feedback,
+                    detail: `校验失败。请检查画布上标记为警告的节点（共 ${Object.keys(nodeIssues).length} 个）。`
+                });
+                return false;
+            }
+        }
+        return true;
+    }, [flowDocument, showFeedback]);
+
     const handleSaveFlow = useCallback(async (nodeOverride?: { taskId: string; content: string; dataSourceId?: number; dataSourceType?: string }) => {
         if (!groupId || !activeFlowPath || !flowDocument) return;
+        
+        if (!validateDocumentForAction(nodeOverride)) {
+            return;
+        }
         setSavingFlow(true);
         try {
             const currentEdges = canvasEdgesRef.current;
@@ -1709,9 +1768,49 @@ export default function OfflineWorkbench() {
 
     const handleNodeEditorSaveToDisk = useCallback(async (content: string, dataSourceId?: number, dataSourceType?: string) => {
         if (!activeNodeId) return;
+        const activeEditingNode = flattenDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null;
+        const validation = validateSqlNodeDataSourceRequirement({
+            kind: activeEditingNode?.kind ?? 'SHELL',
+            dataSourceId,
+            strict: true,
+        });
+        if (!validation.allowed && validation.feedback) {
+            showFeedback(validation.feedback);
+            return;
+        }
         handleNodeEditorTempSave(content, dataSourceId, dataSourceType);
         await handleSaveFlow({ taskId: activeNodeId, content, dataSourceId, dataSourceType });
-    }, [activeNodeId, handleNodeEditorTempSave, handleSaveFlow]);
+    }, [activeNodeId, flowDocument, handleNodeEditorTempSave, handleSaveFlow, showFeedback]);
+
+    const handleOpenCommitDialog = useCallback(async () => {
+        if (!groupId || !activeFlowPath || !flowDocument) return;
+
+        // Auto-save logic if there are unsaved changes
+        if (isDirty) {
+            if (!validateDocumentForAction()) {
+                return;
+            }
+            // Silent block while saving
+            setSavingFlow(true);
+            try {
+                await handleSaveFlow();
+                // After successful save, refresh repo status to ensure 'dirty' flag is picked up by backend if needed
+                await refreshRepoStatus();
+            } catch (error) {
+                // handleSaveFlow already shows error feedback
+                return;
+            } finally {
+                setSavingFlow(false);
+            }
+        } else {
+            // Even if not dirty, still run validation to be safe (e.g. content was saved but invalid state existed)
+            if (!validateDocumentForAction()) {
+                return;
+            }
+        }
+        
+        setCommitDialogOpen(true);
+    }, [activeFlowPath, flowDocument, groupId, handleSaveFlow, isDirty, refreshRepoStatus, validateDocumentForAction]);
 
     const handleExecute = useCallback(async () => {
         if (!groupId || !activeFlowPath) return;
@@ -1958,7 +2057,7 @@ export default function OfflineWorkbench() {
                                             onClick={() => void handlePush()}
                                             disabled={!groupId || pushLoading || repoLoading || treeLoading}
                                         >
-                                            {pushLoading ? <LoaderCircle size={14} className="offline-spin" /> : <GitPushIcon dirty={!!repoStatus?.dirty} />}
+                                            {pushLoading ? <LoaderCircle size={14} className="offline-spin" /> : <GitPushIcon dirty={!isDirty && !repoStatus?.dirty && !!repoStatus?.ahead} />}
                                         </button>
                                     </TooltipTrigger>
                                     <TooltipContent className="tooltip-content" side="bottom">
@@ -2057,8 +2156,11 @@ export default function OfflineWorkbench() {
                                                 onClick={() => void handleSaveFlow()}
                                                 aria-label="保存"
                                             >
+                                            <span className="relative flex">
                                                 {savingFlow ? <LoaderCircle size={16} className="offline-spin" /> : <Save size={16} />}
-                                            </button>
+                                                {isDirty && <span className="offline-toolbar-dot" />}
+                                            </span>
+                                        </button>
                                         </TooltipTrigger>
                                         <TooltipContent className="tooltip-content" side="bottom">
                                             保存
@@ -2071,12 +2173,12 @@ export default function OfflineWorkbench() {
                                                 type="button"
                                                 className="offline-canvas-toolbar-btn"
                                                 disabled={!activeFlowPath || !canWrite || committing}
-                                                onClick={() => setCommitDialogOpen(true)}
+                                                onClick={handleOpenCommitDialog}
                                                 aria-label="提交"
                                             >
                                                 <span className="relative flex">
                                                     <GitCommitHorizontal size={16} />
-                                                    {isDirty && <span className="offline-toolbar-dot" />}
+                                                    {!isDirty && !!repoStatus?.dirty && <span className="offline-toolbar-dot" />}
                                                 </span>
                                             </button>
                                         </TooltipTrigger>
@@ -2214,6 +2316,7 @@ export default function OfflineWorkbench() {
                                         flowDocument={flowDocument}
                                         selectedTaskIds={selectedTaskIds}
                                         activeNodeId={activeNodeId}
+                                        nodeIssues={nodeIssues}
                                         onNodesChange={handleCanvasNodesChange}
                                         onEdgesChange={handleCanvasEdgesChange}
                                         onNodeLayoutCommit={handleCanvasNodeLayoutCommit}
@@ -2335,9 +2438,8 @@ export default function OfflineWorkbench() {
             <NodeEditorDialog
                 open={nodeEditorOpen}
                 activeNode={activeNode}
+                groupId={groupId}
                 content={nodeEditorContent}
-                dataSources={dataSources}
-                dataSourcesLoading={dataSourcesLoading}
                 onOpenChange={setNodeEditorOpen}
                 onSave={handleNodeEditorSave}
                 onTempSave={handleNodeEditorTempSave}
@@ -2836,101 +2938,11 @@ export default function OfflineWorkbench() {
 
 const LazyEditor = lazy(loadQueryEditorModule);
 
-function DsSelect({
-    value,
-    options,
-    placeholder,
-    onChange,
-}: {
-    value: number | undefined;
-    options: DataSource[];
-    placeholder: string;
-    onChange: (id: number | undefined) => void;
-}) {
-    const [open, setOpen] = useState(false);
-    const [highlighted, setHighlighted] = useState(-1);
-    const ref = useRef<HTMLDivElement>(null);
-    const selected = options.find(ds => ds.id === value);
-
-    // Close on outside click
-    useEffect(() => {
-        if (!open) return;
-        const handler = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node)) {
-                setOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [open]);
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Escape') { setOpen(false); return; }
-        if (!open) { if (e.key === 'Enter' || e.key === ' ') setOpen(true); return; }
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setHighlighted(h => Math.min(h + 1, options.length - 1));
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            setHighlighted(h => Math.max(h - 1, 0));
-        } else if (e.key === 'Enter' && highlighted >= 0) {
-            e.preventDefault();
-            onChange(options[highlighted].id);
-            setOpen(false);
-        }
-    };
-
-    return (
-        <div className="node-editor-ds-select" ref={ref} onKeyDown={handleKeyDown}>
-            <button
-                type="button"
-                className={`node-editor-ds-trigger${open ? ' is-open' : ''}`}
-                onClick={() => setOpen(o => !o)}
-                aria-haspopup="listbox"
-                aria-expanded={open}
-            >
-                <span className={`node-editor-ds-name${!selected ? ' is-placeholder' : ''}`}>
-                    {selected ? selected.name : placeholder}
-                </span>
-                {selected && (
-                    <span className="node-editor-ds-type">{selected.type}</span>
-                )}
-                <ChevronDown size={14} className="node-editor-ds-chevron" />
-            </button>
-
-            {open && (
-                <div className="node-editor-ds-dropdown" role="listbox">
-                    {options.length === 0 && (
-                        <div className="node-editor-ds-loading" style={{ padding: '10px 12px', color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>
-                            暂无可用数据源
-                        </div>
-                    )}
-                    {options.map((ds, i) => (
-                        <button
-                            key={ds.id}
-                            type="button"
-                            role="option"
-                            aria-selected={ds.id === value}
-                            className={`node-editor-ds-option${i === highlighted ? ' is-highlighted' : ''}${ds.id === value ? ' is-selected' : ''}`}
-                            onClick={() => { onChange(ds.id); setOpen(false); }}
-                            onMouseEnter={() => setHighlighted(i)}
-                        >
-                            <span className="node-editor-ds-option-name">{ds.name}</span>
-                            <span className="node-editor-ds-option-type">{ds.type}</span>
-                        </button>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-}
-
 interface NodeEditorDialogProps {
     open: boolean;
     activeNode: OfflineFlowNode | null;
+    groupId: number | null;
     content: string;
-    dataSources: DataSource[];
-    dataSourcesLoading: boolean;
     onOpenChange: (open: boolean) => void;
     onSave: (content: string, dataSourceId?: number, dataSourceType?: string) => void;
     onTempSave: (content: string, dataSourceId?: number, dataSourceType?: string) => void;
@@ -2942,9 +2954,8 @@ interface NodeEditorDialogProps {
 function NodeEditorDialog({ 
     open, 
     activeNode, 
+    groupId,
     content, 
-    dataSources, 
-    dataSourcesLoading, 
     onOpenChange, 
     onSave, 
     onTempSave, 
@@ -2953,22 +2964,36 @@ function NodeEditorDialog({
     handleEditorBeforeMount 
 }: NodeEditorDialogProps) {
     const [confirmClose, setConfirmClose] = useState(false);
-    const [currentDSId, setCurrentDSId] = useState<number | undefined>(activeNode?.dataSourceId);
+    const {
+        currentDataSourceId,
+        selectedDataSource,
+        options: dataSourceOptions,
+        loading: dataSourcesLoading,
+        loadingMore: dataSourcesLoadingMore,
+        hasMore: dataSourcesHasMore,
+        handleSearchKeywordChange,
+        loadMore: loadMoreDataSources,
+        setCurrentDataSourceId,
+    } = useNodeEditorDataSources({
+        open,
+        kind: activeNode?.kind ?? 'SHELL',
+        groupId,
+        initialDataSourceId: activeNode?.dataSourceId,
+    });
+    const dataSourceSelectOptions = useMemo(() => buildNodeEditorDataSourceOptions(dataSourceOptions), [dataSourceOptions]);
 
     useEffect(() => {
         if (open) {
             setConfirmClose(false);
-            setCurrentDSId(activeNode?.dataSourceId);
         }
-    }, [open, activeNode]);
+    }, [open]);
 
     if (!activeNode) return null;
     const language = activeNode.kind === 'SQL' ? 'sql' : 'shell';
     const hasCodeChanges = activeNode.scriptContent !== content;
-    const hasDSChanges = activeNode.dataSourceId !== currentDSId;
+    const hasDSChanges = activeNode.dataSourceId !== currentDataSourceId;
     const hasUnsavedChanges = hasCodeChanges || hasDSChanges;
-    
-    const currentDS = dataSources.find(ds => ds.id === currentDSId);
+    const currentDS = selectedDataSource;
 
     const handleAttemptClose = () => {
         if (hasUnsavedChanges) {
@@ -2981,71 +3006,102 @@ function NodeEditorDialog({
     return (
         <Dialog open={open} onOpenChange={(next) => { if (!next) handleAttemptClose(); }}>
             <DialogPortal>
-                <DialogOverlay className="fixed inset-0 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" style={{ zIndex: 1050 }} />
+                <DialogOverlay className="fixed inset-0 bg-black/40 backdrop-blur-[1px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" style={{ zIndex: 1050 }} />
                 <DialogContent 
-                    className="fixed inset-4 flex flex-col bg-white rounded-lg shadow-2xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95" 
+                    className="fixed inset-0 flex flex-col bg-white max-h-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-100 data-[state=open]:zoom-in-100" 
                     style={{ zIndex: 1050 }}
                     onOpenAutoFocus={(e) => e.preventDefault()}
                 >
-                    <div className="node-editor-header">
-                        <div className="node-editor-title-group">
-                            <h2 className="node-editor-title">
-                                {activeNode.kind === 'SQL' ? 'SQL 节点' : 'Shell 节点'}
-                            </h2>
-                            <span className="node-editor-taskid" title={activeNode.taskId}>
-                                {activeNode.taskId}
-                            </span>
+                    <div className="flex items-center justify-between border-b px-4 py-2 bg-[#fdfcfb] shadow-sm z-10">
+                        <div className="flex items-center gap-5">
+                            {/* Identity Section */}
+                            <div className="flex items-center gap-3">
+                                <div className={cn(
+                                    "px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase border",
+                                    activeNode.kind === 'SQL' 
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-100" 
+                                        : "bg-gray-100 text-gray-600 border-gray-200"
+                                )}>
+                                    {activeNode.kind}
+                                </div>
+                                <DialogTitle className="text-sm font-mono font-medium text-gray-600">
+                                    {activeNode.taskId}
+                                </DialogTitle>
+                                <DialogDescription className="sr-only">
+                                    {activeNode.kind === 'SQL' ? 'SQL 节点' : 'Shell 节点'}: {activeNode.taskId}
+                                </DialogDescription>
+                            </div>
 
+                            <div className="h-4 w-[1px] bg-gray-200" />
+
+                            {/* Config Section */}
                             {activeNode.kind === 'SQL' && (
-                                <div className="node-editor-ds-group">
-                                    <span className="node-editor-ds-label">数据源</span>
-                                    {dataSourcesLoading ? (
-                                        <div className="node-editor-ds-loading">
-                                            <LoaderCircle size={13} className="animate-spin" style={{ animationDuration: '0.75s' }} />
-                                            <span>加载中…</span>
-                                        </div>
-                                    ) : (
-                                        <DsSelect
-                                            value={currentDSId}
-                                            options={dataSources}
-                                            placeholder="选择数据源"
-                                            onChange={(id) => setCurrentDSId(id)}
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-1.5 text-gray-500">
+                                        <Database size={14} strokeWidth={2.5} />
+                                        <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">数据源</span>
+                                    </div>
+                                    <div className="min-w-[260px]">
+                                        <OfflineDataSourcePicker
+                                            options={dataSourceSelectOptions}
+                                            selectedOption={currentDS ? {
+                                                label: currentDS.name,
+                                                value: String(currentDS.id),
+                                                type: currentDS.type,
+                                                raw: currentDS,
+                                            } : null}
+                                            onSelect={(option) => {
+                                                setCurrentDataSourceId(Number(option.value));
+                                            }}
+                                            onSearch={handleSearchKeywordChange}
+                                            loading={dataSourcesLoading}
+                                            loadingMore={dataSourcesLoadingMore}
+                                            hasMore={dataSourcesHasMore}
+                                            onLoadMore={loadMoreDataSources}
+                                            placeholder="选择数据源..."
                                         />
-                                    )}
+                                    </div>
                                 </div>
                             )}
                         </div>
 
-                        <div className="node-editor-actions">
-                            <button
-                                type="button"
-                                className="node-editor-btn node-editor-btn-secondary"
-                                onClick={() => onTempSave(content, currentDSId, currentDS?.type)}
-                            >
-                                <Inbox size={15} />
-                                暂存
-                            </button>
+                        <TooltipProvider delayDuration={300}>
+                            <div className="flex items-center gap-1">
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            type="button"
+                                            className="p-1.5 rounded hover:bg-white hover:shadow-sm text-gray-500 hover:text-indigo-600 transition-all active:scale-95"
+                                            aria-label="应用暂存"
+                                            onClick={() => onTempSave(content, currentDataSourceId, currentDS?.type)}
+                                        >
+                                            <Inbox size={18} />
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="tooltip-content z-[2100]" side="bottom">
+                                        应用并将改动暂存至内存
+                                    </TooltipContent>
+                                </Tooltip>
 
-                            <button
-                                type="button"
-                                className="node-editor-btn node-editor-btn-primary"
-                                onClick={() => void onSaveToDisk(content, currentDSId, currentDS?.type)}
-                            >
-                                <Save size={15} />
-                                保存
-                            </button>
+                                <div className="w-[1px] h-4 bg-gray-200 mx-1" />
 
-                            <div className="node-editor-btn-divider" />
-
-                            <button
-                                type="button"
-                                className="node-editor-btn node-editor-btn-ghost"
-                                onClick={handleAttemptClose}
-                                aria-label="关闭"
-                            >
-                                <X size={17} />
-                            </button>
-                        </div>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            type="button"
+                                            className="p-1.5 rounded hover:bg-white hover:shadow-sm text-gray-400 hover:text-red-500 transition-all active:scale-95"
+                                            aria-label="关闭"
+                                            onClick={handleAttemptClose}
+                                        >
+                                            <X size={20} />
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="tooltip-content z-[2100]" side="bottom">
+                                        关闭
+                                    </TooltipContent>
+                                </Tooltip>
+                            </div>
+                        </TooltipProvider>
                     </div>
                     <div className="flex-1 min-h-0 relative">
                         <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-400">编辑器加载中...</div>}>
@@ -3090,16 +3146,16 @@ function NodeEditorDialog({
                                         <Button 
                                             variant="outline" 
                                             onClick={() => onOpenChange(false)} 
-                                            className="text-red-600 hover:text-red-700 hover:bg-red-50 border-transparent hover:border-red-100"
+                                            className="text-red-500 hover:text-red-600 hover:bg-red-50 border-transparent"
                                         >
-                                            不保存
+                                            直接退出
                                         </Button>
                                         <div className="flex-1" />
                                         <Button variant="outline" onClick={() => setConfirmClose(false)}>
-                                            取消
+                                            继续编辑
                                         </Button>
-                                        <Button variant="default" onClick={() => onSave(content, currentDSId, currentDS?.type)}>
-                                            暂存并关闭
+                                        <Button variant="default" onClick={() => onSave(content, currentDataSourceId, currentDS?.type)}>
+                                            应用修改并关闭
                                         </Button>
                                     </div>
                                 </div>
