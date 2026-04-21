@@ -20,6 +20,17 @@ describe('hasImplicitDependenciesAfterSaveRoundTrip', () => {
         })).toBe(false);
     });
 
+    it('returns true for a layered graph that would gain c to b after save round-trip', () => {
+        expect(hasImplicitDependenciesAfterSaveRoundTrip({
+            nodeIds: ['a', 'b', 'c', 'd'],
+            edges: [
+                { source: 'a', target: 'b' },
+                { source: 'b', target: 'd' },
+                { source: 'c', target: 'd' },
+            ],
+        })).toBe(true);
+    });
+
     it('detects missing explicit edge when delimiter collision occurs', () => {
         // Edge set flattening with '---' can collide: 'a---b' + '---' + 'c' == 'a' + '---' + 'b---c'
         expect(hasImplicitDependenciesAfterSaveRoundTrip({
