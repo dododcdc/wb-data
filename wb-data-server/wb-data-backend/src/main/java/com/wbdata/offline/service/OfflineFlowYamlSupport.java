@@ -17,6 +17,10 @@ import java.util.Map;
 import java.util.Set;
 
 final class OfflineFlowYamlSupport {
+    private static final String WB_DATA_META_PREFIX = "[wbdata-meta]";
+    private static final String SHELL_COMMANDS_TASK_TYPE = "io.kestra.plugin.scripts.shell.Commands";
+    private static final java.util.regex.Pattern READ_CALL_PATTERN =
+            java.util.regex.Pattern.compile("\\{\\{\\s*read\\(\\s*['\"]([^'\"]+)['\"]\\s*\\)\\s*}}");
 
     private final Yaml yaml;
 
@@ -43,6 +47,8 @@ final class OfflineFlowYamlSupport {
     String buildDebugFlow(String source,
                           String debugNamespace,
                           String flowPath,
+                          Long groupId,
+                          Long requestedBy,
                           String sourceRevision,
                           String mode,
                           List<String> selectedTaskIds) {
@@ -54,7 +60,11 @@ final class OfflineFlowYamlSupport {
         labels.putAll(asStringObjectMap(root.get("labels")));
         labels.put("wbdataMode", "DEBUG");
         labels.put("wbdataFlowPath", flowPath);
+        labels.put("wbdataGroupId", String.valueOf(groupId));
+        labels.put("wbdataRequestedBy", String.valueOf(requestedBy));
         labels.put("wbdataSourceRevision", sourceRevision);
+        labels.put("wbdataDisplayName", buildExecutionDisplayName(mode, selectedTaskIds));
+        labels.put("wbdataSelectedTaskIds", String.join(",", new LinkedHashSet<>(selectedTaskIds)));
         root.put("labels", labels);
 
         if (!"ALL".equalsIgnoreCase(mode) && !"SELECTED".equalsIgnoreCase(mode)) {
@@ -69,6 +79,20 @@ final class OfflineFlowYamlSupport {
         }
 
         return yaml.dump(root);
+    }
+
+    private String buildExecutionDisplayName(String mode, List<String> selectedTaskIds) {
+        if ("ALL".equalsIgnoreCase(mode)) {
+            return "整个 Flow";
+        }
+        List<String> uniqueTaskIds = new ArrayList<>(new LinkedHashSet<>(selectedTaskIds));
+        if (uniqueTaskIds.isEmpty()) {
+            return "未命名节点";
+        }
+        if (uniqueTaskIds.size() == 1) {
+            return uniqueTaskIds.get(0);
+        }
+        return uniqueTaskIds.get(0) + " 等 " + uniqueTaskIds.size() + " 个节点";
     }
 
     String sha256Hex(String content) {
@@ -326,26 +350,28 @@ final class OfflineFlowYamlSupport {
         } else {
             task = new LinkedHashMap<>();
             task.put("id", taskId);
-            // Default to shell if it's not SQL
             if (!"SQL".equalsIgnoreCase(nodeInfo.kind())) {
-                task.put("type", "io.kestra.plugin.scripts.shell.Commands");
+                task.put("type", SHELL_COMMANDS_TASK_TYPE);
             }
         }
 
-        // Apply Data Source configuration for SQL nodes
         if ("SQL".equalsIgnoreCase(nodeInfo.kind())) {
             applyDataSourceToTask(task, nodeInfo, dataSourceMap);
+        } else if ("HIVE_SQL".equalsIgnoreCase(nodeInfo.kind())) {
+            applyHiveSqlTask(task, nodeInfo, dataSourceMap);
         } else {
-            // Standard Shell configuration
-            task.put("type", "io.kestra.plugin.scripts.shell.Commands");
-            Map<String, Object> nsFiles = new LinkedHashMap<>();
-            nsFiles.put("enabled", true);
-            nsFiles.put("include", List.of(nodeInfo.scriptPath()));
-            task.put("namespaceFiles", nsFiles);
-            task.put("commands", List.of("bash " + nodeInfo.scriptPath()));
+            applyShellTask(task, nodeInfo);
         }
 
         return task;
+    }
+
+    private void applyShellTask(Map<String, Object> task, FlowNode nodeInfo) {
+        clearJdbcTaskFields(task);
+        clearShellTaskFields(task);
+        task.put("type", SHELL_COMMANDS_TASK_TYPE);
+        task.put("namespaceFiles", buildNamespaceFilesConfig(nodeInfo.scriptPath()));
+        task.put("commands", List.of("bash " + shellQuote(nodeInfo.scriptPath())));
     }
 
     private void applyDataSourceToTask(Map<String, Object> task,
@@ -355,39 +381,211 @@ final class OfflineFlowYamlSupport {
         com.wbdata.datasource.entity.DataSource ds = dsId != null ? dataSourceMap.get(dsId) : null;
 
         if (ds == null) {
-            // Fallback to Shell if no data source is selected or found
-            task.put("type", "io.kestra.plugin.scripts.shell.Commands");
-            Map<String, Object> nsFiles = new LinkedHashMap<>();
-            nsFiles.put("enabled", true);
-            nsFiles.put("include", List.of(nodeInfo.scriptPath()));
-            task.put("namespaceFiles", nsFiles);
-            task.put("commands", List.of("cat " + nodeInfo.scriptPath() + " # No data source selected"));
+            clearJdbcTaskFields(task);
+            task.put("type", SHELL_COMMANDS_TASK_TYPE);
+            task.put("namespaceFiles", buildNamespaceFilesConfig(nodeInfo.scriptPath()));
+            task.put("commands", List.of("cat " + shellQuote(nodeInfo.scriptPath()) + " # No data source selected"));
             return;
         }
 
+        clearShellTaskFields(task);
         String type = ds.getType().toUpperCase();
-        String kestraType;
-        Map<String, Object> labels = asStringObjectMap(task.get("labels"));
-        labels.put("wbdataDataSourceId", ds.getId().toString());
-        task.put("labels", labels);
-
-        switch (type) {
-            case "MYSQL", "STARROCKS" -> kestraType = "io.kestra.plugin.jdbc.mysql.Query";
-            case "POSTGRESQL" -> kestraType = "io.kestra.plugin.jdbc.postgresql.Query";
-            case "HIVE" -> {
-                kestraType = "io.kestra.plugin.jdbc.generic.Query";
-                task.put("driverClassName", "org.apache.hive.jdbc.HiveDriver");
-            }
-            default -> kestraType = "io.kestra.plugin.jdbc.generic.Query";
-        }
-
-        task.put("type", kestraType);
-        task.put("url", String.format("jdbc:%s://%s:%d/%s", 
-                type.toLowerCase().replace("starrocks", "mysql"), 
-                ds.getHost(), ds.getPort(), ds.getDatabaseName()));
+        task.put("type", resolveKestraQueryTaskType(type));
+        task.put("description", mergeTaskMetadataDescription(readOptionalString(task, "description"), ds.getId(), type, "SQL"));
+        task.put("url", buildJdbcUrl(ds.getHost(), ds.getPort(), ds.getDatabaseName(), type));
         task.put("username", ds.getUsername());
         task.put("password", ds.getPassword());
         task.put("sql", String.format("{{ read('%s') }}", nodeInfo.scriptPath()));
+    }
+
+    private void applyHiveSqlTask(Map<String, Object> task,
+                                  FlowNode nodeInfo,
+                                  Map<Long, com.wbdata.datasource.entity.DataSource> dataSourceMap) {
+        Long dsId = nodeInfo.dataSourceId();
+        com.wbdata.datasource.entity.DataSource ds = dsId != null ? dataSourceMap.get(dsId) : null;
+
+        clearJdbcTaskFields(task);
+        clearShellTaskFields(task);
+
+        if (ds == null) {
+            task.put("type", SHELL_COMMANDS_TASK_TYPE);
+            task.put("namespaceFiles", buildNamespaceFilesConfig(nodeInfo.scriptPath()));
+            task.put("commands", List.of("cat " + shellQuote(nodeInfo.scriptPath()) + " # No data source selected"));
+            return;
+        }
+
+        String type = ds.getType() == null ? "" : ds.getType().trim().toUpperCase();
+        if (!"HIVE".equals(type)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "HiveSQL 节点只能绑定 Hive 数据源: " + nodeInfo.taskId());
+        }
+
+        task.put("type", SHELL_COMMANDS_TASK_TYPE);
+        task.put("description", mergeTaskMetadataDescription(readOptionalString(task, "description"), ds.getId(), type, "HIVE_SQL"));
+        task.put("namespaceFiles", buildNamespaceFilesConfig(nodeInfo.scriptPath()));
+        task.put("commands", List.of(buildBeelineCommand(ds, nodeInfo.scriptPath())));
+    }
+
+    String resolveKestraQueryTaskType(String dataSourceType) {
+        String normalizedType = dataSourceType == null ? "" : dataSourceType.trim().toUpperCase();
+        return switch (normalizedType) {
+            case "MYSQL", "STARROCKS" -> "io.kestra.plugin.jdbc.mysql.Query";
+            case "POSTGRESQL" -> "io.kestra.plugin.jdbc.postgresql.Query";
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "暂不支持的数据源类型: " + dataSourceType);
+        };
+    }
+
+    private String buildJdbcUrl(String host, Integer port, String databaseName, String dataSourceType) {
+        String normalizedType = dataSourceType == null ? "" : dataSourceType.trim().toUpperCase();
+        String databaseSegment = databaseName == null || databaseName.isBlank() ? "" : "/" + databaseName;
+        return switch (normalizedType) {
+            case "MYSQL", "STARROCKS" -> String.format("jdbc:mysql://%s:%d%s", host, port, databaseSegment);
+            case "POSTGRESQL" -> String.format("jdbc:postgresql://%s:%d%s", host, port, databaseSegment);
+            case "HIVE" -> String.format("jdbc:hive2://%s:%d%s", host, port, databaseSegment);
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "暂不支持的数据源类型: " + dataSourceType);
+        };
+    }
+
+    private Map<String, Object> buildNamespaceFilesConfig(String scriptPath) {
+        Map<String, Object> nsFiles = new LinkedHashMap<>();
+        nsFiles.put("enabled", true);
+        nsFiles.put("include", List.of(scriptPath));
+        return nsFiles;
+    }
+
+    private String buildBeelineCommand(com.wbdata.datasource.entity.DataSource dataSource, String scriptPath) {
+        StringBuilder command = new StringBuilder("beeline -u ")
+                .append(shellQuote(buildJdbcUrl(dataSource.getHost(), dataSource.getPort(), dataSource.getDatabaseName(), "HIVE")));
+        if (dataSource.getUsername() != null && !dataSource.getUsername().isBlank()) {
+            command.append(" -n ").append(shellQuote(dataSource.getUsername()));
+        }
+        if (dataSource.getPassword() != null && !dataSource.getPassword().isBlank()) {
+            command.append(" -p ").append(shellQuote(dataSource.getPassword()));
+        }
+        command.append(" -f ").append(shellQuote(scriptPath));
+        return command.toString();
+    }
+
+    private String shellQuote(String value) {
+        return "'" + (value == null ? "" : value.replace("'", "'\"'\"'")) + "'";
+    }
+
+    private void clearShellTaskFields(Map<String, Object> task) {
+        task.remove("namespaceFiles");
+        task.remove("commands");
+        task.remove("labels");
+        cleanupTaskMetadataDescription(task);
+    }
+
+    private void clearJdbcTaskFields(Map<String, Object> task) {
+        task.remove("url");
+        task.remove("username");
+        task.remove("password");
+        task.remove("sql");
+        task.remove("driverClassName");
+        task.remove("parameters");
+        task.remove("fetch");
+        task.remove("fetchOne");
+        task.remove("fetchType");
+        task.remove("fetchSize");
+        task.remove("afterSQL");
+        task.remove("timeZoneId");
+        task.remove("store");
+        task.remove("inputFile");
+        task.remove("labels");
+        cleanupTaskMetadataDescription(task);
+    }
+
+    private String readSqlReadPath(Map<String, Object> task) {
+        String sql = readOptionalString(task, "sql");
+        if (sql == null || sql.isBlank()) {
+            return null;
+        }
+        java.util.regex.Matcher matcher = READ_CALL_PATTERN.matcher(sql);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return null;
+    }
+
+    private ParsedTaskMetadata parseTaskMetadata(String description) {
+        if (description == null || description.isBlank()) {
+            return new ParsedTaskMetadata(null, null, null);
+        }
+
+        String metadataLine = null;
+        for (String line : description.split("\\R")) {
+            if (line.startsWith(WB_DATA_META_PREFIX)) {
+                metadataLine = line;
+            }
+        }
+        if (metadataLine == null) {
+            return new ParsedTaskMetadata(null, null, null);
+        }
+
+        Long dataSourceId = null;
+        String dataSourceType = null;
+        String nodeKind = null;
+        String payload = metadataLine.substring(WB_DATA_META_PREFIX.length()).trim();
+        for (String entry : payload.split(";")) {
+            String trimmed = entry.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            int eqIndex = trimmed.indexOf('=');
+            if (eqIndex <= 0 || eqIndex >= trimmed.length() - 1) {
+                continue;
+            }
+            String key = trimmed.substring(0, eqIndex).trim();
+            String value = trimmed.substring(eqIndex + 1).trim();
+            if ("dataSourceId".equals(key)) {
+                try {
+                    dataSourceId = Long.parseLong(value);
+                } catch (NumberFormatException ignored) {
+                    // ignore malformed metadata
+                }
+            } else if ("dataSourceType".equals(key) && !value.isBlank()) {
+                dataSourceType = value;
+            } else if ("nodeKind".equals(key) && !value.isBlank()) {
+                nodeKind = value;
+            }
+        }
+        return new ParsedTaskMetadata(dataSourceId, dataSourceType, nodeKind);
+    }
+
+    private String mergeTaskMetadataDescription(String existingDescription, Long dataSourceId, String dataSourceType, String nodeKind) {
+        String cleaned = stripTaskMetadataDescription(existingDescription);
+        StringBuilder metadata = new StringBuilder(WB_DATA_META_PREFIX)
+                .append(" dataSourceId=").append(dataSourceId)
+                .append(";dataSourceType=").append(dataSourceType);
+        if (nodeKind != null && !nodeKind.isBlank()) {
+            metadata.append(";nodeKind=").append(nodeKind);
+        }
+        if (cleaned == null || cleaned.isBlank()) {
+            return metadata.toString();
+        }
+        return cleaned + "\n" + metadata;
+    }
+
+    private void cleanupTaskMetadataDescription(Map<String, Object> task) {
+        String cleaned = stripTaskMetadataDescription(readOptionalString(task, "description"));
+        if (cleaned == null || cleaned.isBlank()) {
+            task.remove("description");
+        } else {
+            task.put("description", cleaned);
+        }
+    }
+
+    private String stripTaskMetadataDescription(String description) {
+        if (description == null || description.isBlank()) {
+            return description;
+        }
+        List<String> preservedLines = new ArrayList<>();
+        for (String line : description.split("\\R")) {
+            if (!line.startsWith(WB_DATA_META_PREFIX)) {
+                preservedLines.add(line);
+            }
+        }
+        return String.join("\n", preservedLines).trim();
     }
 
     boolean isAcyclicGraph(List<FlowNode> nodes, List<FlowEdge> edges) {
@@ -541,35 +739,50 @@ final class OfflineFlowYamlSupport {
         }
         String taskId = requiredString(task, "id");
         String scriptPath = readScriptPath(task);
-        
-        Long dataSourceId = null;
-        String dataSourceType = null;
-        
-        // Extract data source info from labels if present
-        Object labels = task.get("labels");
-        if (labels instanceof Map<?, ?> labelMap) {
-            Object dsIdObj = labelMap.get("wbdataDataSourceId");
-            if (dsIdObj != null) {
-                try {
-                    dataSourceId = Long.parseLong(dsIdObj.toString());
-                } catch (NumberFormatException ignored) {}
+
+        ParsedTaskMetadata metadata = parseTaskMetadata(readOptionalString(task, "description"));
+        Long dataSourceId = metadata.dataSourceId();
+        String dataSourceType = metadata.dataSourceType();
+        String nodeKind = metadata.nodeKind();
+
+        // Backward compatibility for older YAML that stored datasource metadata on labels.
+        if (dataSourceId == null) {
+            Object labels = task.get("labels");
+            if (labels instanceof Map<?, ?> labelMap) {
+                Object dsIdObj = labelMap.get("wbdataDataSourceId");
+                if (dsIdObj != null) {
+                    try {
+                        dataSourceId = Long.parseLong(dsIdObj.toString());
+                    } catch (NumberFormatException ignored) {
+                        // ignore malformed historical metadata
+                    }
+                }
             }
         }
-        
+
         // Infer kind and type
         String typeAttr = readOptionalString(task, "type");
         if (typeAttr != null) {
-            if (typeAttr.startsWith("io.kestra.plugin.jdbc.")) {
+            if ((dataSourceType == null || dataSourceType.isBlank()) && typeAttr.startsWith("io.kestra.plugin.jdbc.")) {
                 dataSourceType = typeAttr.substring("io.kestra.plugin.jdbc.".length()).split("\\.")[0].toUpperCase();
                 if ("GENERIC".equals(dataSourceType)) {
-                    dataSourceType = "HIVE"; // Simplified assumption for our current design
+                    dataSourceType = "HIVE";
                 }
+            }
+        }
+
+        if (nodeKind == null || nodeKind.isBlank()) {
+            if (scriptPath.endsWith(".hql")
+                    || ("HIVE".equalsIgnoreCase(dataSourceType) && SHELL_COMMANDS_TASK_TYPE.equals(typeAttr))) {
+                nodeKind = "HIVE_SQL";
+            } else {
+                nodeKind = scriptPath.endsWith(".sql") ? "SQL" : "SHELL";
             }
         }
 
         return new FlowNode(
                 taskId,
-                scriptPath.endsWith(".sql") ? "SQL" : "SHELL",
+                nodeKind,
                 scriptPath,
                 dataSourceId,
                 dataSourceType
@@ -578,14 +791,9 @@ final class OfflineFlowYamlSupport {
 
     @SuppressWarnings("unchecked")
     private String readScriptPath(Map<String, Object> task) {
-        Object namespaceFiles = task.get("namespaceFiles");
-        if (!(namespaceFiles instanceof Map<?, ?> rawNamespaceFiles)) {
-            throw unsupportedTask("当前仅支持带脚本文件的 SQL / Shell 节点");
-        }
-
-        List<String> includePaths = readNamespaceIncludePathsFromConfig((Map<String, Object>) rawNamespaceFiles);
+        List<String> includePaths = readNamespaceIncludePathsFromTask(task);
         if (includePaths.isEmpty()) {
-            throw unsupportedTask("当前仅支持带脚本文件的 SQL / Shell 节点");
+            throw unsupportedTask("当前仅支持带脚本文件的 SQL / HiveSQL / Shell 节点");
         }
         return includePaths.getFirst();
     }
@@ -596,11 +804,19 @@ final class OfflineFlowYamlSupport {
 
     @SuppressWarnings("unchecked")
     private List<String> readNamespaceIncludePathsFromTask(Map<String, Object> task) {
+        LinkedHashSet<String> paths = new LinkedHashSet<>();
+
         Object namespaceFiles = task.get("namespaceFiles");
-        if (!(namespaceFiles instanceof Map<?, ?> rawNamespaceFiles)) {
-            return Collections.emptyList();
+        if (namespaceFiles instanceof Map<?, ?> rawNamespaceFiles) {
+            paths.addAll(readNamespaceIncludePathsFromConfig((Map<String, Object>) rawNamespaceFiles));
         }
-        return readNamespaceIncludePathsFromConfig((Map<String, Object>) rawNamespaceFiles);
+
+        String sqlPath = readSqlReadPath(task);
+        if (sqlPath != null) {
+            paths.add(sqlPath);
+        }
+
+        return List.copyOf(paths);
     }
 
     private List<String> readNamespaceIncludePathsFromConfig(Map<String, Object> namespaceFiles) {
@@ -676,6 +892,13 @@ final class OfflineFlowYamlSupport {
     record FlowEdge(
             String source,
             String target
+    ) {
+    }
+
+    private record ParsedTaskMetadata(
+            Long dataSourceId,
+            String dataSourceType,
+            String nodeKind
     ) {
     }
 

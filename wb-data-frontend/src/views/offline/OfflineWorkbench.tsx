@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import type * as Monaco from 'monaco-editor';
 import { AxiosError } from 'axios';
 import { ReactFlowProvider, type Node, type Edge } from '@xyflow/react';
+import { useNavigate } from 'react-router-dom';
 import { loadQueryEditorModule } from '../query/queryEditorModule';
 import FlowCanvas from './FlowCanvas';
 import '../core/RouteSkeletons.css';
@@ -32,11 +33,10 @@ import {
 import {
     commitOfflineRepo,
     createOfflineFolder,
-    createOfflineSavedDebugExecution,
+    createOfflineDocumentDebugExecution,
     deleteOfflineFlow,
     deleteOfflineFolder,
     getOfflineExecution,
-    getOfflineExecutionLogs,
     getOfflineFlowContent,
     getOfflineFlowDocument,
     getOfflineRepoStatus,
@@ -54,9 +54,8 @@ import {
     updateOfflineScheduleStatus,
     type OfflineExecutionDetail,
     type OfflineExecutionListItem,
-    type OfflineExecutionLogEntry,
     type OfflineFlowDocument,
-    type OfflineFlowEdge,
+    type OfflineFlowNodeKind,
     type OfflineFlowNode,
     type OfflineRepoStatus,
     type RemoteStatus,
@@ -66,6 +65,7 @@ import {
 } from '../../api/offline';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
+import { SimpleSelect } from '../../components/SimpleSelect';
 import {
     Dialog,
     DialogContent,
@@ -84,13 +84,23 @@ import {
     buildFlowDocumentSignature,
     buildLayoutFromCanvasNodes,
 } from './flowCanvasState';
+import { isExecuteButtonDisabled } from './executionToolbarState';
+import { buildDraftExecutionRequest } from './draftExecution';
+import { getExecutionPresentation, getExecutionStatusLabel, isRunningStatus } from './executionPresentation';
 import {
     buildNodeEditorDataSourceOptions,
-    findFirstSqlNodeMissingDataSource,
+    findFirstNodeWithInvalidDataSource,
     validateSqlNodeDataSourceRequirement,
 } from './nodeEditorDataSourceRules';
 import { OfflineDataSourcePicker } from './OfflineDataSourcePicker';
 import { useNodeEditorDataSources } from './useNodeEditorDataSources';
+import {
+    getOfflineNodeDefaultScript,
+    getOfflineNodeKindDescription,
+    getOfflineNodeKindLabel,
+    getOfflineNodeScriptExtension,
+    isSqlEditorNodeKind,
+} from './offlineNodeKinds';
 import { cn } from '../../lib/utils';
 import './OfflineWorkbench.css';
 
@@ -166,36 +176,20 @@ function formatDateTime(value: string | number | null | undefined) {
     if (!value) return '—';
     const date = typeof value === 'number' ? new Date(value) : new Date(value);
     if (Number.isNaN(date.getTime())) return '—';
-    return new Intl.DateTimeFormat('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-    }).format(date);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 function formatDuration(durationMs: number | null) {
     if (durationMs == null) return '—';
-    if (durationMs < 1000) return `${durationMs}ms`;
     const seconds = durationMs / 1000;
-    if (seconds < 60) return `${seconds.toFixed(seconds >= 10 ? 0 : 1)}s`;
-    const minutes = Math.floor(seconds / 60);
-    const remain = Math.round(seconds % 60);
-    return `${minutes}m ${remain}s`;
-}
-
-function isRunningStatus(status: string | null | undefined) {
-    return status === 'RUNNING' || status === 'CREATED' || status === 'QUEUED' || status === 'PAUSED';
-}
-
-function inferStatusTone(status: string | null | undefined) {
-    if (!status) return 'neutral';
-    if (status === 'SUCCESS') return 'success';
-    if (status === 'FAILED' || status === 'CANCELLED' || status === 'KILLED') return 'danger';
-    if (isRunningStatus(status)) return 'active';
-    return 'neutral';
+    const formatted = seconds >= 10 ? seconds.toFixed(0) : seconds.toFixed(1).replace(/\.0$/, '');
+    return `${formatted} 秒`;
 }
 
 function StatusPill(props: { tone: 'neutral' | 'success' | 'danger' | 'active'; children: string }) {
@@ -240,6 +234,13 @@ function pickerFromRepoNode(node: OfflineRepoTreeNode): PathPickerNode {
 
 interface PathPickerProps {
     rootNode: OfflineRepoTreeNode;
+    selectedPath: string;
+    onSelect: (path: string) => void;
+}
+
+interface PathPickerBranchProps {
+    node: PathPickerNode;
+    depth: number;
     selectedPath: string;
     onSelect: (path: string) => void;
 }
@@ -467,35 +468,44 @@ interface ExecutionDialogProps {
     loading: boolean;
     detail: OfflineExecutionDetail | null;
     detailLoading: boolean;
-    logs: OfflineExecutionLogEntry[];
-    logTaskFilter: string | null;
     activeExecutionId: string | null;
     actionPending: string | null;
+    requestedByFilter: number | null;
+    currentUserId: number | null;
     onOpenChange: (open: boolean) => void;
     onRefresh: () => void;
-    onSelectExecution: (executionId: string, taskId?: string | null) => void;
+    onSelectExecution: (executionId: string) => void;
     onStopExecution: (executionId: string) => void;
     onStopAll: () => void;
+    onOpenExecutionPage: (executionId: string) => void;
+    onRequestedByFilterChange: (requestedBy: number | null) => void;
 }
 
 function ExecutionDialog(props: ExecutionDialogProps) {
     const {
         open,
-        flowPath,
         executions,
         loading,
         detail,
         detailLoading,
-        logs,
-        logTaskFilter,
         activeExecutionId,
         actionPending,
+        requestedByFilter,
+        currentUserId,
         onOpenChange,
         onRefresh,
         onSelectExecution,
         onStopExecution,
         onStopAll,
+        onOpenExecutionPage,
+        onRequestedByFilterChange,
     } = props;
+    const requestedByOptions = currentUserId == null
+        ? [{ label: '全部用户', value: 'ALL' }]
+        : [
+            { label: '全部用户', value: 'ALL' },
+            { label: '仅我', value: 'ME' },
+        ];
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -507,7 +517,7 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                             <div>
                                 <DialogTitle className="offline-dialog-title">执行结果</DialogTitle>
                                 <DialogDescription className="offline-dialog-description">
-                                    {flowPath ?? '尚未选择 Flow'}
+                                    查看最近执行记录与状态概览
                                 </DialogDescription>
                             </div>
                             <button
@@ -521,20 +531,35 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                         </div>
 
                         <div className="offline-dialog-toolbar">
-                            <Button type="button" variant="outline" size="sm" onClick={onRefresh}>
-                                <RefreshCcw size={14} />
-                                刷新
-                            </Button>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={onStopAll}
-                                disabled={executions.every((item) => !isRunningStatus(item.status)) || actionPending === 'ALL'}
-                            >
-                                {actionPending === 'ALL' ? <LoaderCircle size={14} className="offline-spin" /> : <TerminalSquare size={14} />}
-                                停止所有
-                            </Button>
+                            <div className="offline-execution-toolbar-left">
+                                <label className="offline-execution-filter">
+                                    <span>用户</span>
+                                    <div className="offline-execution-filter-control">
+                                        <SimpleSelect
+                                            options={requestedByOptions}
+                                            value={requestedByFilter == null ? 'ALL' : 'ME'}
+                                            menuPlacement="down"
+                                            onChange={(value) => onRequestedByFilterChange(value === 'ME' ? currentUserId : null)}
+                                        />
+                                    </div>
+                                </label>
+                            </div>
+                            <div className="offline-execution-toolbar-actions">
+                                <Button type="button" variant="outline" size="sm" onClick={onRefresh}>
+                                    <RefreshCcw size={14} />
+                                    刷新
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={onStopAll}
+                                    disabled={executions.every((item) => !isRunningStatus(item.status)) || actionPending === 'ALL'}
+                                >
+                                    {actionPending === 'ALL' ? <LoaderCircle size={14} className="offline-spin" /> : <TerminalSquare size={14} />}
+                                    停止所有
+                                </Button>
+                            </div>
                         </div>
 
                         <div className="offline-execution-layout">
@@ -544,38 +569,34 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                 ) : executions.length === 0 ? (
                                     <div className="offline-list-placeholder">当前 Flow 还没有执行记录。</div>
                                 ) : (
-                                    executions.map((item) => (
-                                        <button
-                                            key={item.executionId}
-                                            type="button"
-                                            className={`offline-execution-row${item.executionId === activeExecutionId ? ' is-active' : ''}`}
-                                            onClick={() => onSelectExecution(item.executionId, null)}
-                                        >
-                                            <div className="offline-execution-row-main">
-                                                <div className="offline-execution-row-title">
-                                                    <strong>{item.executionId}</strong>
-                                                    <StatusPill tone={inferStatusTone(item.status)}>{item.status}</StatusPill>
+                                    executions.map((item) => {
+                                        const presentation = getExecutionPresentation(item.status);
+                                        return (
+                                            <button
+                                                key={item.executionId}
+                                                type="button"
+                                                className={`offline-execution-row${item.executionId === activeExecutionId ? ' is-active' : ''}`}
+                                                onClick={() => onSelectExecution(item.executionId)}
+                                            >
+                                                <div className="offline-execution-row-main">
+                                                    <div className="offline-execution-row-title">
+                                                        <span className={`offline-execution-dot is-${presentation.dotTone}`} aria-hidden="true" />
+                                                        <strong>{item.displayName || item.executionId}</strong>
+                                                    </div>
+                                                    <div className="offline-execution-row-meta">
+                                                        <span className="offline-execution-row-meta-item">
+                                                            <small>开始时间</small>
+                                                            <span>{formatDateTime(item.startDate)}</span>
+                                                        </span>
+                                                        <span className="offline-execution-row-meta-item">
+                                                            <small>耗时</small>
+                                                            <span>{formatDuration(item.durationMs)}</span>
+                                                        </span>
+                                                    </div>
                                                 </div>
-                                                <span className="offline-execution-row-meta">
-                                                    {formatDateTime(item.startDate)} · {formatDuration(item.durationMs)}
-                                                </span>
-                                            </div>
-                                            {isRunningStatus(item.status) ? (
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        onStopExecution(item.executionId);
-                                                    }}
-                                                    disabled={actionPending === item.executionId}
-                                                >
-                                                    {actionPending === item.executionId ? <LoaderCircle size={14} className="offline-spin" /> : '停止'}
-                                                </Button>
-                                            ) : null}
-                                        </button>
-                                    ))
+                                            </button>
+                                        );
+                                    })
                                 )}
                             </section>
 
@@ -583,65 +604,67 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                 {detailLoading ? (
                                     <div className="offline-list-placeholder">正在加载执行详情...</div>
                                 ) : !detail ? (
-                                    <div className="offline-list-placeholder">选择一条执行记录查看详情与日志。</div>
+                                    <div className="offline-list-placeholder">选择一条执行记录查看概览。</div>
                                 ) : (
-                                    <>
-                                        <div className="offline-detail-header">
-                                            <div className="offline-detail-kpis">
-                                                <div>
-                                                    <span>状态</span>
-                                                    <strong>{detail.status}</strong>
-                                                </div>
-                                                <div>
-                                                    <span>开始</span>
-                                                    <strong>{formatDateTime(detail.startDate ?? detail.createdAt)}</strong>
-                                                </div>
-                                                <div>
-                                                    <span>结束</span>
-                                                    <strong>{formatDateTime(detail.endDate)}</strong>
-                                                </div>
-                                            </div>
-                                            <div className="offline-detail-source">
-                                                <span>来源版本</span>
-                                                <code>{detail.sourceRevision.slice(0, 12)}</code>
-                                            </div>
-                                        </div>
-
-                                        <div className="offline-task-run-strip">
-                                            <button
-                                                type="button"
-                                                className={`offline-task-chip${logTaskFilter === null ? ' is-active' : ''}`}
-                                                onClick={() => onSelectExecution(detail.executionId, null)}
-                                            >
-                                                全部日志
-                                            </button>
-                                            {detail.taskRuns.map((taskRun) => (
-                                                <button
-                                                    key={taskRun.taskId}
-                                                    type="button"
-                                                    className={`offline-task-chip${logTaskFilter === taskRun.taskId ? ' is-active' : ''}`}
-                                                    onClick={() => onSelectExecution(detail.executionId, taskRun.taskId)}
-                                                >
-                                                    {taskRun.taskId}
-                                                </button>
-                                            ))}
-                                        </div>
-
-                                        <div className="offline-log-surface">
-                                            {logs.length === 0 ? (
-                                                <div className="offline-list-placeholder">当前筛选条件下没有日志。</div>
-                                            ) : (
-                                                logs.map((entry, index) => (
-                                                    <div key={`${entry.timestamp ?? 'log'}-${index}`} className="offline-log-line">
-                                                        <span>{formatDateTime(entry.timestamp)}</span>
-                                                        <strong>{entry.level ?? 'INFO'}</strong>
-                                                        <em>{entry.taskId ?? 'flow'}</em>
-                                                        <p>{entry.message ?? ''}</p>
+                                    (() => {
+                                        const presentation = getExecutionPresentation(detail.status);
+                                        return (
+                                            <>
+                                                <div className="offline-detail-header">
+                                                    <div className="offline-detail-progress">
+                                                        <div className="offline-execution-status-line">
+                                                            <strong className={`offline-execution-status-text is-${presentation.progressTone}`}>
+                                                                {getExecutionStatusLabel(detail.status)}
+                                                            </strong>
+                                                        </div>
+                                                        <div className={`offline-execution-progress is-${presentation.progressTone}${presentation.animated ? ' is-animated' : ''}`}>
+                                                            <span />
+                                                        </div>
                                                     </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    </>
+                                                    <div className="offline-detail-actions">
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => onOpenExecutionPage(detail.executionId)}
+                                                        >
+                                                            查看日志
+                                                        </Button>
+                                                        {isRunningStatus(detail.status) ? (
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => onStopExecution(detail.executionId)}
+                                                                disabled={actionPending === detail.executionId}
+                                                            >
+                                                                {actionPending === detail.executionId ? <LoaderCircle size={14} className="offline-spin" /> : '停止执行'}
+                                                            </Button>
+                                                        ) : null}
+                                                    </div>
+                                                </div>
+
+                                                <div className="offline-detail-kpis">
+                                                    <div>
+                                                        <span>开始时间</span>
+                                                        <strong>{formatDateTime(detail.startDate ?? detail.createdAt)}</strong>
+                                                    </div>
+                                                    <div>
+                                                        <span>结束时间</span>
+                                                        <strong>{formatDateTime(detail.endDate)}</strong>
+                                                    </div>
+                                                    <div>
+                                                        <span>所属分支</span>
+                                                        <strong>{detail.branch ?? '—'}</strong>
+                                                    </div>
+                                                    <div>
+                                                        <span>执行 ID</span>
+                                                        <strong>{detail.executionId}</strong>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        );
+                                    })()
                                 )}
                             </section>
                         </div>
@@ -770,7 +793,9 @@ function ScheduleDialog(props: ScheduleDialogProps) {
 }
 
 export default function OfflineWorkbench() {
+    const navigate = useNavigate();
     const currentGroup = useAuthStore((state) => state.currentGroup);
+    const currentUser = useAuthStore((state) => state.userInfo);
     const permissions = useAuthStore((state) => state.permissions);
     const systemAdmin = useAuthStore((state) => state.systemAdmin);
     const groupId = currentGroup?.id ?? null;
@@ -801,10 +826,9 @@ export default function OfflineWorkbench() {
     const [executionsLoading, setExecutionsLoading] = useState(false);
     const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
     const [executionDetail, setExecutionDetail] = useState<OfflineExecutionDetail | null>(null);
-    const [executionLogs, setExecutionLogs] = useState<OfflineExecutionLogEntry[]>([]);
     const [executionDetailLoading, setExecutionDetailLoading] = useState(false);
-    const [logTaskFilter, setLogTaskFilter] = useState<string | null>(null);
     const [executionActionPending, setExecutionActionPending] = useState<string | null>(null);
+    const [executionRequestedByFilter, setExecutionRequestedByFilter] = useState<number | null>(null);
     const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
     const [schedule, setSchedule] = useState<OfflineScheduleResponse | null>(null);
     const [scheduleLoading, setScheduleLoading] = useState(false);
@@ -861,6 +885,7 @@ export default function OfflineWorkbench() {
             const validation = validateSqlNodeDataSourceRequirement({
                 kind: node.kind,
                 dataSourceId: node.dataSourceId,
+                dataSourceType: node.dataSourceType,
                 strict: true,
             });
             if (!validation.allowed && validation.feedback) {
@@ -1027,11 +1052,12 @@ export default function OfflineWorkbench() {
 
     const handleCommit = useCallback(async () => {
         if (!groupId) return;
-        const invalidNode = findFirstSqlNodeMissingDataSource(flowDocument);
+        const invalidNode = findFirstNodeWithInvalidDataSource(flowDocument);
         if (invalidNode) {
             const validation = validateSqlNodeDataSourceRequirement({
                 kind: invalidNode.kind,
                 dataSourceId: invalidNode.dataSourceId,
+                dataSourceType: invalidNode.dataSourceType,
                 strict: true,
             });
             if (!validation.allowed && validation.feedback) {
@@ -1265,6 +1291,13 @@ export default function OfflineWorkbench() {
         setDeleteFlowDialogOpen(true);
     }, []);
 
+    const openDeleteFolderDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
+        setContextMenuOpen(false);
+        setDeleteFolderPath(node.path);
+        setDeleteFolderName(node.name);
+        setDeleteFolderDialogOpen(true);
+    }, []);
+
     const openRenameFlowDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
         setContextMenuOpen(false);
         // node.path is like "_flows/demo/flow.yaml"
@@ -1275,6 +1308,14 @@ export default function OfflineWorkbench() {
         setRenameFlowOriginalName(originalName);
         setRenameFlowName(originalName);
         setRenameFlowDialogOpen(true);
+    }, []);
+
+    const openRenameFolderDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
+        setContextMenuOpen(false);
+        setRenameFolderPath(node.path);
+        setRenameFolderOriginalName(node.name);
+        setRenameFolderName(node.name);
+        setRenameFolderDialogOpen(true);
     }, []);
 
     const persistDraft = useCallback((
@@ -1296,45 +1337,42 @@ export default function OfflineWorkbench() {
     }, [groupId]);
 
 
-    const loadExecutionArtifacts = useCallback(async (executionId: string, taskId?: string | null) => {
+    const loadExecutionDetail = useCallback(async (executionId: string) => {
         if (!groupId) return;
         setExecutionDetailLoading(true);
         try {
-            const [detail, logs] = await Promise.all([
-                getOfflineExecution(groupId, executionId),
-                getOfflineExecutionLogs(groupId, executionId, taskId),
-            ]);
+            const detail = await getOfflineExecution(groupId, executionId);
             setActiveExecutionId(executionId);
             setExecutionDetail(detail);
-            setExecutionLogs(logs);
-            setLogTaskFilter(taskId ?? null);
         } catch (error) {
             showFeedback({
                 tone: 'error',
                 title: '执行详情读取失败',
-                detail: getErrorMessage(error, '暂时无法读取执行详情或日志。'),
+                detail: getErrorMessage(error, '暂时无法读取执行详情。'),
             });
         } finally {
             setExecutionDetailLoading(false);
         }
     }, [groupId, showFeedback]);
 
-    const refreshExecutions = useCallback(async (preferExecutionId?: string | null) => {
+    const refreshExecutions = useCallback(async (preferExecutionId?: string | null, requestedByOverride?: number | null) => {
         if (!groupId || !activeFlowPath) return;
         setExecutionsLoading(true);
         try {
-            const nextExecutions = await listOfflineExecutions(groupId, activeFlowPath);
+            const nextExecutions = await listOfflineExecutions(
+                groupId,
+                activeFlowPath,
+                requestedByOverride === undefined ? executionRequestedByFilter : requestedByOverride
+            );
             setExecutions(nextExecutions);
             const fallbackId = preferExecutionId && nextExecutions.some((item) => item.executionId === preferExecutionId)
                 ? preferExecutionId
                 : nextExecutions[0]?.executionId ?? null;
             if (fallbackId) {
-                await loadExecutionArtifacts(fallbackId, logTaskFilter);
+                await loadExecutionDetail(fallbackId);
             } else {
                 setActiveExecutionId(null);
                 setExecutionDetail(null);
-                setExecutionLogs([]);
-                setLogTaskFilter(null);
             }
         } catch (error) {
             showFeedback({
@@ -1345,7 +1383,7 @@ export default function OfflineWorkbench() {
         } finally {
             setExecutionsLoading(false);
         }
-    }, [activeFlowPath, groupId, loadExecutionArtifacts, logTaskFilter, showFeedback]);
+    }, [activeFlowPath, executionRequestedByFilter, groupId, loadExecutionDetail, showFeedback]);
 
     useEffect(() => {
         // Reset active flow states when switching groups
@@ -1410,6 +1448,10 @@ export default function OfflineWorkbench() {
             : [...current, taskId]);
     }, []);
 
+    const handleReplaceTaskSelection = useCallback((taskIds: string[]) => {
+        setSelectedTaskIds(() => resolveSelectedTaskIds(flowDocument, taskIds));
+    }, [flowDocument]);
+
     const handleToggleTreeNode = useCallback((nodeId: string) => {
         setExpandedTreeIds((current) => current.includes(nodeId)
             ? current.filter((item) => item !== nodeId)
@@ -1430,6 +1472,7 @@ export default function OfflineWorkbench() {
         const validation = validateSqlNodeDataSourceRequirement({
             kind: activeEditingNode?.kind ?? 'SHELL',
             dataSourceId,
+            dataSourceType,
             strict: false,
         });
         setFlowDocument((current) => {
@@ -1458,6 +1501,7 @@ export default function OfflineWorkbench() {
         const validation = validateSqlNodeDataSourceRequirement({
             kind: activeEditingNode?.kind ?? 'SHELL',
             dataSourceId,
+            dataSourceType,
             strict: false,
         });
         setFlowDocument((current) => {
@@ -1557,7 +1601,7 @@ export default function OfflineWorkbench() {
 
     }, [activeNodeId, flowDocument, setSelectedTaskIds, showFeedback]);
 
-    const handleAddCanvasNode = useCallback((kind: 'SQL' | 'SHELL', position: { x: number; y: number }) => {
+    const handleAddCanvasNode = useCallback((kind: OfflineFlowNodeKind, position: { x: number; y: number }) => {
         if (!flowDocument) return;
 
         const existingIds = new Set(flattenDocumentNodes(flowDocument).map((n) => n.taskId));
@@ -1568,7 +1612,7 @@ export default function OfflineWorkbench() {
             newTaskId = `${kind.toLowerCase()}_node_${index}`;
         }
 
-        const ext = kind === 'SQL' ? 'sql' : 'sh';
+        const ext = getOfflineNodeScriptExtension(kind);
         const flowDir = flowDocument.path.replace('/flow.yaml', '');
         const scriptPath = `${flowDir.replace(/^_flows\//, 'scripts/')}/${newTaskId}.${ext}`;
 
@@ -1576,7 +1620,7 @@ export default function OfflineWorkbench() {
             taskId: newTaskId,
             kind,
             scriptPath,
-            scriptContent: kind === 'SQL' ? '-- Write your SQL query here\nSELECT 1;\n' : '#!/bin/bash\necho "Hello World"\n',
+            scriptContent: getOfflineNodeDefaultScript(kind),
         };
 
         setFlowDocument((current) => {
@@ -1606,7 +1650,6 @@ export default function OfflineWorkbench() {
         });
 
         setActiveNodeId(newTaskId);
-        setSelectedTaskIds([newTaskId]);
     }, [flowDocument]);
 
     const handleCanvasNodesChange = useCallback((nodes: Node[]) => {
@@ -1660,11 +1703,12 @@ export default function OfflineWorkbench() {
     const validateDocumentForAction = useCallback((nodeOverride?: { taskId: string; content: string; dataSourceId?: number; dataSourceType?: string }) => {
         if (!flowDocument) return true;
         
-        const invalidNode = findFirstSqlNodeMissingDataSource(flowDocument, nodeOverride);
+        const invalidNode = findFirstNodeWithInvalidDataSource(flowDocument, nodeOverride);
         if (invalidNode) {
             const validation = validateSqlNodeDataSourceRequirement({
                 kind: invalidNode.kind,
                 dataSourceId: invalidNode.dataSourceId,
+                dataSourceType: invalidNode.dataSourceType,
                 strict: true,
             });
             if (!validation.allowed && validation.feedback) {
@@ -1766,22 +1810,6 @@ export default function OfflineWorkbench() {
         showFeedback,
     ]);
 
-    const handleNodeEditorSaveToDisk = useCallback(async (content: string, dataSourceId?: number, dataSourceType?: string) => {
-        if (!activeNodeId) return;
-        const activeEditingNode = flattenDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null;
-        const validation = validateSqlNodeDataSourceRequirement({
-            kind: activeEditingNode?.kind ?? 'SHELL',
-            dataSourceId,
-            strict: true,
-        });
-        if (!validation.allowed && validation.feedback) {
-            showFeedback(validation.feedback);
-            return;
-        }
-        handleNodeEditorTempSave(content, dataSourceId, dataSourceType);
-        await handleSaveFlow({ taskId: activeNodeId, content, dataSourceId, dataSourceType });
-    }, [activeNodeId, flowDocument, handleNodeEditorTempSave, handleSaveFlow, showFeedback]);
-
     const handleOpenCommitDialog = useCallback(async () => {
         if (!groupId || !activeFlowPath || !flowDocument) return;
 
@@ -1796,10 +1824,10 @@ export default function OfflineWorkbench() {
                 await handleSaveFlow();
                 // After successful save, refresh repo status to ensure 'dirty' flag is picked up by backend if needed
                 await refreshRepoStatus();
-            } catch (error) {
-                // handleSaveFlow already shows error feedback
-                return;
-            } finally {
+        } catch {
+            // handleSaveFlow already shows error feedback
+            return;
+        } finally {
                 setSavingFlow(false);
             }
         } else {
@@ -1813,12 +1841,12 @@ export default function OfflineWorkbench() {
     }, [activeFlowPath, flowDocument, groupId, handleSaveFlow, isDirty, refreshRepoStatus, validateDocumentForAction]);
 
     const handleExecute = useCallback(async () => {
-        if (!groupId || !activeFlowPath) return;
-        if (isDirty) {
+        if (!groupId || !activeFlowPath || !flowDocument) return;
+        if (nodeEditorOpen) {
             showFeedback({
                 tone: 'error',
-                title: '请先保存当前修改',
-                detail: '调试执行只会读取已经保存到本地仓库的节点内容。',
+                title: '请先处理当前节点编辑',
+                detail: '请先点击应用暂存或关闭节点编辑器，再执行当前 Flow。',
             });
             return;
         }
@@ -1832,12 +1860,14 @@ export default function OfflineWorkbench() {
         }
 
         try {
-            const response = await createOfflineSavedDebugExecution({
+            const response = await createOfflineDocumentDebugExecution(buildDraftExecutionRequest({
                 groupId,
                 flowPath: activeFlowPath,
+                flowDocument,
+                canvasNodes: canvasNodesRef.current,
+                canvasEdges: canvasEdgesRef.current,
                 selectedTaskIds,
-                mode: 'SELECTED',
-            });
+            }));
             showFeedback({
                 tone: 'success',
                 title: '调试执行已提交',
@@ -1852,7 +1882,7 @@ export default function OfflineWorkbench() {
                 detail: getErrorMessage(error, '暂时无法触发调试执行。'),
             });
         }
-    }, [activeFlowPath, groupId, isDirty, refreshExecutions, selectedTaskIds, showFeedback]);
+    }, [activeFlowPath, flowDocument, groupId, nodeEditorOpen, refreshExecutions, selectedTaskIds, showFeedback]);
 
     const handleStopExecution = useCallback(async (executionId: string) => {
         if (!groupId || !activeFlowPath) return;
@@ -2209,7 +2239,7 @@ export default function OfflineWorkbench() {
                                             <button
                                                 type="button"
                                                 className="offline-canvas-toolbar-btn"
-                                                disabled={!activeFlowPath || !canWrite || isDirty}
+                                                disabled={isExecuteButtonDisabled({ activeFlowPath, canWrite })}
                                                 onClick={() => void handleExecute()}
                                                 aria-label="执行"
                                             >
@@ -2276,6 +2306,30 @@ export default function OfflineWorkbench() {
                                                     const center = board
                                                         ? { x: board.getBoundingClientRect().width / 2, y: board.getBoundingClientRect().height / 2 }
                                                         : { x: 300, y: 200 };
+                                                    handleAddCanvasNode('HIVE_SQL', center);
+                                                }}
+                                                aria-label="添加 HiveSQL 节点"
+                                            >
+                                                <Database size={16} />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="tooltip-content" side="bottom">
+                                            添加 HiveSQL 节点
+                                        </TooltipContent>
+                                    </Tooltip>
+
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className="offline-canvas-toolbar-btn"
+                                                disabled={!activeFlowPath || !canWrite}
+                                                onClick={() => {
+                                                    if (!flowDocument) return;
+                                                    const board = canvasBoardRef.current;
+                                                    const center = board
+                                                        ? { x: board.getBoundingClientRect().width / 2, y: board.getBoundingClientRect().height / 2 }
+                                                        : { x: 300, y: 200 };
                                                     handleAddCanvasNode('SHELL', center);
                                                 }}
                                                 aria-label="添加 Shell 节点"
@@ -2322,6 +2376,7 @@ export default function OfflineWorkbench() {
                                         onNodeLayoutCommit={handleCanvasNodeLayoutCommit}
                                         onSelectNode={setActiveNodeId}
                                         onToggleTaskSelection={handleToggleTaskSelection}
+                                        onReplaceTaskSelection={handleReplaceTaskSelection}
                                         onDoubleClickNode={handleOpenNodeEditor}
                                         onAddNode={handleAddCanvasNode}
                                         onRenameNode={handleRenameNode}
@@ -2340,15 +2395,20 @@ export default function OfflineWorkbench() {
                 loading={executionsLoading}
                 detail={executionDetail}
                 detailLoading={executionDetailLoading}
-                logs={executionLogs}
-                logTaskFilter={logTaskFilter}
                 activeExecutionId={activeExecutionId}
                 actionPending={executionActionPending}
+                requestedByFilter={executionRequestedByFilter}
+                currentUserId={currentUser?.id ?? null}
                 onOpenChange={(open) => setExecutionDialogOpen(open)}
                 onRefresh={() => void refreshExecutions(activeExecutionId)}
-                onSelectExecution={(executionId, taskId) => void loadExecutionArtifacts(executionId, taskId)}
+                onSelectExecution={(executionId) => void loadExecutionDetail(executionId)}
                 onStopExecution={(executionId) => void handleStopExecution(executionId)}
                 onStopAll={() => void handleStopAllExecutions()}
+                onOpenExecutionPage={(executionId) => navigate(`/offline/executions/${encodeURIComponent(executionId)}`)}
+                onRequestedByFilterChange={(requestedBy) => {
+                    setExecutionRequestedByFilter(requestedBy);
+                    void refreshExecutions(activeExecutionId, requestedBy);
+                }}
             />
 
             <ScheduleDialog
@@ -2443,7 +2503,6 @@ export default function OfflineWorkbench() {
                 onOpenChange={setNodeEditorOpen}
                 onSave={handleNodeEditorSave}
                 onTempSave={handleNodeEditorTempSave}
-                onSaveToDisk={handleNodeEditorSaveToDisk}
                 onContentChange={setNodeEditorContent}
                 handleEditorBeforeMount={handleEditorBeforeMount}
             />
@@ -2946,7 +3005,6 @@ interface NodeEditorDialogProps {
     onOpenChange: (open: boolean) => void;
     onSave: (content: string, dataSourceId?: number, dataSourceType?: string) => void;
     onTempSave: (content: string, dataSourceId?: number, dataSourceType?: string) => void;
-    onSaveToDisk: (content: string, dataSourceId?: number, dataSourceType?: string) => Promise<void>;
     onContentChange: (content: string) => void;
     handleEditorBeforeMount: (monaco: typeof Monaco) => void;
 }
@@ -2959,11 +3017,11 @@ function NodeEditorDialog({
     onOpenChange, 
     onSave, 
     onTempSave, 
-    onSaveToDisk, 
     onContentChange, 
     handleEditorBeforeMount 
 }: NodeEditorDialogProps) {
     const [confirmClose, setConfirmClose] = useState(false);
+    const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const {
         currentDataSourceId,
         selectedDataSource,
@@ -2988,8 +3046,26 @@ function NodeEditorDialog({
         }
     }, [open]);
 
+    useEffect(() => {
+        if (!open || !editorRef.current) {
+            return;
+        }
+
+        const frameId = window.requestAnimationFrame(() => {
+            editorRef.current?.focus();
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    }, [open, activeNode?.taskId]);
+
+    const handleEditorMount = useCallback((editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco) => {
+        editorRef.current = editor;
+        monaco.editor.setTheme('warm-parchment');
+        editor.focus();
+    }, []);
+
     if (!activeNode) return null;
-    const language = activeNode.kind === 'SQL' ? 'sql' : 'shell';
+    const language = isSqlEditorNodeKind(activeNode.kind) ? 'sql' : 'shell';
     const hasCodeChanges = activeNode.scriptContent !== content;
     const hasDSChanges = activeNode.dataSourceId !== currentDataSourceId;
     const hasUnsavedChanges = hasCodeChanges || hasDSChanges;
@@ -3018,24 +3094,26 @@ function NodeEditorDialog({
                             <div className="flex items-center gap-3">
                                 <div className={cn(
                                     "px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase border",
-                                    activeNode.kind === 'SQL' 
-                                        ? "bg-emerald-50 text-emerald-700 border-emerald-100" 
-                                        : "bg-gray-100 text-gray-600 border-gray-200"
+                                    activeNode.kind === 'SQL'
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                        : activeNode.kind === 'HIVE_SQL'
+                                            ? "bg-amber-50 text-amber-700 border-amber-100"
+                                            : "bg-gray-100 text-gray-600 border-gray-200"
                                 )}>
-                                    {activeNode.kind}
+                                    {getOfflineNodeKindLabel(activeNode.kind)}
                                 </div>
                                 <DialogTitle className="text-sm font-mono font-medium text-gray-600">
                                     {activeNode.taskId}
                                 </DialogTitle>
                                 <DialogDescription className="sr-only">
-                                    {activeNode.kind === 'SQL' ? 'SQL 节点' : 'Shell 节点'}: {activeNode.taskId}
+                                    {getOfflineNodeKindDescription(activeNode.kind)}: {activeNode.taskId}
                                 </DialogDescription>
                             </div>
 
                             <div className="h-4 w-[1px] bg-gray-200" />
 
                             {/* Config Section */}
-                            {activeNode.kind === 'SQL' && (
+                            {isSqlEditorNodeKind(activeNode.kind) && (
                                 <div className="flex items-center gap-3">
                                     <div className="flex items-center gap-1.5 text-gray-500">
                                         <Database size={14} strokeWidth={2.5} />
@@ -3058,7 +3136,7 @@ function NodeEditorDialog({
                                             loadingMore={dataSourcesLoadingMore}
                                             hasMore={dataSourcesHasMore}
                                             onLoadMore={loadMoreDataSources}
-                                            placeholder="选择数据源..."
+                                            placeholder={activeNode.kind === 'HIVE_SQL' ? '选择 Hive 数据源...' : '选择数据源...'}
                                         />
                                     </div>
                                 </div>
@@ -3103,12 +3181,19 @@ function NodeEditorDialog({
                             </div>
                         </TooltipProvider>
                     </div>
-                    <div className="flex-1 min-h-0 relative">
+                    <div
+                        className="flex-1 min-h-0 relative"
+                        onKeyDown={(event) => {
+                            event.stopPropagation();
+                            event.nativeEvent.stopImmediatePropagation?.();
+                        }}
+                    >
                         <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-400">编辑器加载中...</div>}>
                             <LazyEditor
                                 height="100%"
                                 width="100%"
                                 beforeMount={handleEditorBeforeMount}
+                                onMount={handleEditorMount}
                                 language={language}
                                 theme="warm-parchment"
                                 value={content}

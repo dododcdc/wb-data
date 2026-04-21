@@ -1,9 +1,9 @@
 package com.wbdata.offline.controller;
 
 import com.wbdata.auth.context.AuthContext;
+import com.wbdata.auth.context.RequireGroupAuth;
 import com.wbdata.auth.dto.AuthContextResponse;
 import com.wbdata.auth.enums.Permission;
-import com.wbdata.auth.service.AuthContextService;
 import com.wbdata.auth.service.AuthSession;
 import com.wbdata.common.Result;
 import com.wbdata.offline.dto.DeleteOfflineFlowRequest;
@@ -35,22 +35,20 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 public class OfflineFlowController {
 
-    private final AuthContextService authContextService;
     private final OfflineFlowContentService offlineFlowContentService;
     private final OfflineFlowDocumentService offlineFlowDocumentService;
 
     @Operation(summary = "读取 Flow 内容")
     @GetMapping("/content")
-    public Result<OfflineFlowContentResponse> getFlowContent(@RequestParam Long groupId,
+    public Result<OfflineFlowContentResponse> getFlowContent(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
                                                              @RequestParam String path) {
-        AuthContextResponse context = requireGroupContext(groupId, Permission.OFFLINE_READ.code());
         return Result.success(offlineFlowContentService.getFlowContent(context.currentGroup().id(), path));
     }
 
     @Operation(summary = "保存 Flow 内容")
     @PutMapping("/content")
-    public Result<OfflineFlowContentResponse> saveFlowContent(@Valid @RequestBody SaveOfflineFlowRequest request) {
-        AuthContextResponse context = requireGroupContext(request.groupId(), Permission.OFFLINE_WRITE.code());
+    public Result<OfflineFlowContentResponse> saveFlowContent(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
+                                                              @Valid @RequestBody SaveOfflineFlowRequest request) {
         SaveOfflineFlowRequest normalizedRequest = new SaveOfflineFlowRequest(
                 context.currentGroup().id(),
                 request.path(),
@@ -63,16 +61,15 @@ public class OfflineFlowController {
 
     @Operation(summary = "读取结构化 Flow 文档")
     @GetMapping("/document")
-    public Result<OfflineFlowDocumentResponse> getFlowDocument(@RequestParam Long groupId,
+    public Result<OfflineFlowDocumentResponse> getFlowDocument(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
                                                                @RequestParam String path) {
-        AuthContextResponse context = requireGroupContext(groupId, Permission.OFFLINE_READ.code());
         return Result.success(offlineFlowDocumentService.getFlowDocument(context.currentGroup().id(), path));
     }
 
     @Operation(summary = "保存结构化 Flow 文档")
     @PutMapping("/document")
-    public Result<OfflineFlowDocumentResponse> saveFlowDocument(@Valid @RequestBody SaveOfflineFlowDocumentRequest request) {
-        AuthContextResponse context = requireGroupContext(request.groupId(), Permission.OFFLINE_WRITE.code());
+    public Result<OfflineFlowDocumentResponse> saveFlowDocument(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
+                                                                @Valid @RequestBody SaveOfflineFlowDocumentRequest request) {
         SaveOfflineFlowDocumentRequest normalizedRequest = new SaveOfflineFlowDocumentRequest(
                 context.currentGroup().id(),
                 request.path(),
@@ -87,16 +84,16 @@ public class OfflineFlowController {
 
     @Operation(summary = "删除 Flow（物理删除）")
     @DeleteMapping
-    public Result<Void> deleteFlow(@Valid @RequestBody DeleteOfflineFlowRequest request) {
-        AuthContextResponse context = requireGroupContext(request.groupId(), Permission.OFFLINE_WRITE.code());
+    public Result<Void> deleteFlow(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
+                                   @Valid @RequestBody DeleteOfflineFlowRequest request) {
         offlineFlowContentService.deleteFlow(context.currentGroup().id(), request.path());
         return Result.success(null);
     }
 
     @Operation(summary = "重命名 Flow")
     @PostMapping("/rename")
-    public Result<Void> renameFlow(@Valid @RequestBody RenameOfflineFlowRequest request) {
-        AuthContextResponse context = requireGroupContext(request.groupId(), Permission.OFFLINE_WRITE.code());
+    public Result<Void> renameFlow(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
+                                   @Valid @RequestBody RenameOfflineFlowRequest request) {
         RenameOfflineFlowRequest normalizedRequest = new RenameOfflineFlowRequest(
                 context.currentGroup().id(),
                 request.path(),
@@ -106,15 +103,4 @@ public class OfflineFlowController {
         return Result.success(null);
     }
 
-    private AuthContextResponse requireGroupContext(Long groupId, String permission) {
-        AuthSession session = AuthContext.require();
-        AuthContextResponse context = authContextService.getContext(session, groupId);
-        if (context.currentGroup() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前未选中项目组");
-        }
-        if (!context.permissions().contains(permission)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前项目组下无此操作权限: " + permission);
-        }
-        return context;
-    }
 }

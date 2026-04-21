@@ -1,8 +1,8 @@
 # 离线开发模块设计文档
 
 **日期**：2026-04-13
-**最后更新**：2026-04-13
-**状态**：头脑风暴阶段
+**最后更新**：2026-04-17
+**状态**：规格可冻结（Kestra POC 已完成）
 **参与人**：dcdc, dodo, egg
 
 ---
@@ -10,7 +10,7 @@
 ## 一、核心定位
 
 离线开发模块是 wb-data 的任务编排平台，用于可视化编排和执行 Kestra Flow。
-用户通过拖拽式 DAG 画布构建任务流程，文件存储于 GitHub（后期可切换 Gitea），执行引擎为 Kestra。
+用户通过拖拽式 DAG 画布构建任务流程，文件存储于 Git 远程仓库（支持 GitHub / GitLab / Gitea），执行引擎为 Kestra。
 
 ---
 
@@ -18,21 +18,31 @@
 
 | 组件 | 角色 |
 |-----|------|
-| GitHub | Git 远程仓库，**唯一真相源**，存储 Flow 定义和脚本文件（后期可切换 Gitea） |
+| Git 远程仓库 | GitHub / GitLab / Gitea，**唯一真相源**，存储 Flow 定义和脚本文件 |
 | wb-data 后端服务器 | **本地 clone 一份仓库**，所有用户操作在本地进行 |
-| Kestra | 执行引擎，从 GitHub SyncFlows 同步后执行任务 |
+| Kestra | 执行引擎，从 Git 远程仓库 SyncFlows 同步后执行任务 |
 | wb-data 前端 | 用户界面 + 项目组管理 |
 
 ### 本地仓库策略
 
-**wb-data 后端服务器 clone 一份仓库**：
+**wb-data 后端服务器持有本地仓库**：
 - 所有用户通过 wb-data UI 操作本地仓库
-- 操作完成后「提交」到本地，「推送」到 GitHub
-- Kestra 从 GitHub 定时同步（SyncFlows）
+- 操作完成后「提交」到本地，「推送」到 Git 远程仓库
+- Kestra 从 Git 远程仓库定时同步（SyncFlows）
 
-**新建项目组时**：
-1. GitHub 创建远程仓库
-2. clone 到 wb-data 后端服务器（此时仓库为空，很快）
+**项目组创建流程（分层方案）**：
+
+| 阶段 | 时机 | 操作 | 说明 |
+|------|------|------|------|
+| 1. 初始化 | 创建项目组时（同步） | 写数据库记录 | 项目组元数据入 DB |
+| 2. 建仓 | 创建项目组时（同步） | 本地 `git init` | 初始化 `/data/repos/wb-data-{groupId}/`，不依赖 Git 远程仓库在线 |
+| 3. 关联远程 | 首次推送时（按需） | Git 远程仓库 API 创建仓库 + `git remote add` + `git push -u` | 由项目组成员配置的凭证持有 |
+| 4. 克隆（如需要） | 按需 | `git clone` | 仅在需要从现有远程恢复时执行 |
+
+**设计原则**：
+- 本地开发完全离线可用，不强制依赖 Git 远程仓库在线
+- Git 远程仓库创建延迟到「首次推送」，失败边界清晰（只影响协作，不影响本地开发）
+- 每个项目组成员配置自己的 Git 凭证（用户名 + Personal Access Token），凭证加密存储
 
 **仓库目录结构**：
 ```
@@ -40,20 +50,20 @@ wb-data 服务器上：
 /data/repos/wb-data-{project_group_id}/
 ```
 
-### GitHub 仓库策略
+### Git 远程仓库策略
 
-**一库一项目组**：每个项目组有独立 GitHub 仓库，仓库命名 `wb-data-{project_group_id}`，UI 显示项目组名称。
+**一库一项目组**：每个项目组有独立 Git 远程仓库，仓库命名 `wb-data-{project_group_id}`，UI 显示项目组名称。
 
 | 层级 | 命名方式 |
 |-----|---------|
 | namespace | `pg-{project_group_id}` |
-| GitHub 仓库 | `wb-data-{project_group_id}` |
+| Git 远程仓库 | `wb-data-{project_group_id}` |
 | wb-data 本地仓库 | `/data/repos/wb-data-{project_group_id}` |
 | UI 显示 | 项目组名称（如"数据平台组"） |
 
-**机器人账号**：所有代码操作通过系统级机器人账号（如 `wb-data-bot`）执行，不依赖个人账号。
+**凭证管理**：每个项目组的 Git 远程仓库凭证（用户名 + Personal Access Token）在「项目组设置」页面配置，加密存储于数据库。
 
-**约束**：所有操作只能在 wb-data 界面进行，不允许去 GitHub Web 界面操作。
+**约束**：所有操作只能在 wb-data 界面进行，不允许去 Git 远程仓库 Web 界面操作。
 
 ---
 
@@ -62,7 +72,7 @@ wb-data 服务器上：
 使用 Kestra 官方约定的目录结构：
 
 ```
-📁 GitHub 仓库
+📁 Git 远程仓库
 │
 ├── 📁 _flows/
 │     └── 📁 data_pipeline/
@@ -96,7 +106,7 @@ wb-data 服务器上：
 |-----|------|---------|
 | 左侧 | 项目树（本地仓库 `_flows/` 目录映射） | 240px，可拖拽调整 |
 | 中间 | 画布（DAG 节点 + 连线） | 自适应 |
-| 右侧 | 节点类型面板（SQL 节点、Shell 节点） | 默认展开 |
+| 右侧 | 节点类型面板（SQL 节点、Shell 节点） | 选中节点后展开，无节点选中时隐藏 |
 
 ### 4.2 空画布状态
 
@@ -467,9 +477,7 @@ tasks:
 ```
 📁 policy_data
   📁 data_pipeline
-    📁 etl
       📄 etl
-    📁 daily_report
       📄 daily_report
   📁 archive
 ```
@@ -512,7 +520,7 @@ MVP 阶段采用**分级处理**原则，不做复杂错误恢复流程，但必
 | 错误类型 | 处理方式 | 说明 |
 |---------|---------|------|
 | **本地仓库连不上** | 全屏错误页 + 联系管理员 | 服务级故障，用户无法操作 |
-| **GitHub 推送失败** | 弹窗提示具体原因（网络超时 / 认证失败 / 冲突） | 用户需要知道为什么推不上去 |
+| **Git 推送失败** | 弹窗提示具体原因（网络超时 / 认证失败 / 冲突） | 用户需要知道为什么推不上去 |
 | **Kestra 执行失败** | 执行结果面板显示红色进度条 + 📄 查看日志 | 开发过程中常见，用户需要日志排错 |
 | **localStorage 满了** | 提示"浏览器存储空间不足，请清理缓存" | 罕见但会发生 |
 | **其他未知错误** | 通用错误提示 + 错误码（方便反馈给开发） | MVP 够用就行 |
@@ -558,12 +566,12 @@ MVP 阶段采用**分级处理**原则，不做复杂错误恢复流程，但必
 |-----|---------|---------|
 | 读取 | 打开 Flow | 后端直接读本地仓库文件 |
 | 提交 | 点"提交" | git add + commit 到本地仓库 |
-| 推送 | 点"推送到远程" | git push 到 GitHub（仅项目管理员） |
-| SyncFlows | push 后自动触发 | Kestra 官方插件定时扫描 GitHub，非 wb-data 实现 |
+| 推送 | 点"推送到远程" | git push 到 Git 远程仓库（仅项目管理员） |
+| SyncFlows | push 后自动触发 | Kestra 官方插件定时扫描 Git 远程仓库，非 wb-data 实现 |
 
 **提交流程**：填写 commit message → 确认 → git add + commit 到本地仓库
 
-**推送流程**：管理员点"推送到远程" → git push 到 GitHub → Kestra SyncFlows 定时同步 → Kestra 同步 Flow 到执行环境
+**推送流程**：管理员点"推送到远程" → git push 到 Git 远程仓库 → Kestra SyncFlows 定时同步 → Kestra 同步 Flow 到执行环境
 
 **推送到远程的权限**：
 - 仅项目管理员可见「推送到远程」按钮
@@ -576,7 +584,7 @@ MVP 阶段采用**分级处理**原则，不做复杂错误恢复流程，但必
 
 ### 14.1 背景
 
-由于所有操作都在 wb-data 后端服务器进行，不允许去 GitHub Web 操作，冲突场景简化为：多人同时打开同一个 Flow 编辑。
+由于所有操作都在 wb-data 后端服务器进行，不允许去 Git 远程仓库 Web 界面操作，冲突场景简化为：多人同时打开同一个 Flow 编辑。
 
 ### 14.2 打开 Flow 时检测
 
@@ -721,44 +729,38 @@ MVP 阶段采用**分级处理**原则，不做复杂错误恢复流程，但必
 
 ### 16.1 背景
 
-当前 wb-data 项目组采用物理删除，存在数据安全隐患。离线开发模块引入后，项目组与 GitHub 仓库、Flow 调度深度绑定，需要更精细的状态管理。
+当前 wb-data 项目组支持禁用/启用操作，数据全部保留。离线开发模块引入后，项目组与 Git 远程仓库、Flow 调度深度绑定，禁用后 Git 远程仓库暂不做 archive 处理（由管理员手动在 Git 平台操作）。
 
 ### 16.2 状态设计
 
 ```java
-status: ACTIVE | INACTIVE | DELETED
-deleted_at: LocalDateTime  // 只有 DELETED 时才有值
+status: 'active' | 'disabled'
 ```
 
-| 状态 | 含义 | 能否恢复 | GitHub |
-|-----|------|---------|-------|
-| ACTIVE | 正常使用 | — | 正常 |
-| INACTIVE | 停用（如项目暂停） | ✅ 可恢复 | archive（只读） |
-| DELETED | 软删除 | ✅ 可恢复（到 INACTIVE） | archive（只读） |
+| 状态 | 含义 | 能否恢复 | Git 远程仓库 |
+|-----|------|---------|-------------|
+| active | 正常使用 | — | 正常 |
+| disabled | 已禁用 | ✅ 可随时启用 | 不做 archive，管理员可手动在 Git 平台设置 |
 
-**恢复路径**：DELETED → INACTIVE → ACTIVE（不直接变 ACTIVE，需先确认）
+### 16.3 disabled 行为
 
-### 16.3 INACTIVE 行为
+当项目组从 active 变为 disabled 时：
+- 该项目组在 wb-data 列表中不再显示（对所有成员不可见）
+- Git 远程仓库不做强制 archive（由管理员在 Git 平台手动处理）
+- Kestra 侧定时调度由管理员手动停止
 
-当项目组从 ACTIVE 变为 INACTIVE 时：
-- 该项目组下所有 Flow 的定时调度**立即停止**
-- GitHub 仓库设置为 archive（只读）
-- Kestra 侧同步暂停所有该 namespace 下的 Flow 执行
-
-**停用确认流程**：
+**禁用确认流程**：
 ```
-用户点击"停用项目组"
-→ 弹窗警告："停用后该项目组下所有 Flow 的定时调度将停止，已在执行的任务会继续完成"
+用户点击"禁用项目组"
+→ 弹窗警告："禁用后该项目组对所有成员不可见"
 → 用户确认
-→ 后端：批量更新 Kestra Flow 状态为 PAUSE
-→ wb-data status → INACTIVE
+→ wb-data status → disabled
 ```
 
-### 16.4 DELETED 行为
+### 16.4 未覆盖的边界（MVP 不做）
 
-- GitHub 仓库 archive（只读）
-- wb-data 项目组记录软删除（`status: DELETED`，`deleted_at` 记录时间）
-- 不做物理删除，数据可恢复
+- 彻底删除（二次确认 + 物理删除）是否需要
+- 定时调度补跑机制（Flow 停用期间漏跑的调度如何处理）
 
 ### 16.5 未覆盖的边界（MVP 不做）
 
@@ -800,11 +802,18 @@ deleted_at: LocalDateTime  // 只有 DELETED 时才有值
 ## 十八、讨论纪要
 
 ### 本地仓库架构讨论（2026-04-12）
-
-- **新增 wb-data 后端服务器本地仓库**：所有用户操作在本地仓库进行，不直接操作 GitHub
-- **新建项目组时**：同时创建 GitHub 仓库 + clone 到本地（此时仓库为空，很快）
+- **新增 wb-data 后端服务器本地仓库**：所有用户操作在本地仓库进行，不直接操作 Git 远程仓库
+- **新建项目组时**：创建项目组记录 + 本地 `git init`（不联 Git 远程仓库）
 - **推送到远程**：仅项目管理员可见「推送到远程」按钮，普通用户只有「提交」到本地
-- **约束**：所有操作只能在 wb-data 界面进行，不允许去 GitHub Web 界面操作
+- **约束**：所有操作只能在 wb-data 界面进行，不允许去 Git 远程仓库 Web 界面操作
+
+### 本地仓库初始化方案修订（2026-04-15）
+- **原方案**：创建项目组时同步执行 `GitHub 创建仓库 + git clone`
+- **问题**：clone 同步执行有网络失败风险，且强制依赖 Git 远程仓库在线，单人探索场景过度设计
+- **新方案（分层）**：
+  - 创建项目组时：DB 记录 + 本地 `git init`（不离线，不联 Git 远程仓库）
+  - 首次推送时：按需创建 Git 远程仓库 + `git remote add` + `git push -u`
+- **原则**：离线开发完全可用，Git 远程仓库关联延迟到真正需要协作时
 
 ### 空目录处理讨论（2026-04-12）
 
@@ -823,14 +832,14 @@ deleted_at: LocalDateTime  // 只有 DELETED 时才有值
 
 - 用户曾提出将脚本和 `flow.yaml` 放在同一任务目录下（而不是 `_flows/` 和 `scripts/` 分开）
 - 经讨论，**采用官方约定的 `_flows/` + `scripts/` 双目录结构**，更规范且便于未来扩展共享脚本
-- GitHub 嵌套目录完全支持，Kestra 的 `includeChildNamespaces: true` 可递归扫描
+- Git 嵌套目录完全支持，Kestra 的 `includeChildNamespaces: true` 可递归扫描
 - namespace 定义在 `flow.yaml` 内部，与目录路径无关
 
-### GitHub 仓库策略讨论（2026-04-11）
+### Git 远程仓库策略讨论（2026-04-11）
 
-- **采用一库一项目组方案**：每个项目组有独立 GitHub 仓库 `wb-data-{project_group_id}`
-- 仓库归属系统级机器人账号（如 `wb-data-bot`），所有代码操作通过该账号执行
-- 项目组停用/删除时，GitHub 仓库做 archive 处理，不做物理删除
+- **采用一库一项目组方案**：每个项目组有独立 Git 远程仓库 `wb-data-{project_group_id}`
+- 项目组成员在「项目组设置」页面配置 Git 凭证（用户名 + PAT），凭证加密存储
+- 项目组禁用时，Git 远程仓库暂不做强制 archive（由管理员在 Git 平台手动处理）
 
 ### 冲突检测机制讨论（2026-04-12）
 
@@ -862,3 +871,28 @@ deleted_at: LocalDateTime  // 只有 DELETED 时才有值
 - **停止按钮**：执行中显示「停止」；顶部显示「停止所有」；完成/失败隐藏
 - **新建 Flow 入口**：项目树顶部按钮 + 文件夹右键菜单，弹窗内容根据入口不同
 - **执行结果时间范围**：最近 3 天 / 最近 7 天 / 自定义
+
+---
+
+## 十九、Kestra POC 结论（2026-04-12）
+
+### 19.1 已验证通过的能力
+
+- **Flow 创建 / 更新**：可通过 Kestra API 完成，浏览器侧直连时实测使用 `Content-Type: application/x-yaml` 更稳定。
+- **手动执行**：`POST /api/v1/{tenant}/executions/{namespace}/{id}` 可成功触发执行。
+- **执行详情 / 执行列表 / 日志**：`executionId`、`taskRunList` 与日志查询接口足以支撑执行结果弹窗。
+- **停止执行**：`DELETE /api/v1/{tenant}/executions/{executionId}/kill` 返回 `202`，执行最终收敛为 `KILLED`。
+- **定时调度**：更新 `Schedule` trigger 后，Kestra 会真实触发新的 schedule execution。
+- **选中节点执行候选方案**：`disabled: true` 的任务不会进入 `taskRunList`，也不会产生日志，说明“临时改写调试 Flow”方案可行。
+
+### 19.2 对实现的直接约束
+
+- “选中节点执行”只适合用于 **调试执行链路**，不能直接污染正式调度版本。
+- 前端需要区分“已保存到本地 / 已推送到远程 / 已被 Kestra 同步生效”三个状态。
+- 执行结果弹窗应以 `executionId + taskRunList + logs` 为核心数据模型。
+- wb-data 后端若走浏览器 / UI 风格的 API 调用方式，应统一封装 YAML Content-Type、execution 轮询与 kill 行为。
+
+### 19.3 Readiness 结论
+
+- 从 Kestra 工程可行性上看，离线开发模块 **可以进入实现阶段**。
+- 当前剩余工作主要是按这轮 POC 结论冻结接口、状态模型与调试执行链路。

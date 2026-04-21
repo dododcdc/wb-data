@@ -2,10 +2,12 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { CircleAlert } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
+import type { OfflineFlowNodeKind } from '../../api/offline';
+import { getOfflineNodeKindClassName, getOfflineNodeKindLabel } from './offlineNodeKinds';
 
 export interface FlowCanvasNodeData {
     taskId: string;
-    kind: 'SQL' | 'SHELL';
+    kind: OfflineFlowNodeKind;
     selected: boolean;
     onToggleSelection: (taskId: string) => void;
     isEditing?: boolean;
@@ -164,8 +166,8 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
                         </Tooltip>
                     </TooltipProvider>
                 )}
-                <span className={`flow-canvas-node-kind is-${data.kind.toLowerCase()}`}>
-                    {data.kind === 'SQL' ? 'SQL' : 'Shell'}
+                <span className={`flow-canvas-node-kind is-${getOfflineNodeKindClassName(data.kind)}`}>
+                    {getOfflineNodeKindLabel(data.kind)}
                 </span>
                 {data.validationError && (
                     <TooltipProvider delayDuration={100}>

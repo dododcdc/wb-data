@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.dto.NodePosition;
+import com.wbdata.offline.dto.DebugDocumentExecutionRequest;
 import com.wbdata.offline.dto.OfflineFlowDocumentResponse;
 import com.wbdata.offline.dto.OfflineFlowEdgeResponse;
 import com.wbdata.offline.dto.OfflineFlowNodeResponse;
@@ -34,6 +35,20 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class OfflineFlowDocumentService {
+
+    public record CompiledFlowDraft(
+            String content,
+            Map<String, String> namespaceFileContents
+    ) {
+    }
+
+    private record GraphDraft(
+            List<OfflineFlowYamlSupport.FlowNode> nodes,
+            List<OfflineFlowYamlSupport.FlowEdge> edges,
+            Map<Long, DataSource> dataSourceMap,
+            Map<String, String> namespaceFileContents
+    ) {
+    }
 
     private final OfflineProperties offlineProperties;
     private final OfflineFlowContentService offlineFlowContentService;
@@ -90,6 +105,34 @@ public class OfflineFlowDocumentService {
         }
     }
 
+    public CompiledFlowDraft compileFlowDraft(DebugDocumentExecutionRequest request) {
+        try {
+            DocumentSnapshot current = readSnapshot(request.groupId(), request.flowPath());
+            if (request.documentHash() != null
+                    && (!current.response().documentHash().equals(request.documentHash())
+                    || current.response().documentUpdatedAt() != request.documentUpdatedAt())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "检测到文件已被修改，请先加载最新内容");
+            }
+
+            GraphDraft draft = prepareGraphDraft(
+                    request.groupId(),
+                    request.stages(),
+                    request.edges(),
+                    false
+            );
+            var flowContent = offlineFlowContentService.getFlowContent(request.groupId(), request.flowPath());
+            String compiledYaml = yamlSupport.compileGraph(
+                    flowContent.content(),
+                    draft.nodes(),
+                    draft.edges(),
+                    draft.dataSourceMap()
+            );
+            return new CompiledFlowDraft(compiledYaml, draft.namespaceFileContents());
+        } catch (IOException ex) {
+            throw new IllegalStateException("编译 Flow 文档失败", ex);
+        }
+    }
+
     private String extractFlowId(String path) {
         // path format: _flows/{folder}/{name}/flow.yaml
         String[] parts = path.split("/");
@@ -101,12 +144,30 @@ public class OfflineFlowDocumentService {
 
     private void saveWithGraph(SaveOfflineFlowDocumentRequest request, DocumentSnapshot current) throws IOException {
         Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
-        
-        // 1. Collect and prepare nodes (including newly added nodes)
+        GraphDraft graphDraft = prepareGraphDraft(request.groupId(), request.stages(), request.edges(), true);
+
+        // 3. Compile graph to YAML and write flow.yaml
+        var flowContent = offlineFlowContentService.getFlowContent(request.groupId(), request.path());
+        String compiledYaml = yamlSupport.compileGraph(
+                flowContent.content(),
+                graphDraft.nodes(),
+                graphDraft.edges(),
+                graphDraft.dataSourceMap()
+        );
+        Path flowFile = resolveRepoFile(repoPath, request.path());
+        Files.writeString(flowFile, compiledYaml, StandardCharsets.UTF_8);
+    }
+
+    private GraphDraft prepareGraphDraft(Long groupId,
+                                         List<SaveOfflineFlowStageRequest> stages,
+                                         List<SaveOfflineFlowEdgeRequest> requestEdges,
+                                         boolean writeFiles) throws IOException {
+        Path repoPath = offlineProperties.resolveRepoPath(groupId);
         List<OfflineFlowYamlSupport.FlowNode> nodes = new ArrayList<>();
         Set<Long> dataSourceIds = new LinkedHashSet<>();
-        
-        for (SaveOfflineFlowStageRequest stage : request.stages()) {
+        Map<String, String> namespaceFileContents = new LinkedHashMap<>();
+
+        for (SaveOfflineFlowStageRequest stage : stages) {
             for (SaveOfflineFlowNodeRequest nodeReq : stage.nodes()) {
                 nodes.add(new OfflineFlowYamlSupport.FlowNode(
                         nodeReq.taskId(),
@@ -118,15 +179,16 @@ public class OfflineFlowDocumentService {
                 if (nodeReq.dataSourceId() != null) {
                     dataSourceIds.add(nodeReq.dataSourceId());
                 }
-                
-                // Physical File Management: Create or Update script files
+
                 Path scriptFile = resolveRepoFile(repoPath, nodeReq.scriptPath());
-                Files.createDirectories(scriptFile.getParent());
-                Files.writeString(scriptFile, nodeReq.scriptContent(), StandardCharsets.UTF_8);
+                namespaceFileContents.put(nodeReq.scriptPath(), nodeReq.scriptContent());
+                if (writeFiles) {
+                    Files.createDirectories(scriptFile.getParent());
+                    Files.writeString(scriptFile, nodeReq.scriptContent(), StandardCharsets.UTF_8);
+                }
             }
         }
 
-        // 2. Prepare data source details for YAML compilation
         Map<Long, DataSource> dataSourceMap = new LinkedHashMap<>();
         for (Long dsId : dataSourceIds) {
             DataSource ds = dataSourceService.getById(dsId);
@@ -135,15 +197,11 @@ public class OfflineFlowDocumentService {
             }
         }
 
-        List<OfflineFlowYamlSupport.FlowEdge> edges = request.edges().stream()
+        List<OfflineFlowYamlSupport.FlowEdge> edges = requestEdges.stream()
                 .map(e -> new OfflineFlowYamlSupport.FlowEdge(e.source(), e.target()))
                 .toList();
 
-        // 3. Compile graph to YAML and write flow.yaml
-        var flowContent = offlineFlowContentService.getFlowContent(request.groupId(), request.path());
-        String compiledYaml = yamlSupport.compileGraph(flowContent.content(), nodes, edges, dataSourceMap);
-        Path flowFile = resolveRepoFile(repoPath, request.path());
-        Files.writeString(flowFile, compiledYaml, StandardCharsets.UTF_8);
+        return new GraphDraft(nodes, edges, dataSourceMap, namespaceFileContents);
     }
 
     private void saveWithStages(SaveOfflineFlowDocumentRequest request, DocumentSnapshot current) throws IOException {

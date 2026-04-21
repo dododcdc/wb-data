@@ -1,4 +1,10 @@
 import request from '../utils/request';
+import { buildExecutionListSearchParams } from '../views/offline/executionFilters';
+
+function buildGroupScopedPath(path: string, groupId: number) {
+    const separator = path.includes('?') ? '&' : '?';
+    return `${path}${separator}groupId=${groupId}`;
+}
 
 export interface RemoteStatus {
     hasRemote: boolean;
@@ -23,6 +29,7 @@ export interface OfflineRepoStatus {
     exists: boolean;
     gitInitialized: boolean;
     dirty: boolean;
+    ahead: boolean;
     branch: string | null;
     headCommitId: string | null;
     headCommitMessage: string | null;
@@ -50,9 +57,11 @@ export interface OfflineFlowContent {
     fileUpdatedAt: number;
 }
 
+export type OfflineFlowNodeKind = 'SQL' | 'HIVE_SQL' | 'SHELL';
+
 export interface OfflineFlowNode {
     taskId: string;
-    kind: 'SQL' | 'SHELL';
+    kind: OfflineFlowNodeKind;
     scriptPath: string;
     scriptContent: string;
     dataSourceId?: number;
@@ -98,7 +107,7 @@ export interface SaveOfflineFlowRequest {
 export interface SaveOfflineFlowNodeRequest {
     taskId: string;
     scriptContent: string;
-    kind: 'SQL' | 'SHELL';
+    kind: OfflineFlowNodeKind;
     scriptPath: string;
     dataSourceId?: number;
     dataSourceType?: string;
@@ -141,6 +150,18 @@ export interface SavedDebugExecutionRequest {
     mode: OfflineExecutionMode;
 }
 
+export interface DebugDocumentExecutionRequest {
+    groupId: number;
+    flowPath: string;
+    documentHash: string;
+    documentUpdatedAt: number;
+    stages: SaveOfflineFlowStageRequest[];
+    edges: SaveOfflineFlowEdgeRequest[];
+    layout: Record<string, NodePosition>;
+    selectedTaskIds: string[];
+    mode: OfflineExecutionMode;
+}
+
 export interface OfflineExecutionResponse {
     executionId: string;
     mode: string;
@@ -153,6 +174,8 @@ export interface OfflineExecutionResponse {
 export interface OfflineExecutionListItem {
     executionId: string;
     flowPath: string;
+    displayName: string;
+    requestedBy: number | null;
     mode: string;
     status: string;
     triggerType: string;
@@ -173,12 +196,20 @@ export interface OfflineExecutionDetail {
     executionId: string;
     mode: string;
     flowPath: string;
+    requestedBy: number | null;
+    branch: string | null;
     sourceRevision: string;
     status: string;
     createdAt: string | null;
     startDate: string | null;
     endDate: string | null;
     taskRuns: OfflineExecutionTaskRun[];
+}
+
+export interface OfflineExecutionScript {
+    executionId: string;
+    flowPath: string;
+    content: string;
 }
 
 export interface OfflineExecutionLogEntry {
@@ -229,19 +260,19 @@ export const getOfflineRepoRemote = (groupId: number) => {
 };
 
 export const commitOfflineRepo = (groupId: number, message: string) => {
-    return request.post<unknown, CommitResult>('/api/v1/offline/repo/commit', { groupId, message }, {
+    return request.post<unknown, CommitResult>(buildGroupScopedPath('/api/v1/offline/repo/commit', groupId), { groupId, message }, {
         headers: { 'Content-Type': 'application/json' },
     });
 };
 
 export const pushOfflineRepo = (groupId: number) => {
-    return request.post<unknown, PushResult>('/api/v1/offline/repo/push', { groupId }, {
+    return request.post<unknown, PushResult>(buildGroupScopedPath('/api/v1/offline/repo/push', groupId), { groupId }, {
         headers: { 'Content-Type': 'application/json' },
     });
 };
 
 export const createOfflineFolder = (groupId: number, path: string) => {
-    return request.post<unknown, null>('/api/v1/offline/repo/folder', { groupId, path }, {
+    return request.post<unknown, null>(buildGroupScopedPath('/api/v1/offline/repo/folder', groupId), { groupId, path }, {
         headers: { 'Content-Type': 'application/json' },
     });
 };
@@ -269,7 +300,7 @@ export const getOfflineFlowDocument = (groupId: number, path: string) => {
 };
 
 export const saveOfflineFlowContent = (payload: SaveOfflineFlowRequest) => {
-    return request.put<unknown, OfflineFlowContent>('/api/v1/offline/flows/content', payload, {
+    return request.put<unknown, OfflineFlowContent>(buildGroupScopedPath('/api/v1/offline/flows/content', payload.groupId), payload, {
         headers: {
             'Content-Type': 'application/json',
         },
@@ -277,7 +308,7 @@ export const saveOfflineFlowContent = (payload: SaveOfflineFlowRequest) => {
 };
 
 export const saveOfflineFlowDocument = (payload: SaveOfflineFlowDocumentRequest) => {
-    return request.put<unknown, OfflineFlowDocument>('/api/v1/offline/flows/document', payload, {
+    return request.put<unknown, OfflineFlowDocument>(buildGroupScopedPath('/api/v1/offline/flows/document', payload.groupId), payload, {
         headers: {
             'Content-Type': 'application/json',
         },
@@ -285,7 +316,15 @@ export const saveOfflineFlowDocument = (payload: SaveOfflineFlowDocumentRequest)
 };
 
 export const createOfflineDebugExecution = (payload: DebugExecutionRequest) => {
-    return request.post<unknown, OfflineExecutionResponse>('/api/v1/offline/executions/debug', payload, {
+    return request.post<unknown, OfflineExecutionResponse>(buildGroupScopedPath('/api/v1/offline/executions/debug', payload.groupId), payload, {
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    });
+};
+
+export const createOfflineDocumentDebugExecution = (payload: DebugDocumentExecutionRequest) => {
+    return request.post<unknown, OfflineExecutionResponse>(buildGroupScopedPath('/api/v1/offline/executions/debug/document', payload.groupId), payload, {
         headers: {
             'Content-Type': 'application/json',
         },
@@ -293,18 +332,15 @@ export const createOfflineDebugExecution = (payload: DebugExecutionRequest) => {
 };
 
 export const createOfflineSavedDebugExecution = (payload: SavedDebugExecutionRequest) => {
-    return request.post<unknown, OfflineExecutionResponse>('/api/v1/offline/executions/debug/current', payload, {
+    return request.post<unknown, OfflineExecutionResponse>(buildGroupScopedPath('/api/v1/offline/executions/debug/current', payload.groupId), payload, {
         headers: {
             'Content-Type': 'application/json',
         },
     });
 };
 
-export const listOfflineExecutions = (groupId: number, flowPath: string) => {
-    const params = new URLSearchParams({
-        groupId: String(groupId),
-        flowPath,
-    });
+export const listOfflineExecutions = (groupId: number, flowPath: string, requestedBy?: number | null) => {
+    const params = buildExecutionListSearchParams(groupId, flowPath, requestedBy);
     return request.get<unknown, OfflineExecutionListItem[]>(`/api/v1/offline/executions?${params.toString()}`);
 };
 
@@ -319,6 +355,12 @@ export const getOfflineExecutionLogs = (groupId: number, executionId: string, ta
     if (taskId) params.set('taskId', taskId);
     return request.get<unknown, OfflineExecutionLogEntry[]>(
         `/api/v1/offline/executions/${encodeURIComponent(executionId)}/logs?${params.toString()}`
+    );
+};
+
+export const getOfflineExecutionScript = (groupId: number, executionId: string) => {
+    return request.get<unknown, OfflineExecutionScript>(
+        `/api/v1/offline/executions/${encodeURIComponent(executionId)}/script?groupId=${groupId}`
     );
 };
 
@@ -346,7 +388,7 @@ export const getOfflineSchedule = (groupId: number, path: string) => {
 };
 
 export const updateOfflineSchedule = (payload: UpdateOfflineScheduleRequest) => {
-    return request.put<unknown, OfflineScheduleResponse>('/api/v1/offline/schedules', payload, {
+    return request.put<unknown, OfflineScheduleResponse>(buildGroupScopedPath('/api/v1/offline/schedules', payload.groupId), payload, {
         headers: {
             'Content-Type': 'application/json',
         },
@@ -354,7 +396,7 @@ export const updateOfflineSchedule = (payload: UpdateOfflineScheduleRequest) => 
 };
 
 export const updateOfflineScheduleStatus = (payload: UpdateOfflineScheduleStatusRequest) => {
-    return request.patch<unknown, OfflineScheduleResponse>('/api/v1/offline/schedules/status', payload, {
+    return request.patch<unknown, OfflineScheduleResponse>(buildGroupScopedPath('/api/v1/offline/schedules/status', payload.groupId), payload, {
         headers: {
             'Content-Type': 'application/json',
         },
@@ -362,27 +404,27 @@ export const updateOfflineScheduleStatus = (payload: UpdateOfflineScheduleStatus
 };
 
 export const deleteOfflineFlow = (groupId: number, path: string) => {
-    return request.delete('/api/v1/offline/flows', {
+    return request.delete(buildGroupScopedPath('/api/v1/offline/flows', groupId), {
         data: { groupId, path },
         headers: { 'Content-Type': 'application/json' },
     });
 };
 
 export const renameOfflineFlow = (groupId: number, path: string, newName: string) => {
-    return request.post('/api/v1/offline/flows/rename', { groupId, path, newName }, {
+    return request.post(buildGroupScopedPath('/api/v1/offline/flows/rename', groupId), { groupId, path, newName }, {
         headers: { 'Content-Type': 'application/json' },
     });
 };
 
 export const deleteOfflineFolder = (groupId: number, path: string) => {
-    return request.delete('/api/v1/offline/repo/folder', {
+    return request.delete(buildGroupScopedPath('/api/v1/offline/repo/folder', groupId), {
         data: { groupId, path },
         headers: { 'Content-Type': 'application/json' },
     });
 };
 
 export const renameOfflineFolder = (groupId: number, path: string, newName: string) => {
-    return request.post('/api/v1/offline/repo/folder/rename', { groupId, path, newName }, {
+    return request.post(buildGroupScopedPath('/api/v1/offline/repo/folder/rename', groupId), { groupId, path, newName }, {
         headers: { 'Content-Type': 'application/json' },
     });
 };

@@ -8,7 +8,7 @@ spring:
     baseline-on-migrate: true
     baseline-version: 1
   datasource:
-    url: jdbc:mysql://localhost:3306/wb_data?useSSL=false&serverTimezone=UTC
+    url: jdbc:mysql://localhost:3306/wb_data?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
     username: root
     password: ${DB_PASSWORD:1111}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -25,6 +25,15 @@ server:
 wbdata:
   plugins:
     dir: ${WB_DATA_PLUGIN_DIR:/Users/wenbin/Projects/wb-data/plugins}
+  offline:
+    repo-base-dir: ${WB_DATA_OFFLINE_REPO_BASE_DIR:/Users/wenbin/Projects/wb-data/output/offline-live/repos}
+    repo-dir-prefix: ${WB_DATA_OFFLINE_REPO_DIR_PREFIX:wb-data-}
+    kestra:
+      base-url: ${WB_DATA_KESTRA_BASE_URL:http://localhost:8090}
+      tenant: ${WB_DATA_KESTRA_TENANT:main}
+      username: ${WB_DATA_KESTRA_USERNAME:admin@kestra.io}
+      password: ${WB_DATA_KESTRA_PASSWORD:Admin1234!}
+      debug-namespace-prefix: ${WB_DATA_KESTRA_DEBUG_NAMESPACE_PREFIX:wb-debug-g}
 
 springdoc:
   api-docs:

@@ -4,7 +4,7 @@ import java.util.List;
 
 public record AuthContextResponse(
         CurrentUserResponse user,
-        boolean systemAdmin,
+        Boolean systemAdmin,
         ProjectGroupContextItem currentGroup,
         List<ProjectGroupContextItem> accessibleGroups,
         List<String> permissions

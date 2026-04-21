@@ -10,18 +10,14 @@ import {
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogOverlay,
-    DialogPortal,
-    DialogTitle,
-} from '../../components/ui/dialog';
+import { getErrorMessage } from '../../utils/error';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
+import { getAuthContext } from '../../api/auth';
+import { useAuthStore } from '../../utils/auth';
 import {
-    deleteGroup,
+    disableGroup,
+    enableGroup,
     getGroupPage,
     GroupDetail,
 } from '../../api/group';
@@ -55,8 +51,8 @@ export default function GroupList() {
     const [isComposing, setIsComposing] = useState(false);
     const [suppressPaginationHover, setSuppressPaginationHover] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
-    const [pendingDeleteTarget, setPendingDeleteTarget] = useState<GroupDetail | null>(null);
+    const [editingGroup, setEditingGroup] = useState<GroupDetail | null>(null);
+    const [pendingId, setPendingId] = useState<number | null>(null);
 
     const currentPage = parsePageParam(searchParams.get('page'));
     const pageSize = parsePageSizeParam(searchParams.get('size'));
@@ -131,33 +127,31 @@ export default function GroupList() {
         }
     }, [currentPage, pageData, searchParams, setSearchParams]);
 
-    const deleteMutation = useMutation({
-        mutationFn: (id: number) => deleteGroup(id),
-        onMutate: (id) => {
-            setPendingDeleteId(id);
-        },
+    
+    const disableMutation = useMutation({
+        mutationFn: (id: number) => disableGroup(id),
+        onMutate: setPendingId,
         onSuccess: () => {
-            showFeedback({
-                tone: 'success',
-                title: '项目组已删除',
-                detail: `项目组 ${pendingDeleteTarget?.name} 及其关联数据已被成功删除。`,
-            });
+            showFeedback({ tone: 'success', title: '项目组已禁用', detail: '' });
             void queryClient.invalidateQueries({ queryKey: ['groups'] });
-            setPendingDeleteTarget(null);
         },
-        onError: (error) => {
-            showFeedback(
-                {
-                    tone: 'error',
-                    title: '项目组删除失败',
-                    detail: (error as { message?: string } | null)?.message ?? '无法删除该项目组，请稍后重试。',
-                },
-                5000,
-            );
+        onError: (e) => {
+            showFeedback({ tone: 'error', title: '禁用失败', detail: getErrorMessage(e, '请稍后重试') });
         },
-        onSettled: () => {
-            setPendingDeleteId(null);
+        onSettled: () => setPendingId(null),
+    });
+
+    const enableMutation = useMutation({
+        mutationFn: (id: number) => enableGroup(id),
+        onMutate: setPendingId,
+        onSuccess: () => {
+            showFeedback({ tone: 'success', title: '项目组已启用', detail: '' });
+            void queryClient.invalidateQueries({ queryKey: ['groups'] });
         },
+        onError: (e) => {
+            showFeedback({ tone: 'error', title: '启用失败', detail: getErrorMessage(e, '请稍后重试') });
+        },
+        onSettled: () => setPendingId(null),
     });
 
     const patchSearchParams = (mutate: (next: URLSearchParams) => void) => {
@@ -183,8 +177,17 @@ export default function GroupList() {
         });
     };
 
-    const handleDelete = (item: GroupDetail) => {
-        setPendingDeleteTarget(item);
+    const handleEdit = (item: GroupDetail) => {
+        setEditingGroup(item);
+        setIsFormOpen(true);
+    };
+
+    const handleDisable = (item: GroupDetail) => {
+        disableMutation.mutate(item.id);
+    };
+
+    const handleEnable = (item: GroupDetail) => {
+        enableMutation.mutate(item.id);
     };
 
     const queryError = pageQuery.error as { message?: string } | null;
@@ -196,19 +199,36 @@ export default function GroupList() {
     const pageCount = total === 0 ? 0 : pageEnd - pageStart + 1;
     const pageSizeOptions = PAGE_SIZE_OPTIONS.map((value) => ({ label: `${value} 条`, value: String(value) }));
 
-    const handleFormSuccess = (name: string) => {
+    const handleFormSuccess = async (name: string) => {
         setIsFormOpen(false);
+        setEditingGroup(null);
 
-        showFeedback({
-            tone: 'success',
-            title: '项目组已创建',
-            detail: `${name} 已创建，列表正在同步最新记录。`,
-        });
+        if (editingGroup) {
+            showFeedback({
+                tone: 'success',
+                title: '项目组已更新',
+                detail: `${name} 的信息已保存。`,
+            });
+        } else {
+            showFeedback({
+                tone: 'success',
+                title: '项目组已创建',
+                detail: `${name} 已创建，列表正在同步最新记录。`,
+            });
+            patchSearchParams((params) => {
+                params.delete('page');
+            });
+        }
 
         void queryClient.invalidateQueries({ queryKey: ['groups'] });
-        patchSearchParams((params) => {
-            params.delete('page');
-        });
+
+        // 刷新 auth context 以更新顶部项目组下拉列表
+        try {
+            const ctx = await getAuthContext();
+            useAuthStore.getState().setAuthContext(ctx);
+        } catch {
+            // 刷新失败不影响主流程
+        }
     };
 
     return (
@@ -249,8 +269,10 @@ export default function GroupList() {
                     data={records}
                     errorMessage={errorMessage}
                     isRefreshing={isRefreshing}
-                    onDelete={handleDelete}
-                    deletePendingId={pendingDeleteId}
+                    onEdit={handleEdit}
+                    onDisable={handleDisable}
+                    onEnable={handleEnable}
+                    pendingId={pendingId}
                 />
 
                 {total > 0 ? (
@@ -330,59 +352,13 @@ export default function GroupList() {
 
             <GroupForm
                 open={isFormOpen}
-                onOpenChange={(details) => setIsFormOpen(details.open)}
-                onSuccess={handleFormSuccess}
-            />
-
-            <Dialog
-                open={Boolean(pendingDeleteTarget)}
-                onOpenChange={(nextOpen) => {
-                    if (!nextOpen && pendingDeleteId == null) {
-                        setPendingDeleteTarget(null);
-                    }
+                onOpenChange={(details) => {
+                    setIsFormOpen(details.open);
+                    if (!details.open) setEditingGroup(null);
                 }}
-            >
-                <DialogPortal>
-                    <DialogOverlay className="dialog-backdrop" />
-                    <DialogContent className="dialog-positioner">
-                        <div className="group-confirm-dialog">
-                            <DialogTitle className="group-confirm-title">删除项目组</DialogTitle>
-                            <DialogDescription className="group-confirm-description">
-                                {pendingDeleteTarget ? (
-                                    <>
-                                        确定要删除项目组 <strong>{pendingDeleteTarget.name}</strong> 吗？
-                                        <br />
-                                        删除后不可恢复。
-                                    </>
-                                ) : (
-                                    ''
-                                )}
-                            </DialogDescription>
-                            <div className="group-confirm-actions">
-                                <button
-                                    className="group-secondary-btn"
-                                    disabled={pendingDeleteId != null}
-                                    onClick={() => setPendingDeleteTarget(null)}
-                                    type="button"
-                                >
-                                    取消
-                                </button>
-                                <button
-                                    className="group-danger-btn"
-                                    disabled={!pendingDeleteTarget || pendingDeleteId != null}
-                                    onClick={() => {
-                                        if (!pendingDeleteTarget) return;
-                                        deleteMutation.mutate(pendingDeleteTarget.id);
-                                    }}
-                                    type="button"
-                                >
-                                    {pendingDeleteId != null ? '删除中...' : '确认删除'}
-                                </button>
-                            </div>
-                        </div>
-                    </DialogContent>
-                </DialogPortal>
-            </Dialog>
+                onSuccess={handleFormSuccess}
+                initialData={editingGroup}
+            />
         </div>
     );
 }

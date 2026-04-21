@@ -48,3 +48,12 @@ logs/
 .gemini/
 .alma-snapshots
 .worktrees/
+
+# Agent and local state
+.agents/
+memory/
+output/
+.impeccable.md
+skills-lock.json
+docs/
+**/CLAUDE.md

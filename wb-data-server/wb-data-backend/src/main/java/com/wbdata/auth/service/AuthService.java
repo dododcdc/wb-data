@@ -6,6 +6,7 @@ import com.wbdata.auth.dto.LoginResponse;
 import com.wbdata.user.entity.WbUser;
 import com.wbdata.user.mapper.WbUserMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -39,7 +41,8 @@ public class AuthService {
         update.setLastLoginAt(LocalDateTime.now());
         wbUserMapper.updateById(update);
         user.setLastLoginAt(update.getLastLoginAt());
-
-        return authTokenService.issueToken(user);
+        LoginResponse loginResponse = authTokenService.issueToken(user);
+        log.info("用户 {} 登录成功", loginResponse);
+        return loginResponse;
     }
 }

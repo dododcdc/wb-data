@@ -6,6 +6,7 @@ import com.wbdata.auth.service.AuthSession;
 import com.wbdata.common.Result;
 import com.wbdata.group.dto.CreateGroupRequest;
 import com.wbdata.group.dto.GroupDetailResponse;
+import com.wbdata.group.dto.UpdateGroupRequest;
 import com.wbdata.group.service.GroupService;
 import com.wbdata.user.dto.GroupSimpleResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -15,8 +16,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -67,5 +70,28 @@ public class GroupController {
         AuthContext.requireSystemAdmin();
         groupService.deleteGroup(id);
         return Result.success(null);
+    }
+
+    @Operation(summary = "更新项目组")
+    @PutMapping("/{id}")
+    public Result<GroupDetailResponse> update(
+            @PathVariable Long id,
+            @Validated @RequestBody UpdateGroupRequest request) {
+        AuthSession operator = AuthContext.requireSystemAdmin();
+        return Result.success(groupService.updateGroup(id, request, operator.id()));
+    }
+
+    @Operation(summary = "禁用项目组")
+    @PatchMapping("/{id}/disable")
+    public Result<GroupDetailResponse> disable(@PathVariable Long id) {
+        AuthContext.requireSystemAdmin();
+        return Result.success(groupService.disableGroup(id));
+    }
+
+    @Operation(summary = "启用项目组")
+    @PatchMapping("/{id}/enable")
+    public Result<GroupDetailResponse> enable(@PathVariable Long id) {
+        AuthContext.requireSystemAdmin();
+        return Result.success(groupService.enableGroup(id));
     }
 }

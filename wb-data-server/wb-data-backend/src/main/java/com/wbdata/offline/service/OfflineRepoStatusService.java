@@ -28,6 +28,7 @@ public class OfflineRepoStatusService {
                     false,
                     false,
                     false,
+                    false,
                     null,
                     null,
                     null,
@@ -41,6 +42,7 @@ public class OfflineRepoStatusService {
                     groupId,
                     repoPath.toString(),
                     true,
+                    false,
                     false,
                     false,
                     null,
@@ -58,13 +60,18 @@ public class OfflineRepoStatusService {
                 ? null
                 : Instant.ofEpochSecond(Long.parseLong(runGitCommand(repoPath, "log", "-1", "--pretty=%ct")));
 
+        String statusOutput = runGitCommand(repoPath, "status", "--short", "--branch");
+        boolean dirty = !runGitCommand(repoPath, "status", "--porcelain").isBlank();
+        boolean ahead = statusOutput.lines().findFirst().map(line -> line.contains("[ahead ")).orElse(false);
+
         return new OfflineRepoStatusResponse(
                 groupId,
                 repoPath.toString(),
                 true,
                 true,
-                !runGitCommand(repoPath, "status", "--porcelain").isBlank(),
-                readBranch(repoPath),
+                dirty,
+                ahead,
+                readBranchFromStatus(statusOutput),
                 headCommitId,
                 headCommitMessage,
                 headCommitAt
@@ -117,14 +124,13 @@ public class OfflineRepoStatusService {
                 || output.contains("Needed a single revision");
     }
 
-    private String readBranch(Path repoPath) {
-        String status = runGitCommand(repoPath, "status", "--short", "--branch");
+    private String readBranchFromStatus(String status) {
         String firstLine = status.lines().findFirst().orElse("");
         if (firstLine.startsWith("## No commits yet on ")) {
             return firstLine.substring("## No commits yet on ".length()).trim();
         }
         if (firstLine.startsWith("## ")) {
-            return firstLine.substring(3).split("\\.\\.\\.")[0].trim();
+            return firstLine.substring(3).split("\\.\\.\\.")[0].split(" ")[0].trim();
         }
         return null;
     }

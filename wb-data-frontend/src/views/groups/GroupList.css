@@ -321,8 +321,27 @@
 }
 
 .group-actions-column {
-    width: 132px;
+    width: 140px;
     text-align: center;
+}
+
+.group-status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.group-status-badge.status-active {
+    background: color-mix(in srgb, var(--color-success-bg) 88%, white);
+    color: var(--color-success);
+}
+
+.group-status-badge.status-disabled {
+    background: color-mix(in srgb, var(--color-bg-tertiary) 90%, white);
+    color: var(--color-text-muted);
 }
 
 .group-actions {
@@ -885,4 +904,68 @@
     resize: vertical;
     font-family: var(--font-sans);
     line-height: 1.5;
+}
+
+.group-form-collapse-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 0;
+    margin-bottom: 8px;
+    transition: color var(--transition-fast);
+}
+
+.group-form-collapse-toggle:hover {
+    color: var(--color-text-secondary);
+}
+
+.group-form-git-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-bg-secondary);
+}
+
+.group-form-git-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.group-form-git-row label {
+    font-size: 0.83rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+}
+
+.group-form-git-row input,
+.group-form-git-row .simple-select {
+    max-width: 300px;
+}
+
+.group-form-git-row input {
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--color-input-border);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: var(--color-text-primary);
+    background: var(--color-bg-primary);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.group-form-git-row input:focus {
+    border-color: var(--color-focus);
+    outline: none;
+    box-shadow: 0 0 0 3px var(--color-focus-glow);
 }

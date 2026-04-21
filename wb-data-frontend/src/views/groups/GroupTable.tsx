@@ -1,4 +1,4 @@
-import { FolderKanban, Trash2 } from 'lucide-react';
+import { FolderKanban, Pencil, Ban, CheckCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { GroupDetail } from '../../api/group';
 import { formatTimestamp } from './config';
@@ -7,8 +7,10 @@ interface GroupTableProps {
     data: GroupDetail[];
     isRefreshing: boolean;
     errorMessage: string;
-    onDelete: (group: GroupDetail) => void;
-    deletePendingId: number | null;
+    onEdit: (group: GroupDetail) => void;
+    onDisable: (group: GroupDetail) => void;
+    onEnable: (group: GroupDetail) => void;
+    pendingId: number | null;
 }
 
 export function GroupTable(props: GroupTableProps) {
@@ -16,8 +18,10 @@ export function GroupTable(props: GroupTableProps) {
         data,
         isRefreshing,
         errorMessage,
-        onDelete,
-        deletePendingId,
+        onEdit,
+        onDisable,
+        onEnable,
+        pendingId,
     } = props;
 
     if (errorMessage && data.length === 0) {
@@ -54,6 +58,7 @@ export function GroupTable(props: GroupTableProps) {
                         <tr>
                             <th>项目组名称</th>
                             <th>描述</th>
+                            <th>状态</th>
                             <th>成员数</th>
                             <th>创建时间</th>
                             <th className="group-actions-column">操作</th>
@@ -66,26 +71,63 @@ export function GroupTable(props: GroupTableProps) {
                                     <strong className="group-name-main">{item.name}</strong>
                                 </td>
                                 <td>{item.description || '--'}</td>
+                                <td>
+                                    <span className={`group-status-badge status-${item.status}`}>
+                                        {item.status === 'active' ? '正常' : '已禁用'}
+                                    </span>
+                                </td>
                                 <td>{item.memberCount}</td>
                                 <td className="group-time-cell">{formatTimestamp(item.createdAt)}</td>
                                 <td className="group-actions-column">
                                     <TooltipProvider delayDuration={400}>
                                     <div className="group-actions">
-                                        {item.memberCount === 0 && (
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    className="group-icon-btn"
+                                                    onClick={() => onEdit(item)}
+                                                    aria-label="编辑项目组"
+                                                    type="button"
+                                                >
+                                                    <Pencil size={16} />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="tooltip-content" side="bottom">
+                                                编辑
+                                            </TooltipContent>
+                                        </Tooltip>
+                                        {item.status === 'active' ? (
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
                                                     <button
                                                         className="group-icon-btn"
-                                                        disabled={deletePendingId === item.id}
-                                                        onClick={() => onDelete(item)}
-                                                        aria-label="删除项目组"
+                                                        disabled={pendingId === item.id}
+                                                        onClick={() => onDisable(item)}
+                                                        aria-label="禁用项目组"
                                                         type="button"
                                                     >
-                                                        <Trash2 size={16} />
+                                                        <Ban size={16} />
                                                     </button>
                                                 </TooltipTrigger>
                                                 <TooltipContent className="tooltip-content" side="bottom">
-                                                    删除
+                                                    禁用
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        ) : (
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <button
+                                                        className="group-icon-btn"
+                                                        disabled={pendingId === item.id}
+                                                        onClick={() => onEnable(item)}
+                                                        aria-label="启用项目组"
+                                                        type="button"
+                                                    >
+                                                        <CheckCircle size={16} />
+                                                    </button>
+                                                </TooltipTrigger>
+                                                <TooltipContent className="tooltip-content" side="bottom">
+                                                    启用
                                                 </TooltipContent>
                                             </Tooltip>
                                         )}

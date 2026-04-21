@@ -1,14 +1,14 @@
 package com.wbdata.git.controller;
 
-import com.wbdata.auth.context.AuthContext;
+import com.wbdata.auth.context.RequireGroupAuth;
 import com.wbdata.auth.dto.AuthContextResponse;
-import com.wbdata.auth.service.AuthSession;
-import com.wbdata.auth.service.AuthContextService;
+import com.wbdata.auth.enums.Permission;
 import com.wbdata.common.Result;
 import com.wbdata.git.dto.GitConfigResponse;
 import com.wbdata.git.dto.SaveGitConfigRequest;
 import com.wbdata.git.entity.WbGitConfig;
 import com.wbdata.git.service.GitConfigService;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -21,11 +21,9 @@ import org.springframework.web.server.ResponseStatusException;
 public class GitConfigController {
 
     private final GitConfigService gitConfigService;
-    private final AuthContextService authContextService;
 
     @GetMapping
-    public Result<GitConfigResponse> getConfig(@RequestParam Long groupId) {
-        AuthContextResponse context = requireGroupContext(groupId, "offline.read");
+    public Result<GitConfigResponse> getConfig(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context) {
         WbGitConfig config = gitConfigService.getConfig(context.currentGroup().id());
         if (config == null) {
             return Result.success(null);
@@ -39,9 +37,10 @@ public class GitConfigController {
         ));
     }
 
+    @Operation(summary = "保存 Git 配置")
     @PostMapping
-    public Result<Void> saveConfig(@RequestParam Long groupId, @Valid @RequestBody SaveGitConfigRequest request) {
-        AuthContextResponse context = requireGroupContext(groupId, "offline.write");
+    public Result<Void> saveConfig(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
+                                   @Valid @RequestBody SaveGitConfigRequest request) {
         gitConfigService.saveConfig(
                 context.currentGroup().id(),
                 request.provider(),
@@ -54,8 +53,7 @@ public class GitConfigController {
     }
 
     @DeleteMapping
-    public Result<Void> deleteConfig(@RequestParam Long groupId) {
-        AuthContextResponse context = requireGroupContext(groupId, "offline.write");
+    public Result<Void> deleteConfig(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context) {
         gitConfigService.deleteConfig(context.currentGroup().id());
         return Result.success(null);
     }
@@ -71,15 +69,4 @@ public class GitConfigController {
         return Result.success(result);
     }
 
-    private AuthContextResponse requireGroupContext(Long groupId, String permission) {
-        AuthSession session = AuthContext.require();
-        AuthContextResponse context = authContextService.getContext(session, groupId);
-        if (context.currentGroup() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前未选中项目组");
-        }
-        if (!context.permissions().contains(permission)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前项目组下无此操作权限: " + permission);
-        }
-        return context;
-    }
 }

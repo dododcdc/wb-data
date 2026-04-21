@@ -12,6 +12,7 @@ import RouteLoadingPage from '../views/core/RouteLoadingPage';
 import {
     loadDashboardModule,
     loadDataSourceListModule,
+    loadExecutionDetailPageModule,
     loadLoginModule,
     loadNoGroupStateModule,
     loadNotFoundModule,
@@ -27,6 +28,7 @@ const Login = lazy(loadLoginModule);
 const Dashboard = lazy(loadDashboardModule);
 const DataSourceList = lazy(loadDataSourceListModule);
 const OfflineWorkbench = lazy(loadOfflineWorkbenchModule);
+const ExecutionDetailPage = lazy(loadExecutionDetailPageModule);
 const Query = lazy(loadQueryModule);
 const UserList = lazy(loadUserListModule);
 const GroupList = lazy(loadGroupListModule);
@@ -160,6 +162,10 @@ const router = createBrowserRouter([
                                     {
                                         index: true,
                                         element: withRouteSuspense(<OfflineWorkbench />),
+                                    },
+                                    {
+                                        path: 'executions/:executionId',
+                                        element: withRouteSuspense(<ExecutionDetailPage />),
                                     },
                                 ],
                             },

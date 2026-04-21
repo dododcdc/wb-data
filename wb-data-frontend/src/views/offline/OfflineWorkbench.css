@@ -525,6 +525,11 @@ button.offline-tree-row {
     color: #2c6a49;
 }
 
+.flow-canvas-node-kind.is-hive-sql {
+    background: rgba(186, 122, 49, 0.12);
+    color: #8a5314;
+}
+
 .flow-canvas-node-kind.is-shell {
     background: rgba(95, 86, 73, 0.10);
     color: #625545;
@@ -1231,6 +1236,11 @@ button.offline-tree-row {
     color: #2c6a49;
 }
 
+.offline-node-kind.is-hive-sql {
+    background: rgba(186, 122, 49, 0.12);
+    color: #8a5314;
+}
+
 .offline-node-kind.is-shell {
     background: rgba(95, 86, 73, 0.10);
     color: #625545;
@@ -1338,6 +1348,7 @@ button.offline-tree-row {
     inset: 0;
     background: rgba(32, 25, 17, 0.44);
     backdrop-filter: blur(4px);
+    z-index: 1000 !important;
 }
 
 .offline-dialog-positioner {
@@ -1346,9 +1357,11 @@ button.offline-tree-row {
     display: grid;
     place-items: center;
     padding: 24px;
+    z-index: 1001 !important;
 }
 
 .offline-dialog-card {
+    position: relative;
     width: min(1100px, calc(100vw - 48px));
     max-height: min(86vh, 860px);
     padding: 20px;
@@ -1364,6 +1377,7 @@ button.offline-tree-row {
     align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
+    padding-right: 52px;
     margin-bottom: 16px;
 }
 
@@ -1426,15 +1440,36 @@ button.offline-tree-row {
 }
 
 .offline-dialog-close {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    z-index: 3;
+    flex-shrink: 0;
     display: grid;
     place-items: center;
-    width: 32px;
-    height: 32px;
-    border: 1px solid var(--color-border);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.7);
-    color: var(--color-text-secondary);
+    width: 36px;
+    height: 36px;
+    border: 1px solid rgba(32, 25, 17, 0.14);
+    border-radius: 999px;
+    background: rgba(32, 25, 17, 0.9);
+    box-shadow: 0 12px 24px rgba(32, 25, 17, 0.2);
+    color: rgba(255, 255, 255, 0.96);
     cursor: pointer;
+    transition:
+        transform 0.14s ease,
+        background-color 0.14s ease,
+        box-shadow 0.14s ease;
+}
+
+.offline-dialog-close:hover {
+    transform: translateY(-1px);
+    background: rgba(32, 25, 17, 0.96);
+    box-shadow: 0 14px 28px rgba(32, 25, 17, 0.24);
+}
+
+.offline-dialog-close:focus-visible {
+    outline: 2px solid rgba(217, 119, 87, 0.36);
+    outline-offset: 2px;
 }
 
 .offline-dialog-toolbar,
@@ -1444,6 +1479,37 @@ button.offline-tree-row {
     justify-content: space-between;
     gap: 10px;
     margin-bottom: 14px;
+}
+
+.offline-execution-toolbar-left,
+.offline-execution-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.offline-execution-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82rem;
+    color: var(--color-text-secondary);
+}
+
+.offline-execution-filter-control {
+    width: 136px;
+}
+
+.offline-execution-filter-control .simple-select-trigger {
+    height: 44px;
+    border-radius: 14px;
+    border-color: rgba(32, 25, 17, 0.12);
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.offline-execution-filter-control .simple-select-menu {
+    border-radius: 14px;
 }
 
 .offline-execution-layout {
@@ -1469,8 +1535,7 @@ button.offline-tree-row {
 
 .offline-execution-row {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    align-items: flex-start;
     gap: 12px;
     width: 100%;
     padding: 12px;
@@ -1493,6 +1558,8 @@ button.offline-tree-row {
 }
 
 .offline-execution-row-main {
+    display: grid;
+    gap: 6px;
     min-width: 0;
 }
 
@@ -1512,15 +1579,35 @@ button.offline-tree-row {
 }
 
 .offline-execution-row-meta {
-    display: block;
-    margin-top: 6px;
+    display: grid;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.offline-execution-row-meta-item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+}
+
+.offline-execution-row-meta-item small {
+    flex-shrink: 0;
     color: var(--color-text-muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.offline-execution-row-meta-item span {
+    min-width: 0;
+    color: var(--color-text-secondary);
     font-size: 0.8rem;
 }
 
 .offline-execution-detail {
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     padding: 16px;
     gap: 12px;
 }
@@ -1532,11 +1619,111 @@ button.offline-tree-row {
     gap: 16px;
 }
 
+.offline-detail-progress {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+}
+
+.offline-detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
 .offline-detail-kpis {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-    flex: 1;
+    grid-template-columns: repeat(2, minmax(220px, max-content));
+    gap: 18px 32px;
+    align-content: start;
+    justify-content: start;
+}
+
+.offline-execution-status-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--color-text-primary);
+}
+
+.offline-execution-status-text {
+    font-size: 1.75rem;
+    line-height: 1;
+    letter-spacing: -0.04em;
+}
+
+.offline-execution-status-text.is-running {
+    color: #2563eb;
+}
+
+.offline-execution-status-text.is-success {
+    color: #15803d;
+}
+
+.offline-execution-status-text.is-failed {
+    color: #dc2626;
+}
+
+.offline-execution-status-text.is-neutral {
+    color: var(--color-text-primary);
+}
+
+.offline-execution-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.9);
+    box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.12);
+}
+
+.offline-execution-dot.is-running {
+    background: #2563eb;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.14);
+}
+
+.offline-execution-dot.is-success {
+    background: #16a34a;
+    box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.14);
+}
+
+.offline-execution-dot.is-failed {
+    background: #dc2626;
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.14);
+}
+
+.offline-execution-progress {
+    position: relative;
+    overflow: hidden;
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.18);
+}
+
+.offline-execution-progress span {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background: rgba(148, 163, 184, 0.72);
+}
+
+.offline-execution-progress.is-running span {
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.28), rgba(37, 99, 235, 0.92), rgba(59, 130, 246, 0.28));
+    background-size: 200% 100%;
+}
+
+.offline-execution-progress.is-success span {
+    background: linear-gradient(90deg, #22c55e, #16a34a);
+}
+
+.offline-execution-progress.is-failed span {
+    background: linear-gradient(90deg, #ef4444, #dc2626);
+}
+
+.offline-execution-progress.is-animated span {
+    animation: offline-execution-progress-shimmer 1.4s linear infinite;
 }
 
 .offline-task-run-strip {
@@ -1584,6 +1771,15 @@ button.offline-tree-row {
 
 .offline-log-line:last-child {
     border-bottom: none;
+}
+
+@keyframes offline-execution-progress-shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
 }
 
 .offline-log-line span,

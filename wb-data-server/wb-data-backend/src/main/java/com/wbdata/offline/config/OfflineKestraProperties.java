@@ -56,4 +56,8 @@ public class OfflineKestraProperties {
     public String buildDebugNamespace(Long groupId, Long userId) {
         return debugNamespacePrefix + groupId + "-u" + userId;
     }
+
+    public String buildDebugNamespacePrefix(Long groupId) {
+        return debugNamespacePrefix + groupId + "-u";
+    }
 }
