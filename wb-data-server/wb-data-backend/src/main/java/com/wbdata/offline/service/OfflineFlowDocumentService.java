@@ -53,6 +53,7 @@ public class OfflineFlowDocumentService {
     private final OfflineProperties offlineProperties;
     private final OfflineFlowContentService offlineFlowContentService;
     private final DataSourceService dataSourceService;
+    private final OfflineFlowGraphValidation graphValidation = new OfflineFlowGraphValidation();
     private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -70,27 +71,37 @@ public class OfflineFlowDocumentService {
             Path flowFile = resolveRepoFile(repoPath, request.path());
             boolean isNewFile = !Files.exists(flowFile);
 
-            if (isNewFile) {
-                // For new flows, create a stub YAML with id, namespace, and empty tasks
-                String flowId = extractFlowId(request.path());
-                String namespace = "pg-" + request.groupId();
-                String stubYaml = yamlSupport.buildEmptyFlowYaml(flowId, namespace);
-                Files.createDirectories(flowFile.getParent());
-                Files.writeString(flowFile, stubYaml, StandardCharsets.UTF_8);
-            }
-
-            DocumentSnapshot current = readSnapshot(request.groupId(), request.path());
-            if (!isNewFile && (request.documentHash() != null
-                    && (!current.response().documentHash().equals(request.documentHash())
-                    || current.response().documentUpdatedAt() != request.documentUpdatedAt()))) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "检测到文件已被修改，请先加载最新内容");
-            }
-
             if (request.edges() != null) {
                 // New graph-based save: compile DAG back to YAML
-                saveWithGraph(request, current);
+                String flowSource = isNewFile
+                        ? yamlSupport.buildEmptyFlowYaml(extractFlowId(request.path()), "pg-" + request.groupId())
+                        : offlineFlowContentService.getFlowContent(request.groupId(), request.path()).content();
+                DocumentSnapshot current = null;
+                if (!isNewFile && request.documentHash() != null) {
+                    current = readSnapshot(request.groupId(), request.path());
+                }
+                if (current != null && request.documentHash() != null
+                        && (!current.response().documentHash().equals(request.documentHash())
+                        || current.response().documentUpdatedAt() != request.documentUpdatedAt())) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "检测到文件已被修改，请先加载最新内容");
+                }
+                saveWithGraph(request, flowSource);
             } else {
                 // Legacy stage-based save
+                if (isNewFile) {
+                    // For new flows, create a stub YAML with id, namespace, and empty tasks
+                    String flowId = extractFlowId(request.path());
+                    String namespace = "pg-" + request.groupId();
+                    String stubYaml = yamlSupport.buildEmptyFlowYaml(flowId, namespace);
+                    Files.createDirectories(flowFile.getParent());
+                    Files.writeString(flowFile, stubYaml, StandardCharsets.UTF_8);
+                }
+                DocumentSnapshot current = readSnapshot(request.groupId(), request.path());
+                if (!isNewFile && (request.documentHash() != null
+                        && (!current.response().documentHash().equals(request.documentHash())
+                        || current.response().documentUpdatedAt() != request.documentUpdatedAt()))) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "检测到文件已被修改，请先加载最新内容");
+                }
                 saveWithStages(request, current);
             }
 
@@ -117,8 +128,7 @@ public class OfflineFlowDocumentService {
             GraphDraft draft = prepareGraphDraft(
                     request.groupId(),
                     request.stages(),
-                    request.edges(),
-                    false
+                    request.edges()
             );
             var flowContent = offlineFlowContentService.getFlowContent(request.groupId(), request.flowPath());
             String compiledYaml = yamlSupport.compileGraph(
@@ -142,26 +152,36 @@ public class OfflineFlowDocumentService {
         return "flow";
     }
 
-    private void saveWithGraph(SaveOfflineFlowDocumentRequest request, DocumentSnapshot current) throws IOException {
+    private void saveWithGraph(SaveOfflineFlowDocumentRequest request, String flowSource) throws IOException {
         Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
-        GraphDraft graphDraft = prepareGraphDraft(request.groupId(), request.stages(), request.edges(), true);
+        GraphDraft graphDraft = prepareGraphDraft(request.groupId(), request.stages(), request.edges());
+        graphValidation.assertNoImplicitDependencies(graphDraft.nodes(), graphDraft.edges());
+
+        writeGraphScripts(repoPath, graphDraft);
 
         // 3. Compile graph to YAML and write flow.yaml
-        var flowContent = offlineFlowContentService.getFlowContent(request.groupId(), request.path());
         String compiledYaml = yamlSupport.compileGraph(
-                flowContent.content(),
+                flowSource,
                 graphDraft.nodes(),
                 graphDraft.edges(),
                 graphDraft.dataSourceMap()
         );
         Path flowFile = resolveRepoFile(repoPath, request.path());
+        Files.createDirectories(flowFile.getParent());
         Files.writeString(flowFile, compiledYaml, StandardCharsets.UTF_8);
+    }
+
+    private void writeGraphScripts(Path repoPath, GraphDraft graphDraft) throws IOException {
+        for (Map.Entry<String, String> entry : graphDraft.namespaceFileContents().entrySet()) {
+            Path scriptFile = resolveRepoFile(repoPath, entry.getKey());
+            Files.createDirectories(scriptFile.getParent());
+            Files.writeString(scriptFile, entry.getValue(), StandardCharsets.UTF_8);
+        }
     }
 
     private GraphDraft prepareGraphDraft(Long groupId,
                                          List<SaveOfflineFlowStageRequest> stages,
-                                         List<SaveOfflineFlowEdgeRequest> requestEdges,
-                                         boolean writeFiles) throws IOException {
+                                         List<SaveOfflineFlowEdgeRequest> requestEdges) throws IOException {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
         List<OfflineFlowYamlSupport.FlowNode> nodes = new ArrayList<>();
         Set<Long> dataSourceIds = new LinkedHashSet<>();
@@ -180,12 +200,7 @@ public class OfflineFlowDocumentService {
                     dataSourceIds.add(nodeReq.dataSourceId());
                 }
 
-                Path scriptFile = resolveRepoFile(repoPath, nodeReq.scriptPath());
                 namespaceFileContents.put(nodeReq.scriptPath(), nodeReq.scriptContent());
-                if (writeFiles) {
-                    Files.createDirectories(scriptFile.getParent());
-                    Files.writeString(scriptFile, nodeReq.scriptContent(), StandardCharsets.UTF_8);
-                }
             }
         }
 
