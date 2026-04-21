@@ -1803,20 +1803,21 @@ export default function OfflineWorkbench() {
                 dataSourceType: effectiveNodeOverride.dataSourceType,
             })
             : draftSession;
+        const draftDocument = sessionForSave.workingDraft;
+
+        const validation = validateSaveFlowDependencies({
+            nodeIds: draftDocument.stages.flatMap((s) => s.nodes.map((n) => n.taskId)),
+            edges: draftDocument.edges,
+        });
+        if (!validation.allowed) {
+            if (validation.feedback) showFeedback(validation.feedback);
+            return;
+        }
+
         setSavingFlow(true);
         try {
             setDraftSession(sessionForSave);
             pendingNodeEditorDraftRef.current = null;
-            const draftDocument = sessionForSave.workingDraft;
-
-            const validation = validateSaveFlowDependencies({
-                nodeIds: draftDocument.stages.flatMap((s) => s.nodes.map((n) => n.taskId)),
-                edges: draftDocument.edges,
-            });
-            if (!validation.allowed) {
-                if (validation.feedback) showFeedback(validation.feedback);
-                return;
-            }
 
             const response = await saveOfflineFlowDocument({
                 groupId,
