@@ -175,7 +175,7 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
 
     return (
         <Combobox<Option>
-            value={open ? null : resolvedValue}
+            value={resolvedValue}
             onValueChange={handleValueChange}
             onInputValueChange={handleInputValueChange}
             inputValue={inputValue}

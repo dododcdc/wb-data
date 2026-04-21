@@ -2,6 +2,7 @@ package com.wbdata.offline.service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 public record KestraExecutionSnapshot(
         String id,
@@ -11,6 +12,7 @@ public record KestraExecutionSnapshot(
         Instant createdAt,
         Instant startDate,
         Instant endDate,
-        List<KestraTaskRunSnapshot> taskRuns
+        List<KestraTaskRunSnapshot> taskRuns,
+        Map<String, String> labels
 ) {
 }

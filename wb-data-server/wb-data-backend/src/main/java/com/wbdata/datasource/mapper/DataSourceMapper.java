@@ -5,10 +5,8 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wbdata.datasource.dto.DataSourceSearchQuery;
 import com.wbdata.datasource.entity.DataSource;
-import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
-@Mapper
 public interface DataSourceMapper extends BaseMapper<DataSource> {
 
     /**

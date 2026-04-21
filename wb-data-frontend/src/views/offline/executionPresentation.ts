@@ -1,0 +1,50 @@
+export type ExecutionDotTone = 'neutral' | 'running' | 'success' | 'failed';
+export type ExecutionProgressTone = 'neutral' | 'running' | 'success' | 'failed';
+
+export interface ExecutionPresentation {
+    dotTone: ExecutionDotTone;
+    progressTone: ExecutionProgressTone;
+    animated: boolean;
+}
+
+export function isRunningStatus(status: string | null | undefined) {
+    return status === 'RUNNING' || status === 'CREATED' || status === 'QUEUED' || status === 'PAUSED';
+}
+
+export function getExecutionStatusLabel(status: string | null | undefined) {
+    if (status === 'SUCCESS') return '成功';
+    if (status === 'FAILED') return '失败';
+    if (status === 'CANCELLED') return '已取消';
+    if (status === 'KILLED') return '已停止';
+    if (isRunningStatus(status)) return '执行中';
+    return status || '等待执行';
+}
+
+export function getExecutionPresentation(status: string | null | undefined): ExecutionPresentation {
+    if (status === 'SUCCESS') {
+        return {
+            dotTone: 'success',
+            progressTone: 'success',
+            animated: false,
+        };
+    }
+    if (status === 'FAILED' || status === 'CANCELLED' || status === 'KILLED') {
+        return {
+            dotTone: 'failed',
+            progressTone: 'failed',
+            animated: false,
+        };
+    }
+    if (isRunningStatus(status)) {
+        return {
+            dotTone: 'running',
+            progressTone: 'running',
+            animated: true,
+        };
+    }
+    return {
+        dotTone: 'neutral',
+        progressTone: 'neutral',
+        animated: false,
+    };
+}

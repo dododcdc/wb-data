@@ -9,7 +9,7 @@
 
 | 账号 | 邮箱 | 密码 | 类型 |
 |-----|------|------|------|
-| gitea-admin | admin@wb-data.local | Admin123456 | 管理员 |
+| gitea-admin | admin@wb-data.local | Lahj@2067 | 管理员 |
 | wb-data-bot | bot@wb-data.local | BotPass123456 | 机器人 |
 
 **访问地址**: http://localhost:3001

@@ -5,6 +5,8 @@ import java.time.Instant;
 public record OfflineExecutionListItem(
         String executionId,
         String flowPath,
+        String displayName,
+        Long requestedBy,
         String mode,
         String status,
         String triggerType,

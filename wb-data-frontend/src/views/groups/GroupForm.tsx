@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, X } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronRight, X } from 'lucide-react';
 import {
     Dialog,
     DialogClose,
@@ -9,13 +9,16 @@ import {
     DialogPortal,
     DialogTitle,
 } from '../../components/ui/dialog';
-import { createGroup } from '../../api/group';
+import { SimpleSelect } from '../../components/SimpleSelect';
+import { createGroup, updateGroup } from '../../api/group';
 import { getErrorMessage } from '../../utils/error';
+import type { CreateGroupPayload, GroupDetail, UpdateGroupPayload } from '../../api/group';
 
 interface GroupFormProps {
     open: boolean;
     onOpenChange: (details: { open: boolean }) => void;
     onSuccess: (name: string) => void;
+    initialData?: GroupDetail | null;
 }
 
 type FormField = 'name' | 'description';
@@ -33,20 +36,50 @@ const EMPTY_FORM_STATE: FormState = {
     description: '',
 };
 
+const GIT_PROVIDERS = [
+    { value: 'github', label: 'GitHub' },
+    { value: 'gitlab', label: 'GitLab' },
+    { value: 'gitea', label: 'Gitea' },
+];
+
+const DEFAULT_BASE_URL: Record<string, string> = {
+    github: 'https://github.com',
+    gitlab: 'https://gitlab.com',
+    gitea: '',
+};
+
 export default function GroupForm(props: GroupFormProps) {
-    const { open, onOpenChange, onSuccess } = props;
+    const { open, onOpenChange, onSuccess, initialData } = props;
+
+    const isEditMode = Boolean(initialData);
+    const editId = initialData?.id;
 
     const [formData, setFormData] = useState<FormState>(EMPTY_FORM_STATE);
     const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
     const [saveError, setSaveError] = useState('');
     const [saving, setSaving] = useState(false);
 
+    // Git config fields
+    const [gitEnabled, setGitEnabled] = useState(false);
+    const [gitProvider, setGitProvider] = useState('github');
+    const [gitUsername, setGitUsername] = useState('');
+    const [gitToken, setGitToken] = useState('');
+    const [gitBaseUrl, setGitBaseUrl] = useState('https://github.com');
+
     useEffect(() => {
-        if (!open) return;
-        setFieldErrors({});
-        setSaveError('');
-        setFormData(EMPTY_FORM_STATE);
-    }, [open]);
+        if (!open) {
+            setFieldErrors({});
+            setSaveError('');
+            setFormData(EMPTY_FORM_STATE);
+            setGitEnabled(false);
+            setGitProvider('github');
+            setGitUsername('');
+            setGitToken('');
+            setGitBaseUrl('https://github.com');
+        } else if (initialData) {
+            setFormData({ name: initialData.name, description: initialData.description || '' });
+        }
+    }, [open, initialData]);
 
     const handleChange = (field: FormField, value: string) => {
         setSaveError('');
@@ -63,6 +96,11 @@ export default function GroupForm(props: GroupFormProps) {
             ...previousState,
             [field]: value,
         }));
+    };
+
+    const handleGitProviderChange = (v: string) => {
+        setGitProvider(v);
+        setGitBaseUrl(DEFAULT_BASE_URL[v] || '');
     };
 
     const validate = () => {
@@ -93,12 +131,31 @@ export default function GroupForm(props: GroupFormProps) {
         setSaveError('');
 
         try {
-            await createGroup({
-                name: formData.name.trim(),
-                description: formData.description.trim() || undefined,
-            });
+            if (isEditMode && editId != null) {
+                const payload: UpdateGroupPayload = {
+                    name: formData.name.trim(),
+                    description: formData.description.trim() || undefined,
+                };
+                await updateGroup(editId, payload);
+                onSuccess(formData.name.trim());
+            } else {
+                const payload: CreateGroupPayload = {
+                    name: formData.name.trim(),
+                    description: formData.description.trim() || undefined,
+                };
 
-            onSuccess(formData.name.trim());
+                if (gitEnabled && gitProvider && gitUsername && gitToken) {
+                    payload.gitConfig = {
+                        provider: gitProvider,
+                        username: gitUsername,
+                        token: gitToken,
+                        baseUrl: gitBaseUrl,
+                    };
+                }
+
+                await createGroup(payload);
+                onSuccess(formData.name.trim());
+            }
         } catch (error) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             if ((error as any)?.response?.status === 409) {
@@ -111,6 +168,8 @@ export default function GroupForm(props: GroupFormProps) {
         }
     };
 
+    const isGitLabOrGitea = gitProvider === 'gitlab' || gitProvider === 'gitea';
+
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => onOpenChange({ open: nextOpen })}>
             <DialogPortal>
@@ -118,7 +177,7 @@ export default function GroupForm(props: GroupFormProps) {
                 <DialogContent className="dialog-positioner">
                     <div className="dialog-content group-form-card">
                         <div className="group-form-header">
-                            <DialogTitle className="dialog-title">新建项目组</DialogTitle>
+                            <DialogTitle className="dialog-title">{isEditMode ? '编辑项目组' : '新建项目组'}</DialogTitle>
                             <DialogClose className="dialog-close-btn" aria-label="关闭">
                                 <X size={20} />
                             </DialogClose>
@@ -165,24 +224,87 @@ export default function GroupForm(props: GroupFormProps) {
                                 ) : null}
                             </div>
 
-                            <div className="group-form-footer">
+                            {/* 高级配置：Git 远程仓库 */}
+                            {!isEditMode && (
+                            <div className="group-form-section">
                                 <button
-                                    className="group-secondary-btn"
-                                    onClick={() => onOpenChange({ open: false })}
                                     type="button"
-                                    disabled={saving}
+                                    className="group-form-collapse-toggle"
+                                    onClick={() => setGitEnabled(v => !v)}
                                 >
-                                    取消
+                                    {gitEnabled ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                    <span>高级配置：远程仓库（可选）</span>
                                 </button>
-                                <button
-                                    className="group-primary-btn"
-                                    onClick={handleSubmit}
-                                    type="button"
-                                    disabled={saving}
-                                >
-                                    {saving ? '创建中...' : '确认创建'}
-                                </button>
+
+                                {gitEnabled ? (
+                                    <div className="group-form-git-fields">
+                                        <div className="group-form-git-row">
+                                            <label htmlFor="group-form-git-provider">提供商</label>
+                                            <SimpleSelect
+                                                id="group-form-git-provider"
+                                                value={gitProvider}
+                                                options={GIT_PROVIDERS}
+                                                onChange={handleGitProviderChange}
+                                            />
+                                        </div>
+
+                                        {isGitLabOrGitea && (
+                                            <div className="group-form-git-row">
+                                                <label htmlFor="group-form-git-baseurl">实例地址</label>
+                                                <input
+                                                    id="group-form-git-baseurl"
+                                                    type="text"
+                                                    value={gitBaseUrl}
+                                                    placeholder={gitProvider === 'gitlab' ? 'https://gitlab.example.com' : 'https://gitea.example.com'}
+                                                    onChange={(e) => setGitBaseUrl(e.target.value)}
+                                                />
+                                            </div>
+                                        )}
+
+                                        <div className="group-form-git-row">
+                                            <label htmlFor="group-form-git-username">用户名</label>
+                                            <input
+                                                id="group-form-git-username"
+                                                type="text"
+                                                value={gitUsername}
+                                                placeholder="GitHub / GitLab 用户名"
+                                                onChange={(e) => setGitUsername(e.target.value)}
+                                            />
+                                        </div>
+
+                                        <div className="group-form-git-row">
+                                            <label htmlFor="group-form-git-token">Access Token</label>
+                                            <input
+                                                id="group-form-git-token"
+                                                type="password"
+                                                value={gitToken}
+                                                placeholder="Personal Access Token"
+                                                onChange={(e) => setGitToken(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                ) : null}
                             </div>
+                            )}
+                        </div>
+
+                        <div className="group-form-footer">
+                            <button
+                                className="group-secondary-btn"
+                                onClick={() => onOpenChange({ open: false })}
+                                type="button"
+                                disabled={saving}
+                            >
+                                取消
+                            </button>
+                            <button
+                                className="group-primary-btn"
+                                onClick={handleSubmit}
+                                type="button"
+                                disabled={saving}
+                            >
+                                {saving ? (isEditMode ? '保存中...' : '创建中...') : (isEditMode ? '保存修改' : '确认创建')}
+                            </button>
                         </div>
                     </div>
                 </DialogContent>

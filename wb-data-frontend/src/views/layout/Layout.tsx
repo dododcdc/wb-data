@@ -20,6 +20,7 @@ import {
     loadDataSourceListModule,
     loadGroupListModule,
     loadGroupSettingsModule,
+    loadOfflineWorkbenchModule,
     loadQueryModule,
     loadUserListModule,
 } from '../../router/routeModules';
@@ -72,8 +73,12 @@ export default function Layout() {
             items.push({ kind: 'link', path: '/query', label: '自助查询', icon: Search });
         }
 
+        if (hasPermission('offline.read')) {
+            items.push({ kind: 'link', path: '/offline', label: '离线开发', icon: Layers });
+        }
+
         if (hasPermission('member.read')) {
-            items.push({ kind: 'link', path: '/group-settings', label: '成员与设置', icon: Settings });
+            items.push({ kind: 'link', path: '/group-settings', label: '项目组设置', icon: Settings });
         }
 
         if (systemAdmin) {
@@ -84,7 +89,7 @@ export default function Layout() {
                 icon: Shield,
                 children: [
                     { path: '/users', label: '用户管理', icon: Users },
-                    { path: '/groups', label: '项目组', icon: FolderOpen },
+                    { path: '/groups', label: '项目组管理', icon: FolderOpen },
                 ],
             });
         }
@@ -112,7 +117,7 @@ export default function Layout() {
     const handleLogout = () => {
         clearAuth();
     };
-    const isQueryPage = location.pathname.startsWith('/query');
+    const isFullBleedPage = location.pathname.startsWith('/query') || location.pathname.startsWith('/offline');
     const [routeIntent, setRouteIntent] = useState<string | null>(null);
 
     const routeBusy = Boolean(routeIntent && routeIntent !== location.pathname);
@@ -153,15 +158,20 @@ export default function Layout() {
 
             if (path === '/datasources') {
                 void loadDataSourceListModule();
+                if (currentGroup?.id == null) {
+                    return;
+                }
                 void queryClient.prefetchQuery({
                     queryKey: buildDataSourcePageQueryKey({
                         currentPage: 1,
                         pageSize: DEFAULT_PAGE_SIZE,
                         keyword: '',
+                        groupId: currentGroup.id,
                     }),
                     queryFn: () => getDataSourcePage({
                         page: 1,
                         size: DEFAULT_PAGE_SIZE,
+                        groupId: currentGroup.id,
                     }),
                 });
                 return;
@@ -170,6 +180,11 @@ export default function Layout() {
             if (path === '/query') {
                 void loadQueryModule();
                 void loadQueryEditorModule();
+                return;
+            }
+
+            if (path === '/offline') {
+                void loadOfflineWorkbenchModule();
                 return;
             }
 
@@ -187,7 +202,7 @@ export default function Layout() {
                 void loadGroupListModule();
             }
         };
-    }, [queryClient]);
+    }, [currentGroup?.id, queryClient]);
 
     const warmDropdownChildren = useCallback((item: NavDropdownItem) => {
         for (const child of item.children) {
@@ -407,7 +422,7 @@ export default function Layout() {
             </header>
             <OperationFeedback />
             <main className="main-content">
-                <div className={`content-area ${isQueryPage ? 'full-bleed' : ''}`}>
+                <div className={`content-area ${isFullBleedPage ? 'full-bleed' : ''}`}>
                     <Outlet />
                 </div>
             </main>

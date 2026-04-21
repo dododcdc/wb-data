@@ -477,14 +477,14 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => onOpenChange({ open: nextOpen })}>
             <DialogPortal>
-                <DialogOverlay className="dialog-backdrop" />
-                <DialogContent className="dialog-positioner">
-                    <div className="dialog-content console-form-card">
+                <DialogOverlay className="datasource-dialog-backdrop" />
+                <DialogContent className="datasource-dialog-positioner">
+                    <div className="datasource-dialog-content console-form-card">
                         <div className="form-header">
-                            <DialogTitle className="dialog-title">
+                            <DialogTitle className="datasource-dialog-title">
                                 {isEdit ? '编辑数据源' : '新建数据源'}
                             </DialogTitle>
-                            <DialogClose className="dialog-close-btn" aria-label="关闭">
+                            <DialogClose className="datasource-dialog-close-btn" aria-label="关闭">
                                 <X size={20} />
                             </DialogClose>
                         </div>

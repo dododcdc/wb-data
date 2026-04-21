@@ -23,7 +23,8 @@ import '@xyflow/react/dist/style.css';
 import { Copy, Network, Pencil, Trash2 } from 'lucide-react';
 import { FlowCanvasNode, type FlowCanvasNodeData } from './FlowCanvasNode';
 import { wouldCreateCycle, autoLayout } from './dagUtils';
-import type { OfflineFlowDocument, OfflineFlowNode } from '../../api/offline';
+import type { OfflineFlowDocument, OfflineFlowNode, OfflineFlowNodeKind } from '../../api/offline';
+import { isOfflineFlowNodeKind } from './offlineNodeKinds';
 
 const nodeTypes: NodeTypes = {
     flowNode: FlowCanvasNode,
@@ -38,8 +39,9 @@ interface FlowCanvasProps {
     onNodeLayoutCommit: (nodes: Node[]) => void;
     onSelectNode: (taskId: string) => void;
     onToggleTaskSelection: (taskId: string) => void;
+    onReplaceTaskSelection: (taskIds: string[]) => void;
     onDoubleClickNode: (taskId: string) => void;
-    onAddNode?: (kind: 'SQL' | 'SHELL', position: { x: number; y: number }) => void;
+    onAddNode?: (kind: OfflineFlowNodeKind, position: { x: number; y: number }) => void;
     onRenameNode?: (oldId: string, newId: string) => void;
     nodeIssues?: Record<string, string | null>;
 }
@@ -110,6 +112,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
         onNodeLayoutCommit,
         onSelectNode,
         onToggleTaskSelection,
+        onReplaceTaskSelection,
         onDoubleClickNode,
         onAddNode,
         onRenameNode,
@@ -321,7 +324,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
             })));
             onSelectNode(node.id);
         },
-        [onSelectNode, setEdges, setNodes],
+        [onReplaceTaskSelection, onSelectNode, setEdges, setNodes],
     );
 
     const onNodeDoubleClick = useCallback(
@@ -382,6 +385,9 @@ export default function FlowCanvas(props: FlowCanvasProps) {
             ...item,
             selected: selectedEdgeIdSet.has(item.id),
         })));
+        if (nextSelectedNodeIds.length > 0) {
+            // No longer syncing canvas selection to task selection checkboxes
+        }
     }, [setEdges, setNodes]);
 
     const onNodesDelete = useCallback(
@@ -483,7 +489,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
         (event: React.DragEvent) => {
             event.preventDefault();
             const kind = event.dataTransfer.getData('nodeKind');
-            if (kind !== 'SQL' && kind !== 'SHELL') {
+            if (!isOfflineFlowNodeKind(kind)) {
                 return;
             }
             if (!onAddNode) return;
@@ -560,7 +566,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                 onNodesDelete={onNodesDelete}
                 onEdgesDelete={onEdgesDelete}
                 onNodeContextMenu={onNodeContextMenu}
-                onPaneClick={(e) => {
+                onPaneClick={() => {
                     onPaneClick();
                     setContextMenu(null);
                     setEditingNodeId(null);

@@ -15,4 +15,21 @@ public class CreateGroupRequest {
 
     @Size(max = 255, message = "描述不能超过 255 个字符")
     private String description;
+
+    /** 可选的 Git 远程仓库初始配置 */
+    private GitConfigSetup gitConfig;
+
+    @Data
+    public static class GitConfigSetup {
+        @NotBlank(message = "Provider 不能为空")
+        private String provider;
+
+        @NotBlank(message = "用户名不能为空")
+        private String username;
+
+        @NotBlank(message = "Token 不能为空")
+        private String token;
+
+        private String baseUrl;
+    }
 }

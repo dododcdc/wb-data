@@ -1,12 +1,12 @@
 /* Dialog Styles */
-.dialog-backdrop {
+.datasource-dialog-backdrop {
     position: fixed;
     inset: 0;
     background-color: rgba(0, 0, 0, 0.4);
     z-index: 1000;
 }
 
-.dialog-positioner {
+.datasource-dialog-positioner {
     position: fixed;
     inset: 0;
     display: flex;
@@ -16,14 +16,14 @@
     padding: 40px;
 }
 
-.dialog-backdrop[hidden],
-.dialog-positioner[hidden],
-.dialog-backdrop[data-state="closed"],
-.dialog-positioner[data-state="closed"] {
+.datasource-dialog-backdrop[hidden],
+.datasource-dialog-positioner[hidden],
+.datasource-dialog-backdrop[data-state="closed"],
+.datasource-dialog-positioner[data-state="closed"] {
     display: none !important;
 }
 
-.dialog-content {
+.datasource-dialog-content {
     background: transparent;
     outline: none;
     max-height: 90vh;
@@ -53,7 +53,7 @@
     border-bottom: 1px solid var(--color-border);
 }
 
-.dialog-title {
+.datasource-dialog-title {
     font-size: 1.125rem;
     font-weight: 600;
     font-family: var(--font-serif);
@@ -61,7 +61,7 @@
     margin: 0;
 }
 
-.dialog-close-btn {
+.datasource-dialog-close-btn {
     background: transparent;
     border: none;
     color: var(--color-text-muted);
@@ -74,17 +74,17 @@
     transition: all 0.2s;
 }
 
-.dialog-close-btn:focus-visible {
+.datasource-dialog-close-btn:focus-visible {
     outline: 2px solid var(--color-brand);
     outline-offset: 2px;
 }
 
-.dialog-close-btn:hover {
+.datasource-dialog-close-btn:hover {
     background-color: var(--color-bg-tertiary);
     color: var(--color-text-primary);
 }
 
-.dialog-close-btn:focus-visible,
+.datasource-dialog-close-btn:focus-visible,
 .test-action-btn:focus-visible,
 .cancel-btn:focus-visible,
 .submit-btn:focus-visible {
@@ -114,6 +114,7 @@
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    background: var(--color-bg-primary);
 }
 
 .form-loading-state {
@@ -151,6 +152,7 @@
 .form-main-layout {
     display: flex;
     flex: 1;
+    background: var(--color-bg-primary);
 }
 
 /* Side Panel */
@@ -186,6 +188,7 @@
 .form-main-panel {
     flex: 1;
     padding: 32px 48px;
+    background: var(--color-bg-primary);
 }
 
 .config-section {
@@ -447,6 +450,7 @@
 .footer-right {
     display: flex;
     gap: 12px;
+    flex-shrink: 0;
 }
 
 .cancel-btn {
@@ -458,6 +462,7 @@
     color: var(--color-text-secondary);
     font-weight: 500;
     cursor: pointer;
+    white-space: nowrap;
 }
 
 .cancel-btn:hover {
@@ -475,6 +480,7 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
+    white-space: nowrap;
 }
 
 .submit-btn:hover {
@@ -495,7 +501,7 @@
 }
 
 @media (max-width: 1100px) {
-    .dialog-positioner {
+    .datasource-dialog-positioner {
         padding: 24px;
     }
 
@@ -519,7 +525,7 @@
 }
 
 @media (max-width: 820px) {
-    .dialog-positioner {
+    .datasource-dialog-positioner {
         padding: 16px;
     }
 
@@ -580,7 +586,7 @@
         padding: 14px 16px;
     }
 
-    .dialog-title {
+    .datasource-dialog-title {
         font-size: 1rem;
     }
 

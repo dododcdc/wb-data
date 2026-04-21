@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getDataSourceById, getDataSourcePage, type DataSource } from '../../api/datasource';
+import type { OfflineFlowNodeKind } from '../../api/offline';
 import { DS_PAGE_SIZE } from '../query/queryConstants';
+import { getAllowedDataSourceTypes, isSqlEditorNodeKind } from './offlineNodeKinds';
 
 export interface NodeEditorDataSourceOption {
     label: string;
@@ -11,7 +13,7 @@ export interface NodeEditorDataSourceOption {
 
 interface UseNodeEditorDataSourcesParams {
     open: boolean;
-    kind: 'SQL' | 'SHELL';
+    kind: OfflineFlowNodeKind;
     groupId: number | null;
     initialDataSourceId?: number;
 }
@@ -30,6 +32,7 @@ interface UseNodeEditorDataSourcesResult {
 
 export function useNodeEditorDataSources(_params: UseNodeEditorDataSourcesParams): UseNodeEditorDataSourcesResult {
     const { open, kind, groupId, initialDataSourceId } = _params;
+    const allowedDataSourceTypes = useMemo(() => getAllowedDataSourceTypes(kind), [kind]);
     const [currentDataSourceId, setCurrentDataSourceId] = useState<number | undefined>(initialDataSourceId);
     const [selectedDataSource, setSelectedDataSource] = useState<DataSource | null>(null);
     const [dataSources, setDataSources] = useState<DataSource[]>([]);
@@ -58,7 +61,7 @@ export function useNodeEditorDataSources(_params: UseNodeEditorDataSourcesParams
         keyword: string;
         append: boolean;
     }) => {
-        if (!groupId || !open || kind !== 'SQL') {
+        if (!groupId || !open || !isSqlEditorNodeKind(kind)) {
             return;
         }
 
@@ -76,6 +79,7 @@ export function useNodeEditorDataSources(_params: UseNodeEditorDataSourcesParams
                 page: nextPage,
                 size: DS_PAGE_SIZE,
                 status: 'ENABLED',
+                type: allowedDataSourceTypes.join(','),
             });
 
             if (requestId !== listRequestIdRef.current) {
@@ -102,12 +106,12 @@ export function useNodeEditorDataSources(_params: UseNodeEditorDataSourcesParams
                 }
             }
         }
-    }, [groupId, kind, open]);
+    }, [allowedDataSourceTypes, groupId, kind, open]);
 
     useEffect(() => {
         clearSearchTimer();
 
-        if (!open || kind !== 'SQL' || !groupId) {
+        if (!open || !isSqlEditorNodeKind(kind) || !groupId) {
             setCurrentDataSourceId(initialDataSourceId);
             setSelectedDataSource(null);
             setDataSources([]);
@@ -129,7 +133,7 @@ export function useNodeEditorDataSources(_params: UseNodeEditorDataSourcesParams
     }, [clearSearchTimer, groupId, initialDataSourceId, kind, loadDataSources, open]);
 
     useEffect(() => {
-        if (!open || kind !== 'SQL') {
+        if (!open || !isSqlEditorNodeKind(kind)) {
             return;
         }
 
@@ -150,6 +154,11 @@ export function useNodeEditorDataSources(_params: UseNodeEditorDataSourcesParams
                 if (requestId !== selectedRequestIdRef.current) {
                     return;
                 }
+                if (!allowedDataSourceTypes.includes(dataSource.type.toUpperCase())) {
+                    setCurrentDataSourceId(undefined);
+                    setSelectedDataSource(null);
+                    return;
+                }
                 setSelectedDataSource(dataSource);
                 setDataSources((previous) => previous.some((item) => item.id === dataSource.id) ? previous : [dataSource, ...previous]);
             })
@@ -159,7 +168,7 @@ export function useNodeEditorDataSources(_params: UseNodeEditorDataSourcesParams
                 }
                 console.error('Failed to resolve node editor data source', error);
             });
-    }, [currentDataSourceId, dataSources, kind, open]);
+    }, [allowedDataSourceTypes, currentDataSourceId, dataSources, kind, open]);
 
     useEffect(() => clearSearchTimer, [clearSearchTimer]);
 

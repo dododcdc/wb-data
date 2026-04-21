@@ -18,6 +18,8 @@ public class WbProjectGroup {
 
     private String description;
 
+    private String status = "active";
+
     private Long createdBy;
 
     private Long updatedBy;

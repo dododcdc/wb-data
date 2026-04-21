@@ -11,6 +11,7 @@ public class GroupDetailResponse {
     private Long id;
     private String name;
     private String description;
+    private String status;
     private Long memberCount;
     private LocalDateTime createdAt;
 
@@ -19,6 +20,7 @@ public class GroupDetailResponse {
         resp.setId(group.getId());
         resp.setName(group.getName());
         resp.setDescription(group.getDescription());
+        resp.setStatus(group.getStatus());
         resp.setMemberCount(memberCount);
         resp.setCreatedAt(group.getCreatedAt());
         return resp;

@@ -1,19 +1,21 @@
 package com.wbdata.offline.controller;
 
 import com.wbdata.auth.context.AuthContext;
+import com.wbdata.auth.context.RequireGroupAuth;
 import com.wbdata.auth.dto.AuthContextResponse;
 import com.wbdata.auth.enums.Permission;
-import com.wbdata.auth.service.AuthContextService;
-import com.wbdata.auth.service.AuthSession;
 import com.wbdata.common.Result;
+import com.wbdata.offline.dto.DebugDocumentExecutionRequest;
 import com.wbdata.offline.dto.DebugExecutionRequest;
 import com.wbdata.offline.dto.OfflineExecutionDetailResponse;
 import com.wbdata.offline.dto.OfflineExecutionListItem;
 import com.wbdata.offline.dto.OfflineExecutionLogEntry;
 import com.wbdata.offline.dto.OfflineExecutionResponse;
+import com.wbdata.offline.dto.OfflineExecutionScriptResponse;
 import com.wbdata.offline.dto.SavedDebugExecutionRequest;
 import com.wbdata.offline.service.OfflineExecutionService;
 import com.wbdata.offline.service.OfflineFlowContentService;
+import com.wbdata.offline.service.OfflineFlowDocumentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -36,23 +38,21 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OfflineExecutionController {
 
-    private final AuthContextService authContextService;
     private final OfflineExecutionService offlineExecutionService;
     private final OfflineFlowContentService offlineFlowContentService;
+    private final OfflineFlowDocumentService offlineFlowDocumentService;
 
     @Operation(summary = "基于当前草稿触发调试执行")
     @PostMapping("/debug")
-    public Result<OfflineExecutionResponse> createDebugExecution(@Valid @RequestBody DebugExecutionRequest request) {
-        AuthSession session = AuthContext.require();
-        requireGroupContext(session, request.groupId(), Permission.OFFLINE_WRITE.code());
-        return Result.success(offlineExecutionService.createDebugExecution(request, session.id()));
+    public Result<OfflineExecutionResponse> createDebugExecution(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
+                                                                 @Valid @RequestBody DebugExecutionRequest request) {
+        return Result.success(offlineExecutionService.createDebugExecution(request, context.user().id()));
     }
 
     @Operation(summary = "基于当前已保存文件触发调试执行")
     @PostMapping("/debug/current")
-    public Result<OfflineExecutionResponse> createDebugExecutionFromSaved(@Valid @RequestBody SavedDebugExecutionRequest request) {
-        AuthSession session = AuthContext.require();
-        AuthContextResponse context = requireGroupContext(session, request.groupId(), Permission.OFFLINE_WRITE.code());
+    public Result<OfflineExecutionResponse> createDebugExecutionFromSaved(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
+                                                                          @Valid @RequestBody SavedDebugExecutionRequest request) {
         var flow = offlineFlowContentService.getFlowContent(context.currentGroup().id(), request.flowPath());
         DebugExecutionRequest resolvedRequest = new DebugExecutionRequest(
                 context.currentGroup().id(),
@@ -61,64 +61,71 @@ public class OfflineExecutionController {
                 request.selectedTaskIds(),
                 request.mode()
         );
-        return Result.success(offlineExecutionService.createDebugExecution(resolvedRequest, session.id()));
+        return Result.success(offlineExecutionService.createDebugExecution(resolvedRequest, context.user().id()));
+    }
+
+    @Operation(summary = "基于当前草稿文档触发调试执行")
+    @PostMapping("/debug/document")
+    public Result<OfflineExecutionResponse> createDebugExecutionFromDocument(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
+                                                                             @Valid @RequestBody DebugDocumentExecutionRequest request) {
+        var compiledDraft = offlineFlowDocumentService.compileFlowDraft(request);
+        DebugExecutionRequest resolvedRequest = new DebugExecutionRequest(
+                context.currentGroup().id(),
+                request.flowPath(),
+                compiledDraft.content(),
+                request.selectedTaskIds(),
+                request.mode()
+        );
+        return Result.success(offlineExecutionService.createDebugExecution(
+                resolvedRequest,
+                compiledDraft.namespaceFileContents(),
+                context.user().id()
+        ));
     }
 
     @Operation(summary = "查询当前 Flow 的执行记录")
     @GetMapping
-    public Result<List<OfflineExecutionListItem>> listExecutions(@RequestParam Long groupId,
-                                                                 @RequestParam String flowPath) {
-        AuthSession session = AuthContext.require();
-        requireGroupContext(session, groupId, Permission.OFFLINE_READ.code());
-        return Result.success(offlineExecutionService.listExecutions(groupId, flowPath));
+    public Result<List<OfflineExecutionListItem>> listExecutions(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
+                                                                 @RequestParam String flowPath,
+                                                                 @RequestParam(required = false) Long requestedBy) {
+        return Result.success(offlineExecutionService.listExecutions(context.currentGroup().id(), flowPath, requestedBy));
     }
 
     @Operation(summary = "查询执行详情")
     @GetMapping("/{executionId}")
-    public Result<OfflineExecutionDetailResponse> getExecution(@RequestParam Long groupId,
+    public Result<OfflineExecutionDetailResponse> getExecution(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
                                                                @PathVariable String executionId) {
-        AuthSession session = AuthContext.require();
-        requireGroupContext(session, groupId, Permission.OFFLINE_READ.code());
-        return Result.success(offlineExecutionService.getExecution(groupId, executionId));
+        return Result.success(offlineExecutionService.getExecution(context.currentGroup().id(), executionId));
+    }
+
+    @Operation(summary = "查询执行脚本")
+    @GetMapping("/{executionId}/script")
+    public Result<OfflineExecutionScriptResponse> getExecutionScript(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
+                                                                     @PathVariable String executionId) {
+        return Result.success(offlineExecutionService.getExecutionScript(context.currentGroup().id(), executionId));
     }
 
     @Operation(summary = "查询执行日志")
     @GetMapping("/{executionId}/logs")
-    public Result<List<OfflineExecutionLogEntry>> getExecutionLogs(@RequestParam Long groupId,
+    public Result<List<OfflineExecutionLogEntry>> getExecutionLogs(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
                                                                    @PathVariable String executionId,
                                                                    @RequestParam(required = false) String taskId) {
-        AuthSession session = AuthContext.require();
-        requireGroupContext(session, groupId, Permission.OFFLINE_READ.code());
-        return Result.success(offlineExecutionService.getExecutionLogs(groupId, executionId, taskId));
+        return Result.success(offlineExecutionService.getExecutionLogs(context.currentGroup().id(), executionId, taskId));
     }
 
     @Operation(summary = "停止单个执行")
     @PostMapping("/{executionId}/stop")
-    public Result<Void> stopExecution(@RequestParam Long groupId,
+    public Result<Void> stopExecution(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
                                       @PathVariable String executionId) {
-        AuthSession session = AuthContext.require();
-        requireGroupContext(session, groupId, Permission.OFFLINE_WRITE.code());
-        offlineExecutionService.stopExecution(groupId, executionId);
+        offlineExecutionService.stopExecution(context.currentGroup().id(), executionId);
         return Result.success(null);
     }
 
     @Operation(summary = "停止当前 Flow 所有运行中的执行")
     @PostMapping("/stop-all")
-    public Result<Integer> stopAllExecutions(@RequestParam Long groupId,
+    public Result<Integer> stopAllExecutions(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
                                              @RequestParam String flowPath) {
-        AuthSession session = AuthContext.require();
-        requireGroupContext(session, groupId, Permission.OFFLINE_WRITE.code());
-        return Result.success(offlineExecutionService.stopAllExecutions(groupId, flowPath));
+        return Result.success(offlineExecutionService.stopAllExecutions(context.currentGroup().id(), flowPath));
     }
 
-    private AuthContextResponse requireGroupContext(AuthSession session, Long groupId, String permission) {
-        AuthContextResponse context = authContextService.getContext(session, groupId);
-        if (context.currentGroup() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前未选中项目组");
-        }
-        if (!context.permissions().contains(permission)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前项目组下无此操作权限: " + permission);
-        }
-        return context;
-    }
 }
