@@ -50,7 +50,18 @@ export function hasImplicitDependenciesAfterSaveRoundTrip({ nodeIds, edges }: In
         }
     }
 
-    const edgeSet = new Set(edges.map(e => `${e.source}---${e.target}`));
+    // Use a nested map for edge existence to avoid delimiter collisions when
+    // joining source and target strings.
+    const edgeMap = new Map<string, Set<string>>();
+    for (const e of edges) {
+        if (!nodes.has(e.source) || !nodes.has(e.target)) continue;
+        let targets = edgeMap.get(e.source);
+        if (!targets) {
+            targets = new Set<string>();
+            edgeMap.set(e.source, targets);
+        }
+        targets.add(e.target);
+    }
 
     // If any pair of nodes on adjacent layers (source layer +1 == target layer)
     // lacks an explicit edge, that dependency would become implicit after save
@@ -60,7 +71,7 @@ export function hasImplicitDependenciesAfterSaveRoundTrip({ nodeIds, edges }: In
             const ls = layer.get(s) ?? 0;
             const lt = layer.get(t) ?? 0;
             if (ls + 1 === lt) {
-                if (!edgeSet.has(`${s}---${t}`)) return true;
+                if (!(edgeMap.get(s)?.has(t))) return true;
             }
         }
     }

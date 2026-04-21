@@ -19,4 +19,30 @@ describe('hasImplicitDependenciesAfterSaveRoundTrip', () => {
             ],
         })).toBe(false);
     });
+
+    it('detects missing explicit edge when delimiter collision occurs', () => {
+        // Edge set flattening with '---' can collide: 'a---b' + '---' + 'c' == 'a' + '---' + 'b---c'
+        expect(hasImplicitDependenciesAfterSaveRoundTrip({
+            nodeIds: ['a---b', 'a', 'b---c', 'c', 'd'],
+            edges: [
+                { source: 'a', target: 'b---c' },
+                { source: 'd', target: 'c' },
+            ],
+        })).toBe(true);
+    });
+
+    it('fails safe when collision hides a missing explicit edge (regression)', () => {
+        // Setup where the only missing explicit edge is: 'a---b' -> 'c'
+        // but another explicit edge 'a' -> 'b---c' flattens to the same key 'a---b---c'
+        // If the implementation uses string concatenation, the missing edge may be hidden.
+        expect(hasImplicitDependenciesAfterSaveRoundTrip({
+            nodeIds: ['a---b', 'a', 'b---c', 'c', 'd'],
+            edges: [
+                { source: 'a', target: 'b---c' },
+                { source: 'a', target: 'c' },
+                { source: 'd', target: 'c' },
+                { source: 'c', target: 'b---c' },
+            ],
+        })).toBe(true);
+    });
 });
