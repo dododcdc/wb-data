@@ -157,15 +157,15 @@ public class OfflineFlowDocumentService {
         GraphDraft graphDraft = prepareGraphDraft(request.groupId(), request.stages(), request.edges());
         graphValidation.assertNoImplicitDependencies(graphDraft.nodes(), graphDraft.edges());
 
-        writeGraphScripts(repoPath, graphDraft);
-
-        // 3. Compile graph to YAML and write flow.yaml
         String compiledYaml = yamlSupport.compileGraph(
                 flowSource,
                 graphDraft.nodes(),
                 graphDraft.edges(),
                 graphDraft.dataSourceMap()
         );
+
+        writeGraphScripts(repoPath, graphDraft);
+
         Path flowFile = resolveRepoFile(repoPath, request.path());
         Files.createDirectories(flowFile.getParent());
         Files.writeString(flowFile, compiledYaml, StandardCharsets.UTF_8);

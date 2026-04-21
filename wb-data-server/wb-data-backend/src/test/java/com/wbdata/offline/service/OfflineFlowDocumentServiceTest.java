@@ -29,7 +29,7 @@ class OfflineFlowDocumentServiceTest {
     Path tempDir;
 
     @Test
-    void rejectsInvalidGraphBeforeWritingFlowScriptsOrLayout() throws Exception {
+    void doesNotWriteScriptsOrLayoutWhenGraphCompilationFails() throws Exception {
         OfflineProperties properties = new OfflineProperties();
         properties.setRepoBaseDir(tempDir.toString());
         properties.setRepoDirPrefix("wb-data-");
@@ -39,7 +39,7 @@ class OfflineFlowDocumentServiceTest {
         Files.createDirectories(flowDir);
 
         Path flowFile = flowDir.resolve("flow.yaml");
-        String originalFlow = new OfflineFlowYamlSupport().buildEmptyFlowYaml("demo", "pg-42");
+        String originalFlow = "id: demo\nnamespace: pg-42\ntasks: 1\n";
         Files.writeString(flowFile, originalFlow, StandardCharsets.UTF_8);
 
         OfflineFlowDocumentService service = new OfflineFlowDocumentService(
@@ -57,29 +57,23 @@ class OfflineFlowDocumentServiceTest {
                         "stage-1",
                         List.of(
                                 new SaveOfflineFlowNodeRequest("a", "echo a", "SHELL", "scripts/demo/a.sh", null, null),
-                                new SaveOfflineFlowNodeRequest("b", "echo b", "SHELL", "scripts/demo/b.sh", null, null),
-                                new SaveOfflineFlowNodeRequest("c", "echo c", "SQL", "scripts/demo/c.sql", null, null)
+                                new SaveOfflineFlowNodeRequest("b", "echo b", "SHELL", "scripts/demo/b.sh", null, null)
                         )
                 )),
                 List.of(new SaveOfflineFlowEdgeRequest("a", "b")),
                 Map.of(
                         "a", new NodePosition(0, 0),
-                        "b", new NodePosition(100, 0),
-                        "c", new NodePosition(200, 0)
+                        "b", new NodePosition(100, 0)
                 )
         );
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> service.saveFlowDocument(request));
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
-        assertEquals(
-                "当前 Flow 存在未明确配置的依赖关系，请先在画布中补全依赖线后再保存。",
-                ex.getReason()
-        );
+        assertEquals("Flow YAML tasks 定义不合法", ex.getReason());
 
         assertEquals(originalFlow, Files.readString(flowFile, StandardCharsets.UTF_8));
         assertFalse(Files.exists(repoRoot.resolve("scripts/demo/a.sh")));
         assertFalse(Files.exists(repoRoot.resolve("scripts/demo/b.sh")));
-        assertFalse(Files.exists(repoRoot.resolve("scripts/demo/c.sql")));
         assertFalse(Files.exists(flowDir.resolve(".layout.json")));
     }
 }
