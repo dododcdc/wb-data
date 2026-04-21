@@ -27,6 +27,23 @@ class OfflineFlowGraphValidationTest {
     }
 
     @Test
+    void rejectsGraphsWhereASharedSinkWouldCreateAnImplicitCrossLayerDependency() {
+        List<OfflineFlowYamlSupport.FlowNode> nodes = List.of(
+                new OfflineFlowYamlSupport.FlowNode("a", "SHELL", "scripts/demo/a.sh", null, null),
+                new OfflineFlowYamlSupport.FlowNode("b", "SHELL", "scripts/demo/b.sh", null, null),
+                new OfflineFlowYamlSupport.FlowNode("c", "SQL", "scripts/demo/c.sql", null, null),
+                new OfflineFlowYamlSupport.FlowNode("d", "SQL", "scripts/demo/d.sql", null, null)
+        );
+        List<OfflineFlowYamlSupport.FlowEdge> edges = List.of(
+                new OfflineFlowYamlSupport.FlowEdge("a", "b"),
+                new OfflineFlowYamlSupport.FlowEdge("b", "d"),
+                new OfflineFlowYamlSupport.FlowEdge("c", "d")
+        );
+
+        assertThrows(ResponseStatusException.class, () -> validation.assertNoImplicitDependencies(nodes, edges));
+    }
+
+    @Test
     void acceptsGraphsWhenAllRoundTripDependenciesAreExplicit() {
         List<OfflineFlowYamlSupport.FlowNode> nodes = List.of(
                 new OfflineFlowYamlSupport.FlowNode("a", "SHELL", "scripts/demo/a.sh", null, null),
