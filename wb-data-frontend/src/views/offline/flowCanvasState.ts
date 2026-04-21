@@ -37,6 +37,8 @@ export function buildFlowDocumentSignature(document: OfflineFlowDocument | null)
                 kind: node.kind,
                 scriptPath: node.scriptPath,
                 scriptContent: node.scriptContent,
+                dataSourceId: node.dataSourceId ?? null,
+                dataSourceType: node.dataSourceType ?? null,
             })),
         })),
         edges: buildEdgesFromCanvasEdges(document.edges.map((edge) => ({

@@ -81,9 +81,20 @@ import { registerEditorThemes } from '../query/editorUtils';
 import {
     applyCanvasStateToDocument,
     buildEdgesFromCanvasEdges,
-    buildFlowDocumentSignature,
     buildLayoutFromCanvasNodes,
 } from './flowCanvasState';
+import {
+    createFlowDraftSession,
+    flushNodeEditorDraft,
+    hasFlowDraftChanges,
+    prepareSessionForLeave,
+    rebaseFlowDraftSession,
+    replaceFlowDraftWorkingDocument,
+    resolveDraftConflict,
+    type FlowDraftSession,
+    type PendingNodeEditorDraft,
+} from './flowDraftController';
+import { createNodeEditorDraftScheduler } from './nodeEditorDraftScheduler';
 import { isExecuteButtonDisabled } from './executionToolbarState';
 import { buildDraftExecutionRequest } from './draftExecution';
 import { getExecutionPresentation, getExecutionStatusLabel, isRunningStatus } from './executionPresentation';
@@ -101,61 +112,26 @@ import {
     getOfflineNodeScriptExtension,
     isSqlEditorNodeKind,
 } from './offlineNodeKinds';
+import {
+    moveFolderRecoverySnapshots,
+    moveRecoverySnapshot,
+    readRecoverySnapshot,
+    removeFolderRecoverySnapshots,
+    removeRecoverySnapshot,
+    writeRecoverySnapshot,
+} from './recoverySnapshotStore';
+import { clearDeletedFolderDraftState } from './deletedFolderDraftState';
+import { finalizeNodeEditorDraftOnClose } from './nodeEditorCloseDraftState';
+import { resolveSelectionStateAfterAddingNode } from './nodeSelectionState';
+import { resolvePendingNodeEditorDraftAfterDocumentChange } from './pendingNodeEditorDraftState';
 import { cn } from '../../lib/utils';
 import './OfflineWorkbench.css';
 
-interface FlowDocumentDraft {
-    document: OfflineFlowDocument;
-    savedAt: number;
-    documentUpdatedAt: number;
-    originalSignature: string;
-    selectedNodeId: string | null;
-    selectedTaskIds: string[];
-}
-
-function cloneFlowDocument(document: OfflineFlowDocument): OfflineFlowDocument {
-    return {
-        ...document,
-        stages: document.stages.map((stage) => ({
-            ...stage,
-            nodes: stage.nodes.map((node) => ({ ...node })),
-        })),
-        edges: document.edges.map((edge) => ({ ...edge })),
-        layout: Object.fromEntries(
-            Object.entries(document.layout).map(([taskId, position]) => [taskId, { ...position }]),
-        ),
-    };
-}
+const EMPTY_SELECTED_TASK_IDS: string[] = [];
+const NODE_EDITOR_DRAFT_FLUSH_DELAY_MS = 180;
 
 function flattenDocumentNodes(document: OfflineFlowDocument | null) {
     return document?.stages.flatMap((stage) => stage.nodes) ?? [];
-}
-
-function draftStorageKey(groupId: number, path: string) {
-    return `wb-data:draft:${groupId}:${path}`;
-}
-
-function readDraft(groupId: number, path: string): FlowDocumentDraft | null {
-    const raw = window.localStorage.getItem(draftStorageKey(groupId, path));
-    if (!raw) return null;
-    try {
-        const parsed = JSON.parse(raw) as Partial<FlowDocumentDraft>;
-        if (!parsed || typeof parsed !== 'object') return null;
-        if (typeof parsed.savedAt !== 'number' || typeof parsed.documentUpdatedAt !== 'number') return null;
-        if (typeof parsed.originalSignature !== 'string') return null;
-        if (!parsed.document || !Array.isArray(parsed.document.stages)) return null;
-        return parsed as FlowDocumentDraft;
-    } catch {
-        return null;
-    }
-}
-
-function writeDraft(groupId: number, path: string, draft: FlowDocumentDraft) {
-    window.localStorage.setItem(draftStorageKey(groupId, path), JSON.stringify(draft));
-}
-
-function clearDraft(groupId: number, path: string) {
-    window.localStorage.removeItem(draftStorageKey(groupId, path));
 }
 
 function resolveSelectedNodeId(document: OfflineFlowDocument | null, candidate: string | null) {
@@ -816,11 +792,7 @@ export default function OfflineWorkbench() {
     const [activeFlowPath, setActiveFlowPath] = useState<string | null>(null);
     const [flowLoading, setFlowLoading] = useState(false);
     const [savingFlow, setSavingFlow] = useState(false);
-    const [flowDocument, setFlowDocument] = useState<OfflineFlowDocument | null>(null);
-    const [originalDocumentSignature, setOriginalDocumentSignature] = useState('');
-    const [staleDraft, setStaleDraft] = useState<FlowDocumentDraft | null>(null);
-    const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
-    const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+    const [draftSession, setDraftSession] = useState<FlowDraftSession | null>(null);
     const [executionDialogOpen, setExecutionDialogOpen] = useState(false);
     const [executions, setExecutions] = useState<OfflineExecutionListItem[]>([]);
     const [executionsLoading, setExecutionsLoading] = useState(false);
@@ -873,10 +845,31 @@ export default function OfflineWorkbench() {
     const canvasNodesRef = useRef<Node[]>([]);
     const canvasEdgesRef = useRef<Edge[]>([]);
     const canvasBoardRef = useRef<HTMLDivElement>(null);
+    const previousGroupIdRef = useRef<number | null>(groupId);
+    const pendingNodeEditorDraftRef = useRef<PendingNodeEditorDraft | null>(null);
+    const draftSessionRef = useRef<FlowDraftSession | null>(null);
+    const openFlowDocumentRef = useRef<(pathValue: string, options?: { preferRecoverySnapshot?: boolean }) => Promise<void>>(async () => {});
+    const leaveCurrentFlowRef = useRef<((session: FlowDraftSession | null, groupIdValue?: number | null) => void) | null>(null);
+    const nodeEditorDraftSchedulerRef = useRef<ReturnType<typeof createNodeEditorDraftScheduler> | null>(null);
 
+    if (!nodeEditorDraftSchedulerRef.current) {
+        nodeEditorDraftSchedulerRef.current = createNodeEditorDraftScheduler({
+            delayMs: NODE_EDITOR_DRAFT_FLUSH_DELAY_MS,
+            onFlush: (draft) => {
+                setDraftSession((current) => current
+                    ? flushNodeEditorDraft(current, draft)
+                    : current);
+            },
+        });
+    }
+
+    const flowDocument = draftSession?.workingDraft ?? null;
+    const activeNodeId = draftSession?.selectedNodeId ?? null;
+    const selectedTaskIds = draftSession?.selectedTaskIds ?? EMPTY_SELECTED_TASK_IDS;
+    const staleDraft = draftSession?.conflict ?? null;
     const activeNode = useMemo(() => flattenDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null, [activeNodeId, flowDocument]);
     const nodeCount = useMemo(() => flattenDocumentNodes(flowDocument).length, [flowDocument]);
-    const isDirty = flowDocument !== null && buildFlowDocumentSignature(flowDocument) !== originalDocumentSignature;
+    const isDirty = draftSession !== null && hasFlowDraftChanges(draftSession);
 
     const nodeIssues = useMemo(() => {
         if (!flowDocument) return {};
@@ -895,6 +888,14 @@ export default function OfflineWorkbench() {
         return issues;
     }, [flowDocument]);
     const branchLabel = repoStatus?.gitInitialized ? repoStatus.branch ?? 'main' : '未初始化';
+
+    useEffect(() => {
+        draftSessionRef.current = draftSession;
+    }, [draftSession]);
+
+    useEffect(() => () => {
+        nodeEditorDraftSchedulerRef.current?.cancel();
+    }, []);
 
     const refreshRepoStatus = useCallback(async () => {
         if (!groupId) return;
@@ -972,47 +973,68 @@ export default function OfflineWorkbench() {
         }
     }, [defaultTimezone, groupId, showFeedback]);
 
+    const setDraftSelectedNodeId = useCallback((nextSelectedNodeId: string | null) => {
+        setDraftSession((current) => current ? { ...current, selectedNodeId: nextSelectedNodeId } : current);
+    }, []);
+
+    const setDraftSelectedTaskIds = useCallback((nextValue: string[] | ((current: string[]) => string[])) => {
+        setDraftSession((current) => {
+            if (!current) return current;
+            const nextSelectedTaskIds = typeof nextValue === 'function' ? nextValue(current.selectedTaskIds) : nextValue;
+            return {
+                ...current,
+                selectedTaskIds: [...nextSelectedTaskIds],
+            };
+        });
+    }, []);
+
     const applyFlowDocumentPayload = useCallback((
         path: string,
         payload: OfflineFlowDocument,
-        options?: { preferDraft?: boolean; silentDraftRestore?: boolean }
+        options?: { preferRecoverySnapshot?: boolean }
     ) => {
-        const payloadSignature = buildFlowDocumentSignature(payload);
-        const preferDraft = options?.preferDraft ?? true;
-        const draft = groupId && preferDraft ? readDraft(groupId, path) : null;
-        let nextDocument = cloneFlowDocument(payload);
-        let nextSelectedNodeId = resolveSelectedNodeId(nextDocument, null);
-        let nextSelectedTaskIds: string[] = [];
-
-        if (draft) {
-            if (draft.savedAt > payload.documentUpdatedAt) {
-                nextDocument = cloneFlowDocument(draft.document);
-                nextSelectedNodeId = resolveSelectedNodeId(nextDocument, draft.selectedNodeId);
-                nextSelectedTaskIds = resolveSelectedTaskIds(nextDocument, draft.selectedTaskIds);
-                setStaleDraft(null);
-            } else if (buildFlowDocumentSignature(draft.document) !== payloadSignature) {
-                setStaleDraft(draft);
-            } else {
-                nextSelectedNodeId = resolveSelectedNodeId(nextDocument, draft.selectedNodeId);
-                nextSelectedTaskIds = resolveSelectedTaskIds(nextDocument, draft.selectedTaskIds);
-                setStaleDraft(null);
-            }
-        } else {
-            setStaleDraft(null);
-        }
-
+        const snapshot = groupId && (options?.preferRecoverySnapshot ?? true)
+            ? readRecoverySnapshot(groupId, path)
+            : null;
+        const nextSession = createFlowDraftSession({
+            path,
+            serverDocument: payload,
+            snapshot,
+        });
+        pendingNodeEditorDraftRef.current = null;
         setActiveFlowPath(path);
-        setFlowDocument(nextDocument);
-        setOriginalDocumentSignature(payloadSignature);
-        setActiveNodeId(resolveSelectedNodeId(nextDocument, nextSelectedNodeId));
-        setSelectedTaskIds(resolveSelectedTaskIds(nextDocument, nextSelectedTaskIds));
+        setDraftSession(nextSession);
     }, [groupId]);
 
-    const openFlowDocument = useCallback(async (pathValue: string, options?: { preferDraft?: boolean; silentDraftRestore?: boolean }) => {
+    const leaveCurrentFlow = useCallback((session: FlowDraftSession | null, groupIdValue: number | null = groupId) => {
+        if (!groupIdValue || !session) return null;
+        nodeEditorDraftSchedulerRef.current?.cancel();
+        const result = prepareSessionForLeave(session, pendingNodeEditorDraftRef.current, Date.now());
+        setDraftSession(result.nextSession);
+        pendingNodeEditorDraftRef.current = null;
+        if (result.snapshot) {
+            writeRecoverySnapshot(groupIdValue, session.path, result.snapshot);
+        } else if (session.conflict) {
+            writeRecoverySnapshot(groupIdValue, session.path, session.conflict.snapshot);
+        } else {
+            removeRecoverySnapshot(groupIdValue, session.path);
+        }
+        return result;
+    }, [groupId]);
+
+    useEffect(() => {
+        leaveCurrentFlowRef.current = leaveCurrentFlow;
+    }, [leaveCurrentFlow]);
+
+    const openFlowDocument = useCallback(async (pathValue: string, options?: { preferRecoverySnapshot?: boolean }) => {
         if (!groupId) return;
         const normalizedPath = pathValue.trim();
         if (!normalizedPath) {
             return;
+        }
+
+        if (draftSession && draftSession.path !== normalizedPath) {
+            leaveCurrentFlow(draftSession);
         }
 
         setFlowLoading(true);
@@ -1029,7 +1051,35 @@ export default function OfflineWorkbench() {
         } finally {
             setFlowLoading(false);
         }
-    }, [applyFlowDocumentPayload, groupId, loadScheduleSnapshot, showFeedback]);
+    }, [applyFlowDocumentPayload, draftSession, groupId, leaveCurrentFlow, loadScheduleSnapshot, showFeedback]);
+
+    useEffect(() => {
+        openFlowDocumentRef.current = openFlowDocument;
+    }, [openFlowDocument]);
+
+    useEffect(() => {
+        const previousGroupId = previousGroupIdRef.current;
+        if (previousGroupId !== null && previousGroupId !== groupId && draftSessionRef.current) {
+            leaveCurrentFlow(draftSessionRef.current, previousGroupId);
+        }
+        previousGroupIdRef.current = groupId;
+
+        setActiveFlowPath(null);
+        setDraftSession(null);
+        pendingNodeEditorDraftRef.current = null;
+
+        if (!groupId) return;
+        void refreshWorkspace();
+    }, [groupId, leaveCurrentFlow, refreshWorkspace]);
+
+    useEffect(() => {
+        if (!groupId || !draftSession) return;
+        const handleBeforeUnload = () => {
+            leaveCurrentFlow(draftSessionRef.current);
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [draftSession, groupId, leaveCurrentFlow]);
 
     const handlePush = useCallback(async () => {
         if (!groupId) return;
@@ -1148,11 +1198,10 @@ export default function OfflineWorkbench() {
         try {
             await deleteOfflineFlow(groupId, deleteFlowPath);
             setDeleteFlowDialogOpen(false);
-            // If the deleted flow is the currently open one, reset the canvas
+            removeRecoverySnapshot(groupId, deleteFlowPath);
             if (activeFlowPath === deleteFlowPath) {
                 setActiveFlowPath(null);
-                setFlowDocument(null);
-                setOriginalDocumentSignature('');
+                setDraftSession(null);
             }
             showFeedback({ tone: 'success', title: 'Flow 已删除', detail: deleteFlowName });
             await refreshRepoTree();
@@ -1174,17 +1223,21 @@ export default function OfflineWorkbench() {
         try {
             await renameOfflineFlow(groupId, renameFlowPath, newName);
             setRenameFlowDialogOpen(false);
-            // Update the path reference if this was the active flow
             const oldPath = renameFlowPath;
             const parts = oldPath.split('/');
             const newPath = parts.length >= 2 ? `_flows/${newName}/flow.yaml` : oldPath;
+            if (draftSession?.path === oldPath) {
+                leaveCurrentFlowRef.current?.(draftSession);
+                setDraftSession(null);
+            }
+            moveRecoverySnapshot(groupId, oldPath, newPath);
             if (activeFlowPath === oldPath) {
                 setActiveFlowPath(newPath);
             }
             showFeedback({ tone: 'success', title: 'Flow 已重命名', detail: `${renameFlowOriginalName} → ${newName}` });
             await refreshRepoTree();
             if (activeFlowPath === newPath || activeFlowPath === oldPath) {
-                await openFlowDocument(newPath !== oldPath ? newPath : oldPath);
+                await openFlowDocumentRef.current(newPath !== oldPath ? newPath : oldPath);
             }
         } catch (error) {
             showFeedback({
@@ -1195,7 +1248,7 @@ export default function OfflineWorkbench() {
         } finally {
             setRenameFlowLoading(false);
         }
-    }, [groupId, renameFlowPath, renameFlowName, renameFlowOriginalName, activeFlowPath, showFeedback, refreshRepoTree, openFlowDocument]);
+    }, [groupId, renameFlowPath, renameFlowName, renameFlowOriginalName, activeFlowPath, draftSession, showFeedback, refreshRepoTree]);
 
     const handleDeleteFolder = useCallback(async () => {
         if (!groupId || !deleteFolderPath) return;
@@ -1203,12 +1256,15 @@ export default function OfflineWorkbench() {
         try {
             await deleteOfflineFolder(groupId, deleteFolderPath);
             setDeleteFolderDialogOpen(false);
-            // If the active flow was inside this folder, clear it
-            if (activeFlowPath && activeFlowPath.startsWith(deleteFolderPath + '/')) {
-                setActiveFlowPath(null);
-                setFlowDocument(null);
-                setOriginalDocumentSignature('');
-            }
+            removeFolderRecoverySnapshots(groupId, deleteFolderPath);
+            const nextState = clearDeletedFolderDraftState({
+                activeFlowPath,
+                deleteFolderPath,
+                draftSession,
+                leaveCurrentFlow: (session) => { leaveCurrentFlowRef.current?.(session); },
+            });
+            setActiveFlowPath(nextState.activeFlowPath);
+            setDraftSession(nextState.draftSession);
             showFeedback({ tone: 'success', title: '文件夹已删除', detail: deleteFolderName });
             await refreshRepoTree();
         } catch (error) {
@@ -1220,7 +1276,7 @@ export default function OfflineWorkbench() {
         } finally {
             setDeleteFolderLoading(false);
         }
-    }, [groupId, deleteFolderPath, deleteFolderName, activeFlowPath, showFeedback, refreshRepoTree]);
+    }, [groupId, deleteFolderPath, deleteFolderName, activeFlowPath, draftSession, showFeedback, refreshRepoTree]);
 
     const handleRenameFolder = useCallback(async () => {
         if (!groupId || !renameFolderPath || !renameFolderName.trim()) return;
@@ -1234,12 +1290,16 @@ export default function OfflineWorkbench() {
             const parts = oldPath.split('/');
             parts[parts.length - 1] = newName;
             const newPath = parts.join('/');
+            if (draftSession?.path && draftSession.path.startsWith(`${oldPath}/`)) {
+                leaveCurrentFlowRef.current?.(draftSession);
+                setDraftSession(null);
+            }
+            moveFolderRecoverySnapshots(groupId, oldPath, newPath);
 
-            // If active flow was inside this folder, update its path
             if (activeFlowPath && activeFlowPath.startsWith(oldPath + '/')) {
                 const refreshedPath = activeFlowPath.replace(oldPath, newPath);
                 setActiveFlowPath(refreshedPath);
-                await openFlowDocument(refreshedPath);
+                await openFlowDocumentRef.current(refreshedPath);
             }
 
             showFeedback({ tone: 'success', title: '文件夹已重命名', detail: `${renameFolderOriginalName} → ${newName}` });
@@ -1253,7 +1313,7 @@ export default function OfflineWorkbench() {
         } finally {
             setRenameFolderLoading(false);
         }
-    }, [groupId, renameFolderPath, renameFolderName, renameFolderOriginalName, activeFlowPath, showFeedback, refreshRepoTree, openFlowDocument]);
+    }, [groupId, renameFolderPath, renameFolderName, renameFolderOriginalName, activeFlowPath, draftSession, showFeedback, refreshRepoTree]);
 
     const handleContextMenu = useCallback((event: React.MouseEvent, node: OfflineRepoTreeNode) => {
         event.preventDefault();
@@ -1318,25 +1378,6 @@ export default function OfflineWorkbench() {
         setRenameFolderDialogOpen(true);
     }, []);
 
-    const persistDraft = useCallback((
-        path: string,
-        document: OfflineFlowDocument,
-        originalSignature: string,
-        selectedNodeId: string | null,
-        taskIds: string[]
-    ) => {
-        if (!groupId) return;
-        writeDraft(groupId, path, {
-            document: cloneFlowDocument(document),
-            savedAt: Date.now(),
-            documentUpdatedAt: document.documentUpdatedAt,
-            originalSignature,
-            selectedNodeId,
-            selectedTaskIds: taskIds,
-        });
-    }, [groupId]);
-
-
     const loadExecutionDetail = useCallback(async (executionId: string) => {
         if (!groupId) return;
         setExecutionDetailLoading(true);
@@ -1386,38 +1427,6 @@ export default function OfflineWorkbench() {
     }, [activeFlowPath, executionRequestedByFilter, groupId, loadExecutionDetail, showFeedback]);
 
     useEffect(() => {
-        // Reset active flow states when switching groups
-        setActiveFlowPath(null);
-        setFlowDocument(null);
-        setActiveNodeId(null);
-        setSelectedTaskIds([]);
-        setStaleDraft(null);
-        setOriginalDocumentSignature('');
-
-        if (!groupId) return;
-        void refreshWorkspace();
-    }, [groupId, refreshWorkspace]);
-
-    useEffect(() => {
-        if (!groupId || !activeFlowPath || !flowDocument || !isDirty) return;
-        const timer = window.setTimeout(() => {
-            persistDraft(activeFlowPath, flowDocument, originalDocumentSignature, activeNodeId, selectedTaskIds);
-        }, 5000);
-        return () => window.clearTimeout(timer);
-    }, [activeFlowPath, activeNodeId, flowDocument, groupId, isDirty, originalDocumentSignature, persistDraft, selectedTaskIds]);
-
-    useEffect(() => {
-        if (!groupId || !activeFlowPath || !flowDocument) return;
-        const handleBeforeUnload = () => {
-            if (buildFlowDocumentSignature(flowDocument) !== originalDocumentSignature) {
-                persistDraft(activeFlowPath, flowDocument, originalDocumentSignature, activeNodeId, selectedTaskIds);
-            }
-        };
-        window.addEventListener('beforeunload', handleBeforeUnload);
-        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, [activeFlowPath, activeNodeId, flowDocument, groupId, originalDocumentSignature, persistDraft, selectedTaskIds]);
-
-    useEffect(() => {
         if (!executionDialogOpen || !activeFlowPath) return;
         void refreshExecutions(null);
     }, [activeFlowPath, executionDialogOpen, refreshExecutions]);
@@ -1443,60 +1452,66 @@ export default function OfflineWorkbench() {
     }, []);
 
     const handleToggleTaskSelection = useCallback((taskId: string) => {
-        setSelectedTaskIds((current) => current.includes(taskId)
+        setDraftSelectedTaskIds((current) => current.includes(taskId)
             ? current.filter((item) => item !== taskId)
             : [...current, taskId]);
-    }, []);
+    }, [setDraftSelectedTaskIds]);
 
     const handleReplaceTaskSelection = useCallback((taskIds: string[]) => {
-        setSelectedTaskIds(() => resolveSelectedTaskIds(flowDocument, taskIds));
-    }, [flowDocument]);
+        setDraftSelectedTaskIds(resolveSelectedTaskIds(flowDocument, taskIds));
+    }, [flowDocument, setDraftSelectedTaskIds]);
 
     const handleToggleTreeNode = useCallback((nodeId: string) => {
         setExpandedTreeIds((current) => current.includes(nodeId)
             ? current.filter((item) => item !== nodeId)
             : [...current, nodeId]);
-    }, []);
+        }, []);
 
     const handleOpenNodeEditor = useCallback((taskId: string) => {
         const node = flattenDocumentNodes(flowDocument).find((n) => n.taskId === taskId);
         if (!node) return;
-        setActiveNodeId(taskId);
+        nodeEditorDraftSchedulerRef.current?.cancel();
+        setDraftSelectedNodeId(taskId);
         setNodeEditorContent(node.scriptContent);
+        pendingNodeEditorDraftRef.current = {
+            taskId,
+            scriptContent: node.scriptContent,
+            ...(node.dataSourceId !== undefined ? { dataSourceId: node.dataSourceId } : {}),
+            ...(node.dataSourceType !== undefined ? { dataSourceType: node.dataSourceType } : {}),
+        };
         setNodeEditorOpen(true);
-    }, [flowDocument]);
+    }, [flowDocument, setDraftSelectedNodeId]);
 
-    const handleNodeEditorSave = useCallback((content: string, dataSourceId?: number, dataSourceType?: string) => {
-        if (!activeNodeId || !flowDocument) return;
-        const activeEditingNode = flattenDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null;
-        const validation = validateSqlNodeDataSourceRequirement({
-            kind: activeEditingNode?.kind ?? 'SHELL',
-            dataSourceId,
-            dataSourceType,
-            strict: false,
-        });
-        setFlowDocument((current) => {
-            if (!current) return current;
-            return {
-                ...current,
-                stages: current.stages.map((stage) => ({
-                    ...stage,
-                    nodes: stage.nodes.map((node) =>
-                        node.taskId === activeNodeId 
-                          ? { ...node, scriptContent: content, dataSourceId, dataSourceType } 
-                          : node,
-                    ),
-                })),
-            };
-        });
-        if (validation.feedback) {
-            showFeedback(validation.feedback);
+    const buildPendingNodeEditorDraft = useCallback((
+        taskId: string,
+        scriptContent: string,
+        dataSourceId?: number,
+        dataSourceType?: string
+    ): PendingNodeEditorDraft => ({
+        taskId,
+        scriptContent,
+        ...(dataSourceId !== undefined ? { dataSourceId } : {}),
+        ...(dataSourceType !== undefined ? { dataSourceType } : {}),
+    }), []);
+
+    const handleNodeEditorOpenChange = useCallback((open: boolean) => {
+        setNodeEditorOpen(open);
+        if (!open) {
+            pendingNodeEditorDraftRef.current = finalizeNodeEditorDraftOnClose({
+                pendingDraft: pendingNodeEditorDraftRef.current,
+                flushNow: (draft) => nodeEditorDraftSchedulerRef.current?.flushNow(draft),
+                cancel: () => nodeEditorDraftSchedulerRef.current?.cancel(),
+            });
+            const currentNode = flattenDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null;
+            setNodeEditorContent(currentNode?.scriptContent ?? '');
         }
-        setNodeEditorOpen(false);
-    }, [activeNodeId, flowDocument, showFeedback]);
+    }, [activeNodeId, flowDocument]);
 
     const handleNodeEditorTempSave = useCallback((content: string, dataSourceId?: number, dataSourceType?: string) => {
-        if (!activeNodeId || !flowDocument) return;
+        if (!activeNodeId) return;
+        const pendingDraft = buildPendingNodeEditorDraft(activeNodeId, content, dataSourceId, dataSourceType);
+        pendingNodeEditorDraftRef.current = pendingDraft;
+        nodeEditorDraftSchedulerRef.current?.flushNow(pendingDraft);
         const activeEditingNode = flattenDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null;
         const validation = validateSqlNodeDataSourceRequirement({
             kind: activeEditingNode?.kind ?? 'SHELL',
@@ -1504,22 +1519,35 @@ export default function OfflineWorkbench() {
             dataSourceType,
             strict: false,
         });
-        setFlowDocument((current) => {
-            if (!current) return current;
-            return {
-                ...current,
-                stages: current.stages.map((stage) => ({
-                    ...stage,
-                    nodes: stage.nodes.map((node) =>
-                        node.taskId === activeNodeId 
-                          ? { ...node, scriptContent: content, dataSourceId, dataSourceType } 
-                          : node,
-                    ),
-                })),
-            };
+        showFeedback(validation.feedback ?? {
+            tone: 'success',
+            title: '已更新当前草稿',
+            detail: '当前修改仅保留在本机恢复稿中，点击“保存 Flow”后才会写入本地仓库。',
         });
-        showFeedback(validation.feedback ?? { tone: 'success', title: '暂存成功', detail: '已更新至内存，尚未落盘保存。' });
-    }, [activeNodeId, flowDocument, showFeedback]);
+        handleNodeEditorOpenChange(false);
+    }, [activeNodeId, buildPendingNodeEditorDraft, flowDocument, handleNodeEditorOpenChange, showFeedback]);
+
+    const handleNodeEditorContentChange = useCallback((content: string) => {
+        setNodeEditorContent(content);
+        if (!activeNodeId) return;
+        const currentPending = pendingNodeEditorDraftRef.current;
+        const pendingDraft = buildPendingNodeEditorDraft(
+            activeNodeId,
+            content,
+            currentPending?.dataSourceId,
+            currentPending?.dataSourceType,
+        );
+        pendingNodeEditorDraftRef.current = pendingDraft;
+        nodeEditorDraftSchedulerRef.current?.schedule(pendingDraft);
+    }, [activeNodeId, buildPendingNodeEditorDraft]);
+
+    const handleNodeEditorDraftChange = useCallback((content: string, dataSourceId?: number, dataSourceType?: string) => {
+        setNodeEditorContent(content);
+        if (!activeNodeId) return;
+        const pendingDraft = buildPendingNodeEditorDraft(activeNodeId, content, dataSourceId, dataSourceType);
+        pendingNodeEditorDraftRef.current = pendingDraft;
+        nodeEditorDraftSchedulerRef.current?.flushNow(pendingDraft);
+    }, [activeNodeId, buildPendingNodeEditorDraft]);
 
     const handleRenameNode = useCallback((oldId: string, newId: string) => {
         if (!oldId || !newId || !flowDocument) return;
@@ -1541,11 +1569,10 @@ export default function OfflineWorkbench() {
             return;
         }
 
-        setFlowDocument(current => {
+        setDraftSession(current => {
             if (!current) return current;
-            
-            // 1. Update stages/nodes and scriptPath
-            const nextStages = current.stages.map(stage => ({
+
+            const nextStages = current.workingDraft.stages.map(stage => ({
                 ...stage,
                 nodes: stage.nodes.map(node => {
                     if (node.taskId === oldId) {
@@ -1562,8 +1589,7 @@ export default function OfflineWorkbench() {
                 })
             }));
 
-            // 2. Update edges
-            const nextEdges = (current.edges || []).map(edge => {
+            const nextEdges = (current.workingDraft.edges || []).map(edge => {
                 let changed = false;
                 let source = edge.source;
                 let target = edge.target;
@@ -1578,28 +1604,27 @@ export default function OfflineWorkbench() {
                 return changed ? { ...edge, source, target, id: `${source}->${target}` } : edge;
             });
 
-            // 3. Update layout keys
-            const nextLayout = { ...(current.layout || {}) };
+            const nextLayout = { ...(current.workingDraft.layout || {}) };
             if (nextLayout[oldId]) {
                 nextLayout[cleanNewId] = nextLayout[oldId];
                 delete nextLayout[oldId];
             }
 
-            return {
-                ...current,
+            const nextDocument = {
+                ...current.workingDraft,
                 stages: nextStages,
                 edges: nextEdges,
-                layout: nextLayout
+                layout: nextLayout,
             };
+            return replaceFlowDraftWorkingDocument(current, nextDocument);
         });
 
-        // 4. Update UI selections
         if (activeNodeId === oldId) {
-            setActiveNodeId(cleanNewId);
+            setDraftSelectedNodeId(cleanNewId);
         }
-        setSelectedTaskIds(currIds => currIds.map(id => id === oldId ? cleanNewId : id));
+        setDraftSelectedTaskIds(currIds => currIds.map(id => id === oldId ? cleanNewId : id));
 
-    }, [activeNodeId, flowDocument, setSelectedTaskIds, showFeedback]);
+    }, [activeNodeId, flowDocument, setDraftSelectedNodeId, setDraftSelectedTaskIds, showFeedback]);
 
     const handleAddCanvasNode = useCallback((kind: OfflineFlowNodeKind, position: { x: number; y: number }) => {
         if (!flowDocument) return;
@@ -1623,9 +1648,9 @@ export default function OfflineWorkbench() {
             scriptContent: getOfflineNodeDefaultScript(kind),
         };
 
-        setFlowDocument((current) => {
+        setDraftSession((current) => {
             if (!current) return current;
-            const updatedStages = [...current.stages];
+            const updatedStages = [...current.workingDraft.stages];
             if (updatedStages.length === 0) {
                 updatedStages.push({
                     stageId: 'main',
@@ -1639,64 +1664,95 @@ export default function OfflineWorkbench() {
                 };
             }
 
-            return {
-                ...current,
+            return replaceFlowDraftWorkingDocument(current, {
+                ...current.workingDraft,
                 stages: updatedStages,
                 layout: {
-                    ...(current.layout || {}),
+                    ...(current.workingDraft.layout || {}),
                     [newTaskId]: position,
                 },
-            };
+            });
         });
 
-        setActiveNodeId(newTaskId);
-    }, [flowDocument]);
+        const { nextActiveNodeId, nextSelectedTaskIds } = resolveSelectionStateAfterAddingNode({
+            currentSelectedTaskIds: selectedTaskIds,
+            newTaskId,
+        });
+        setDraftSelectedNodeId(nextActiveNodeId);
+        setDraftSelectedTaskIds(nextSelectedTaskIds);
+    }, [flowDocument, selectedTaskIds, setDraftSelectedNodeId, setDraftSelectedTaskIds]);
 
     const handleCanvasNodesChange = useCallback((nodes: Node[]) => {
         const previousNodeIds = new Set(canvasNodesRef.current.map((node) => node.id));
         const nextNodeIds = new Set(nodes.map((node) => node.id));
         canvasNodesRef.current = nodes;
-        if (!flowDocument) return;
-
         const nodeSetChanged = previousNodeIds.size !== nextNodeIds.size
             || Array.from(previousNodeIds).some((nodeId) => !nextNodeIds.has(nodeId));
         if (!nodeSetChanged) {
             return;
         }
 
-        const nextDocument = applyCanvasStateToDocument(flowDocument, nodes, canvasEdgesRef.current);
-        setFlowDocument(nextDocument);
-        setActiveNodeId((current) => resolveSelectedNodeId(nextDocument, current));
-        setSelectedTaskIds((current) => resolveSelectedTaskIds(nextDocument, current));
-    }, [flowDocument]);
+        const pendingDraft = pendingNodeEditorDraftRef.current;
+        let nextPendingDraft = pendingDraft;
+
+        setDraftSession((current) => {
+            if (!current) {
+                nextPendingDraft = null;
+                return current;
+            }
+
+            const currentWithPending = pendingDraft
+                ? flushNodeEditorDraft(current, pendingDraft)
+                : current;
+            const nextDocument = applyCanvasStateToDocument(currentWithPending.workingDraft, nodes, canvasEdgesRef.current);
+            nextPendingDraft = resolvePendingNodeEditorDraftAfterDocumentChange(pendingDraft, nextDocument);
+            const nextSelectedNodeId = resolveSelectedNodeId(nextDocument, activeNodeId);
+            const nextSelectedTaskIds = resolveSelectedTaskIds(nextDocument, selectedTaskIds);
+
+            return {
+                ...replaceFlowDraftWorkingDocument(currentWithPending, nextDocument),
+                selectedNodeId: nextSelectedNodeId,
+                selectedTaskIds: [...nextSelectedTaskIds],
+            };
+        });
+
+        pendingNodeEditorDraftRef.current = nextPendingDraft;
+        if (!nextPendingDraft) {
+            nodeEditorDraftSchedulerRef.current?.cancel();
+            if (pendingDraft) {
+                setNodeEditorOpen(false);
+                setNodeEditorContent('');
+            }
+        }
+    }, [activeNodeId, selectedTaskIds]);
 
     const handleCanvasEdgesChange = useCallback((edges: Edge[]) => {
         const nextEdges = buildEdgesFromCanvasEdges(edges);
         canvasEdgesRef.current = edges;
-        setFlowDocument((current) => {
+        setDraftSession((current) => {
             if (!current) return current;
-            if (JSON.stringify(current.edges) === JSON.stringify(nextEdges)) {
+            if (JSON.stringify(current.workingDraft.edges) === JSON.stringify(nextEdges)) {
                 return current;
             }
-            return {
-                ...current,
+            return replaceFlowDraftWorkingDocument(current, {
+                ...current.workingDraft,
                 edges: nextEdges,
-            };
+            });
         });
     }, []);
 
     const handleCanvasNodeLayoutCommit = useCallback((nodes: Node[]) => {
         const nextLayout = buildLayoutFromCanvasNodes(nodes);
         canvasNodesRef.current = nodes;
-        setFlowDocument((current) => {
+        setDraftSession((current) => {
             if (!current) return current;
-            if (JSON.stringify(current.layout) === JSON.stringify(nextLayout)) {
+            if (JSON.stringify(current.workingDraft.layout) === JSON.stringify(nextLayout)) {
                 return current;
             }
-            return {
-                ...current,
+            return replaceFlowDraftWorkingDocument(current, {
+                ...current.workingDraft,
                 layout: nextLayout,
-            };
+            });
         });
     }, []);
 
@@ -1723,34 +1779,40 @@ export default function OfflineWorkbench() {
     }, [flowDocument, showFeedback]);
 
     const handleSaveFlow = useCallback(async (nodeOverride?: { taskId: string; content: string; dataSourceId?: number; dataSourceType?: string }) => {
-        if (!groupId || !activeFlowPath || !flowDocument) return;
-        
-        if (!validateDocumentForAction(nodeOverride)) {
+        if (!groupId || !activeFlowPath || !draftSession) return;
+        nodeEditorDraftSchedulerRef.current?.cancel();
+        const pendingNodeOverride = pendingNodeEditorDraftRef.current
+            ? {
+                taskId: pendingNodeEditorDraftRef.current.taskId,
+                content: pendingNodeEditorDraftRef.current.scriptContent,
+                dataSourceId: pendingNodeEditorDraftRef.current.dataSourceId,
+                dataSourceType: pendingNodeEditorDraftRef.current.dataSourceType,
+            }
+            : undefined;
+        const effectiveNodeOverride = nodeOverride ?? pendingNodeOverride;
+
+        if (!validateDocumentForAction(effectiveNodeOverride)) {
             return;
         }
+        const sessionForSave = effectiveNodeOverride
+            ? flushNodeEditorDraft(draftSession, {
+                taskId: effectiveNodeOverride.taskId,
+                scriptContent: effectiveNodeOverride.content,
+                dataSourceId: effectiveNodeOverride.dataSourceId,
+                dataSourceType: effectiveNodeOverride.dataSourceType,
+            })
+            : draftSession;
         setSavingFlow(true);
         try {
-            const currentEdges = canvasEdgesRef.current;
-            const currentNodes = canvasNodesRef.current;
-            const draftDocument = applyCanvasStateToDocument(flowDocument, currentNodes, currentEdges);
-            
-            if (nodeOverride) {
-                draftDocument.stages.forEach(stage => {
-                    stage.nodes.forEach(node => {
-                        if (node.taskId === nodeOverride.taskId) {
-                            node.scriptContent = nodeOverride.content;
-                            node.dataSourceId = nodeOverride.dataSourceId;
-                            node.dataSourceType = nodeOverride.dataSourceType;
-                        }
-                    });
-                });
-            }
+            setDraftSession(sessionForSave);
+            pendingNodeEditorDraftRef.current = null;
+            const draftDocument = sessionForSave.workingDraft;
 
             const response = await saveOfflineFlowDocument({
                 groupId,
-                path: activeFlowPath,
-                documentHash: flowDocument.documentHash,
-                documentUpdatedAt: flowDocument.documentUpdatedAt,
+                path: sessionForSave.path,
+                documentHash: sessionForSave.baseDocument.documentHash,
+                documentUpdatedAt: sessionForSave.baseDocument.documentUpdatedAt,
                 stages: draftDocument.stages.map((stage) => ({
                     stageId: stage.stageId,
                     nodes: stage.nodes.map((node) => ({
@@ -1765,15 +1827,9 @@ export default function OfflineWorkbench() {
                 edges: draftDocument.edges,
                 layout: draftDocument.layout,
             });
-            const nextDocument = cloneFlowDocument(response);
-            const nextSignature = buildFlowDocumentSignature(response);
-            const nextSelectedNodeId = resolveSelectedNodeId(nextDocument, activeNodeId);
-            const nextSelectedTaskIds = resolveSelectedTaskIds(nextDocument, selectedTaskIds);
-            setFlowDocument(nextDocument);
-            setOriginalDocumentSignature(nextSignature);
-            setActiveNodeId(nextSelectedNodeId);
-            setSelectedTaskIds(nextSelectedTaskIds);
-            persistDraft(activeFlowPath, nextDocument, nextSignature, nextSelectedNodeId, nextSelectedTaskIds);
+            const nextSession = rebaseFlowDraftSession(sessionForSave, response);
+            setDraftSession(nextSession);
+            removeRecoverySnapshot(groupId, sessionForSave.path);
             await refreshRepoStatus();
             showFeedback({
                 tone: 'success',
@@ -1781,11 +1837,15 @@ export default function OfflineWorkbench() {
                 detail: '节点内容、依赖关系和布局已写回本地仓库。',
             });
         } catch (error) {
-            if (error instanceof AxiosError && error.response?.status === 409 && groupId && activeFlowPath && flowDocument) {
-                persistDraft(activeFlowPath, flowDocument, originalDocumentSignature, activeNodeId, selectedTaskIds);
+            if (error instanceof AxiosError && error.response?.status === 409) {
+                const snapshotResult = prepareSessionForLeave(sessionForSave, null, Date.now());
+                pendingNodeEditorDraftRef.current = null;
+                setDraftSession(snapshotResult.nextSession);
+                if (snapshotResult.snapshot) {
+                    writeRecoverySnapshot(groupId, activeFlowPath, snapshotResult.snapshot);
+                }
                 const latest = await getOfflineFlowDocument(groupId, activeFlowPath);
-                applyFlowDocumentPayload(activeFlowPath, latest, { preferDraft: false, silentDraftRestore: true });
-                setStaleDraft(readDraft(groupId, activeFlowPath));
+                applyFlowDocumentPayload(activeFlowPath, latest);
                 await loadScheduleSnapshot(activeFlowPath);
             }
             showFeedback({
@@ -1798,16 +1858,13 @@ export default function OfflineWorkbench() {
         }
     }, [
         activeFlowPath,
-        activeNodeId,
         applyFlowDocumentPayload,
-        flowDocument,
+        draftSession,
         groupId,
         loadScheduleSnapshot,
-        originalDocumentSignature,
-        persistDraft,
         refreshRepoStatus,
-        selectedTaskIds,
         showFeedback,
+        validateDocumentForAction,
     ]);
 
     const handleOpenCommitDialog = useCallback(async () => {
@@ -1942,7 +1999,7 @@ export default function OfflineWorkbench() {
                 contentHash: scheduleBase.contentHash,
                 fileUpdatedAt: scheduleBase.fileUpdatedAt,
             });
-            await openFlowDocument(activeFlowPath, { preferDraft: false, silentDraftRestore: true });
+            await openFlowDocument(activeFlowPath);
             showFeedback({
                 tone: 'success',
                 title: '调度已更新',
@@ -1970,7 +2027,7 @@ export default function OfflineWorkbench() {
                 contentHash: schedule.contentHash,
                 fileUpdatedAt: schedule.fileUpdatedAt,
             });
-            await openFlowDocument(activeFlowPath, { preferDraft: false, silentDraftRestore: true });
+            await openFlowDocument(activeFlowPath);
             showFeedback({
                 tone: 'success',
                 title: enabled ? '调度已启用' : '调度已停用',
@@ -1989,11 +2046,7 @@ export default function OfflineWorkbench() {
 
     const handleRestoreStaleDraft = useCallback(() => {
         if (!staleDraft) return;
-        const restoredDocument = cloneFlowDocument(staleDraft.document);
-        setFlowDocument(restoredDocument);
-        setActiveNodeId(resolveSelectedNodeId(restoredDocument, staleDraft.selectedNodeId));
-        setSelectedTaskIds(resolveSelectedTaskIds(restoredDocument, staleDraft.selectedTaskIds));
-        setStaleDraft(null);
+        setDraftSession((current) => current ? resolveDraftConflict(current, 'restore-local') : current);
         showFeedback({
             tone: 'info',
             title: '已恢复旧草稿',
@@ -2003,8 +2056,8 @@ export default function OfflineWorkbench() {
 
     const handleDiscardStaleDraft = useCallback(() => {
         if (!groupId || !activeFlowPath) return;
-        clearDraft(groupId, activeFlowPath);
-        setStaleDraft(null);
+        removeRecoverySnapshot(groupId, activeFlowPath);
+        setDraftSession((current) => current ? resolveDraftConflict(current, 'load-server') : current);
         showFeedback({
             tone: 'info',
             title: '已丢弃本地草稿',
@@ -2166,9 +2219,9 @@ export default function OfflineWorkbench() {
                                         checked={nodeCount > 0 && selectedTaskIds.length === nodeCount}
                                         onChange={(e) => {
                                             if (e.target.checked) {
-                                                setSelectedTaskIds(flattenDocumentNodes(flowDocument).map((n) => n.taskId));
+                                                setDraftSelectedTaskIds(flattenDocumentNodes(flowDocument).map((n) => n.taskId));
                                             } else {
-                                                setSelectedTaskIds([]);
+                                                setDraftSelectedTaskIds([]);
                                             }
                                         }}
                                         disabled={nodeCount === 0}
@@ -2349,16 +2402,16 @@ export default function OfflineWorkbench() {
                                     <div className="offline-conflict-copy">
                                         <AlertTriangle size={16} />
                                         <div>
-                                            <strong>检测到本地草稿基于旧版本</strong>
-                                            <p>当前已加载最新文件。你可以恢复旧草稿继续编辑，也可以丢弃草稿保持最新内容。</p>
+                                            <strong>发现未保存的本地恢复稿</strong>
+                                            <p>当前文件也有更新。你可以继续恢复稿，或加载仓库最新内容。</p>
                                         </div>
                                     </div>
                                     <div className="offline-conflict-actions">
                                         <Button type="button" variant="outline" size="sm" onClick={handleDiscardStaleDraft}>
-                                            加载最新
+                                            加载最新内容
                                         </Button>
                                         <Button type="button" size="sm" onClick={handleRestoreStaleDraft}>
-                                            保持本地草稿
+                                            继续恢复稿
                                         </Button>
                                     </div>
                                 </section>
@@ -2374,7 +2427,7 @@ export default function OfflineWorkbench() {
                                         onNodesChange={handleCanvasNodesChange}
                                         onEdgesChange={handleCanvasEdgesChange}
                                         onNodeLayoutCommit={handleCanvasNodeLayoutCommit}
-                                        onSelectNode={setActiveNodeId}
+                                        onSelectNode={setDraftSelectedNodeId}
                                         onToggleTaskSelection={handleToggleTaskSelection}
                                         onReplaceTaskSelection={handleReplaceTaskSelection}
                                         onDoubleClickNode={handleOpenNodeEditor}
@@ -2500,10 +2553,10 @@ export default function OfflineWorkbench() {
                 activeNode={activeNode}
                 groupId={groupId}
                 content={nodeEditorContent}
-                onOpenChange={setNodeEditorOpen}
-                onSave={handleNodeEditorSave}
+                onOpenChange={handleNodeEditorOpenChange}
                 onTempSave={handleNodeEditorTempSave}
-                onContentChange={setNodeEditorContent}
+                onContentChange={handleNodeEditorContentChange}
+                onDraftChange={handleNodeEditorDraftChange}
                 handleEditorBeforeMount={handleEditorBeforeMount}
             />
 
@@ -3003,9 +3056,9 @@ interface NodeEditorDialogProps {
     groupId: number | null;
     content: string;
     onOpenChange: (open: boolean) => void;
-    onSave: (content: string, dataSourceId?: number, dataSourceType?: string) => void;
     onTempSave: (content: string, dataSourceId?: number, dataSourceType?: string) => void;
     onContentChange: (content: string) => void;
+    onDraftChange?: (content: string, dataSourceId?: number, dataSourceType?: string) => void;
     handleEditorBeforeMount: (monaco: typeof Monaco) => void;
 }
 
@@ -3015,12 +3068,12 @@ function NodeEditorDialog({
     groupId,
     content, 
     onOpenChange, 
-    onSave, 
     onTempSave, 
     onContentChange, 
+    onDraftChange,
     handleEditorBeforeMount 
 }: NodeEditorDialogProps) {
-    const [confirmClose, setConfirmClose] = useState(false);
+    const latestContentRef = useRef(content);
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const {
         currentDataSourceId,
@@ -3041,10 +3094,13 @@ function NodeEditorDialog({
     const dataSourceSelectOptions = useMemo(() => buildNodeEditorDataSourceOptions(dataSourceOptions), [dataSourceOptions]);
 
     useEffect(() => {
-        if (open) {
-            setConfirmClose(false);
-        }
-    }, [open]);
+        latestContentRef.current = content;
+    }, [content]);
+
+    useEffect(() => {
+        if (!open) return;
+        onDraftChange?.(latestContentRef.current, currentDataSourceId, selectedDataSource?.type);
+    }, [currentDataSourceId, onDraftChange, open, selectedDataSource?.type]);
 
     useEffect(() => {
         if (!open || !editorRef.current) {
@@ -3066,18 +3122,9 @@ function NodeEditorDialog({
 
     if (!activeNode) return null;
     const language = isSqlEditorNodeKind(activeNode.kind) ? 'sql' : 'shell';
-    const hasCodeChanges = activeNode.scriptContent !== content;
-    const hasDSChanges = activeNode.dataSourceId !== currentDataSourceId;
-    const hasUnsavedChanges = hasCodeChanges || hasDSChanges;
     const currentDS = selectedDataSource;
 
-    const handleAttemptClose = () => {
-        if (hasUnsavedChanges) {
-            setConfirmClose(true);
-        } else {
-            onOpenChange(false);
-        }
-    };
+    const handleAttemptClose = () => onOpenChange(false);
 
     return (
         <Dialog open={open} onOpenChange={(next) => { if (!next) handleAttemptClose(); }}>
@@ -3150,14 +3197,14 @@ function NodeEditorDialog({
                                         <button
                                             type="button"
                                             className="p-1.5 rounded hover:bg-white hover:shadow-sm text-gray-500 hover:text-indigo-600 transition-all active:scale-95"
-                                            aria-label="应用暂存"
+                                            aria-label="关闭并保留草稿"
                                             onClick={() => onTempSave(content, currentDataSourceId, currentDS?.type)}
                                         >
                                             <Inbox size={18} />
                                         </button>
                                     </TooltipTrigger>
                                     <TooltipContent className="tooltip-content z-[2100]" side="bottom">
-                                        应用并将改动暂存至内存
+                                        关闭编辑器并保留当前草稿
                                     </TooltipContent>
                                 </Tooltip>
 
@@ -3211,41 +3258,6 @@ function NodeEditorDialog({
                                 }}
                             />
                         </Suspense>
-
-                        {/* 未保存提醒的遮挡层（模态悬浮卡片） */}
-                        {confirmClose && (
-                            <div className="absolute inset-0 bg-black/10 backdrop-blur-[2px] z-50 flex flex-col items-center justify-center p-6 rounded-b-lg">
-                                <div className="bg-white shadow-2xl border border-gray-100 rounded-xl p-6 max-w-[420px] w-full animate-in zoom-in-95 fade-in-0 duration-200">
-                                    <div className="flex items-start gap-4 mb-6">
-                                        <div className="p-3 bg-amber-50 text-amber-600 rounded-full shrink-0">
-                                            <AlertTriangle size={24} strokeWidth={2.5} />
-                                        </div>
-                                        <div className="pt-1">
-                                            <h3 className="text-[1.1rem] font-semibold text-gray-900 mb-1.5">是否保存修改？</h3>
-                                            <p className="text-[0.9rem] text-gray-500 leading-relaxed">
-                                                你在 <strong>{activeNode.taskId}</strong> 节点修改了内容。如果不暂存，这些更改将会丢失。
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-end gap-2.5 mt-2">
-                                        <Button 
-                                            variant="outline" 
-                                            onClick={() => onOpenChange(false)} 
-                                            className="text-red-500 hover:text-red-600 hover:bg-red-50 border-transparent"
-                                        >
-                                            直接退出
-                                        </Button>
-                                        <div className="flex-1" />
-                                        <Button variant="outline" onClick={() => setConfirmClose(false)}>
-                                            继续编辑
-                                        </Button>
-                                        <Button variant="default" onClick={() => onSave(content, currentDataSourceId, currentDS?.type)}>
-                                            应用修改并关闭
-                                        </Button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </div>
                 </DialogContent>
             </DialogPortal>
