@@ -168,3 +168,18 @@ export function forceOverwriteRebase(
         conflict: null,
     };
 }
+
+export function rebaseFlowDraftSession(
+    session: FlowDraftSession,
+    serverDocument: OfflineFlowDocument,
+): FlowDraftSession {
+    const nextDocument = cloneDocument(serverDocument);
+    return {
+        ...session,
+        baseDocument: nextDocument,
+        workingDraft: cloneDocument(serverDocument),
+        selectedNodeId: session.selectedNodeId,
+        selectedTaskIds: [...session.selectedTaskIds],
+        conflict: null,
+    };
+}

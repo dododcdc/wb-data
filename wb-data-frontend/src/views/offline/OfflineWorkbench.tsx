@@ -85,6 +85,7 @@ import {
 } from './flowCanvasState';
 import {
     createFlowDraftSession,
+    forceOverwriteRebase,
     flushNodeEditorDraft,
     hasFlowDraftChanges,
     prepareSessionForLeave,
@@ -125,12 +126,18 @@ import { clearDeletedFolderDraftState } from './deletedFolderDraftState';
 import { finalizeNodeEditorDraftOnClose } from './nodeEditorCloseDraftState';
 import { resolveSelectionStateAfterAddingNode } from './nodeSelectionState';
 import { resolvePendingNodeEditorDraftAfterDocumentChange } from './pendingNodeEditorDraftState';
+import { SaveConflictDialog } from './SaveConflictDialog';
 import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
 import { cn } from '../../lib/utils';
 import './OfflineWorkbench.css';
 
 const EMPTY_SELECTED_TASK_IDS: string[] = [];
 const NODE_EDITOR_DRAFT_FLUSH_DELAY_MS = 180;
+
+interface SaveConflictState {
+    path: string;
+    pendingSession: FlowDraftSession;
+}
 
 function flattenDocumentNodes(document: OfflineFlowDocument | null) {
     return document?.stages.flatMap((stage) => stage.nodes) ?? [];
@@ -795,6 +802,8 @@ export default function OfflineWorkbench() {
     const [flowLoading, setFlowLoading] = useState(false);
     const [savingFlow, setSavingFlow] = useState(false);
     const [draftSession, setDraftSession] = useState<FlowDraftSession | null>(null);
+    const [saveConflictState, setSaveConflictState] = useState<SaveConflictState | null>(null);
+    const [saveConflictPending, setSaveConflictPending] = useState(false);
     const [executionDialogOpen, setExecutionDialogOpen] = useState(false);
     const [executions, setExecutions] = useState<OfflineExecutionListItem[]>([]);
     const [executionsLoading, setExecutionsLoading] = useState(false);
@@ -1782,6 +1791,32 @@ export default function OfflineWorkbench() {
         return true;
     }, [flowDocument, showFeedback]);
 
+    const persistFlowSession = useCallback(async (sessionForSave: FlowDraftSession) => {
+        if (!groupId) {
+            throw new Error('Missing groupId');
+        }
+        const draftDocument = sessionForSave.workingDraft;
+        return saveOfflineFlowDocument({
+            groupId,
+            path: sessionForSave.path,
+            documentHash: sessionForSave.baseDocument.documentHash,
+            documentUpdatedAt: sessionForSave.baseDocument.documentUpdatedAt,
+            stages: draftDocument.stages.map((stage) => ({
+                stageId: stage.stageId,
+                nodes: stage.nodes.map((node) => ({
+                    taskId: node.taskId,
+                    scriptContent: node.scriptContent,
+                    kind: node.kind,
+                    scriptPath: node.scriptPath,
+                    dataSourceId: node.dataSourceId,
+                    dataSourceType: node.dataSourceType,
+                })),
+            })),
+            edges: draftDocument.edges,
+            layout: draftDocument.layout,
+        });
+    }, [groupId]);
+
     const handleSaveFlow = useCallback(async (nodeOverride?: { taskId: string; content: string; dataSourceId?: number; dataSourceType?: string }) => {
         if (!groupId || !activeFlowPath || !draftSession) return;
         nodeEditorDraftSchedulerRef.current?.cancel();
@@ -1822,25 +1857,7 @@ export default function OfflineWorkbench() {
             setDraftSession(sessionForSave);
             pendingNodeEditorDraftRef.current = null;
 
-            const response = await saveOfflineFlowDocument({
-                groupId,
-                path: sessionForSave.path,
-                documentHash: sessionForSave.baseDocument.documentHash,
-                documentUpdatedAt: sessionForSave.baseDocument.documentUpdatedAt,
-                stages: draftDocument.stages.map((stage) => ({
-                    stageId: stage.stageId,
-                    nodes: stage.nodes.map((node) => ({
-                        taskId: node.taskId,
-                        scriptContent: node.scriptContent,
-                        kind: node.kind,
-                        scriptPath: node.scriptPath,
-                        dataSourceId: node.dataSourceId,
-                        dataSourceType: node.dataSourceType,
-                    })),
-                })),
-                edges: draftDocument.edges,
-                layout: draftDocument.layout,
-            });
+            const response = await persistFlowSession(sessionForSave);
             const nextSession = rebaseFlowDraftSession(sessionForSave, response);
             setDraftSession(nextSession);
             removeRecoverySnapshot(groupId, sessionForSave.path);
@@ -1852,15 +1869,11 @@ export default function OfflineWorkbench() {
             });
         } catch (error) {
             if (error instanceof AxiosError && error.response?.status === 409) {
-                const snapshotResult = prepareSessionForLeave(sessionForSave, null, Date.now());
-                pendingNodeEditorDraftRef.current = null;
-                setDraftSession(snapshotResult.nextSession);
-                if (snapshotResult.snapshot) {
-                    writeRecoverySnapshot(groupId, activeFlowPath, snapshotResult.snapshot);
-                }
-                const latest = await getOfflineFlowDocument(groupId, activeFlowPath);
-                applyFlowDocumentPayload(activeFlowPath, latest);
-                await loadScheduleSnapshot(activeFlowPath);
+                setSaveConflictState({
+                    path: sessionForSave.path,
+                    pendingSession: sessionForSave,
+                });
+                return;
             }
             showFeedback({
                 tone: 'error',
@@ -1875,7 +1888,7 @@ export default function OfflineWorkbench() {
         applyFlowDocumentPayload,
         draftSession,
         groupId,
-        loadScheduleSnapshot,
+        persistFlowSession,
         refreshRepoStatus,
         showFeedback,
         validateDocumentForAction,
@@ -2078,6 +2091,57 @@ export default function OfflineWorkbench() {
             detail: '工作台将继续使用当前本地文件版本。',
         });
     }, [activeFlowPath, groupId, showFeedback]);
+
+    const handleCloseSaveConflict = useCallback(() => {
+        if (saveConflictPending) return;
+        setSaveConflictState(null);
+    }, [saveConflictPending]);
+
+    const handleDiscardSaveConflict = useCallback(async () => {
+        if (!groupId || !saveConflictState) return;
+        try {
+            removeRecoverySnapshot(groupId, saveConflictState.path);
+            await openFlowDocument(saveConflictState.path, { preferRecoverySnapshot: false });
+            setSaveConflictState(null);
+        } catch (error) {
+            showFeedback({
+                tone: 'error',
+                title: '加载服务器版本失败',
+                detail: getErrorMessage(error, '暂时无法加载最新服务器内容，请稍后重试。'),
+            });
+        }
+    }, [groupId, openFlowDocument, saveConflictState, showFeedback]);
+
+    const handleOverwriteSaveConflict = useCallback(async () => {
+        if (!groupId || !saveConflictState) return;
+        setSaveConflictPending(true);
+        try {
+            const latest = await getOfflineFlowDocument(groupId, saveConflictState.path);
+            const rebasedSession = forceOverwriteRebase(saveConflictState.pendingSession, latest);
+            setDraftSession(rebasedSession);
+            const response = await persistFlowSession(rebasedSession);
+            setDraftSession(rebaseFlowDraftSession(rebasedSession, response));
+            removeRecoverySnapshot(groupId, rebasedSession.path);
+            setSaveConflictState(null);
+            await refreshRepoStatus();
+            showFeedback({
+                tone: 'success',
+                title: 'Flow 已保存',
+                detail: '节点内容、依赖关系和布局已写回本地仓库。',
+            });
+        } catch (error) {
+            const detail = error instanceof AxiosError && error.response?.status === 409
+                ? '服务器版本再次发生变化，请确认后重试覆盖保存。'
+                : getErrorMessage(error, '暂时无法基于最新版本覆盖保存，请稍后重试。');
+            showFeedback({
+                tone: 'error',
+                title: '覆盖保存失败',
+                detail,
+            });
+        } finally {
+            setSaveConflictPending(false);
+        }
+    }, [groupId, persistFlowSession, refreshRepoStatus, saveConflictState, showFeedback]);
 
     return (
         <section className="offline-page">
@@ -2454,6 +2518,16 @@ export default function OfflineWorkbench() {
                     )}
                 </main>
             </div>
+
+            <SaveConflictDialog
+                open={saveConflictState !== null}
+                pending={saveConflictPending}
+                onOpenChange={(open) => {
+                    if (!open) handleCloseSaveConflict();
+                }}
+                onOverwrite={() => void handleOverwriteSaveConflict()}
+                onDiscardAndReload={() => void handleDiscardSaveConflict()}
+            />
 
             <ExecutionDialog
                 open={executionDialogOpen}
