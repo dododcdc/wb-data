@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AxiosError } from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
@@ -173,6 +173,16 @@ function makeRecoverySnapshot() {
     };
 }
 
+function createDeferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
+    return { promise, resolve, reject };
+}
+
 describe('OfflineWorkbench save conflicts', () => {
     afterEach(() => {
         cleanup();
@@ -265,6 +275,107 @@ describe('OfflineWorkbench save conflicts', () => {
             expect(screen.queryByRole('dialog', { name: '保存冲突' })).toBeNull();
             expect(screen.queryByTestId('flow-canvas')).toBeNull();
         });
+    });
+
+    it('ignores an in-flight overwrite action after switching groups', async () => {
+        const offlineApi = await import('../../api/offline');
+        const conflictError = new AxiosError('Conflict');
+        conflictError.response = {
+            status: 409,
+            statusText: 'Conflict',
+            data: {},
+            headers: {},
+            config: { headers: {} as never },
+        };
+        const latestDocument = createDeferred<ReturnType<typeof makeFlowDocument>>();
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockRejectedValue(conflictError);
+
+        render(
+            <MemoryRouter>
+                <OfflineWorkbench />
+            </MemoryRouter>,
+        );
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        fireEvent.click(screen.getByRole('button', { name: 'make-dirty' }));
+        fireEvent.click(screen.getByRole('button', { name: '提交' }));
+
+        expect(await screen.findByRole('dialog', { name: '保存冲突' })).toBeTruthy();
+
+        vi.mocked(offlineApi.getOfflineFlowDocument).mockReturnValueOnce(latestDocument.promise);
+        fireEvent.click(screen.getByRole('button', { name: '用我的覆盖' }));
+        fireEvent.click(screen.getByRole('button', { name: '确认覆盖保存' }));
+
+        await waitFor(() => {
+            expect(offlineApi.getOfflineFlowDocument).toHaveBeenCalledTimes(2);
+        });
+
+        setCurrentGroup({ id: 2, name: 'Other Team' });
+
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: '保存冲突' })).toBeNull();
+        });
+
+        await act(async () => {
+            latestDocument.resolve(makeFlowDocument());
+            await latestDocument.promise;
+        });
+
+        expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledTimes(1);
+        expect(feedbackSpy).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Flow 已保存' }));
+        expect(feedbackSpy).not.toHaveBeenCalledWith(expect.objectContaining({ title: '覆盖保存失败' }));
+    });
+
+    it('ignores an in-flight discard action after switching groups', async () => {
+        const offlineApi = await import('../../api/offline');
+        const conflictError = new AxiosError('Conflict');
+        conflictError.response = {
+            status: 409,
+            statusText: 'Conflict',
+            data: {},
+            headers: {},
+            config: { headers: {} as never },
+        };
+        const reloadedDocument = createDeferred<ReturnType<typeof makeFlowDocument>>();
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockRejectedValue(conflictError);
+
+        render(
+            <MemoryRouter>
+                <OfflineWorkbench />
+            </MemoryRouter>,
+        );
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        fireEvent.click(screen.getByRole('button', { name: 'make-dirty' }));
+        fireEvent.click(screen.getByRole('button', { name: '提交' }));
+
+        expect(await screen.findByRole('dialog', { name: '保存冲突' })).toBeTruthy();
+
+        vi.mocked(offlineApi.getOfflineFlowDocument).mockReturnValueOnce(reloadedDocument.promise);
+        fireEvent.click(screen.getByRole('button', { name: '丢弃本地并加载服务器' }));
+
+        await waitFor(() => {
+            expect(offlineApi.getOfflineFlowDocument).toHaveBeenCalledTimes(2);
+        });
+
+        setCurrentGroup({ id: 2, name: 'Other Team' });
+
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: '保存冲突' })).toBeNull();
+            expect(screen.queryByTestId('flow-canvas')).toBeNull();
+        });
+
+        await act(async () => {
+            reloadedDocument.resolve(makeFlowDocument());
+            await reloadedDocument.promise;
+        });
+
+        expect(offlineApi.getOfflineSchedule).toHaveBeenCalledTimes(1);
+        expect(screen.queryByTestId('flow-canvas')).toBeNull();
     });
 
     it('keeps the save conflict dialog open and preserves recovery snapshots when discard reload fails', async () => {
