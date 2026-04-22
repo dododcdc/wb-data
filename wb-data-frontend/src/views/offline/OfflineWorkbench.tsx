@@ -84,6 +84,7 @@ import {
     buildLayoutFromCanvasNodes,
 } from './flowCanvasState';
 import {
+    buildRecoverySnapshotFromSession,
     createFlowDraftSession,
     forceOverwriteRebase,
     flushNodeEditorDraft,
@@ -1912,6 +1913,7 @@ export default function OfflineWorkbench() {
             return true;
         } catch (error) {
             if (error instanceof AxiosError && error.response?.status === 409) {
+                writeRecoverySnapshot(groupId, sessionForSave.path, buildRecoverySnapshotFromSession(sessionForSave, Date.now()));
                 setSaveConflictState({
                     path: sessionForSave.path,
                     pendingSession: sessionForSave,
