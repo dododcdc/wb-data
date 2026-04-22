@@ -859,7 +859,7 @@ export default function OfflineWorkbench() {
     const previousGroupIdRef = useRef<number | null>(groupId);
     const pendingNodeEditorDraftRef = useRef<PendingNodeEditorDraft | null>(null);
     const draftSessionRef = useRef<FlowDraftSession | null>(null);
-    const openFlowDocumentRef = useRef<(pathValue: string, options?: { preferRecoverySnapshot?: boolean }) => Promise<void>>(async () => {});
+    const openFlowDocumentRef = useRef<(pathValue: string, options?: { preferRecoverySnapshot?: boolean }) => Promise<boolean>>(async () => false);
     const leaveCurrentFlowRef = useRef<((session: FlowDraftSession | null, groupIdValue?: number | null) => void) | null>(null);
     const nodeEditorDraftSchedulerRef = useRef<ReturnType<typeof createNodeEditorDraftScheduler> | null>(null);
 
@@ -1040,10 +1040,10 @@ export default function OfflineWorkbench() {
     }, [leaveCurrentFlow]);
 
     const openFlowDocument = useCallback(async (pathValue: string, options?: { preferRecoverySnapshot?: boolean }) => {
-        if (!groupId) return;
+        if (!groupId) return false;
         const normalizedPath = pathValue.trim();
         if (!normalizedPath) {
-            return;
+            return false;
         }
 
         if (draftSession && draftSession.path !== normalizedPath) {
@@ -1055,12 +1055,14 @@ export default function OfflineWorkbench() {
             const payload = await getOfflineFlowDocument(groupId, normalizedPath);
             applyFlowDocumentPayload(normalizedPath, payload, options);
             await loadScheduleSnapshot(normalizedPath);
+            return true;
         } catch (error) {
             showFeedback({
                 tone: 'error',
                 title: 'Flow 打开失败',
                 detail: getErrorMessage(error, '请检查路径是否存在，或稍后再试。'),
             });
+            return false;
         } finally {
             setFlowLoading(false);
         }
@@ -1079,6 +1081,8 @@ export default function OfflineWorkbench() {
 
         setActiveFlowPath(null);
         setDraftSession(null);
+        setSaveConflictState(null);
+        setSaveConflictPending(false);
         pendingNodeEditorDraftRef.current = null;
 
         if (!groupId) return;
@@ -2104,18 +2108,11 @@ export default function OfflineWorkbench() {
 
     const handleDiscardSaveConflict = useCallback(async () => {
         if (!groupId || !saveConflictState) return;
-        try {
-            removeRecoverySnapshot(groupId, saveConflictState.path);
-            await openFlowDocument(saveConflictState.path, { preferRecoverySnapshot: false });
-            setSaveConflictState(null);
-        } catch (error) {
-            showFeedback({
-                tone: 'error',
-                title: '加载服务器版本失败',
-                detail: getErrorMessage(error, '暂时无法加载最新服务器内容，请稍后重试。'),
-            });
-        }
-    }, [groupId, openFlowDocument, saveConflictState, showFeedback]);
+        const reloaded = await openFlowDocument(saveConflictState.path, { preferRecoverySnapshot: false });
+        if (!reloaded) return;
+        removeRecoverySnapshot(groupId, saveConflictState.path);
+        setSaveConflictState(null);
+    }, [groupId, openFlowDocument, saveConflictState]);
 
     const handleOverwriteSaveConflict = useCallback(async () => {
         if (!groupId || !saveConflictState) return;

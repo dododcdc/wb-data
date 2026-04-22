@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AxiosError } from 'axios';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 
 import OfflineWorkbench from './OfflineWorkbench';
+import { readRecoverySnapshot, removeRecoverySnapshot, writeRecoverySnapshot } from './recoverySnapshotStore';
 
 const { authState, feedbackSpy } = vi.hoisted(() => ({
     authState: {
@@ -14,6 +15,13 @@ const { authState, feedbackSpy } = vi.hoisted(() => ({
     },
     feedbackSpy: vi.fn(),
 }));
+
+const authListeners = new Set<() => void>();
+
+function setCurrentGroup(group: { id: number; name: string }) {
+    authState.currentGroup = group;
+    authListeners.forEach((listener) => listener());
+}
 
 vi.mock('@xyflow/react', () => ({
     ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -61,9 +69,19 @@ vi.mock('../../hooks/useOperationFeedback', () => ({
     }),
 }));
 
-vi.mock('../../utils/auth', () => ({
-    useAuthStore: (selector: (state: typeof authState) => unknown) => selector(authState),
-}));
+vi.mock('../../utils/auth', async () => {
+    const React = await vi.importActual<typeof import('react')>('react');
+    return {
+        useAuthStore: (selector: (state: typeof authState) => unknown) =>
+            React.useSyncExternalStore(
+                (listener) => {
+                    authListeners.add(listener);
+                    return () => authListeners.delete(listener);
+                },
+                () => selector(authState),
+            ),
+    };
+});
 
 vi.mock('../../api/offline', async () => {
     const actual = await vi.importActual<typeof import('../../api/offline')>('../../api/offline');
@@ -143,9 +161,27 @@ function makeFlowDocument() {
     };
 }
 
+function makeRecoverySnapshot() {
+    const document = makeFlowDocument();
+    return {
+        document,
+        baseDocumentHash: document.documentHash,
+        baseDocumentUpdatedAt: document.documentUpdatedAt,
+        selectedNodeId: 'node_1',
+        selectedTaskIds: ['node_1'],
+        updatedAt: 123,
+    };
+}
+
 describe('OfflineWorkbench save conflicts', () => {
+    afterEach(() => {
+        cleanup();
+    });
+
     beforeEach(async () => {
         vi.clearAllMocks();
+        setCurrentGroup({ id: 1, name: 'Team' });
+        removeRecoverySnapshot(1, '_flows/example/flow.yaml');
         const offlineApi = await import('../../api/offline');
         vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue(makeRepoStatus());
         vi.mocked(offlineApi.getOfflineRepoTree).mockResolvedValue(makeRepoTree());
@@ -187,13 +223,84 @@ describe('OfflineWorkbench save conflicts', () => {
         fireEvent.click(screen.getByRole('button', { name: 'make-dirty' }));
         fireEvent.click(screen.getByRole('button', { name: '提交' }));
 
-        expect(await screen.findByText('保存冲突')).toBeTruthy();
+        expect(await screen.findByRole('dialog', { name: '保存冲突' })).toBeTruthy();
         expect(screen.queryByText('版本提交 (Commit)')).toBeNull();
         expect(offlineApi.getOfflineFlowDocument).toHaveBeenCalledTimes(1);
         expect(feedbackSpy).not.toHaveBeenCalledWith(expect.objectContaining({ title: '保存失败' }));
 
         await waitFor(() => {
             expect(screen.getByTestId('flow-canvas').textContent).toBe('_flows/example/flow.yaml');
+        });
+    });
+
+    it('closes the save conflict dialog when switching groups', async () => {
+        const offlineApi = await import('../../api/offline');
+        const conflictError = new AxiosError('Conflict');
+        conflictError.response = {
+            status: 409,
+            statusText: 'Conflict',
+            data: {},
+            headers: {},
+            config: { headers: {} as never },
+        };
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockRejectedValue(conflictError);
+
+        render(
+            <MemoryRouter>
+                <OfflineWorkbench />
+            </MemoryRouter>,
+        );
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        fireEvent.click(screen.getByRole('button', { name: 'make-dirty' }));
+        fireEvent.click(screen.getByRole('button', { name: '提交' }));
+
+        expect(await screen.findByRole('dialog', { name: '保存冲突' })).toBeTruthy();
+
+        setCurrentGroup({ id: 2, name: 'Other Team' });
+
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: '保存冲突' })).toBeNull();
+            expect(screen.queryByTestId('flow-canvas')).toBeNull();
+        });
+    });
+
+    it('keeps the save conflict dialog open and preserves recovery snapshots when discard reload fails', async () => {
+        const offlineApi = await import('../../api/offline');
+        const conflictError = new AxiosError('Conflict');
+        conflictError.response = {
+            status: 409,
+            statusText: 'Conflict',
+            data: {},
+            headers: {},
+            config: { headers: {} as never },
+        };
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockRejectedValue(conflictError);
+
+        render(
+            <MemoryRouter>
+                <OfflineWorkbench />
+            </MemoryRouter>,
+        );
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        fireEvent.click(screen.getByRole('button', { name: 'make-dirty' }));
+        fireEvent.click(screen.getByRole('button', { name: '提交' }));
+
+        expect(await screen.findByRole('dialog', { name: '保存冲突' })).toBeTruthy();
+
+        writeRecoverySnapshot(1, '_flows/example/flow.yaml', makeRecoverySnapshot());
+        vi.mocked(offlineApi.getOfflineFlowDocument).mockRejectedValueOnce(new Error('reload failed'));
+
+        fireEvent.click(screen.getByRole('button', { name: '丢弃本地并加载服务器' }));
+
+        await waitFor(() => {
+            expect(screen.getByRole('dialog', { name: '保存冲突' })).toBeTruthy();
+            expect(readRecoverySnapshot(1, '_flows/example/flow.yaml')).toEqual(makeRecoverySnapshot());
         });
     });
 });
