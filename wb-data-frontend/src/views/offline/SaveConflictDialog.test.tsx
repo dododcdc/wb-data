@@ -39,6 +39,22 @@ describe('SaveConflictDialog', () => {
         expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 
+    it('routes the close button through onOpenChange(false)', () => {
+        const onOpenChange = vi.fn();
+        render(
+            <SaveConflictDialog
+                open
+                pending={false}
+                onOpenChange={onOpenChange}
+                onOverwrite={() => {}}
+                onDiscardAndReload={() => {}}
+            />,
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: '关闭' }));
+        expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+
     it('calls onDiscardAndReload directly', () => {
         const onDiscardAndReload = vi.fn();
         render(
