@@ -155,14 +155,14 @@ export function resolveDraftConflict(
           };
 }
 
-export function rebaseFlowDraftSession(
+export function forceOverwriteRebase(
     session: FlowDraftSession,
     serverDocument: OfflineFlowDocument,
 ): FlowDraftSession {
     return {
         ...session,
         baseDocument: cloneDocument(serverDocument),
-        workingDraft: cloneDocument(serverDocument),
+        workingDraft: cloneDocument(session.workingDraft),
         selectedNodeId: session.selectedNodeId,
         selectedTaskIds: [...session.selectedTaskIds],
         conflict: null,
