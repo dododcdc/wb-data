@@ -1818,7 +1818,7 @@ export default function OfflineWorkbench() {
     }, [groupId]);
 
     const handleSaveFlow = useCallback(async (nodeOverride?: { taskId: string; content: string; dataSourceId?: number; dataSourceType?: string }) => {
-        if (!groupId || !activeFlowPath || !draftSession) return;
+        if (!groupId || !activeFlowPath || !draftSession) return false;
         nodeEditorDraftSchedulerRef.current?.cancel();
         const pendingNodeOverride = pendingNodeEditorDraftRef.current
             ? {
@@ -1831,7 +1831,7 @@ export default function OfflineWorkbench() {
         const effectiveNodeOverride = nodeOverride ?? pendingNodeOverride;
 
         if (!validateDocumentForAction(effectiveNodeOverride)) {
-            return;
+            return false;
         }
         const sessionForSave = effectiveNodeOverride
             ? flushNodeEditorDraft(draftSession, {
@@ -1849,7 +1849,7 @@ export default function OfflineWorkbench() {
         });
         if (!validation.allowed) {
             if (validation.feedback) showFeedback(validation.feedback);
-            return;
+            return false;
         }
 
         setSavingFlow(true);
@@ -1867,19 +1867,21 @@ export default function OfflineWorkbench() {
                 title: 'Flow 已保存',
                 detail: '节点内容、依赖关系和布局已写回本地仓库。',
             });
+            return true;
         } catch (error) {
             if (error instanceof AxiosError && error.response?.status === 409) {
                 setSaveConflictState({
                     path: sessionForSave.path,
                     pendingSession: sessionForSave,
                 });
-                return;
+                return false;
             }
             showFeedback({
                 tone: 'error',
                 title: '保存失败',
                 detail: getErrorMessage(error, '本地脚本文件保存失败，请稍后重试。'),
             });
+            return false;
         } finally {
             setSavingFlow(false);
         }
@@ -1905,13 +1907,16 @@ export default function OfflineWorkbench() {
             // Silent block while saving
             setSavingFlow(true);
             try {
-                await handleSaveFlow();
+                const saved = await handleSaveFlow();
+                if (!saved) {
+                    return;
+                }
                 // After successful save, refresh repo status to ensure 'dirty' flag is picked up by backend if needed
                 await refreshRepoStatus();
-        } catch {
-            // handleSaveFlow already shows error feedback
-            return;
-        } finally {
+            } catch {
+                // handleSaveFlow already shows error feedback
+                return;
+            } finally {
                 setSavingFlow(false);
             }
         } else {
