@@ -185,9 +185,10 @@ describe('OfflineWorkbench save conflicts', () => {
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: 'make-dirty' }));
-        fireEvent.click(screen.getByRole('button', { name: '保存' }));
+        fireEvent.click(screen.getByRole('button', { name: '提交' }));
 
         expect(await screen.findByText('保存冲突')).toBeTruthy();
+        expect(screen.queryByText('版本提交 (Commit)')).toBeNull();
         expect(offlineApi.getOfflineFlowDocument).toHaveBeenCalledTimes(1);
         expect(feedbackSpy).not.toHaveBeenCalledWith(expect.objectContaining({ title: '保存失败' }));
 
