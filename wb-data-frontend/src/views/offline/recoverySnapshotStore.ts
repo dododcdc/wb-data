@@ -85,7 +85,13 @@ export function readRecoverySnapshot(groupId: number, path: string): RecoverySna
 
 export function writeRecoverySnapshot(groupId: number, path: string, snapshot: RecoverySnapshot) {
     const storage = getStorage();
-    storage.setItem(buildRecoverySnapshotKey(groupId, path), JSON.stringify(snapshot));
+    try {
+        storage.setItem(buildRecoverySnapshotKey(groupId, path), JSON.stringify(snapshot));
+    } catch (error) {
+        // Silently degrade on QuotaExceededError or other write failures to prevent
+        // core flows (leaveCurrentFlow, unmount) from crashing.
+        console.warn('[recovery-snapshot] write failed', error);
+    }
 }
 
 export function removeRecoverySnapshot(groupId: number, path: string) {

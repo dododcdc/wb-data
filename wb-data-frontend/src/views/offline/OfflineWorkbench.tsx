@@ -125,6 +125,7 @@ import { clearDeletedFolderDraftState } from './deletedFolderDraftState';
 import { finalizeNodeEditorDraftOnClose } from './nodeEditorCloseDraftState';
 import { resolveSelectionStateAfterAddingNode } from './nodeSelectionState';
 import { resolvePendingNodeEditorDraftAfterDocumentChange } from './pendingNodeEditorDraftState';
+import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
 import { cn } from '../../lib/utils';
 import './OfflineWorkbench.css';
 
@@ -871,6 +872,8 @@ export default function OfflineWorkbench() {
     const activeNode = useMemo(() => flattenDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null, [activeNodeId, flowDocument]);
     const nodeCount = useMemo(() => flattenDocumentNodes(flowDocument).length, [flowDocument]);
     const isDirty = draftSession !== null && hasFlowDraftChanges(draftSession);
+
+    useBeforeUnloadGuard(isDirty);
 
     const nodeIssues = useMemo(() => {
         if (!flowDocument) return {};
@@ -2429,7 +2432,7 @@ export default function OfflineWorkbench() {
                             ) : null}
 
                             <section className="offline-canvas-board" ref={canvasBoardRef}>
-                                <ReactFlowProvider>
+                                <ReactFlowProvider key={activeFlowPath}>
                                     <FlowCanvas
                                         flowDocument={flowDocument}
                                         selectedTaskIds={selectedTaskIds}
