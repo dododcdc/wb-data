@@ -908,10 +908,18 @@ export default function OfflineWorkbench() {
         draftSessionRef.current = draftSession;
     }, [draftSession]);
 
-    useEffect(() => {
+    useEffect(() => useAuthStore.subscribe((state, previousState) => {
+        const nextGroupId = state.currentGroup?.id ?? null;
+        const previousGroupId = previousState.currentGroup?.id ?? null;
+        if (nextGroupId === previousGroupId) return;
+        currentGroupIdRef.current = nextGroupId;
+        groupActionVersionRef.current += 1;
+    }), []);
+
+    if (currentGroupIdRef.current !== groupId) {
         currentGroupIdRef.current = groupId;
         groupActionVersionRef.current += 1;
-    }, [groupId]);
+    }
 
     useEffect(() => () => {
         nodeEditorDraftSchedulerRef.current?.cancel();
