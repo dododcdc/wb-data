@@ -2139,11 +2139,18 @@ export default function OfflineWorkbench() {
     const handleDiscardSaveConflict = useCallback(async () => {
         if (!groupId || !saveConflictState) return;
         const isCurrentGroupAction = captureGroupActionGuard(groupId);
-        const reloaded = await openFlowDocument(saveConflictState.path, { preferRecoverySnapshot: false });
-        if (!isCurrentGroupAction()) return;
-        if (!reloaded) return;
-        removeRecoverySnapshot(groupId, saveConflictState.path);
-        setSaveConflictState(null);
+        setSaveConflictPending(true);
+        try {
+            const reloaded = await openFlowDocument(saveConflictState.path, { preferRecoverySnapshot: false });
+            if (!isCurrentGroupAction()) return;
+            if (!reloaded) return;
+            removeRecoverySnapshot(groupId, saveConflictState.path);
+            setSaveConflictState(null);
+        } finally {
+            if (isCurrentGroupAction()) {
+                setSaveConflictPending(false);
+            }
+        }
     }, [captureGroupActionGuard, groupId, openFlowDocument, saveConflictState]);
 
     const handleOverwriteSaveConflict = useCallback(async () => {

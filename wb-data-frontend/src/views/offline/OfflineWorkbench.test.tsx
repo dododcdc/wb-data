@@ -414,4 +414,47 @@ describe('OfflineWorkbench save conflicts', () => {
             expect(readRecoverySnapshot(1, '_flows/example/flow.yaml')).toEqual(makeRecoverySnapshot());
         });
     });
+
+    it('disables save conflict actions while discard reload is in flight', async () => {
+        const offlineApi = await import('../../api/offline');
+        const conflictError = new AxiosError('Conflict');
+        conflictError.response = {
+            status: 409,
+            statusText: 'Conflict',
+            data: {},
+            headers: {},
+            config: { headers: {} as never },
+        };
+        const reloadedDocument = createDeferred<ReturnType<typeof makeFlowDocument>>();
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockRejectedValue(conflictError);
+
+        render(
+            <MemoryRouter>
+                <OfflineWorkbench />
+            </MemoryRouter>,
+        );
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        fireEvent.click(screen.getByRole('button', { name: 'make-dirty' }));
+        fireEvent.click(screen.getByRole('button', { name: '提交' }));
+
+        expect(await screen.findByRole('dialog', { name: '保存冲突' })).toBeTruthy();
+
+        vi.mocked(offlineApi.getOfflineFlowDocument).mockReturnValueOnce(reloadedDocument.promise);
+        fireEvent.click(screen.getByRole('button', { name: '丢弃本地并加载服务器' }));
+
+        await waitFor(() => {
+            expect((screen.getByRole('button', { name: '丢弃本地并加载服务器' }) as HTMLButtonElement).disabled).toBe(true);
+            expect((screen.getByRole('button', { name: '用我的覆盖' }) as HTMLButtonElement).disabled).toBe(true);
+            expect((screen.getByRole('button', { name: '稍后处理' }) as HTMLButtonElement).disabled).toBe(true);
+            expect((screen.getByRole('button', { name: '关闭' }) as HTMLButtonElement).disabled).toBe(true);
+        });
+
+        await act(async () => {
+            reloadedDocument.resolve(makeFlowDocument());
+            await reloadedDocument.promise;
+        });
+    });
 });
