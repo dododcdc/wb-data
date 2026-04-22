@@ -47,6 +47,7 @@ export function SaveConflictDialog(props: SaveConflictDialogProps) {
                                 type="button"
                                 aria-label="关闭"
                                 onClick={() => onOpenChange(false)}
+                                disabled={pending}
                             >
                                 <X size={16} />
                             </button>
