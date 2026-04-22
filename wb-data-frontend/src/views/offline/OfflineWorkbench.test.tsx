@@ -17,9 +17,15 @@ const { authState, feedbackSpy } = vi.hoisted(() => ({
 }));
 
 const authListeners = new Set<() => void>();
+const authStoreListeners = new Set<(state: typeof authState, previousState: typeof authState) => void>();
 
 function setCurrentGroup(group: { id: number; name: string }) {
+    const previousState = {
+        ...authState,
+        currentGroup: authState.currentGroup ? { ...authState.currentGroup } : authState.currentGroup,
+    };
     authState.currentGroup = group;
+    authStoreListeners.forEach((listener) => listener(authState, previousState));
     authListeners.forEach((listener) => listener());
 }
 
@@ -71,8 +77,8 @@ vi.mock('../../hooks/useOperationFeedback', () => ({
 
 vi.mock('../../utils/auth', async () => {
     const React = await vi.importActual<typeof import('react')>('react');
-    return {
-        useAuthStore: (selector: (state: typeof authState) => unknown) =>
+    const useAuthStore = Object.assign(
+        (selector: (state: typeof authState) => unknown) =>
             React.useSyncExternalStore(
                 (listener) => {
                     authListeners.add(listener);
@@ -80,6 +86,16 @@ vi.mock('../../utils/auth', async () => {
                 },
                 () => selector(authState),
             ),
+        {
+            subscribe: (listener: (state: typeof authState, previousState: typeof authState) => void) => {
+                authStoreListeners.add(listener);
+                return () => authStoreListeners.delete(listener);
+            },
+            getState: () => authState,
+        },
+    );
+    return {
+        useAuthStore,
     };
 });
 
@@ -312,15 +328,14 @@ describe('OfflineWorkbench save conflicts', () => {
             expect(offlineApi.getOfflineFlowDocument).toHaveBeenCalledTimes(2);
         });
 
-        setCurrentGroup({ id: 2, name: 'Other Team' });
+        await act(async () => {
+            setCurrentGroup({ id: 2, name: 'Other Team' });
+            latestDocument.resolve(makeFlowDocument());
+            await latestDocument.promise;
+        });
 
         await waitFor(() => {
             expect(screen.queryByRole('dialog', { name: '保存冲突' })).toBeNull();
-        });
-
-        await act(async () => {
-            latestDocument.resolve(makeFlowDocument());
-            await latestDocument.promise;
         });
 
         expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledTimes(1);
@@ -362,16 +377,15 @@ describe('OfflineWorkbench save conflicts', () => {
             expect(offlineApi.getOfflineFlowDocument).toHaveBeenCalledTimes(2);
         });
 
-        setCurrentGroup({ id: 2, name: 'Other Team' });
+        await act(async () => {
+            setCurrentGroup({ id: 2, name: 'Other Team' });
+            reloadedDocument.resolve(makeFlowDocument());
+            await reloadedDocument.promise;
+        });
 
         await waitFor(() => {
             expect(screen.queryByRole('dialog', { name: '保存冲突' })).toBeNull();
             expect(screen.queryByTestId('flow-canvas')).toBeNull();
-        });
-
-        await act(async () => {
-            reloadedDocument.resolve(makeFlowDocument());
-            await reloadedDocument.promise;
         });
 
         expect(offlineApi.getOfflineSchedule).toHaveBeenCalledTimes(1);
