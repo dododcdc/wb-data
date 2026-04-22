@@ -857,6 +857,8 @@ export default function OfflineWorkbench() {
     const canvasEdgesRef = useRef<Edge[]>([]);
     const canvasBoardRef = useRef<HTMLDivElement>(null);
     const previousGroupIdRef = useRef<number | null>(groupId);
+    const currentGroupIdRef = useRef<number | null>(groupId);
+    const groupActionVersionRef = useRef(0);
     const pendingNodeEditorDraftRef = useRef<PendingNodeEditorDraft | null>(null);
     const draftSessionRef = useRef<FlowDraftSession | null>(null);
     const openFlowDocumentRef = useRef<(pathValue: string, options?: { preferRecoverySnapshot?: boolean }) => Promise<boolean>>(async () => false);
@@ -906,25 +908,41 @@ export default function OfflineWorkbench() {
         draftSessionRef.current = draftSession;
     }, [draftSession]);
 
+    useEffect(() => {
+        currentGroupIdRef.current = groupId;
+        groupActionVersionRef.current += 1;
+    }, [groupId]);
+
     useEffect(() => () => {
         nodeEditorDraftSchedulerRef.current?.cancel();
     }, []);
 
+    const captureGroupActionGuard = useCallback((expectedGroupId: number | null) => {
+        const version = groupActionVersionRef.current;
+        return () => currentGroupIdRef.current === expectedGroupId && groupActionVersionRef.current === version;
+    }, []);
+
     const refreshRepoStatus = useCallback(async () => {
         if (!groupId) return;
+        const isCurrentGroupAction = captureGroupActionGuard(groupId);
         setRepoLoading(true);
         try {
-            setRepoStatus(await getOfflineRepoStatus(groupId));
+            const nextStatus = await getOfflineRepoStatus(groupId);
+            if (!isCurrentGroupAction()) return;
+            setRepoStatus(nextStatus);
         } catch (error) {
+            if (!isCurrentGroupAction()) return;
             showFeedback({
                 tone: 'error',
                 title: '仓库状态读取失败',
                 detail: getErrorMessage(error, '暂时无法读取本地仓库状态。'),
             });
         } finally {
-            setRepoLoading(false);
+            if (isCurrentGroupAction()) {
+                setRepoLoading(false);
+            }
         }
-    }, [groupId, showFeedback]);
+    }, [captureGroupActionGuard, groupId, showFeedback]);
 
     const refreshRepoTree = useCallback(async () => {
         if (!groupId) return;
@@ -963,13 +981,16 @@ export default function OfflineWorkbench() {
 
     const loadScheduleSnapshot = useCallback(async (path: string) => {
         if (!groupId) return;
+        const isCurrentGroupAction = captureGroupActionGuard(groupId);
         setScheduleLoading(true);
         try {
             const nextSchedule = await getOfflineSchedule(groupId, path);
+            if (!isCurrentGroupAction()) return;
             setSchedule(nextSchedule);
             setScheduleCron(nextSchedule.cron);
             setScheduleTimezone(nextSchedule.timezone ?? defaultTimezone);
         } catch (error) {
+            if (!isCurrentGroupAction()) return;
             if (error instanceof AxiosError && error.response?.status === 404) {
                 setSchedule(null);
                 setScheduleCron('');
@@ -982,9 +1003,11 @@ export default function OfflineWorkbench() {
                 detail: getErrorMessage(error, '暂时无法读取当前 Flow 的调度配置。'),
             });
         } finally {
-            setScheduleLoading(false);
+            if (isCurrentGroupAction()) {
+                setScheduleLoading(false);
+            }
         }
-    }, [defaultTimezone, groupId, showFeedback]);
+    }, [captureGroupActionGuard, defaultTimezone, groupId, showFeedback]);
 
     const setDraftSelectedNodeId = useCallback((nextSelectedNodeId: string | null) => {
         setDraftSession((current) => current ? { ...current, selectedNodeId: nextSelectedNodeId } : current);
@@ -1041,6 +1064,7 @@ export default function OfflineWorkbench() {
 
     const openFlowDocument = useCallback(async (pathValue: string, options?: { preferRecoverySnapshot?: boolean }) => {
         if (!groupId) return false;
+        const isCurrentGroupAction = captureGroupActionGuard(groupId);
         const normalizedPath = pathValue.trim();
         if (!normalizedPath) {
             return false;
@@ -1053,10 +1077,13 @@ export default function OfflineWorkbench() {
         setFlowLoading(true);
         try {
             const payload = await getOfflineFlowDocument(groupId, normalizedPath);
+            if (!isCurrentGroupAction()) return false;
             applyFlowDocumentPayload(normalizedPath, payload, options);
             await loadScheduleSnapshot(normalizedPath);
+            if (!isCurrentGroupAction()) return false;
             return true;
         } catch (error) {
+            if (!isCurrentGroupAction()) return false;
             showFeedback({
                 tone: 'error',
                 title: 'Flow 打开失败',
@@ -1064,9 +1091,11 @@ export default function OfflineWorkbench() {
             });
             return false;
         } finally {
-            setFlowLoading(false);
+            if (isCurrentGroupAction()) {
+                setFlowLoading(false);
+            }
         }
-    }, [applyFlowDocumentPayload, draftSession, groupId, leaveCurrentFlow, loadScheduleSnapshot, showFeedback]);
+    }, [applyFlowDocumentPayload, captureGroupActionGuard, draftSession, groupId, leaveCurrentFlow, loadScheduleSnapshot, showFeedback]);
 
     useEffect(() => {
         openFlowDocumentRef.current = openFlowDocument;
@@ -1080,6 +1109,7 @@ export default function OfflineWorkbench() {
         previousGroupIdRef.current = groupId;
 
         setActiveFlowPath(null);
+        setFlowLoading(false);
         setDraftSession(null);
         setSaveConflictState(null);
         setSaveConflictPending(false);
@@ -2108,30 +2138,37 @@ export default function OfflineWorkbench() {
 
     const handleDiscardSaveConflict = useCallback(async () => {
         if (!groupId || !saveConflictState) return;
+        const isCurrentGroupAction = captureGroupActionGuard(groupId);
         const reloaded = await openFlowDocument(saveConflictState.path, { preferRecoverySnapshot: false });
+        if (!isCurrentGroupAction()) return;
         if (!reloaded) return;
         removeRecoverySnapshot(groupId, saveConflictState.path);
         setSaveConflictState(null);
-    }, [groupId, openFlowDocument, saveConflictState]);
+    }, [captureGroupActionGuard, groupId, openFlowDocument, saveConflictState]);
 
     const handleOverwriteSaveConflict = useCallback(async () => {
         if (!groupId || !saveConflictState) return;
+        const isCurrentGroupAction = captureGroupActionGuard(groupId);
         setSaveConflictPending(true);
         try {
             const latest = await getOfflineFlowDocument(groupId, saveConflictState.path);
+            if (!isCurrentGroupAction()) return;
             const rebasedSession = forceOverwriteRebase(saveConflictState.pendingSession, latest);
             setDraftSession(rebasedSession);
             const response = await persistFlowSession(rebasedSession);
+            if (!isCurrentGroupAction()) return;
             setDraftSession(rebaseFlowDraftSession(rebasedSession, response));
             removeRecoverySnapshot(groupId, rebasedSession.path);
             setSaveConflictState(null);
             await refreshRepoStatus();
+            if (!isCurrentGroupAction()) return;
             showFeedback({
                 tone: 'success',
                 title: 'Flow 已保存',
                 detail: '节点内容、依赖关系和布局已写回本地仓库。',
             });
         } catch (error) {
+            if (!isCurrentGroupAction()) return;
             const detail = error instanceof AxiosError && error.response?.status === 409
                 ? '服务器版本再次发生变化，请确认后重试覆盖保存。'
                 : getErrorMessage(error, '暂时无法基于最新版本覆盖保存，请稍后重试。');
@@ -2141,9 +2178,11 @@ export default function OfflineWorkbench() {
                 detail,
             });
         } finally {
-            setSaveConflictPending(false);
+            if (isCurrentGroupAction()) {
+                setSaveConflictPending(false);
+            }
         }
-    }, [groupId, persistFlowSession, refreshRepoStatus, saveConflictState, showFeedback]);
+    }, [captureGroupActionGuard, groupId, persistFlowSession, refreshRepoStatus, saveConflictState, showFeedback]);
 
     return (
         <section className="offline-page">
