@@ -1075,6 +1075,7 @@ export default function OfflineWorkbench() {
         if (!groupId) return false;
         const isCurrentGroupAction = captureGroupActionGuard(groupId);
         const normalizedPath = pathValue.trim();
+        let didApplyFlowDocument = false;
         if (!normalizedPath) {
             return false;
         }
@@ -1088,11 +1089,15 @@ export default function OfflineWorkbench() {
             const payload = await getOfflineFlowDocument(groupId, normalizedPath);
             if (!isCurrentGroupAction()) return false;
             applyFlowDocumentPayload(normalizedPath, payload, options);
+            didApplyFlowDocument = true;
             await loadScheduleSnapshot(normalizedPath);
             if (!isCurrentGroupAction()) return false;
             return true;
         } catch (error) {
             if (!isCurrentGroupAction()) return false;
+            if (didApplyFlowDocument) {
+                return true;
+            }
             showFeedback({
                 tone: 'error',
                 title: 'Flow 打开失败',
@@ -2171,6 +2176,11 @@ export default function OfflineWorkbench() {
             const latest = await getOfflineFlowDocument(groupId, saveConflictState.path);
             if (!isCurrentGroupAction()) return;
             const rebasedSession = forceOverwriteRebase(saveConflictState.pendingSession, latest);
+            writeRecoverySnapshot(groupId, rebasedSession.path, buildRecoverySnapshotFromSession(rebasedSession, Date.now()));
+            setSaveConflictState({
+                path: rebasedSession.path,
+                pendingSession: rebasedSession,
+            });
             setDraftSession(rebasedSession);
             const response = await persistFlowSession(rebasedSession);
             if (!isCurrentGroupAction()) return;
