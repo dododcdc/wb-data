@@ -247,9 +247,27 @@ describe('OfflineWorkbench save conflicts', () => {
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: 'make-dirty' }));
+        expect(readRecoverySnapshot(1, '_flows/example/flow.yaml')).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: '提交' }));
 
         expect(await screen.findByRole('dialog', { name: '保存冲突' })).toBeTruthy();
+        await waitFor(() => {
+            expect(readRecoverySnapshot(1, '_flows/example/flow.yaml')).toEqual(expect.objectContaining({
+                baseDocumentHash: 'base-hash',
+                baseDocumentUpdatedAt: 100,
+                selectedNodeId: null,
+                selectedTaskIds: [],
+                updatedAt: expect.any(Number),
+                document: expect.objectContaining({
+                    path: '_flows/example/flow.yaml',
+                    documentHash: 'base-hash',
+                    documentUpdatedAt: 100,
+                    layout: {
+                        node_1: { x: 120, y: 80 },
+                    },
+                }),
+            }));
+        });
         expect(screen.queryByText('版本提交 (Commit)')).toBeNull();
         expect(offlineApi.getOfflineFlowDocument).toHaveBeenCalledTimes(1);
         expect(feedbackSpy).not.toHaveBeenCalledWith(expect.objectContaining({ title: '保存失败' }));
