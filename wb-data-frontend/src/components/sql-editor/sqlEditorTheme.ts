@@ -1,10 +1,17 @@
 import type * as Monaco from 'monaco-editor';
 
+let themeRegistered = false;
+
 /**
  * Register the "warm-parchment" theme
  * A warm, soft color scheme with improved readability
+ * Idempotent: safe to call multiple times
  */
 export function registerSqlEditorTheme(monaco: typeof Monaco): void {
+    if (themeRegistered) {
+        return;
+    }
+
     monaco.editor.defineTheme('warm-parchment', {
         base: 'vs',
         inherit: true,
@@ -54,4 +61,13 @@ export function registerSqlEditorTheme(monaco: typeof Monaco): void {
             'list.hoverBackground': '#F1ECE3',
         },
     });
+
+    themeRegistered = true;
+}
+
+/**
+ * Reset theme registration state (for testing only)
+ */
+export function resetThemeRegistration(): void {
+    themeRegistered = false;
 }
