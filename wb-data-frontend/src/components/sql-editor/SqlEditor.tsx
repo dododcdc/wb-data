@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import type * as Monaco from 'monaco-editor';
 import { loadSqlEditorModule } from './sqlEditorModule';
 import { defaultSqlEditorOptions } from './sqlEditorOptions';
@@ -16,6 +16,8 @@ export interface SqlEditorProps {
  * Shared SQL Editor component
  * A thin wrapper around Monaco editor with SQL-specific defaults
  */
+const LazyMonacoEditor = lazy(() => loadSqlEditorModule());
+
 export function SqlEditor({
     value,
     onChange,
@@ -23,7 +25,6 @@ export function SqlEditor({
     completionProvider,
     onMount,
 }: SqlEditorProps) {
-    const MonacoEditor = loadSqlEditorModule();
     const disposeRef = useRef<(() => void) | null>(null);
 
     useEffect(() => {
@@ -45,11 +46,13 @@ export function SqlEditor({
     };
 
     return (
-        <MonacoEditor
-            value={value}
-            onChange={onChange}
-            options={{ ...defaultSqlEditorOptions, ...options }}
-            onMount={handleEditorDidMount}
-        />
+        <Suspense fallback={<div>Loading SQL editor…</div>}>
+            <LazyMonacoEditor
+                value={value}
+                onChange={onChange}
+                options={{ ...defaultSqlEditorOptions, ...options }}
+                onMount={handleEditorDidMount}
+            />
+        </Suspense>
     );
 }
