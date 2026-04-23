@@ -254,12 +254,10 @@ export function useQueryExecution(params: UseQueryExecutionParams) {
     const handleFormat = useCallback(async () => {
         if (!editorRef.current) return;
         const raw = editorRef.current.getValue();
-        try {
-            const { format } = await import('sql-formatter');
-            const formatted = format(raw, { language: 'sql', tabWidth: 4, keywordCase: 'upper' });
+        const { formatSqlContent } = await import('../../../components/sql-editor/sqlFormatting');
+        const formatted = formatSqlContent(raw);
+        if (formatted !== raw) {
             editorRef.current.setValue(formatted);
-        } catch {
-            // If sql-formatter can't parse it, leave as-is
         }
     }, [editorRef]);
 

@@ -8,13 +8,14 @@ export interface SqlEditorProps {
     value: string;
     onChange?: (value: string) => void;
     options?: Monaco.editor.IStandaloneEditorConstructionOptions;
-    completionProvider?: Monaco.languages.CompletionItemProvider;
     onMount?: (editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco) => void;
 }
 
 /**
  * Shared SQL Editor component
- * A thin wrapper around Monaco editor with SQL-specific defaults
+ * A thin wrapper around Monaco editor with SQL-specific defaults.
+ * The shared core registers theme and format action.
+ * Scene-specific features (completion, execution) are registered via onMount callback.
  */
 const LazyMonacoEditor = lazy(() => loadSqlEditorModule());
 
@@ -22,36 +23,17 @@ export function SqlEditor({
     value,
     onChange,
     options,
-    completionProvider,
     onMount,
 }: SqlEditorProps) {
     const disposeRef = useRef<(() => void) | null>(null);
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const monacoRef = useRef<typeof Monaco | null>(null);
-    const lastSetupCompletionProviderRef = useRef<typeof completionProvider>(completionProvider);
 
     useEffect(() => {
         return () => {
             disposeRef.current?.();
         };
     }, []);
-
-    useEffect(() => {
-        if (
-            editorRef.current &&
-            monacoRef.current &&
-            lastSetupCompletionProviderRef.current !== completionProvider
-        ) {
-            disposeRef.current?.();
-            const dispose = setupSqlEditorCore(
-                monacoRef.current,
-                editorRef.current,
-                completionProvider
-            );
-            disposeRef.current = dispose;
-            lastSetupCompletionProviderRef.current = completionProvider;
-        }
-    }, [completionProvider]);
 
     const handleEditorDidMount = (
         editor: Monaco.editor.IStandaloneCodeEditor,
@@ -60,12 +42,11 @@ export function SqlEditor({
         editorRef.current = editor;
         monacoRef.current = monaco;
 
-        // Setup shared SQL editor core
-        const dispose = setupSqlEditorCore(monaco, editor, completionProvider);
+        // Setup shared SQL editor core (theme + format action)
+        const dispose = setupSqlEditorCore(monaco, editor);
         disposeRef.current = dispose;
-        lastSetupCompletionProviderRef.current = completionProvider;
 
-        // Call optional onMount callback
+        // Call optional onMount callback for scene-specific setup
         onMount?.(editor, monaco);
     };
 

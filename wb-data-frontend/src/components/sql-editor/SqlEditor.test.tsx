@@ -49,7 +49,7 @@ describe('SqlEditor', () => {
         expect(await screen.findByTestId('monaco-editor')).not.toBeNull();
     });
 
-    it('re-runs setup when completionProvider changes', async () => {
+    it('calls setupSqlEditorCore on mount', async () => {
         const { SqlEditor } = await import('./SqlEditor');
         const { loadSqlEditorModule } = await import('./sqlEditorModule');
         const { setupSqlEditorCore } = await import('./sqlEditorCore');
@@ -57,9 +57,6 @@ describe('SqlEditor', () => {
         const setupMock = vi.mocked(setupSqlEditorCore);
         const disposeFn = vi.fn();
         setupMock.mockReturnValue(disposeFn);
-
-        const firstProvider = { provideCompletionItems: vi.fn() };
-        const secondProvider = { provideCompletionItems: vi.fn() };
 
         let resolveModule: (value: { default: (props: Record<string, unknown>) => JSX.Element }) => void;
         const modulePromise = new Promise<{ default: (props: Record<string, unknown>) => JSX.Element }>((resolve) => {
@@ -80,7 +77,7 @@ describe('SqlEditor', () => {
 
         vi.mocked(loadSqlEditorModule).mockReturnValue(modulePromise);
 
-        const { rerender } = render(<SqlEditor value="SELECT 1" completionProvider={firstProvider} />);
+        render(<SqlEditor value="SELECT 1" />);
 
         await act(async () => {
             resolveModule!({
@@ -93,19 +90,6 @@ describe('SqlEditor', () => {
         expect(setupMock).toHaveBeenCalledWith(
             expect.anything(),
             expect.anything(),
-            firstProvider
-        );
-
-        await act(async () => {
-            rerender(<SqlEditor value="SELECT 1" completionProvider={secondProvider} />);
-        });
-
-        expect(disposeFn).toHaveBeenCalledTimes(1);
-        expect(setupMock).toHaveBeenCalledTimes(2);
-        expect(setupMock).toHaveBeenCalledWith(
-            expect.anything(),
-            expect.anything(),
-            secondProvider
         );
     });
 });
