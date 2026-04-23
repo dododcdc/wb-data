@@ -14,7 +14,6 @@ import { isMac } from './queryConstants';
 import { QuerySidebar } from './components/QuerySidebar';
 import { QueryToolbar } from './components/QueryToolbar';
 import { QueryEditor } from './components/QueryEditor';
-import { registerEditorThemes } from './editorUtils';
 import { MonacoEditorInstance } from './types';
 import { QueryResultsPanel } from './components/QueryResultsPanel';
 import {
@@ -35,6 +34,7 @@ import { useSqlCompletion } from './hooks/useSqlCompletion';
 import { useMetadata } from './hooks/useMetadata';
 import { useKeyboardFocusMode } from '../../hooks/useKeyboardFocusMode';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
+import { setupQueryEditorActions } from './queryEditorActions';
 import './Query.css';
 
 
@@ -259,36 +259,19 @@ export default function Query() {
     });
 
     const handleEditorDidMount = (editor: MonacoEditorInstance, monaco: typeof Monaco) => {
-        registerEditorThemes(monaco);
         monacoRef.current = monaco;
-        monaco.editor.setTheme('warm-parchment');
         editorRef.current = editor;
 
-        // Register custom completion provider for SQL
+        // Register custom completion provider for SQL (scene-owned)
         completionProviderRef.current?.dispose();
         completionProviderRef.current = registerCompletionProvider(monaco);
 
-        // Add Cmd+Enter / Ctrl+Enter: run selection if exists, else only the statement under the cursor
-        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-            const selection = editor.getSelection();
-            if (selection && !selection.isEmpty()) {
-                const selectedText = editor.getModel()?.getValueInRange(selection);
-                handleRunQueryRef.current(selectedText);
-            } else {
-                const stmt = getStatementAtCursorRef.current(editor);
-                handleRunQueryRef.current(stmt);
-            }
-        });
-
-        // Add Shift+Alt+F (Win/Linux) or Shift+Cmd+F (Mac): format SQL
-        const formatKeybinding = isMac
-            ? monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF
-            : monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF;
-        editor.addAction({
-            id: 'format-sql',
-            label: 'Format SQL',
-            keybindings: [formatKeybinding],
-            run: () => handleFormat(),
+        // Register query-specific actions (Cmd/Ctrl+Enter for execution)
+        setupQueryEditorActions(monaco, editor, {
+            onExecute: (sql?: string) => {
+                handleRunQueryRef.current(sql);
+            },
+            getStatementAtCursor: (ed) => getStatementAtCursorRef.current(ed),
         });
     };
 
