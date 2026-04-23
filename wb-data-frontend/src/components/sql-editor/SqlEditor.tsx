@@ -26,6 +26,8 @@ export function SqlEditor({
     onMount,
 }: SqlEditorProps) {
     const disposeRef = useRef<(() => void) | null>(null);
+    const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+    const monacoRef = useRef<typeof Monaco | null>(null);
 
     useEffect(() => {
         return () => {
@@ -33,10 +35,25 @@ export function SqlEditor({
         };
     }, []);
 
+    useEffect(() => {
+        if (editorRef.current && monacoRef.current) {
+            disposeRef.current?.();
+            const dispose = setupSqlEditorCore(
+                monacoRef.current,
+                editorRef.current,
+                completionProvider
+            );
+            disposeRef.current = dispose;
+        }
+    }, [completionProvider]);
+
     const handleEditorDidMount = (
         editor: Monaco.editor.IStandaloneCodeEditor,
         monaco: typeof Monaco,
     ) => {
+        editorRef.current = editor;
+        monacoRef.current = monaco;
+
         // Setup shared SQL editor core
         const dispose = setupSqlEditorCore(monaco, editor, completionProvider);
         disposeRef.current = dispose;

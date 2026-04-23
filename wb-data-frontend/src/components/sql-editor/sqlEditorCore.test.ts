@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { setupSqlEditorCore } from './sqlEditorCore';
+import { resetThemeRegistration } from './sqlEditorTheme';
 import type * as Monaco from 'monaco-editor';
 
 describe('setupSqlEditorCore', () => {
@@ -11,6 +12,7 @@ describe('setupSqlEditorCore', () => {
     let completionDisposeSpy: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
+        resetThemeRegistration();
         defineThemeSpy = vi.fn();
         addActionSpy = vi.fn().mockReturnValue({ dispose: vi.fn() });
         disposeSpy = vi.fn();
@@ -114,5 +116,13 @@ describe('setupSqlEditorCore', () => {
         const dispose = setupSqlEditorCore(mockMonaco, mockEditor);
 
         expect(() => dispose()).not.toThrow();
+    });
+
+    it('only registers theme once even when called multiple times', () => {
+        setupSqlEditorCore(mockMonaco, mockEditor);
+        setupSqlEditorCore(mockMonaco, mockEditor);
+        setupSqlEditorCore(mockMonaco, mockEditor);
+
+        expect(defineThemeSpy).toHaveBeenCalledTimes(1);
     });
 });
