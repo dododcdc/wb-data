@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { writeRecoverySnapshot } from './recoverySnapshotStore';
+import { listRecoverySnapshotPaths, writeRecoverySnapshot } from './recoverySnapshotStore';
 import type { RecoverySnapshot } from './recoverySnapshotStore';
 
 function makeSnapshot(): RecoverySnapshot {
@@ -78,5 +78,13 @@ describe('writeRecoverySnapshot', () => {
             'wb-data:offline-recovery:1:test/flow.yml',
             expect.stringContaining('"baseDocumentHash":"abc"'),
         );
+    });
+
+    it('lists only recovery snapshot paths for the requested group', () => {
+        writeRecoverySnapshot(1, '_flows/a/flow.yaml', makeSnapshot());
+        writeRecoverySnapshot(2, '_flows/b/flow.yaml', makeSnapshot());
+
+        expect(listRecoverySnapshotPaths(1)).toEqual(['_flows/a/flow.yaml']);
+        expect(listRecoverySnapshotPaths(2)).toEqual(['_flows/b/flow.yaml']);
     });
 });
