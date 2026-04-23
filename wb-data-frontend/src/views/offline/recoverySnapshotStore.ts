@@ -118,7 +118,7 @@ export function moveRecoverySnapshot(groupId: number, oldPath: string, newPath: 
     removeRecoverySnapshot(groupId, oldPath);
 }
 
-function listRecoverySnapshotPaths(groupId: number) {
+export function listRecoverySnapshotPaths(groupId: number) {
     const prefix = buildRecoverySnapshotPrefix(groupId);
     const storage = typeof globalThis.localStorage === 'undefined' ? null : globalThis.localStorage;
 
