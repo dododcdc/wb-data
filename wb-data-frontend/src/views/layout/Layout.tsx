@@ -26,7 +26,7 @@ import {
 } from '../../router/routeModules';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import { OperationFeedback } from '../../components/OperationFeedback';
-import { loadQueryEditorModule } from '../query/queryEditorModule';
+import { loadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import './Layout.css';
 
 interface NavItem {
@@ -179,7 +179,7 @@ export default function Layout() {
 
             if (path === '/query') {
                 void loadQueryModule();
-                void loadQueryEditorModule();
+                void loadSqlEditorModule();
                 return;
             }
 
