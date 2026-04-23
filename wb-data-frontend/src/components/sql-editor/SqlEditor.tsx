@@ -28,6 +28,7 @@ export function SqlEditor({
     const disposeRef = useRef<(() => void) | null>(null);
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const monacoRef = useRef<typeof Monaco | null>(null);
+    const lastSetupCompletionProviderRef = useRef<typeof completionProvider>(completionProvider);
 
     useEffect(() => {
         return () => {
@@ -36,7 +37,11 @@ export function SqlEditor({
     }, []);
 
     useEffect(() => {
-        if (editorRef.current && monacoRef.current) {
+        if (
+            editorRef.current &&
+            monacoRef.current &&
+            lastSetupCompletionProviderRef.current !== completionProvider
+        ) {
             disposeRef.current?.();
             const dispose = setupSqlEditorCore(
                 monacoRef.current,
@@ -44,6 +49,7 @@ export function SqlEditor({
                 completionProvider
             );
             disposeRef.current = dispose;
+            lastSetupCompletionProviderRef.current = completionProvider;
         }
     }, [completionProvider]);
 
@@ -57,6 +63,7 @@ export function SqlEditor({
         // Setup shared SQL editor core
         const dispose = setupSqlEditorCore(monaco, editor, completionProvider);
         disposeRef.current = dispose;
+        lastSetupCompletionProviderRef.current = completionProvider;
 
         // Call optional onMount callback
         onMount?.(editor, monaco);
