@@ -112,6 +112,7 @@ export default function Query() {
     } = execution;
 
     const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
+    const queryEditorActionsDisposeRef = useRef<(() => void) | null>(null);
     const horizontalSplitterRef = useRef<AllotmentHandle | null>(null);
     const verticalSplitterRef = useRef<AllotmentHandle | null>(null);
     const horizontalLayoutSizesRef = useRef<number[] | null>(null);
@@ -267,7 +268,8 @@ export default function Query() {
         completionProviderRef.current = registerCompletionProvider(monaco);
 
         // Register query-specific actions (Cmd/Ctrl+Enter for execution)
-        setupQueryEditorActions(monaco, editor, {
+        queryEditorActionsDisposeRef.current?.();
+        queryEditorActionsDisposeRef.current = setupQueryEditorActions(monaco, editor, {
             onExecute: (sql?: string) => {
                 handleRunQueryRef.current(sql);
             },
@@ -277,6 +279,8 @@ export default function Query() {
 
     useEffect(() => {
         return () => {
+            queryEditorActionsDisposeRef.current?.();
+            queryEditorActionsDisposeRef.current = null;
             completionProviderRef.current?.dispose();
             completionProviderRef.current = null;
         };
