@@ -10,15 +10,15 @@ import type * as Monaco from 'monaco-editor';
 describe('queryEditorActions', () => {
     let mockEditor: Monaco.editor.IStandaloneCodeEditor;
     let mockMonaco: typeof Monaco;
-    let addCommandSpy: ReturnType<typeof vi.fn>;
+    let addActionSpy: ReturnType<typeof vi.fn>;
     let mockDisposable: Monaco.IDisposable;
 
     beforeEach(() => {
         mockDisposable = { dispose: vi.fn() };
-        addCommandSpy = vi.fn().mockReturnValue(mockDisposable);
+        addActionSpy = vi.fn().mockReturnValue(mockDisposable);
 
         mockEditor = {
-            addCommand: addCommandSpy,
+            addAction: addActionSpy,
             getSelection: vi.fn(),
             getModel: vi.fn(),
         } as unknown as Monaco.editor.IStandaloneCodeEditor;
@@ -38,10 +38,12 @@ describe('queryEditorActions', () => {
             const onExecute = vi.fn();
             setupQueryEditorActions(mockMonaco, mockEditor, { onExecute });
 
-            expect(addCommandSpy).toHaveBeenCalledWith(
-                2048 | 3, // CtrlCmd | Enter
-                expect.any(Function)
-            );
+            expect(addActionSpy).toHaveBeenCalledWith(expect.objectContaining({
+                id: 'execute-query',
+                label: 'Execute SQL',
+                keybindings: [2048 | 3],
+                run: expect.any(Function),
+            }));
         });
 
         it('should execute selected SQL when selection exists', () => {
@@ -58,9 +60,8 @@ describe('queryEditorActions', () => {
 
             setupQueryEditorActions(mockMonaco, mockEditor, { onExecute });
 
-            // Get the callback that was registered
-            const callback = addCommandSpy.mock.calls[0][1];
-            callback();
+            const action = addActionSpy.mock.calls[0][0];
+            action.run(mockEditor);
 
             expect(mockModel.getValueInRange).toHaveBeenCalledWith(mockSelection);
             expect(onExecute).toHaveBeenCalledWith('SELECT * FROM users');
@@ -80,9 +81,8 @@ describe('queryEditorActions', () => {
                 getStatementAtCursor,
             });
 
-            // Get the callback that was registered
-            const callback = addCommandSpy.mock.calls[0][1];
-            callback();
+            const action = addActionSpy.mock.calls[0][0];
+            action.run(mockEditor);
 
             expect(getStatementAtCursor).toHaveBeenCalledWith(mockEditor);
             expect(onExecute).toHaveBeenCalledWith('SELECT id FROM users');
@@ -102,15 +102,14 @@ describe('queryEditorActions', () => {
 
             setupQueryEditorActions(mockMonaco, mockEditor, { onExecute });
 
-            // Get the callback that was registered
-            const callback = addCommandSpy.mock.calls[0][1];
-            callback();
+            const action = addActionSpy.mock.calls[0][0];
+            action.run(mockEditor);
 
             expect(mockModel.getValue).toHaveBeenCalled();
             expect(onExecute).toHaveBeenCalledWith('SELECT * FROM orders');
         });
 
-        it('should return a dispose function that cleans up the command', () => {
+        it('should return a dispose function that cleans up the action', () => {
             const onExecute = vi.fn();
             const dispose = setupQueryEditorActions(mockMonaco, mockEditor, { onExecute });
 
@@ -130,8 +129,8 @@ describe('queryEditorActions', () => {
 
             setupQueryEditorActions(mockMonaco, mockEditor, { onExecute });
 
-            const callback = addCommandSpy.mock.calls[0][1];
-            callback();
+            const action = addActionSpy.mock.calls[0][0];
+            action.run(mockEditor);
 
             expect(onExecute).toHaveBeenCalledWith('SELECT 1');
         });
@@ -147,8 +146,8 @@ describe('queryEditorActions', () => {
 
             setupQueryEditorActions(mockMonaco, mockEditor, { onExecute });
 
-            const callback = addCommandSpy.mock.calls[0][1];
-            callback();
+            const action = addActionSpy.mock.calls[0][0];
+            action.run(mockEditor);
 
             // Should execute with empty string or not crash
             expect(onExecute).toHaveBeenCalled();

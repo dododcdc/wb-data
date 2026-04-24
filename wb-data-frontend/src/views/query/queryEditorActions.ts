@@ -33,11 +33,15 @@ export function setupQueryEditorActions(
     const { onExecute, getStatementAtCursor } = options;
 
     // Register Cmd/Ctrl+Enter: run selection if exists, else statement-at-cursor or all
-    const commandDisposable = editor.addCommand(
-        monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
-        () => {
-            const selection = editor.getSelection();
-            const model = editor.getModel();
+    const executeAction = editor.addAction({
+        id: 'execute-query',
+        label: 'Execute SQL',
+        keybindings: [
+            monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+        ],
+        run: (ed) => {
+            const selection = ed.getSelection();
+            const model = ed.getModel();
 
             // If there's a non-empty selection, execute the selected text
             if (selection && !selection.isEmpty() && model) {
@@ -48,7 +52,7 @@ export function setupQueryEditorActions(
 
             // If getStatementAtCursor is provided, use it
             if (getStatementAtCursor) {
-                const stmt = getStatementAtCursor(editor);
+                const stmt = getStatementAtCursor(ed);
                 onExecute(stmt);
                 return;
             }
@@ -56,11 +60,11 @@ export function setupQueryEditorActions(
             // Fallback: execute all content
             const allContent = model?.getValue() ?? '';
             onExecute(allContent);
-        }
-    );
+        },
+    });
 
     // Return dispose function
     return () => {
-        commandDisposable?.dispose();
+        executeAction.dispose();
     };
 }

@@ -193,7 +193,7 @@ vi.mock('./components/QueryResultsPanel', () => ({
 vi.mock('./components/QueryEditor', () => ({
     QueryEditor: ({ handleEditorDidMount }: {
         handleEditorDidMount: (editor: {
-            addCommand: (keybinding: number, callback: () => void) => { dispose: () => void };
+            addAction: (action: { dispose: () => void }) => { dispose: () => void };
             getSelection: () => null;
             getModel: () => null;
             getPosition: () => null;
@@ -205,7 +205,7 @@ vi.mock('./components/QueryEditor', () => ({
         React.useEffect(() => {
             handleEditorDidMount(
                 {
-                    addCommand: vi.fn(() => ({ dispose: vi.fn() })),
+                    addAction: vi.fn(() => ({ dispose: vi.fn() })),
                     getSelection: vi.fn(() => null),
                     getModel: vi.fn(() => null),
                     getPosition: vi.fn(() => null),
