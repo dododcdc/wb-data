@@ -52,7 +52,7 @@ export function setupQueryEditorActions(
 
             // If getStatementAtCursor is provided, use it
             if (getStatementAtCursor) {
-                const stmt = getStatementAtCursor(ed);
+                const stmt = getStatementAtCursor(ed as Monaco.editor.IStandaloneCodeEditor);
                 onExecute(stmt);
                 return;
             }
