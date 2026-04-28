@@ -10,7 +10,11 @@ export interface ExecutionPresentation {
 }
 
 export function isRunningStatus(status: string | null | undefined) {
-    return status === 'RUNNING' || status === 'CREATED' || status === 'QUEUED' || status === 'PAUSED';
+    return status === 'RUNNING' || status === 'PAUSED';
+}
+
+export function isActiveStatus(status: string | null | undefined) {
+    return isRunningStatus(status) || status === 'CREATED' || status === 'QUEUED';
 }
 
 export function getExecutionStatusLabel(status: string | null | undefined) {
@@ -18,6 +22,8 @@ export function getExecutionStatusLabel(status: string | null | undefined) {
     if (status === 'FAILED') return '失败';
     if (status === 'CANCELLED') return '已取消';
     if (status === 'KILLED') return '已停止';
+    if (status === 'QUEUED' || status === 'CREATED') return '就绪';
+    if (status === 'PAUSED') return '已暂停';
     if (isRunningStatus(status)) return '执行中';
     return status || '等待执行';
 }
@@ -37,11 +43,11 @@ export function getExecutionPresentation(status: string | null | undefined): Exe
             animated: false,
         };
     }
-    if (isRunningStatus(status)) {
+    if (isActiveStatus(status)) {
         return {
             dotTone: 'running',
             progressTone: 'running',
-            animated: true,
+            animated: isRunningStatus(status),
         };
     }
     return {

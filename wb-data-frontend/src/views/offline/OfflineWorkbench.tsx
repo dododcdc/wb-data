@@ -26,6 +26,7 @@ import {
     TerminalSquare,
     Trash2,
     X,
+    Copy,
 } from 'lucide-react';
 import {
     commitOfflineRepo,
@@ -100,6 +101,7 @@ import {
     getExecutionPresentation, 
     getExecutionStatusLabel, 
     getTaskStatusIcon,
+    isActiveStatus,
     isRunningStatus 
 } from './executionPresentation';
 import {
@@ -501,22 +503,7 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                 <DialogOverlay className="offline-dialog-backdrop" />
                 <DialogContent className="offline-dialog-positioner">
                     <div className="offline-dialog-card offline-execution-dialog">
-                        <div className="offline-dialog-header">
-                            <div>
-                                <DialogTitle className="offline-dialog-title">执行结果</DialogTitle>
-                                <DialogDescription className="offline-dialog-description">
-                                    查看最近执行记录与状态概览
-                                </DialogDescription>
-                            </div>
-                            <button
-                                className="offline-dialog-close"
-                                type="button"
-                                aria-label="关闭执行结果"
-                                onClick={() => onOpenChange(false)}
-                            >
-                                <X size={16} />
-                            </button>
-                        </div>
+                        <div className="offline-dialog-header hidden" />
 
                         <div className="offline-dialog-toolbar">
                             <div className="offline-execution-toolbar-left">
@@ -532,21 +519,31 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                     </div>
                                 </label>
                             </div>
-                            <div className="offline-execution-toolbar-actions">
+                            <div className="offline-execution-toolbar-right">
                                 <Button type="button" variant="outline" size="sm" onClick={onRefresh}>
                                     <RefreshCcw size={14} />
                                     刷新
                                 </Button>
+
                                 <Button
                                     type="button"
                                     variant="outline"
                                     size="sm"
+                                    className="offline-button-stop"
                                     onClick={onStopAll}
-                                    disabled={executions.every((item) => !isRunningStatus(item.status)) || actionPending === 'ALL'}
+                                    disabled={executions.every((item) => !isActiveStatus(item.status)) || actionPending === 'ALL'}
                                 >
                                     {actionPending === 'ALL' ? <LoaderCircle size={14} className="offline-spin" /> : <TerminalSquare size={14} />}
-                                    停止所有
+                                    停止
                                 </Button>
+                                <button
+                                    className="offline-dialog-close-inline"
+                                    type="button"
+                                    aria-label="关闭"
+                                    onClick={() => onOpenChange(false)}
+                                >
+                                    <X size={16} />
+                                </button>
                             </div>
                         </div>
 
@@ -569,12 +566,11 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                                 <div className="offline-execution-row-main">
                                                     <div className="offline-execution-row-title">
                                                         <span className={`offline-execution-dot is-${presentation.dotTone}`} aria-hidden="true" />
-                                                        <strong>{item.displayName || item.executionId}</strong>
+                                                        <strong>{item.displayName || `ID: ${item.executionId.slice(-8)}`}</strong>
                                                     </div>
                                                     <div className="offline-execution-row-meta">
                                                         <span className="offline-execution-row-meta-item">
-                                                            <small>开始时间</small>
-                                                            <span>{formatDateTime(item.startDate)}</span>
+                                                            {formatDateTime(item.startDate)}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -594,51 +590,24 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                         const presentation = getExecutionPresentation(detail.status);
                                         return (
                                             <>
-                                                <div className="offline-detail-header">
-                                                    <div className="offline-detail-progress">
-                                                        <div className="offline-execution-status-line">
-                                                            <strong className={`offline-execution-status-text is-${presentation.progressTone}`}>
-                                                                {getExecutionStatusLabel(detail.status)}
-                                                            </strong>
-                                                        </div>
-                                                        <div className={`offline-execution-progress is-${presentation.progressTone}${presentation.animated ? ' is-animated' : ''}`}>
-                                                            <span />
-                                                        </div>
-                                                    </div>
-                                                    <div className="offline-detail-actions">
-                                                        {isRunningStatus(detail.status) ? (
-                                                            <Button
-                                                                type="button"
-                                                                variant="outline"
-                                                                size="sm"
-                                                                onClick={() => onStopExecution(detail.executionId)}
-                                                                disabled={actionPending === detail.executionId}
-                                                            >
-                                                                {actionPending === detail.executionId ? <LoaderCircle size={14} className="offline-spin" /> : '停止执行'}
-                                                            </Button>
-                                                        ) : null}
-                                                    </div>
-                                                </div>
-
                                                 <div className="offline-detail-body">
-                                                    <div className="offline-detail-kpis">
-                                                    <div>
-                                                        <span>开始时间</span>
-                                                        <strong>{formatDateTime(detail.startDate ?? detail.createdAt)}</strong>
+                                                    <div className="offline-detail-meta-minimal">
+                                                        <span title="开始时间">{formatDateTime(detail.startDate ?? detail.createdAt)}</span>
+                                                        <span className="meta-sep">→</span>
+                                                        <span title="结束时间">{detail.endDate ? formatDateTime(detail.endDate) : '进行中'}</span>
+                                                        <span className="meta-divider">|</span>
+                                                        <span className="offline-branch-badge-tiny">{detail.branch ?? '—'}</span>
+                                                        <span className="meta-divider">|</span>
+                                                        <code className="meta-id-tiny">{detail.executionId}</code>
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="sm" 
+                                                            className="h-4 w-4 p-0 ml-1 opacity-50 hover:opacity-100" 
+                                                            onClick={() => navigator.clipboard.writeText(detail.executionId)}
+                                                        >
+                                                            <Copy size={10} />
+                                                        </Button>
                                                     </div>
-                                                    <div>
-                                                        <span>结束时间</span>
-                                                        <strong>{formatDateTime(detail.endDate)}</strong>
-                                                    </div>
-                                                    <div>
-                                                        <span>所属分支</span>
-                                                        <strong>{detail.branch ?? '—'}</strong>
-                                                    </div>
-                                                    <div>
-                                                        <span>执行 ID</span>
-                                                        <strong>{detail.executionId}</strong>
-                                                    </div>
-                                                </div>
 
                                                 {detail.taskRuns && detail.taskRuns.filter(t => !t.taskId.startsWith('parallel_') && t.taskId !== 'flow_dag').length > 0 && (
                                                     <div className="offline-detail-tasks">
@@ -648,12 +617,13 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                                         </div>
                                                         <div className="offline-detail-tasks-list">
                                                             <div className="offline-tasks-list-thead">
-                                                                <div className="col-node">节点名称</div>
+                                                                <div className="col-node">节点</div>
                                                                 <div className="col-time">开始时间</div>
                                                                 <div className="col-time">结束时间</div>
                                                                 <div className="col-duration">耗时</div>
+                                                                <div className="col-progress">进度</div>
                                                                 <div className="col-status">状态</div>
-                                                                <div className="col-actions">操作</div>
+                                                                <div className="col-actions"></div>
                                                             </div>
                                                             <div className="offline-tasks-list-tbody">
                                                                 {detail.taskRuns
@@ -680,6 +650,19 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                                                             </div>
                                                                             <div className="col-duration">
                                                                                 {formatDuration(duration)}
+                                                                            </div>
+                                                                            <div className="col-progress">
+                                                                                <div className="task-progress-mini">
+                                                                                    {task.status === 'SUCCESS' ? (
+                                                                                        <span className="progress-value is-done">100%</span>
+                                                                                    ) : isRunning ? (
+                                                                                        <div className="progress-bar-tiny">
+                                                                                            <div className="progress-bar-inner is-running" />
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <span className="progress-value">0%</span>
+                                                                                    )}
+                                                                                </div>
                                                                             </div>
                                                                             <div className="col-status">
                                                                                 <div className={`offline-status-badge is-${task.status.toLowerCase()}`}>
@@ -1605,7 +1588,7 @@ export default function OfflineWorkbench() {
     // 实时轮询正在运行的执行详情
     useEffect(() => {
         let timer: ReturnType<typeof setInterval> | null = null;
-        if (executionDialogOpen && activeExecutionId && executionDetail && isRunningStatus(executionDetail.status)) {
+        if (executionDialogOpen && activeExecutionId && executionDetail && isActiveStatus(executionDetail.status)) {
             timer = setInterval(() => {
                 void loadExecutionDetail(activeExecutionId, true);
             }, 3000);

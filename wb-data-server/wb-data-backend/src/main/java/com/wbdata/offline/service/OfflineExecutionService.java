@@ -42,7 +42,8 @@ public class OfflineExecutionService {
     public OfflineExecutionResponse createDebugExecution(DebugExecutionRequest request,
                                                          Map<String, String> namespaceFileOverrides,
                                                          Long requestedBy) {
-        validateSelectedTaskTypes(request);
+        Set<String> actualSelectedTaskIds = getActualSelectedTaskIds(request);
+        validateSelectedTaskTypes(request, actualSelectedTaskIds);
         String sourceRevision = yamlSupport.sha256Hex(request.content());
         String debugNamespace = offlineKestraProperties.buildDebugNamespace(request.groupId(), requestedBy);
         syncNamespaceFiles(request.groupId(), request.content(), debugNamespace, namespaceFileOverrides);
@@ -55,7 +56,7 @@ public class OfflineExecutionService {
                 requestedBy,
                 sourceRevision,
                 request.mode(),
-                request.selectedTaskIds()
+                new java.util.ArrayList<>(actualSelectedTaskIds)
         );
 
         kestraClient.upsertFlow(debugFlow);
@@ -70,12 +71,18 @@ public class OfflineExecutionService {
         );
     }
 
-    private void validateSelectedTaskTypes(DebugExecutionRequest request) {
+    private Set<String> getActualSelectedTaskIds(DebugExecutionRequest request) {
+        if (!"ALL".equalsIgnoreCase(request.mode()) && request.selectedTaskIds() != null && !request.selectedTaskIds().isEmpty()) {
+            return new LinkedHashSet<>(request.selectedTaskIds());
+        }
         OfflineFlowYamlSupport.FlowGraph graph = yamlSupport.parseGraph(request.content());
-        Set<String> selectedTaskIds = "ALL".equalsIgnoreCase(request.mode())
-                ? graph.nodes().stream().map(OfflineFlowYamlSupport.FlowNode::taskId).collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new))
-                : new LinkedHashSet<>(request.selectedTaskIds());
+        return graph.nodes().stream()
+                .map(OfflineFlowYamlSupport.FlowNode::taskId)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+    }
 
+    private void validateSelectedTaskTypes(DebugExecutionRequest request, Set<String> selectedTaskIds) {
+        OfflineFlowYamlSupport.FlowGraph graph = yamlSupport.parseGraph(request.content());
         for (OfflineFlowYamlSupport.FlowNode node : graph.nodes()) {
             if (!selectedTaskIds.contains(node.taskId()) || !"SQL".equalsIgnoreCase(node.kind())) {
                 continue;
@@ -115,6 +122,38 @@ public class OfflineExecutionService {
     public OfflineExecutionDetailResponse getExecution(Long groupId, String executionId) {
         KestraExecutionSnapshot execution = kestraClient.getExecution(executionId);
         ensureExecutionAccessible(execution, groupId);
+        
+        java.util.List<com.wbdata.offline.dto.OfflineExecutionTaskRun> taskRuns = new java.util.ArrayList<>();
+        Set<String> seenTaskIds = new LinkedHashSet<>();
+        
+        if (execution.taskRuns() != null) {
+            for (KestraTaskRunSnapshot taskRun : execution.taskRuns()) {
+                seenTaskIds.add(taskRun.taskId());
+                taskRuns.add(new com.wbdata.offline.dto.OfflineExecutionTaskRun(
+                        taskRun.taskId(),
+                        taskRun.status(),
+                        taskRun.startDate(),
+                        taskRun.endDate()
+                ));
+            }
+        }
+        
+        System.out.println("DEBUG KESTRA LABELS: " + execution.labels());
+        String targetNodesStr = execution.labels() != null ? execution.labels().get("wbdataSelectedTaskIds") : null;
+        if (targetNodesStr != null && !targetNodesStr.isBlank()) {
+            for (String targetNode : targetNodesStr.split("---")) {
+                String taskId = targetNode.trim();
+                if (!taskId.isEmpty() && !seenTaskIds.contains(taskId)) {
+                    taskRuns.add(new com.wbdata.offline.dto.OfflineExecutionTaskRun(
+                            taskId,
+                            "QUEUED",
+                            null,
+                            null
+                    ));
+                }
+            }
+        }
+
         return new OfflineExecutionDetailResponse(
                 execution.id(),
                 execution.labels().getOrDefault("wbdataMode", "DEBUG"),
@@ -126,14 +165,7 @@ public class OfflineExecutionService {
                 execution.createdAt(),
                 execution.startDate(),
                 execution.endDate(),
-                execution.taskRuns().stream()
-                        .map(taskRun -> new com.wbdata.offline.dto.OfflineExecutionTaskRun(
-                                taskRun.taskId(),
-                                taskRun.status(),
-                                taskRun.startDate(),
-                                taskRun.endDate()
-                        ))
-                        .toList()
+                taskRuns
         );
     }
 
