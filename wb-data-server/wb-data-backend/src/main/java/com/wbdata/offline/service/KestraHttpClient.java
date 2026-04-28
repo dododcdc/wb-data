@@ -412,11 +412,19 @@ public class KestraHttpClient implements KestraClient {
     }
 
     private Map<String, String> readLabels(JsonNode labelsNode) {
-        if (labelsNode == null || !labelsNode.isObject()) {
+        if (labelsNode == null) {
             return Map.of();
         }
         Map<String, String> labels = new LinkedHashMap<>();
-        labelsNode.fields().forEachRemaining(entry -> labels.put(entry.getKey(), readText(entry.getValue())));
+        if (labelsNode.isArray()) {
+            for (JsonNode element : labelsNode) {
+                if (element.has("key") && element.has("value")) {
+                    labels.put(element.get("key").asText(), readText(element.get("value")));
+                }
+            }
+        } else if (labelsNode.isObject()) {
+            labelsNode.fields().forEachRemaining(entry -> labels.put(entry.getKey(), readText(entry.getValue())));
+        }
         return labels;
     }
 

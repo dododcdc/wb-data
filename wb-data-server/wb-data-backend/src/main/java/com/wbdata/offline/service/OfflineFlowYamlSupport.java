@@ -63,7 +63,7 @@ final class OfflineFlowYamlSupport {
         labels.put("wbdataGroupId", String.valueOf(groupId));
         labels.put("wbdataRequestedBy", String.valueOf(requestedBy));
         labels.put("wbdataSourceRevision", sourceRevision);
-        labels.put("wbdataSelectedTaskIds", String.join(",", new LinkedHashSet<>(selectedTaskIds)));
+        labels.put("wbdataSelectedTaskIds", String.join("---", new LinkedHashSet<>(selectedTaskIds)));
         root.put("labels", labels);
 
         if (!"ALL".equalsIgnoreCase(mode) && !"SELECTED".equalsIgnoreCase(mode)) {
