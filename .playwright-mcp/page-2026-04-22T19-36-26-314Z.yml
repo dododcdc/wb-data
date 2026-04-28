@@ -1,0 +1,11 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - generic [ref=e6]: WB Data
+    - generic [ref=e7]: 一站式数据处理中心
+  - generic [ref=e9]:
+    - textbox "用户名" [active] [ref=e11]
+    - generic [ref=e13]:
+      - textbox "密码" [ref=e14]
+      - button "显示密码" [ref=e15] [cursor=pointer]:
+        - img [ref=e16]
+    - button "登录" [ref=e19]

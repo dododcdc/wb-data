@@ -63,7 +63,6 @@ final class OfflineFlowYamlSupport {
         labels.put("wbdataGroupId", String.valueOf(groupId));
         labels.put("wbdataRequestedBy", String.valueOf(requestedBy));
         labels.put("wbdataSourceRevision", sourceRevision);
-        labels.put("wbdataDisplayName", buildExecutionDisplayName(mode, selectedTaskIds));
         labels.put("wbdataSelectedTaskIds", String.join(",", new LinkedHashSet<>(selectedTaskIds)));
         root.put("labels", labels);
 
@@ -81,19 +80,7 @@ final class OfflineFlowYamlSupport {
         return yaml.dump(root);
     }
 
-    private String buildExecutionDisplayName(String mode, List<String> selectedTaskIds) {
-        if ("ALL".equalsIgnoreCase(mode)) {
-            return "整个 Flow";
-        }
-        List<String> uniqueTaskIds = new ArrayList<>(new LinkedHashSet<>(selectedTaskIds));
-        if (uniqueTaskIds.isEmpty()) {
-            return "未命名节点";
-        }
-        if (uniqueTaskIds.size() == 1) {
-            return uniqueTaskIds.get(0);
-        }
-        return uniqueTaskIds.get(0) + " 等 " + uniqueTaskIds.size() + " 个节点";
-    }
+
 
     String sha256Hex(String content) {
         try {
@@ -185,34 +172,26 @@ final class OfflineFlowYamlSupport {
     private void parseGraphTasks(List<Map<String, Object>> tasks,
                                  List<FlowNode> outNodes,
                                  List<FlowEdge> outEdges) {
-        // Track previous "exit" task IDs — these connect to the current task's "entry" IDs.
-        List<String> previousExitIds = new ArrayList<>();
-
         for (Map<String, Object> task : tasks) {
-            if (isParallelTask(task)) {
-                // Parallel: entry nodes = all children, exit nodes = all children
+            if (isDagTask(task)) {
+                // Dag: read tasks and their dependsOn
                 List<Map<String, Object>> childTasks = castTaskList((List<?>) task.get("tasks"));
-                List<String> parallelEntryIds = new ArrayList<>();
-                for (Map<String, Object> childTask : childTasks) {
-                    FlowNode childNode = parseLeafNode(childTask);
+                for (Map<String, Object> dagTaskEntry : childTasks) {
+                    Map<String, Object> actualTask = (Map<String, Object>) dagTaskEntry.get("task");
+                    if (actualTask == null) continue;
+                    FlowNode childNode = parseLeafNode(actualTask);
                     outNodes.add(childNode);
-                    parallelEntryIds.add(childNode.taskId());
-                }
-                // Connect previous exits → each parallel entry
-                for (String prevId : previousExitIds) {
-                    for (String entryId : parallelEntryIds) {
-                        outEdges.add(new FlowEdge(prevId, entryId));
+                    
+                    Object dependsOn = dagTaskEntry.get("dependsOn");
+                    if (dependsOn instanceof List<?> predIds) {
+                        for (Object predId : predIds) {
+                            outEdges.add(new FlowEdge(predId.toString(), childNode.taskId()));
+                        }
                     }
                 }
-                previousExitIds = new ArrayList<>(parallelEntryIds);
             } else {
-                // Simple task: entry = itself, exit = itself
-                FlowNode node = parseLeafNode(task);
-                outNodes.add(node);
-                for (String prevId : previousExitIds) {
-                    outEdges.add(new FlowEdge(prevId, node.taskId()));
-                }
-                previousExitIds = List.of(node.taskId());
+                // Simple task (e.g. single node flow without Dag wrapper)
+                outNodes.add(parseLeafNode(task));
             }
         }
     }
@@ -266,49 +245,33 @@ final class OfflineFlowYamlSupport {
             }
         }
 
-        // Assign layers (longest path from any source)
-        Map<String, Integer> layer = new LinkedHashMap<>();
-        for (String id : sorted) {
-            int maxPredLayer = -1;
-            for (String pred : predecessors.get(id)) {
-                maxPredLayer = Math.max(maxPredLayer, layer.getOrDefault(pred, 0));
-            }
-            layer.put(id, maxPredLayer + 1);
-        }
-
-        // Group by layer, preserving topological order within each layer
-        Map<Integer, List<String>> layerGroups = new LinkedHashMap<>();
-        for (String id : sorted) {
-            layerGroups.computeIfAbsent(layer.get(id), k -> new ArrayList<>()).add(id);
-        }
-
         // Build task map for looking up existing task definitions
         Map<String, Map<String, Object>> existingTaskMap = buildExistingTaskMap(requireTasks(root));
 
         // Build compiled tasks list
         List<Map<String, Object>> compiledTasks = new ArrayList<>();
-        List<Integer> sortedLayers = new ArrayList<>(layerGroups.keySet());
-        Collections.sort(sortedLayers);
+        Map<String, Object> dagTask = new LinkedHashMap<>();
+        dagTask.put("id", "flow_dag");
+        dagTask.put("type", "io.kestra.plugin.core.flow.Dag");
 
-        for (int layerIdx : sortedLayers) {
-            List<String> groupIds = layerGroups.get(layerIdx);
-            if (groupIds.size() == 1) {
-                // Single task stage
-                String taskId = groupIds.getFirst();
-                compiledTasks.add(getOrCreateTaskDef(existingTaskMap, taskId, nodes, dataSourceMap));
-            } else {
-                // Parallel group
-                Map<String, Object> parallelTask = new LinkedHashMap<>();
-                parallelTask.put("id", "parallel_" + layerIdx);
-                parallelTask.put("type", "io.kestra.plugin.core.flow.Parallel");
-                List<Map<String, Object>> childDefs = new ArrayList<>();
-                for (String taskId : groupIds) {
-                    childDefs.add(getOrCreateTaskDef(existingTaskMap, taskId, nodes, dataSourceMap));
-                }
-                parallelTask.put("tasks", childDefs);
-                compiledTasks.add(parallelTask);
+        List<Map<String, Object>> childTasks = new ArrayList<>();
+        for (String taskId : sorted) {
+            Map<String, Object> taskDef = getOrCreateTaskDef(existingTaskMap, taskId, nodes, dataSourceMap);
+            
+            // Wrap in DagTask
+            Map<String, Object> dagTaskEntry = new LinkedHashMap<>();
+            dagTaskEntry.put("task", taskDef);
+
+            // Add dependsOn based on predecessors
+            Set<String> preds = predecessors.get(taskId);
+            if (preds != null && !preds.isEmpty()) {
+                dagTaskEntry.put("dependsOn", new ArrayList<>(preds));
             }
+            childTasks.add(dagTaskEntry);
         }
+        
+        dagTask.put("tasks", childTasks);
+        compiledTasks.add(dagTask);
 
         root.put("tasks", compiledTasks);
         return yaml.dump(root);
@@ -320,10 +283,17 @@ final class OfflineFlowYamlSupport {
         for (Map<String, Object> task : tasks) {
             String id = readOptionalString(task, "id");
             if (id != null) {
-                if (isParallelTask(task)) {
+                if (isDagTask(task)) {
                     Object childTasks = task.get("tasks");
                     if (childTasks instanceof List<?> rawChildren) {
-                        result.putAll(buildExistingTaskMap(castTaskList(rawChildren)));
+                        List<Map<String, Object>> unmarshalledChildren = new ArrayList<>();
+                        for (Map<String, Object> wrapper : castTaskList(rawChildren)) {
+                            Object innerTask = wrapper.get("task");
+                            if (innerTask instanceof Map<?, ?> inner) {
+                                unmarshalledChildren.add((Map<String, Object>) inner);
+                            }
+                        }
+                        result.putAll(buildExistingTaskMap(unmarshalledChildren));
                     }
                 } else {
                     result.put(id, task);
@@ -692,11 +662,27 @@ final class OfflineFlowYamlSupport {
             boolean descendantSelected = false;
             Object childTasks = task.get("tasks");
             if (childTasks instanceof List<?> rawChildTasks && !rawChildTasks.isEmpty()) {
-                descendantSelected = applySelection(castTaskList(rawChildTasks), selectedTaskIds);
+                if (isDagTask(task)) {
+                    List<Map<String, Object>> unwrappedChildren = new ArrayList<>();
+                    for (Map<String, Object> wrapper : castTaskList(rawChildTasks)) {
+                        Object innerTask = wrapper.get("task");
+                        if (innerTask instanceof Map<?, ?> inner) {
+                            unwrappedChildren.add((Map<String, Object>) inner);
+                        }
+                    }
+                    descendantSelected = applySelection(unwrappedChildren, selectedTaskIds);
+                } else {
+                    descendantSelected = applySelection(castTaskList(rawChildTasks), selectedTaskIds);
+                }
             }
 
             boolean keepEnabled = selected || descendantSelected;
-            if (!keepEnabled) {
+            // For Dag containers, we keep them enabled if any descendant is selected
+            if (isDagTask(task)) {
+                if (!descendantSelected) {
+                    task.put("disabled", true);
+                }
+            } else if (!selected) {
                 task.put("disabled", true);
             }
             subtreeSelected = subtreeSelected || keepEnabled;
@@ -716,16 +702,22 @@ final class OfflineFlowYamlSupport {
     private List<FlowStage> parseStages(List<Map<String, Object>> tasks) {
         List<FlowStage> stages = new ArrayList<>();
         for (Map<String, Object> task : tasks) {
-            if (isParallelTask(task)) {
+            if (isDagTask(task)) {
                 Object rawChildTasks = task.get("tasks");
-                if (!(rawChildTasks instanceof List<?> childTasks) || childTasks.isEmpty()) {
-                    throw unsupportedTask("Parallel 任务缺少子节点");
+                if (rawChildTasks instanceof List<?> childTasks && !childTasks.isEmpty()) {
+                    List<FlowNode> unwrappedNodes = new ArrayList<>();
+                    for (Map<String, Object> wrapper : castTaskList(childTasks)) {
+                        Object innerTask = wrapper.get("task");
+                        if (innerTask instanceof Map<?, ?> inner) {
+                            unwrappedNodes.add(parseLeafNode((Map<String, Object>) inner));
+                        }
+                    }
+                    stages.add(new FlowStage(
+                            "main_stage",
+                            false,
+                            unwrappedNodes
+                    ));
                 }
-                stages.add(new FlowStage(
-                        requiredString(task, "id"),
-                        true,
-                        castTaskList(childTasks).stream().map(this::parseLeafNode).toList()
-                ));
             } else {
                 stages.add(new FlowStage(requiredString(task, "id"), false, List.of(parseLeafNode(task))));
             }
@@ -734,9 +726,6 @@ final class OfflineFlowYamlSupport {
     }
 
     private FlowNode parseLeafNode(Map<String, Object> task) {
-        if (isParallelTask(task)) {
-            throw unsupportedTask("当前仅支持单层 Parallel 结构");
-        }
         String taskId = requiredString(task, "id");
         String scriptPath = readScriptPath(task);
 
@@ -798,8 +787,9 @@ final class OfflineFlowYamlSupport {
         return includePaths.getFirst();
     }
 
-    private boolean isParallelTask(Map<String, Object> task) {
-        return "io.kestra.plugin.core.flow.Parallel".equals(readOptionalString(task, "type"));
+
+    private boolean isDagTask(Map<String, Object> task) {
+        return "io.kestra.plugin.core.flow.Dag".equals(readOptionalString(task, "type"));
     }
 
     @SuppressWarnings("unchecked")

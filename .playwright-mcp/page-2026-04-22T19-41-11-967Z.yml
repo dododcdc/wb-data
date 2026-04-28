@@ -1,0 +1,171 @@
+- generic:
+  - generic:
+    - generic:
+      - banner:
+        - generic:
+          - generic:
+            - img
+            - heading [level=2]: WB Data
+          - navigation:
+            - link:
+              - /url: /
+              - generic: 首页
+            - link:
+              - /url: /datasources
+              - generic: 数据源管理
+            - link:
+              - /url: /query
+              - generic: 自助查询
+            - link:
+              - /url: /offline
+              - generic: 离线开发
+            - link:
+              - /url: /group-settings
+              - generic: 项目组设置
+        - generic:
+          - generic:
+            - img
+            - generic: alpha
+          - generic:
+            - generic: A
+            - generic: Alpha 开发者
+          - button:
+            - img
+      - main:
+        - generic:
+          - generic:
+            - generic:
+              - complementary:
+                - generic:
+                  - generic: main
+                  - generic:
+                    - button:
+                      - img
+                    - button:
+                      - img
+                    - button:
+                      - generic:
+                        - img
+                - generic:
+                  - generic:
+                    - generic:
+                      - button:
+                        - generic:
+                          - img
+                        - generic:
+                          - img
+                        - generic: alpha
+                      - generic:
+                        - generic:
+                          - button:
+                            - generic:
+                              - img
+                            - generic:
+                              - img
+                            - generic: archive
+                          - generic:
+                            - button:
+                              - generic:
+                                - img
+                              - generic: ggo
+                            - button:
+                              - generic:
+                                - img
+                              - generic: test01
+                            - button:
+                              - generic:
+                                - img
+                              - generic: test2
+                            - button:
+                              - generic:
+                                - img
+                              - generic: ttt
+                        - generic:
+                          - button:
+                            - generic:
+                              - img
+                            - generic:
+                              - img
+                            - generic: etl
+                          - generic:
+                            - button:
+                              - generic:
+                                - img
+                              - generic: daily_orders
+                        - generic:
+                          - button:
+                            - generic:
+                              - img
+                            - generic:
+                              - img
+                            - generic: report
+                          - generic:
+                            - button:
+                              - generic:
+                                - img
+                              - generic: monthly_summary
+                        - button:
+                          - generic:
+                            - img
+                          - generic: et l
+              - main:
+                - generic:
+                  - generic:
+                    - checkbox
+                    - text: 全选
+                  - button:
+                    - generic:
+                      - img
+                  - button:
+                    - generic:
+                      - img
+                  - button [disabled]:
+                    - img
+                  - button:
+                    - img
+                  - button:
+                    - img
+                  - button:
+                    - img
+                  - button:
+                    - img
+                  - button:
+                    - img
+                - generic:
+                  - generic:
+                    - application:
+                      - group [ref=e375]:
+                        - generic [ref=e377]:
+                          - checkbox [ref=e379] [cursor=pointer]
+                          - strong [ref=e380]: shell_node_1
+                          - generic [ref=e381]: Shell
+                      - img
+                      - generic:
+                        - button:
+                          - img
+                        - button:
+                          - img
+                        - button:
+                          - img
+                        - button:
+                          - img
+                      - generic:
+                        - img
+  - dialog "保存冲突" [ref=e385]:
+    - generic [ref=e386]:
+      - generic [ref=e387]:
+        - generic [ref=e388]:
+          - heading "保存冲突" [level=2] [ref=e389]
+          - paragraph [ref=e390]: 服务器版本已更新。请选择覆盖保存、加载最新内容，或稍后处理。
+        - button "关闭" [active] [ref=e391] [cursor=pointer]:
+          - img [ref=e392]
+      - generic [ref=e395]:
+        - generic [ref=e396]:
+          - img [ref=e397]
+          - generic [ref=e399]:
+            - strong [ref=e400]: 当前保存的依据版本已经变化
+            - paragraph [ref=e401]: 你的本地草稿仍然保留，只有明确选择后才会覆盖或丢弃。
+        - generic [ref=e402]:
+          - button "用我的覆盖" [ref=e403]
+          - button "丢弃本地并加载服务器" [ref=e404]
+          - button "稍后处理" [ref=e405]

@@ -1612,6 +1612,26 @@ button.offline-tree-row {
     gap: 12px;
 }
 
+.offline-detail-body {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    overflow-y: auto;
+    padding-right: 4px;
+    /* Custom scrollbar for better aesthetics */
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+}
+
+.offline-detail-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.offline-detail-body::-webkit-scrollbar-thumb {
+    background-color: var(--color-border);
+    border-radius: 10px;
+}
+
 .offline-detail-header {
     display: flex;
     align-items: flex-start;
@@ -2021,4 +2041,145 @@ button.offline-tree-row {
     color: #fff;
     border: none;
     font-weight: 500;
+}
+
+/* Execution Dialog Task Summary */
+.offline-detail-tasks {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px dashed var(--color-border-subtle);
+}
+
+.offline-detail-tasks-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.offline-detail-tasks-header span {
+    color: var(--color-text-muted);
+    font-size: 0.74rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.offline-detail-tasks-header em {
+    font-size: 0.74rem;
+    color: var(--color-text-muted);
+    font-style: normal;
+}
+
+.offline-detail-tasks-list {
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+    background: white;
+}
+
+.offline-tasks-list-thead {
+    display: grid;
+    grid-template-columns: 1.5fr 75px 75px 70px 105px 60px;
+    background: var(--color-bg-secondary);
+    padding: 8px 12px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.offline-tasks-list-tbody {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.offline-tasks-list-row {
+    display: grid;
+    grid-template-columns: 1.5fr 75px 75px 70px 105px 60px;
+    padding: 10px 12px;
+    font-size: 0.8rem;
+    align-items: center;
+    border-bottom: 1px solid var(--color-border-subtle);
+    transition: background-color 0.15s;
+}
+
+.offline-tasks-list-row:last-child {
+    border-bottom: none;
+}
+
+.offline-tasks-list-row:hover {
+    background-color: var(--color-bg-hover);
+}
+
+.col-node {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: 8px;
+}
+
+.col-status {
+    display: flex;
+    align-items: center;
+}
+
+.col-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.offline-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+.offline-status-badge.is-success { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
+.offline-status-badge.is-failed { background: rgba(220, 38, 38, 0.1); color: #dc2626; }
+.offline-status-badge.is-running { background: rgba(37, 99, 235, 0.1); color: #2563eb; }
+.offline-status-badge.is-queued { background: rgba(0, 0, 0, 0.05); color: var(--color-text-muted); }
+
+.offline-status-badge .offline-task-icon.is-animated {
+    animation: offline-spin 2s linear infinite;
+}
+
+@keyframes offline-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Leave Confirmation Dialog Specific Styles */
+.offline-dialog-card.is-warning {
+    border-top: 4px solid #f59e0b;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.offline-dialog-icon-wrap.is-warning {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(245, 158, 11, 0.1);
+    color: #f59e0b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.hover\:bg-red-50:hover {
+    background-color: #fef2f2;
+}
+
+.hover\:text-red-600:hover {
+    color: #dc2626;
+}
+
+.hover\:border-red-200:hover {
+    border-color: #fecaca;
 }

@@ -1,0 +1,7 @@
+[GET] http://127.0.0.1:5173/api/v1/offline/repo/status?groupId=1 => [200] OK
+[GET] http://127.0.0.1:5173/api/v1/offline/repo/tree?groupId=1 => [200] OK
+[GET] http://127.0.0.1:5173/api/v1/offline/repo/remote?groupId=1 => [200] OK
+[GET] http://127.0.0.1:5173/api/v1/offline/repo/status?groupId=1 => [200] OK
+[GET] http://127.0.0.1:5173/api/v1/offline/repo/tree?groupId=1 => [200] OK
+[GET] http://127.0.0.1:5173/api/v1/offline/repo/remote?groupId=1 => [200] OK
+[GET] http://127.0.0.1:5173/api/v1/offline/flows/document?groupId=1&path=_flows%2Fetl%2Fdaily_orders%2Fflow.yaml => [400] Bad Request

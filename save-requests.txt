@@ -1,0 +1,2 @@
+[GET] http://127.0.0.1:5173/api/v1/offline/flows/document?groupId=1&path=_flows%2Fetl%2Fdaily_orders%2Fflow.yaml => [400] Bad Request
+[GET] http://127.0.0.1:5173/api/v1/offline/flows/document?groupId=1&path=_flows%2Farchive%2Fggo%2Fflow.yaml => [200] OK

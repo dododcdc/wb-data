@@ -44,6 +44,7 @@ interface FlowCanvasProps {
     onAddNode?: (kind: OfflineFlowNodeKind, position: { x: number; y: number }) => void;
     onRenameNode?: (oldId: string, newId: string) => void;
     nodeIssues?: Record<string, string | null>;
+    nodeStatuses?: Record<string, string | null>;
 }
 
 function flattenNodes(doc: OfflineFlowDocument): OfflineFlowNode[] {
@@ -55,6 +56,7 @@ function buildInitialNodes(
     selectedTaskIds: string[],
     onToggleTaskSelection: (taskId: string) => void,
     nodeIssues?: Record<string, string | null>,
+    nodeStatuses?: Record<string, string | null>,
 ): Node[] {
     const allNodes = flattenNodes(doc);
     const hasLayout = doc.layout && Object.keys(doc.layout).length > 0;
@@ -74,6 +76,7 @@ function buildInitialNodes(
                 selected: selectedTaskIds.includes(node.taskId),
                 onToggleSelection: onToggleTaskSelection,
                 validationError: nodeIssues?.[node.taskId] ?? null,
+                status: nodeStatuses?.[node.taskId] ?? null,
             } satisfies FlowCanvasNodeData,
         };
     });
@@ -112,11 +115,11 @@ export default function FlowCanvas(props: FlowCanvasProps) {
         onNodeLayoutCommit,
         onSelectNode,
         onToggleTaskSelection,
-        onReplaceTaskSelection,
         onDoubleClickNode,
         onAddNode,
         onRenameNode,
         nodeIssues,
+        nodeStatuses,
     } = props;
     const containerRef = useRef<HTMLDivElement>(null);
     const { screenToFlowPosition } = useReactFlow();
@@ -127,11 +130,6 @@ export default function FlowCanvas(props: FlowCanvasProps) {
 
     const handleInlineRenameCommit = useCallback((oldId: string, newId: string) => {
         if (onRenameNode) {
-            // Re-use the existing rename logic (which should handle stages, edges, etc.)
-            // We pass the new name which will trigger the workbench commit
-            // In workbench, we'll need a logic to directly commit it.
-            // Wait, handleRenameNodeCommit in workbench uses renamingNodeNewName state.
-            // I should pass (oldId, newId) to onRenameNode if it supports it.
             onRenameNode(oldId, newId);
         }
         setEditingNodeId(null);
@@ -143,7 +141,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
 
     // Build initial data
     const initialNodes = useMemo(() => {
-        let nodesToLayout = buildInitialNodes(flowDocument, selectedTaskIds, onToggleTaskSelection, nodeIssues);
+        let nodesToLayout = buildInitialNodes(flowDocument, selectedTaskIds, onToggleTaskSelection, nodeIssues, nodeStatuses);
         const edges = buildInitialEdges(flowDocument);
         const hasLayout = flowDocument.layout && Object.keys(flowDocument.layout).length > 0;
         if (!hasLayout && nodesToLayout.length > 0) {
@@ -151,12 +149,10 @@ export default function FlowCanvas(props: FlowCanvasProps) {
         }
 
         return nodesToLayout;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [flowDocument, onToggleTaskSelection, selectedTaskIds, nodeIssues]);
+    }, [flowDocument, onToggleTaskSelection, selectedTaskIds, nodeIssues, nodeStatuses]);
 
     const initialEdges = useMemo(
         () => buildInitialEdges(flowDocument),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
         [flowDocument],
     );
 
@@ -190,7 +186,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
         setSelectedEdgeIds((current) => current.filter((edgeId) => edges.some((edge) => edge.id === edgeId)));
     }, [edges]);
 
-    // Keep node data.selected in sync with selectedTaskIds AND append any new nodes added to flowDocument
+    // Keep node data in sync
     useEffect(() => {
         const docNodes = flattenNodes(flowDocument);
 
@@ -203,11 +199,13 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                 const isSelected = selectedTaskIds.includes(n.id);
                 const isEditing = n.id === editingNodeId;
                 const validationError = nodeIssues?.[n.id] ?? null;
+                const status = nodeStatuses?.[n.id] ?? null;
                 if (
                     n.data.selected !== isSelected || 
                     n.data.onToggleSelection !== onToggleTaskSelection || 
                     n.data.isEditing !== isEditing ||
-                    n.data.validationError !== validationError
+                    n.data.validationError !== validationError ||
+                    n.data.status !== status
                 ) {
                     changed = true;
                     return {
@@ -218,6 +216,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                             onToggleSelection: onToggleTaskSelection,
                             isEditing,
                             validationError,
+                            status,
                             onRename: (newId: string) => handleInlineRenameCommit(n.id, newId),
                             onCancelRename: handleInlineRenameCancel,
                         },
@@ -226,7 +225,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                 return n;
             });
 
-            // 2. Check for definitively new nodes added to `flowDocument` but not yet on canvas (e.g. via drag-and-drop)
+            // 2. Check for definitively new nodes
             const existingNodeIds = new Set(result.map((n) => n.id));
             const newlyAddedDocNodes = docNodes.filter((n) => !existingNodeIds.has(n.taskId));
 
@@ -249,6 +248,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                             onRename: (newId: string) => handleInlineRenameCommit(node.taskId, newId),
                             onCancelRename: handleInlineRenameCancel,
                             validationError: nodeIssues?.[node.taskId] ?? null,
+                            status: nodeStatuses?.[node.taskId] ?? null,
                         },
                     };
                 });
@@ -257,7 +257,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
 
             return changed ? result : nds;
         });
-    }, [flowDocument, onToggleTaskSelection, selectedTaskIds, setNodes, editingNodeId, handleInlineRenameCommit, handleInlineRenameCancel]);
+    }, [flowDocument, onToggleTaskSelection, selectedTaskIds, setNodes, editingNodeId, handleInlineRenameCommit, handleInlineRenameCancel, nodeIssues, nodeStatuses]);
 
     const wrappedNodesChange: OnNodesChange = useCallback(
         (changes) => {
@@ -324,7 +324,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
             })));
             onSelectNode(node.id);
         },
-        [onReplaceTaskSelection, onSelectNode, setEdges, setNodes],
+        [onSelectNode, setEdges, setNodes],
     );
 
     const onNodeDoubleClick = useCallback(
@@ -385,9 +385,6 @@ export default function FlowCanvas(props: FlowCanvasProps) {
             ...item,
             selected: selectedEdgeIdSet.has(item.id),
         })));
-        if (nextSelectedNodeIds.length > 0) {
-            // No longer syncing canvas selection to task selection checkboxes
-        }
     }, [setEdges, setNodes]);
 
     const onNodesDelete = useCallback(
@@ -507,7 +504,6 @@ export default function FlowCanvas(props: FlowCanvasProps) {
         (event: React.MouseEvent, node: Node) => {
             event.preventDefault();
             
-            // Calculate position relative to container
             if (!containerRef.current) return;
             const containerRect = containerRef.current.getBoundingClientRect();
             
@@ -615,7 +611,6 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                 />
             </ReactFlow>
 
-            {/* Node Context Menu */}
             {contextMenu && (
                 <div
                     className="offline-context-menu"

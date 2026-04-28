@@ -1,0 +1,119 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - img [ref=e7]
+        - heading "WB Data" [level=2] [ref=e11]
+      - navigation [ref=e12]:
+        - link "首页" [ref=e13] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e14]: 首页
+        - link "数据源管理" [ref=e15] [cursor=pointer]:
+          - /url: /datasources
+          - generic [ref=e16]: 数据源管理
+        - link "自助查询" [ref=e17] [cursor=pointer]:
+          - /url: /query
+          - generic [ref=e18]: 自助查询
+        - link "离线开发" [ref=e19] [cursor=pointer]:
+          - /url: /offline
+          - generic [ref=e20]: 离线开发
+        - link "项目组设置" [ref=e21] [cursor=pointer]:
+          - /url: /group-settings
+          - generic [ref=e22]: 项目组设置
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - img [ref=e25]
+        - generic [ref=e27]: alpha
+      - generic [ref=e28]:
+        - generic [ref=e29]: A
+        - generic [ref=e30]: Alpha 开发者
+      - button "退出登录" [ref=e31] [cursor=pointer]:
+        - img [ref=e32]
+  - main [ref=e35]:
+    - generic [ref=e38]:
+      - complementary [ref=e39]:
+        - generic [ref=e40]:
+          - generic [ref=e41]: main
+          - generic [ref=e42]:
+            - button "新建" [ref=e43] [cursor=pointer]:
+              - img [ref=e44]
+            - button "刷新" [ref=e45] [cursor=pointer]:
+              - img [ref=e484]
+            - button "推送" [ref=e51] [cursor=pointer]:
+              - img [ref=e53]
+        - generic [ref=e66]:
+          - button "alpha" [ref=e67] [cursor=pointer]:
+            - img [ref=e69]
+            - img [ref=e72]
+            - generic [ref=e74]: alpha
+          - generic [ref=e75]:
+            - generic [ref=e76]:
+              - button "archive" [ref=e77] [cursor=pointer]:
+                - img [ref=e79]
+                - img [ref=e82]
+                - generic [ref=e84]: archive
+              - generic [ref=e85]:
+                - button "ggo" [ref=e86] [cursor=pointer]:
+                  - img [ref=e88]
+                  - generic [ref=e93]: ggo
+                - button "test01" [ref=e94] [cursor=pointer]:
+                  - img [ref=e96]
+                  - generic [ref=e101]: test01
+                - button "test2" [ref=e102] [cursor=pointer]:
+                  - img [ref=e104]
+                  - generic [ref=e109]: test2
+                - button "ttt" [active] [ref=e110] [cursor=pointer]:
+                  - img [ref=e112]
+                  - generic [ref=e117]: ttt
+            - generic [ref=e118]:
+              - button "etl" [ref=e119] [cursor=pointer]:
+                - img [ref=e121]
+                - img [ref=e124]
+                - generic [ref=e126]: etl
+              - button "daily_orders" [ref=e128] [cursor=pointer]:
+                - img [ref=e130]
+                - generic [ref=e135]: daily_orders
+            - generic [ref=e136]:
+              - button "report" [ref=e137] [cursor=pointer]:
+                - img [ref=e139]
+                - img [ref=e142]
+                - generic [ref=e144]: report
+              - button "monthly_summary" [ref=e146] [cursor=pointer]:
+                - img [ref=e148]
+                - generic [ref=e153]: monthly_summary
+            - button "et l" [ref=e154] [cursor=pointer]:
+              - img [ref=e156]
+              - generic [ref=e161]: et l
+      - main [ref=e58]:
+        - generic [ref=e174]:
+          - generic [ref=e175] [cursor=pointer]:
+            - checkbox "全选" [disabled] [ref=e176]
+            - text: 全选
+          - button "保存" [disabled] [ref=e177]:
+            - img [ref=e489]
+          - button "提交" [ref=e183] [cursor=pointer]:
+            - img [ref=e185]
+          - button "调度" [ref=e187] [cursor=pointer]:
+            - img [ref=e188]
+          - button "执行" [ref=e191] [cursor=pointer]:
+            - img [ref=e192]
+          - button "执行结果" [ref=e194] [cursor=pointer]:
+            - img [ref=e195]
+          - button "添加 SQL 节点" [ref=e200] [cursor=pointer]:
+            - img [ref=e201]
+          - button "添加 HiveSQL 节点" [ref=e206] [cursor=pointer]:
+            - img [ref=e207]
+          - button "添加 Shell 节点" [ref=e211] [cursor=pointer]:
+            - img [ref=e212]
+        - application [ref=e495]:
+          - img
+          - generic "Control Panel" [ref=e498]:
+            - button "Zoom In" [ref=e499] [cursor=pointer]:
+              - img [ref=e500]
+            - button "Zoom Out" [ref=e502] [cursor=pointer]:
+              - img [ref=e503]
+            - button "Fit View" [ref=e505] [cursor=pointer]:
+              - img [ref=e506]
+            - button "自动排版" [ref=e508] [cursor=pointer]:
+              - img [ref=e509]
+          - img "Mini Map" [ref=e515]

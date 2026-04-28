@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AxiosError } from 'axios';
 import { ReactFlowProvider, type Node, type Edge } from '@xyflow/react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useBlocker } from 'react-router-dom';
 import FlowCanvas from './FlowCanvas';
 import '../core/RouteSkeletons.css';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
@@ -96,7 +96,12 @@ import {
 import { createNodeEditorDraftScheduler } from './nodeEditorDraftScheduler';
 import { isExecuteButtonDisabled } from './executionToolbarState';
 import { buildDraftExecutionRequest } from './draftExecution';
-import { getExecutionPresentation, getExecutionStatusLabel, isRunningStatus } from './executionPresentation';
+import { 
+    getExecutionPresentation, 
+    getExecutionStatusLabel, 
+    getTaskStatusIcon,
+    isRunningStatus 
+} from './executionPresentation';
 import {
     findFirstNodeWithInvalidDataSource,
     validateSqlNodeDataSourceRequirement,
@@ -164,9 +169,14 @@ function formatDateTime(value: string | number | null | undefined) {
 
 function formatDuration(durationMs: number | null) {
     if (durationMs == null) return '—';
+    if (durationMs < 1000) return `${durationMs}ms`;
     const seconds = durationMs / 1000;
-    const formatted = seconds >= 10 ? seconds.toFixed(0) : seconds.toFixed(1).replace(/\.0$/, '');
-    return `${formatted} 秒`;
+    if (seconds < 60) {
+        return `${seconds.toFixed(1).replace(/\.0$/, '')}s`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}m ${remainingSeconds}s`;
 }
 
 function StatusPill(props: { tone: 'neutral' | 'success' | 'danger' | 'active'; children: string }) {
@@ -455,6 +465,7 @@ interface ExecutionDialogProps {
     onStopExecution: (executionId: string) => void;
     onStopAll: () => void;
     onOpenExecutionPage: (executionId: string) => void;
+    onOpenTaskLogs: (executionId: string, taskId: string) => void;
     onRequestedByFilterChange: (requestedBy: number | null) => void;
 }
 
@@ -474,7 +485,7 @@ function ExecutionDialog(props: ExecutionDialogProps) {
         onSelectExecution,
         onStopExecution,
         onStopAll,
-        onOpenExecutionPage,
+        onOpenTaskLogs,
         onRequestedByFilterChange,
     } = props;
     const requestedByOptions = currentUserId == null
@@ -599,14 +610,6 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                                         </div>
                                                     </div>
                                                     <div className="offline-detail-actions">
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => onOpenExecutionPage(detail.executionId)}
-                                                        >
-                                                            查看日志
-                                                        </Button>
                                                         {isRunningStatus(detail.status) ? (
                                                             <Button
                                                                 type="button"
@@ -621,7 +624,8 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                                     </div>
                                                 </div>
 
-                                                <div className="offline-detail-kpis">
+                                                <div className="offline-detail-body">
+                                                    <div className="offline-detail-kpis">
                                                     <div>
                                                         <span>开始时间</span>
                                                         <strong>{formatDateTime(detail.startDate ?? detail.createdAt)}</strong>
@@ -638,6 +642,76 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                                         <span>执行 ID</span>
                                                         <strong>{detail.executionId}</strong>
                                                     </div>
+                                                </div>
+
+                                                {detail.taskRuns && detail.taskRuns.filter(t => !t.taskId.startsWith('parallel_') && t.taskId !== 'flow_dag').length > 0 && (
+                                                    <div className="offline-detail-tasks">
+                                                        <div className="offline-detail-tasks-header">
+                                                            <span>节点执行详情</span>
+                                                            <em>{detail.taskRuns.filter(t => !t.taskId.startsWith('parallel_') && t.taskId !== 'flow_dag').length} 个节点</em>
+                                                        </div>
+                                                        <div className="offline-detail-tasks-list">
+                                                            <div className="offline-tasks-list-thead">
+                                                                <div className="col-node">节点名称</div>
+                                                                <div className="col-time">开始时间</div>
+                                                                <div className="col-time">结束时间</div>
+                                                                <div className="col-duration">耗时</div>
+                                                                <div className="col-status">状态</div>
+                                                                <div className="col-actions">操作</div>
+                                                            </div>
+                                                            <div className="offline-tasks-list-tbody">
+                                                                {detail.taskRuns
+                                                                    .filter(task => !task.taskId.startsWith('parallel_') && task.taskId !== 'flow_dag')
+                                                                    .map((task) => {
+                                                                        const StatusIcon = getTaskStatusIcon(task.status);
+                                                                    const isRunning = isRunningStatus(task.status);
+                                                                    const duration = (task.startDate && task.endDate) 
+                                                                        ? new Date(task.endDate).getTime() - new Date(task.startDate).getTime()
+                                                                        : (task.startDate && isRunning)
+                                                                            ? Date.now() - new Date(task.startDate).getTime()
+                                                                            : null;
+
+                                                                    return (
+                                                                        <div key={task.taskId} className="offline-tasks-list-row">
+                                                                            <div className="col-node" title={task.taskId}>
+                                                                                <strong>{task.taskId}</strong>
+                                                                            </div>
+                                                                            <div className="col-time">
+                                                                                {task.startDate ? formatDateTime(task.startDate).split(' ')[1] : '—'}
+                                                                            </div>
+                                                                            <div className="col-time">
+                                                                                {task.endDate ? formatDateTime(task.endDate).split(' ')[1] : '—'}
+                                                                            </div>
+                                                                            <div className="col-duration">
+                                                                                {formatDuration(duration)}
+                                                                            </div>
+                                                                            <div className="col-status">
+                                                                                <div className={`offline-status-badge is-${task.status.toLowerCase()}`}>
+                                                                                    <StatusIcon 
+                                                                                        size={12} 
+                                                                                        className={`offline-task-icon${isRunning ? ' is-animated' : ''}`} 
+                                                                                    />
+                                                                                    <span>{getExecutionStatusLabel(task.status)}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="col-actions">
+                                                                                <Button
+                                                                                    type="button"
+                                                                                    variant="ghost"
+                                                                                    size="sm"
+                                                                                    style={{ height: '24px', padding: '0 8px', fontSize: '0.72rem' }}
+                                                                                    onClick={() => onOpenTaskLogs(detail.executionId, task.taskId)}
+                                                                                >
+                                                                                    日志
+                                                                                </Button>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    )}
                                                 </div>
                                             </>
                                         );
@@ -856,6 +930,11 @@ export default function OfflineWorkbench() {
     const openFlowDocumentRef = useRef<(pathValue: string, options?: { preferRecoverySnapshot?: boolean }) => Promise<boolean>>(async () => false);
     const leaveCurrentFlowRef = useRef<((session: FlowDraftSession | null, groupIdValue?: number | null) => void) | null>(null);
     const nodeEditorDraftSchedulerRef = useRef<ReturnType<typeof createNodeEditorDraftScheduler> | null>(null);
+    const [pendingNavigation, setPendingNavigation] = useState<{
+        type: 'flow' | 'router';
+        flowPath?: string;
+        blocker?: any;
+    } | null>(null);
 
     if (!nodeEditorDraftSchedulerRef.current) {
         nodeEditorDraftSchedulerRef.current = createNodeEditorDraftScheduler({
@@ -878,6 +957,17 @@ export default function OfflineWorkbench() {
 
     useBeforeUnloadGuard(isDirty);
 
+    const blocker = useBlocker(
+        ({ currentLocation, nextLocation }) =>
+            isDirty && currentLocation.pathname !== nextLocation.pathname
+    );
+
+    useEffect(() => {
+        if (blocker.state === 'blocked') {
+            setPendingNavigation({ type: 'router', blocker });
+        }
+    }, [blocker]);
+
     const nodeIssues = useMemo(() => {
         if (!flowDocument) return {};
         const issues: Record<string, string | null> = {};
@@ -894,6 +984,15 @@ export default function OfflineWorkbench() {
         });
         return issues;
     }, [flowDocument]);
+
+    const nodeStatuses = useMemo(() => {
+        if (!executionDetail?.taskRuns) return {};
+        const statuses: Record<string, string> = {};
+        executionDetail.taskRuns.forEach((run) => {
+            statuses[run.taskId] = run.status;
+        });
+        return statuses;
+    }, [executionDetail]);
     const branchLabel = repoStatus?.gitInitialized ? repoStatus.branch ?? 'main' : '未初始化';
 
     useEffect(() => {
@@ -1062,7 +1161,7 @@ export default function OfflineWorkbench() {
         leaveCurrentFlowRef.current = leaveCurrentFlow;
     }, [leaveCurrentFlow]);
 
-    const openFlowDocument = useCallback(async (pathValue: string, options?: { preferRecoverySnapshot?: boolean }) => {
+    const openFlowDocument = useCallback(async (pathValue: string, options?: { preferRecoverySnapshot?: boolean; force?: boolean }) => {
         if (!groupId) return false;
         const isCurrentGroupAction = captureGroupActionGuard(groupId);
         const normalizedPath = pathValue.trim();
@@ -1072,6 +1171,10 @@ export default function OfflineWorkbench() {
         }
 
         if (draftSession && draftSession.path !== normalizedPath) {
+            if (!options?.force && isDirty) {
+                setPendingNavigation({ type: 'flow', flowPath: normalizedPath });
+                return false;
+            }
             leaveCurrentFlow(draftSession);
         }
 
@@ -1410,6 +1513,43 @@ export default function OfflineWorkbench() {
         setDeleteFolderDialogOpen(true);
     }, []);
 
+    const loadExecutionDetail = useCallback(async (executionId: string, silent = false) => {
+        if (!groupId) return;
+        if (!silent) setExecutionDetailLoading(true);
+        try {
+            const detail = await getOfflineExecution(groupId, executionId);
+            setActiveExecutionId(executionId);
+            setExecutionDetail(detail);
+            // 同步更新左侧列表中的状态和时间数据
+            setExecutions((current) => current.map((item) => {
+                if (item.executionId === executionId) {
+                    let durationMs = item.durationMs;
+                    if (detail.startDate && detail.endDate) {
+                        durationMs = new Date(detail.endDate).getTime() - new Date(detail.startDate).getTime();
+                    }
+                    return {
+                        ...item,
+                        status: detail.status,
+                        startDate: detail.startDate,
+                        endDate: detail.endDate,
+                        durationMs: durationMs
+                    };
+                }
+                return item;
+            }));
+        } catch (error) {
+            if (!silent) {
+                showFeedback({
+                    tone: 'error',
+                    title: '执行详情读取失败',
+                    detail: getErrorMessage(error, '暂时无法读取执行详情。'),
+                });
+            }
+        } finally {
+            if (!silent) setExecutionDetailLoading(false);
+        }
+    }, [groupId, showFeedback]);
+
     const openRenameFlowDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
         setContextMenuOpen(false);
         // node.path is like "_flows/demo/flow.yaml"
@@ -1430,23 +1570,6 @@ export default function OfflineWorkbench() {
         setRenameFolderDialogOpen(true);
     }, []);
 
-    const loadExecutionDetail = useCallback(async (executionId: string) => {
-        if (!groupId) return;
-        setExecutionDetailLoading(true);
-        try {
-            const detail = await getOfflineExecution(groupId, executionId);
-            setActiveExecutionId(executionId);
-            setExecutionDetail(detail);
-        } catch (error) {
-            showFeedback({
-                tone: 'error',
-                title: '执行详情读取失败',
-                detail: getErrorMessage(error, '暂时无法读取执行详情。'),
-            });
-        } finally {
-            setExecutionDetailLoading(false);
-        }
-    }, [groupId, showFeedback]);
 
     const refreshExecutions = useCallback(async (preferExecutionId?: string | null, requestedByOverride?: number | null) => {
         if (!groupId || !activeFlowPath) return;
@@ -1482,6 +1605,19 @@ export default function OfflineWorkbench() {
         if (!executionDialogOpen || !activeFlowPath) return;
         void refreshExecutions(null);
     }, [activeFlowPath, executionDialogOpen, refreshExecutions]);
+
+    // 实时轮询正在运行的执行详情
+    useEffect(() => {
+        let timer: ReturnType<typeof setInterval> | null = null;
+        if (executionDialogOpen && activeExecutionId && executionDetail && isRunningStatus(executionDetail.status)) {
+            timer = setInterval(() => {
+                void loadExecutionDetail(activeExecutionId, true);
+            }, 3000);
+        }
+        return () => {
+            if (timer) clearInterval(timer);
+        };
+    }, [executionDialogOpen, activeExecutionId, executionDetail, loadExecutionDetail]);
 
     // Ctrl/Cmd+N to open new Flow dialog
     useEffect(() => {
@@ -1933,6 +2069,36 @@ export default function OfflineWorkbench() {
         showFeedback,
         validateDocumentForAction,
     ]);
+
+    const handleConfirmLeave = useCallback(async (action: 'save' | 'discard') => {
+        if (!pendingNavigation) return;
+
+        if (action === 'save') {
+            const saved = await handleSaveFlow();
+            if (!saved) return;
+        } else {
+            if (draftSession) {
+                leaveCurrentFlow(draftSession);
+            }
+        }
+
+        const target = pendingNavigation;
+        setPendingNavigation(null);
+
+        if (target.type === 'router') {
+            target.blocker.proceed();
+        } else if (target.type === 'flow' && target.flowPath) {
+            void openFlowDocument(target.flowPath, { force: true });
+        }
+    }, [pendingNavigation, handleSaveFlow, draftSession, leaveCurrentFlow, openFlowDocument]);
+
+    const handleCancelLeave = useCallback(() => {
+        if (!pendingNavigation) return;
+        if (pendingNavigation.type === 'router') {
+            pendingNavigation.blocker.reset();
+        }
+        setPendingNavigation(null);
+    }, [pendingNavigation]);
 
     const handleOpenCommitDialog = useCallback(async () => {
         if (!groupId || !activeFlowPath || !flowDocument) return;
@@ -2559,6 +2725,7 @@ export default function OfflineWorkbench() {
                                         selectedTaskIds={selectedTaskIds}
                                         activeNodeId={activeNodeId}
                                         nodeIssues={nodeIssues}
+                                        nodeStatuses={nodeStatuses}
                                         onNodesChange={handleCanvasNodesChange}
                                         onEdgesChange={handleCanvasEdgesChange}
                                         onNodeLayoutCommit={handleCanvasNodeLayoutCommit}
@@ -2602,7 +2769,7 @@ export default function OfflineWorkbench() {
                 onSelectExecution={(executionId) => void loadExecutionDetail(executionId)}
                 onStopExecution={(executionId) => void handleStopExecution(executionId)}
                 onStopAll={() => void handleStopAllExecutions()}
-                onOpenExecutionPage={(executionId) => navigate(`/offline/executions/${encodeURIComponent(executionId)}`)}
+                onOpenTaskLogs={(executionId, taskId) => navigate(`/offline/executions/${encodeURIComponent(executionId)}?taskId=${encodeURIComponent(taskId)}`)}
                 onRequestedByFilterChange={(requestedBy) => {
                     setExecutionRequestedByFilter(requestedBy);
                     void refreshExecutions(activeExecutionId, requestedBy);
@@ -3179,6 +3346,60 @@ export default function OfflineWorkbench() {
                     )}
                 </div>
             )}
+
+            <Dialog open={pendingNavigation !== null} onOpenChange={(open) => { if (!open) handleCancelLeave(); }}>
+                <DialogPortal>
+                    <DialogOverlay className="offline-dialog-backdrop" />
+                    <DialogContent className="offline-dialog-positioner">
+                        <div className="offline-dialog-card is-warning" style={{ width: '400px' }}>
+                            <div className="offline-dialog-header">
+                                <div className="flex items-center gap-3">
+                                    <div className="offline-dialog-icon-wrap is-warning">
+                                        <AlertTriangle size={20} />
+                                    </div>
+                                    <div>
+                                        <DialogTitle className="offline-dialog-title">您有未保存的更改</DialogTitle>
+                                        <DialogDescription className="offline-dialog-description">
+                                            离开此页面将导致所有未保存的修改丢失。
+                                        </DialogDescription>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="offline-dialog-body" style={{ padding: '0 24px 20px' }}>
+                                <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
+                                    您希望在离开前保存当前 Flow 的修改吗？
+                                </p>
+                            </div>
+                            <div className="offline-dialog-actions" style={{ background: 'var(--color-surface-muted)', borderTop: '1px solid var(--color-border-subtle)', padding: '12px 20px' }}>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleCancelLeave}
+                                >
+                                    取消
+                                </Button>
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                                        onClick={() => void handleConfirmLeave('discard')}
+                                    >
+                                        放弃修改
+                                    </Button>
+                                    <Button
+                                        variant="default"
+                                        size="sm"
+                                        onClick={() => void handleConfirmLeave('save')}
+                                    >
+                                        保存并离开
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </DialogPortal>
+            </Dialog>
 
             {/* 点击其他区域关闭右键菜单 */}
             {contextMenuOpen && (

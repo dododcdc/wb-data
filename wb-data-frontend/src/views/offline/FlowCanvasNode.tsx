@@ -4,6 +4,7 @@ import { CircleAlert } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import type { OfflineFlowNodeKind } from '../../api/offline';
 import { getOfflineNodeKindClassName, getOfflineNodeKindLabel } from './offlineNodeKinds';
+import { getTaskStatusIcon, isRunningStatus } from './executionPresentation';
 
 export interface FlowCanvasNodeData {
     taskId: string;
@@ -14,6 +15,7 @@ export interface FlowCanvasNodeData {
     onRename?: (newId: string) => void;
     onCancelRename?: () => void;
     validationError?: string | null;
+    status?: string | null;
     [key: string]: unknown;
 }
 
@@ -91,6 +93,9 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
         e.nativeEvent.stopImmediatePropagation();
     };
 
+    const StatusIcon = data.status ? getTaskStatusIcon(data.status) : null;
+    const isRunning = data.status ? isRunningStatus(data.status) : false;
+
     return (
         <>
             <Handle
@@ -98,7 +103,7 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
                 position={Position.Top}
                 className="flow-canvas-handle"
             />
-            <div className={`flow-canvas-node${rfSelected ? ' is-rf-selected' : ''}${data.selected ? ' is-checked' : ''}`}>
+            <div className={`flow-canvas-node${rfSelected ? ' is-rf-selected' : ''}${data.selected ? ' is-checked' : ''}${data.status ? ` has-status is-${data.status.toLowerCase()}` : ''}`}>
                 <label
                     className="flow-canvas-node-check"
                     onClick={(e) => e.stopPropagation()}
@@ -169,6 +174,14 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
                 <span className={`flow-canvas-node-kind is-${getOfflineNodeKindClassName(data.kind)}`}>
                     {getOfflineNodeKindLabel(data.kind)}
                 </span>
+                
+                {/* Status Indicator */}
+                {StatusIcon && (
+                    <div className={`flow-canvas-node-status-icon is-${data.status?.toLowerCase()}${isRunning ? ' is-animated' : ''}`}>
+                        <StatusIcon size={14} />
+                    </div>
+                )}
+
                 {data.validationError && (
                     <TooltipProvider delayDuration={100}>
                         <Tooltip>

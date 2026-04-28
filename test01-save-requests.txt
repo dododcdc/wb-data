@@ -1,0 +1,5 @@
+[GET] http://127.0.0.1:5173/api/v1/offline/flows/document?groupId=1&path=_flows%2Fetl%2Fdaily_orders%2Fflow.yaml => [400] Bad Request
+[GET] http://127.0.0.1:5173/api/v1/offline/flows/document?groupId=1&path=_flows%2Farchive%2Fggo%2Fflow.yaml => [200] OK
+[GET] http://127.0.0.1:5173/api/v1/offline/flows/document?groupId=1&path=_flows%2Farchive%2Ftest01%2Fflow.yaml => [200] OK
+[PUT] http://127.0.0.1:5173/api/v1/offline/flows/document?groupId=1 => [200] OK
+  Request body: {"groupId":1,"path":"_flows/archive/test01/flow.yaml","documentHash":"d9a78ec09ad5810819f97c2f8ac14f8b1bee0ee99616e22307a56a4cca082004","documentUpdatedAt":1776456422672,"stages":[{"stageId":"main","nodes":[{"taskId":"shell_node_1","scriptContent":"#!/bin/bash\necho \"Hello World\"\n","kind":"SHELL","scriptPath":"scripts/archive/test01/shell_node_1.sh"}]}],"edges":[],"layout":{"shell_node_1":{"x":330,"y":310.5}}}
