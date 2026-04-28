@@ -240,39 +240,6 @@ public class OfflineExecutionService {
     }
 
     private String readExecutionDisplayName(KestraExecutionSnapshot execution) {
-        String labeledDisplayName = execution.labels().get("wbdataDisplayName");
-        if (labeledDisplayName != null && !labeledDisplayName.isBlank()) {
-            return labeledDisplayName;
-        }
-
-        String selectedTaskIds = execution.labels().get("wbdataSelectedTaskIds");
-        if (selectedTaskIds != null && !selectedTaskIds.isBlank()) {
-            String[] values = selectedTaskIds.split(",");
-            if (values.length == 1) {
-                return values[0];
-            }
-            if (values.length > 1) {
-                return values[0] + " 等 " + values.length + " 个节点";
-            }
-        }
-
-        if (execution.taskRuns() != null) {
-            List<String> taskIds = execution.taskRuns().stream()
-                    .map(KestraTaskRunSnapshot::taskId)
-                    .filter(taskId -> taskId != null && !taskId.isBlank())
-                    .distinct()
-                    .toList();
-            if (taskIds.size() == 1) {
-                return taskIds.get(0);
-            }
-            if (taskIds.size() > 1) {
-                return taskIds.get(0) + " 等 " + taskIds.size() + " 个节点";
-            }
-        }
-
-        if ("ALL".equalsIgnoreCase(execution.labels().get("wbdataMode"))) {
-            return "整个 Flow";
-        }
         return execution.id();
     }
 

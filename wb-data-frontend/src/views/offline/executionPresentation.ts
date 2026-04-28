@@ -1,3 +1,5 @@
+import { CheckCircle2, Clock, LoaderCircle, PlayCircle, XCircle } from 'lucide-react';
+
 export type ExecutionDotTone = 'neutral' | 'running' | 'success' | 'failed';
 export type ExecutionProgressTone = 'neutral' | 'running' | 'success' | 'failed';
 
@@ -47,4 +49,19 @@ export function getExecutionPresentation(status: string | null | undefined): Exe
         progressTone: 'neutral',
         animated: false,
     };
+}
+
+export const taskStatusIcon = {
+    SUCCESS: CheckCircle2,
+    FAILED: XCircle,
+    RUNNING: LoaderCircle,
+    CREATED: Clock,
+    QUEUED: Clock,
+    PAUSED: PlayCircle,
+    CANCELLED: XCircle,
+    KILLED: XCircle,
+} as const;
+
+export function getTaskStatusIcon(status: string | null | undefined) {
+    return taskStatusIcon[status as keyof typeof taskStatusIcon] || Clock;
 }
