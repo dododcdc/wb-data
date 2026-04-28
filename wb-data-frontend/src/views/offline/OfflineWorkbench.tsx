@@ -563,7 +563,7 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                             <button
                                                 key={item.executionId}
                                                 type="button"
-                                                className={`offline-execution-row${item.executionId === activeExecutionId ? ' is-active' : ''}`}
+                                                className={`offline-execution-row is-${presentation.dotTone}${item.executionId === activeExecutionId ? ' is-active' : ''}`}
                                                 onClick={() => onSelectExecution(item.executionId)}
                                             >
                                                 <div className="offline-execution-row-main">
@@ -575,10 +575,6 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                                         <span className="offline-execution-row-meta-item">
                                                             <small>开始时间</small>
                                                             <span>{formatDateTime(item.startDate)}</span>
-                                                        </span>
-                                                        <span className="offline-execution-row-meta-item">
-                                                            <small>耗时</small>
-                                                            <span>{formatDuration(item.durationMs)}</span>
                                                         </span>
                                                     </div>
                                                 </div>
