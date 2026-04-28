@@ -60,26 +60,16 @@ export function SimpleSelect(props: SimpleSelectProps) {
             setOpenUpward(spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow);
         }
 
-        const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-            if (!rootRef.current?.contains(event.target as Node)) {
-                setOpen(false);
-            }
-        };
-
         const handleEscape = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
                 setOpen(false);
             }
         };
 
-        document.addEventListener('mousedown', handlePointerDown);
-        document.addEventListener('touchstart', handlePointerDown);
-        document.addEventListener('keydown', handleEscape);
+        document.addEventListener('keydown', handleEscape, true);
 
         return () => {
-            document.removeEventListener('mousedown', handlePointerDown);
-            document.removeEventListener('touchstart', handlePointerDown);
-            document.removeEventListener('keydown', handleEscape);
+            document.removeEventListener('keydown', handleEscape, true);
         };
     }, [menuPlacement, open, options.length]);
 
@@ -104,7 +94,16 @@ export function SimpleSelect(props: SimpleSelectProps) {
             </button>
 
             {open ? (
-                <div className={`simple-select-menu ${openUpward ? 'open-upward' : ''}`} role="listbox" aria-labelledby={id}>
+                <>
+                    <div
+                        className="simple-select-overlay"
+                        onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setOpen(false);
+                        }}
+                    />
+                    <div className={`simple-select-menu ${openUpward ? 'open-upward' : ''}`} role="listbox" aria-labelledby={id}>
                     {options.map((option) => {
                         const selected = option.value === value;
 
@@ -125,7 +124,8 @@ export function SimpleSelect(props: SimpleSelectProps) {
                             </button>
                         );
                     })}
-                </div>
+                    </div>
+                </>
             ) : null}
         </div>
     );

@@ -1365,7 +1365,7 @@ button.offline-tree-row {
     width: min(1100px, calc(100vw - 48px));
     max-height: min(86vh, 860px);
     padding: 20px;
-    border-radius: 24px;
+    border-radius: 16px;
     background: color-mix(in srgb, var(--color-bg-primary) 92%, white 8%);
     border: 1px solid var(--color-border);
     box-shadow: var(--shadow-lg);
@@ -1501,15 +1501,15 @@ button.offline-tree-row {
 }
 
 .offline-execution-filter-control .simple-select-trigger {
-    height: 44px;
-    border-radius: 14px;
+    height: 36px;
+    border-radius: 8px;
     border-color: rgba(32, 25, 17, 0.12);
     background: rgba(255, 255, 255, 0.86);
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .offline-execution-filter-control .simple-select-menu {
-    border-radius: 14px;
+    border-radius: 8px;
 }
 
 .offline-execution-layout {
@@ -1524,37 +1524,68 @@ button.offline-tree-row {
 .offline-execution-detail {
     min-height: 0;
     border: 1px solid var(--color-border);
-    border-radius: 18px;
+    border-radius: 12px;
     background: rgba(255, 255, 255, 0.62);
 }
 
 .offline-execution-list {
-    padding: 10px;
-    overflow: auto;
+    padding: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--color-bg-secondary);
+    border-right: 1px solid var(--color-border);
 }
 
 .offline-execution-row {
+    position: relative;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 12px;
     width: 100%;
-    padding: 12px;
-    border: 1px solid transparent;
-    border-radius: 16px;
+    padding: 10px 16px;
+    border: none;
+    border-bottom: 1px solid var(--color-border-subtle);
+    border-radius: 0;
     background: transparent;
     cursor: pointer;
     text-align: left;
-    transition: border-color var(--transition-fast), background-color var(--transition-fast);
+    transition: background-color var(--transition-fast), padding-left var(--transition-fast);
 }
 
-.offline-execution-row + .offline-execution-row {
-    margin-top: 8px;
+.offline-execution-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    opacity: 0;
+    transition: opacity 0.2s;
 }
 
-.offline-execution-row:hover,
+.offline-execution-row.is-active::before {
+    opacity: 1;
+}
+
+.offline-execution-row:hover {
+    background: var(--color-bg-hover);
+}
+
 .offline-execution-row.is-active {
-    border-color: rgba(217, 119, 87, 0.20);
-    background: rgba(217, 119, 87, 0.08);
+    background: white;
+    padding-left: 20px;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);
+}
+
+.offline-execution-row.is-active::after {
+    content: '';
+    position: absolute;
+    right: -1px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: white;
+    z-index: 2;
 }
 
 .offline-execution-row-main {
@@ -1579,9 +1610,10 @@ button.offline-tree-row {
 }
 
 .offline-execution-row-meta {
-    display: grid;
-    gap: 6px;
-    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 2px;
 }
 
 .offline-execution-row-meta-item {
@@ -1690,27 +1722,32 @@ button.offline-tree-row {
     color: var(--color-text-primary);
 }
 
+.offline-execution-row.is-success::before { background: #16a34a; }
+.offline-execution-row.is-failed::before { background: #dc2626; }
+.offline-execution-row.is-running::before { 
+    background: #2563eb; 
+    box-shadow: 0 0 10px rgba(37, 99, 235, 0.4);
+}
+
 .offline-execution-dot {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: 999px;
     background: rgba(148, 163, 184, 0.9);
-    box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.12);
 }
 
 .offline-execution-dot.is-running {
     background: #2563eb;
-    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.14);
+    animation: offline-pulse 1.5s ease-in-out infinite;
 }
 
-.offline-execution-dot.is-success {
-    background: #16a34a;
-    box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.14);
-}
+.offline-execution-dot.is-success { background: #16a34a; }
+.offline-execution-dot.is-failed { background: #dc2626; }
 
-.offline-execution-dot.is-failed {
-    background: #dc2626;
-    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.14);
+@keyframes offline-pulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.3); opacity: 0.6; }
+    100% { transform: scale(1); opacity: 1; }
 }
 
 .offline-execution-progress {
