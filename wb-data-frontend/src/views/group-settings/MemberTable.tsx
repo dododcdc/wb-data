@@ -2,7 +2,7 @@ import { Users, UserCog, Trash2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import type { MemberRecord } from '../../api/groupSettings';
 import { formatTimestamp, getRoleLabel } from './config';
-import { Button } from 'components/ui/button';
+import { Button } from '../../components/ui/button';
 
 interface MemberTableProps {
     data: MemberRecord[];

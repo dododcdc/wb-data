@@ -14,7 +14,7 @@ import { SimpleSelect } from '../../components/SimpleSelect';
 import { getUserGroups, createUser, getAllGroups, GroupSimple, updateUser, UserRecord } from '../../api/user';
 import { useAuthStore } from '../../utils/auth';
 import { getErrorMessage } from '../../utils/error';
-import { Button } from 'components/ui/button';
+import { Button } from '../../components/ui/button';
 
 interface UserFormProps {
     open: boolean;
