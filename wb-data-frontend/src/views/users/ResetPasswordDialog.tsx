@@ -11,7 +11,7 @@ import {
 } from '../../components/ui/dialog';
 import { resetUserPassword, UserRecord } from '../../api/user';
 import { getErrorMessage } from '../../utils/error';
-import { Button } from 'components/ui/button';
+import { Button } from '../../components/ui/button';
 
 interface ResetPasswordDialogProps {
     open: boolean;

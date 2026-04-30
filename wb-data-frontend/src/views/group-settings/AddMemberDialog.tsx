@@ -11,7 +11,7 @@ import {
 import { SimpleSelect } from '../../components/SimpleSelect';
 import type { AvailableUser, AddMemberPayload } from '../../api/groupSettings';
 import { getAvailableUsers } from '../../api/groupSettings';
-import { Button } from 'components/ui/button';
+import { Button } from '../../components/ui/button';
 
 interface AddMemberDialogProps {
     open: boolean;

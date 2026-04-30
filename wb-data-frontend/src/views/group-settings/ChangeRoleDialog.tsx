@@ -10,7 +10,7 @@ import {
 } from '../../components/ui/dialog';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import type { MemberRecord } from '../../api/groupSettings';
-import { Button } from 'components/ui/button';
+import { Button } from '../../components/ui/button';
 
 interface ChangeRoleDialogProps {
     open: boolean;

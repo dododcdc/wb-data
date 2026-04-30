@@ -2,7 +2,7 @@ import { FolderKanban, Pencil, Ban, CheckCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { GroupDetail } from '../../api/group';
 import { formatTimestamp } from './config';
-import { Button } from 'components/ui/button';
+import { Button } from '../../components/ui/button';
 
 interface GroupTableProps {
     data: GroupDetail[];

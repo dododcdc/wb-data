@@ -3,7 +3,7 @@ import { AlertCircle, Pencil } from 'lucide-react';
 import { useAuthStore } from '../../utils/auth';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import type { GroupSettingsInfo, UpdateGroupSettingsPayload } from '../../api/groupSettings';
-import { Button } from 'components/ui/button';
+import { Button } from '../../components/ui/button';
 
 const NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const NAME_MIN = 2;

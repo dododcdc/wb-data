@@ -13,7 +13,7 @@ import { SimpleSelect } from '../../components/SimpleSelect';
 import { createGroup, updateGroup } from '../../api/group';
 import { getErrorMessage } from '../../utils/error';
 import type { CreateGroupPayload, GroupDetail, UpdateGroupPayload } from '../../api/group';
-import { Button } from 'components/ui/button';
+import { Button } from '../../components/ui/button';
 
 interface GroupFormProps {
     open: boolean;

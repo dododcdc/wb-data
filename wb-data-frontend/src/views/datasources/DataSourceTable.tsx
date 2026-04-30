@@ -2,7 +2,7 @@ import { Database, Edit3, Power, Trash2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { DataSource } from '../../api/datasource';
 import { formatConnection, formatTimestamp, getStatusLabel } from './config';
-import { Button } from 'components/ui/button';
+import { Button } from '../../components/ui/button';
 
 interface DataSourceTableProps {
     data: DataSource[];

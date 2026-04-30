@@ -2,7 +2,7 @@ import { Edit3, KeyRound, Power, Users } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { UserRecord } from '../../api/user';
 import { formatTimestamp, getStatusLabel, getSystemRoleLabel } from './config';
-import { Button } from 'components/ui/button';
+import { Button } from '../../components/ui/button';
 
 interface UserTableProps {
     data: UserRecord[];

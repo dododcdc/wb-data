@@ -37,7 +37,7 @@ import {
     parsePageSizeParam,
 } from './config';
 import './UserList.css';
-import { Button } from 'components/ui/button';
+import { Button } from '../../components/ui/button';
 
 function buildNextSearchParams(currentSearchParams: URLSearchParams, mutate: (next: URLSearchParams) => void) {
     const next = new URLSearchParams(currentSearchParams);

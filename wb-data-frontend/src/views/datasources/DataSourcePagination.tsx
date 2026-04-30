@@ -1,7 +1,7 @@
 import { ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { PAGE_SIZE_OPTIONS } from './config';
-import { Button } from 'components/ui/button';
+import { Button } from '../../components/ui/button';
 
 interface DataSourcePaginationProps {
     total: number;

@@ -485,7 +485,6 @@ function ExecutionDialog(props: ExecutionDialogProps) {
         onOpenChange,
         onRefresh,
         onSelectExecution,
-        onStopExecution,
         onStopAll,
         onOpenTaskLogs,
         onRequestedByFilterChange,
@@ -587,7 +586,6 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                     <div className="offline-list-placeholder">选择一条执行记录查看概览。</div>
                                 ) : (
                                     (() => {
-                                        const presentation = getExecutionPresentation(detail.status);
                                         return (
                                             <>
                                                 <div className="offline-detail-body">
@@ -2747,6 +2745,7 @@ export default function OfflineWorkbench() {
                 onRefresh={() => void refreshExecutions(activeExecutionId)}
                 onSelectExecution={(executionId) => void loadExecutionDetail(executionId)}
                 onStopExecution={(executionId) => void handleStopExecution(executionId)}
+                onOpenExecutionPage={(executionId) => navigate(`/offline/executions/${encodeURIComponent(executionId)}`)}
                 onStopAll={() => void handleStopAllExecutions()}
                 onOpenTaskLogs={(executionId, taskId) => navigate(`/offline/executions/${encodeURIComponent(executionId)}?taskId=${encodeURIComponent(taskId)}`)}
                 onRequestedByFilterChange={(requestedBy) => {

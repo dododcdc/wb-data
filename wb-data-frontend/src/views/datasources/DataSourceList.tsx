@@ -26,7 +26,7 @@ import { buildDataSourcePageQueryKey, DEFAULT_PAGE_SIZE, parsePageParam, parsePa
 import { DataSourcePagination } from './DataSourcePagination';
 import { DataSourceTable } from './DataSourceTable';
 import './DataSourceList.css';
-import { Button } from 'components/ui/button';
+import { Button } from '../../components/ui/button';
 
 function buildNextSearchParams(
     currentSearchParams: URLSearchParams,
