@@ -2,6 +2,7 @@ import { Edit3, KeyRound, Power, Users } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { UserRecord } from '../../api/user';
 import { formatTimestamp, getStatusLabel, getSystemRoleLabel } from './config';
+import { Button } from 'components/ui/button';
 
 interface UserTableProps {
     data: UserRecord[];
@@ -90,28 +91,28 @@ export function UserTable(props: UserTableProps) {
                                     <div className="user-actions">
                                         <Tooltip>
                                             <TooltipTrigger asChild>
-                                                <button
-                                                    className="user-icon-btn"
+                                                <Button
+                                                    variant="outline" size="icon"
                                                     onClick={() => onEdit(item)}
                                                     aria-label="编辑用户"
                                                     type="button"
                                                 >
                                                     <Edit3 size={16} />
-                                                </button>
+                                                </Button>
                                             </TooltipTrigger>
                                             <TooltipContent className="tooltip-content" side="bottom">编辑用户</TooltipContent>
                                         </Tooltip>
                                         <Tooltip>
                                             <TooltipTrigger asChild>
-                                                <button
-                                                    className="user-icon-btn"
+                                                <Button
+                                                    variant="outline" size="icon"
                                                     disabled={statusPendingId === item.id}
                                                     onClick={() => onToggleStatus(item)}
                                                     aria-label={item.status === 'ACTIVE' ? '禁用用户' : '启用用户'}
                                                     type="button"
                                                 >
                                                     <Power size={16} />
-                                                </button>
+                                                </Button>
                                             </TooltipTrigger>
                                             <TooltipContent className="tooltip-content" side="bottom">
                                                 {item.status === 'ACTIVE' ? '禁用用户' : '启用用户'}
@@ -119,14 +120,14 @@ export function UserTable(props: UserTableProps) {
                                         </Tooltip>
                                         <Tooltip>
                                             <TooltipTrigger asChild>
-                                                <button
-                                                    className="user-icon-btn"
+                                                <Button
+                                                    variant="outline" size="icon"
                                                     onClick={() => onResetPassword(item)}
                                                     aria-label="重置密码"
                                                     type="button"
                                                 >
                                                     <KeyRound size={16} />
-                                                </button>
+                                                </Button>
                                             </TooltipTrigger>
                                             <TooltipContent className="tooltip-content" side="bottom">重置密码</TooltipContent>
                                         </Tooltip>

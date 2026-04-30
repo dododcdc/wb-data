@@ -45,6 +45,7 @@ import {
     parsePageSizeParam,
 } from './config';
 import './GroupSettings.css';
+import { Button } from 'components/ui/button';
 
 function buildNextSearchParams(currentSearchParams: URLSearchParams, mutate: (next: URLSearchParams) => void) {
     const next = new URLSearchParams(currentSearchParams);
@@ -344,14 +345,14 @@ export default function GroupSettingsPage() {
                                 />
                             </div>
                             {canManage ? (
-                                <button
-                                    className="gs-primary-btn"
+                                <Button
+                                    variant="default"
                                     onClick={() => setIsAddMemberOpen(true)}
                                     type="button"
                                 >
                                     <UserPlus size={16} />
                                     添加成员
-                                </button>
+                                </Button>
                             ) : null}
                         </div>
 
@@ -395,8 +396,8 @@ export default function GroupSettingsPage() {
                                         </div>
 
                                         <div className="gs-page-actions">
-                                            <button
-                                                className="gs-page-icon-btn"
+                                            <Button
+                                                variant="outline" size="icon"
                                                 type="button"
                                                 aria-label="第一页"
                                                 aria-disabled={prevDisabled}
@@ -404,9 +405,9 @@ export default function GroupSettingsPage() {
                                                 onClick={() => handlePageChange(1)}
                                             >
                                                 <ChevronsLeft size={16} />
-                                            </button>
-                                            <button
-                                                className="gs-page-icon-btn"
+                                            </Button>
+                                            <Button
+                                                variant="outline" size="icon"
                                                 type="button"
                                                 aria-label="上一页"
                                                 aria-disabled={prevDisabled}
@@ -414,9 +415,9 @@ export default function GroupSettingsPage() {
                                                 onClick={() => handlePageChange(currentPage - 1)}
                                             >
                                                 <ChevronLeft size={16} />
-                                            </button>
-                                            <button
-                                                className="gs-page-icon-btn"
+                                            </Button>
+                                            <Button
+                                                variant="outline" size="icon"
                                                 type="button"
                                                 aria-label="下一页"
                                                 aria-disabled={nextDisabled}
@@ -424,9 +425,9 @@ export default function GroupSettingsPage() {
                                                 onClick={() => handlePageChange(currentPage + 1)}
                                             >
                                                 <ChevronRight size={16} />
-                                            </button>
-                                            <button
-                                                className="gs-page-icon-btn"
+                                            </Button>
+                                            <Button
+                                                variant="outline" size="icon"
                                                 type="button"
                                                 aria-label="最后一页"
                                                 aria-disabled={nextDisabled}
@@ -434,7 +435,7 @@ export default function GroupSettingsPage() {
                                                 onClick={() => handlePageChange(totalPages)}
                                             >
                                                 <ChevronsRight size={16} />
-                                            </button>
+                                            </Button>
                                         </div>
                                     </div>
                                 </div>
@@ -488,16 +489,16 @@ export default function GroupSettingsPage() {
                                 )}
                             </DialogDescription>
                             <div className="gs-confirm-actions">
-                                <button
-                                    className="gs-secondary-btn"
+                                <Button
+                                    variant="outline"
                                     disabled={pendingRemoveId != null}
                                     onClick={() => setPendingRemoveTarget(null)}
                                     type="button"
                                 >
                                     取消
-                                </button>
-                                <button
-                                    className="gs-danger-btn"
+                                </Button>
+                                <Button
+                                    variant="destructive"
                                     disabled={!pendingRemoveTarget || pendingRemoveId != null}
                                     onClick={() => {
                                         if (!pendingRemoveTarget) return;
@@ -506,7 +507,7 @@ export default function GroupSettingsPage() {
                                     type="button"
                                 >
                                     {pendingRemoveId != null ? '移除中...' : '确认移除'}
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     </DialogContent>

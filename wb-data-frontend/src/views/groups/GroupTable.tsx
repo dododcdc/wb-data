@@ -2,6 +2,7 @@ import { FolderKanban, Pencil, Ban, CheckCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { GroupDetail } from '../../api/group';
 import { formatTimestamp } from './config';
+import { Button } from 'components/ui/button';
 
 interface GroupTableProps {
     data: GroupDetail[];
@@ -83,14 +84,14 @@ export function GroupTable(props: GroupTableProps) {
                                     <div className="group-actions">
                                         <Tooltip>
                                             <TooltipTrigger asChild>
-                                                <button
-                                                    className="group-icon-btn"
+                                                <Button
+                                                    variant="outline" size="icon"
                                                     onClick={() => onEdit(item)}
                                                     aria-label="编辑项目组"
                                                     type="button"
                                                 >
                                                     <Pencil size={16} />
-                                                </button>
+                                                </Button>
                                             </TooltipTrigger>
                                             <TooltipContent className="tooltip-content" side="bottom">
                                                 编辑
@@ -99,15 +100,15 @@ export function GroupTable(props: GroupTableProps) {
                                         {item.status === 'active' ? (
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
-                                                    <button
-                                                        className="group-icon-btn"
+                                                    <Button
+                                                        variant="outline" size="icon"
                                                         disabled={pendingId === item.id}
                                                         onClick={() => onDisable(item)}
                                                         aria-label="禁用项目组"
                                                         type="button"
                                                     >
                                                         <Ban size={16} />
-                                                    </button>
+                                                    </Button>
                                                 </TooltipTrigger>
                                                 <TooltipContent className="tooltip-content" side="bottom">
                                                     禁用
@@ -116,15 +117,15 @@ export function GroupTable(props: GroupTableProps) {
                                         ) : (
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
-                                                    <button
-                                                        className="group-icon-btn"
+                                                    <Button
+                                                        variant="outline" size="icon"
                                                         disabled={pendingId === item.id}
                                                         onClick={() => onEnable(item)}
                                                         aria-label="启用项目组"
                                                         type="button"
                                                     >
                                                         <CheckCircle size={16} />
-                                                    </button>
+                                                    </Button>
                                                 </TooltipTrigger>
                                                 <TooltipContent className="tooltip-content" side="bottom">
                                                     启用

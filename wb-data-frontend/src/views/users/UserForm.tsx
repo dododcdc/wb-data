@@ -14,6 +14,7 @@ import { SimpleSelect } from '../../components/SimpleSelect';
 import { getUserGroups, createUser, getAllGroups, GroupSimple, updateUser, UserRecord } from '../../api/user';
 import { useAuthStore } from '../../utils/auth';
 import { getErrorMessage } from '../../utils/error';
+import { Button } from 'components/ui/button';
 
 interface UserFormProps {
     open: boolean;
@@ -426,22 +427,22 @@ export default function UserForm(props: UserFormProps) {
                             </div>
 
                             <div className="user-form-footer">
-                                <button
-                                    className="user-secondary-btn"
+                                <Button
+                                    variant="outline"
                                     onClick={() => onOpenChange({ open: false })}
                                     type="button"
                                     disabled={saving}
                                 >
                                     取消
-                                </button>
-                                <button
-                                    className="user-primary-btn"
+                                </Button>
+                                <Button
+                                    variant="default"
                                     onClick={handleSubmit}
                                     type="button"
                                     disabled={saving}
                                 >
                                     {saving ? '保存中...' : isEdit ? '保存修改' : '确认创建'}
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     </div>

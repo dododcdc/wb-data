@@ -10,6 +10,7 @@ import {
 } from '../../components/ui/dialog';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import type { MemberRecord } from '../../api/groupSettings';
+import { Button } from 'components/ui/button';
 
 interface ChangeRoleDialogProps {
     open: boolean;
@@ -45,15 +46,15 @@ export default function ChangeRoleDialog(props: ChangeRoleDialogProps) {
                     <div className="gs-dialog-card">
                         <div className="gs-dialog-header">
                             <DialogTitle className="gs-confirm-title">修改角色</DialogTitle>
-                            <button
-                                className="gs-icon-btn"
+                            <Button
+                                variant="outline" size="icon"
                                 type="button"
                                 aria-label="关闭"
                                 disabled={submitting}
                                 onClick={() => onOpenChange({ open: false })}
                             >
                                 <X size={16} />
-                            </button>
+                            </Button>
                         </div>
                         <DialogDescription className="sr-only">
                             修改成员 {member?.displayName} 的项目组角色
@@ -79,16 +80,16 @@ export default function ChangeRoleDialog(props: ChangeRoleDialogProps) {
                             </div>
                         </div>
                         <div className="gs-dialog-footer">
-                            <button
-                                className="gs-secondary-btn"
+                            <Button
+                                variant="outline"
                                 type="button"
                                 disabled={submitting}
                                 onClick={() => onOpenChange({ open: false })}
                             >
                                 取消
-                            </button>
-                            <button
-                                className="gs-primary-btn"
+                            </Button>
+                            <Button
+                                variant="default"
                                 type="button"
                                 disabled={!canSubmit}
                                 onClick={() => {
@@ -96,7 +97,7 @@ export default function ChangeRoleDialog(props: ChangeRoleDialogProps) {
                                 }}
                             >
                                 {submitting ? '保存中...' : '确认'}
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 </DialogContent>

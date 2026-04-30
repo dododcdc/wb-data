@@ -302,40 +302,6 @@
     color: var(--color-input-placeholder);
 }
 
-.gs-primary-btn,
-.gs-secondary-btn,
-.gs-danger-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    cursor: pointer;
-}
-
-.gs-primary-btn {
-    height: 38px;
-    padding: 0 14px;
-    border: none;
-    border-radius: 10px;
-    background: var(--color-text-primary);
-    color: var(--color-bg-primary);
-    font-size: var(--text-md);
-    font-weight: 600;
-    transition: transform var(--transition-fast), background var(--transition-fast);
-}
-
-.gs-primary-btn:hover:not(:disabled) {
-    transform: translateY(-1px);
-    background: var(--color-text-secondary);
-}
-
-.gs-primary-btn:disabled,
-.gs-secondary-btn:disabled,
-.gs-danger-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
 .gs-members-body {
     padding: 0 18px 16px;
 }
@@ -516,34 +482,6 @@
     gap: 8px;
 }
 
-.gs-icon-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg-primary);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-}
-
-.gs-icon-btn:hover:not(:disabled),
-.gs-page-icon-btn:hover:not(:disabled) {
-    border-color: var(--color-border-hover);
-    color: var(--color-link);
-}
-
-.gs-icon-btn:disabled,
-.gs-page-icon-btn:disabled,
-.gs-page-icon-btn[aria-disabled='true'] {
-    opacity: 0.45;
-    cursor: not-allowed;
-    pointer-events: none;
-}
-
 .gs-refresh-overlay {
     position: absolute;
     inset: 0;
@@ -646,20 +584,6 @@
     gap: 8px;
 }
 
-.gs-page-icon-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
-    padding: 0;
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
-    background: var(--color-bg-primary);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-}
-
 .gs-confirm-dialog {
     width: min(100%, 440px);
     padding: 24px;
@@ -692,38 +616,6 @@
     justify-content: flex-end;
     gap: 10px;
     margin-top: 22px;
-}
-
-.gs-secondary-btn,
-.gs-danger-btn {
-    min-width: 96px;
-    height: 40px;
-    padding: 0 16px;
-    border-radius: 10px;
-    font-size: 0.92rem;
-    font-weight: 600;
-}
-
-.gs-secondary-btn {
-    border: 1px solid var(--color-border);
-    background: var(--color-bg-primary);
-    color: var(--color-text-secondary);
-}
-
-.gs-secondary-btn:hover:not(:disabled) {
-    border-color: var(--color-border-hover);
-    color: var(--color-text-primary);
-}
-
-.gs-danger-btn {
-    border: 1px solid color-mix(in srgb, var(--color-error) 24%, transparent);
-    background: color-mix(in srgb, var(--color-error) 10%, white);
-    color: var(--color-error);
-}
-
-.gs-danger-btn:hover:not(:disabled) {
-    transform: translateY(-1px);
-    background: color-mix(in srgb, var(--color-error) 14%, white);
 }
 
 .gs-dialog-card {
@@ -992,11 +884,6 @@
     .gs-confirm-actions {
         flex-direction: column-reverse;
     }
-
-    .gs-secondary-btn,
-    .gs-danger-btn {
-        width: 100%;
-    }
 }
 
 @media (max-width: 560px) {
@@ -1031,10 +918,5 @@
 
     .gs-dialog-footer {
         flex-direction: column;
-    }
-
-    .gs-dialog-footer .gs-secondary-btn,
-    .gs-dialog-footer .gs-primary-btn {
-        width: 100%;
     }
 }

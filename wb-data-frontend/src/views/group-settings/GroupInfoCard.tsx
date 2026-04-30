@@ -3,6 +3,7 @@ import { AlertCircle, Pencil } from 'lucide-react';
 import { useAuthStore } from '../../utils/auth';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import type { GroupSettingsInfo, UpdateGroupSettingsPayload } from '../../api/groupSettings';
+import { Button } from 'components/ui/button';
 
 const NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const NAME_MIN = 2;
@@ -130,12 +131,12 @@ export default function GroupInfoCard(props: GroupInfoCardProps) {
                     ) : null}
 
                     <div className="gs-edit-actions">
-                        <button className="gs-secondary-btn" type="button" disabled={submitting} onClick={cancelEdit}>
+                        <Button variant="outline" type="button" disabled={submitting} onClick={cancelEdit}>
                             取消
-                        </button>
-                        <button className="gs-primary-btn" type="button" disabled={submitting} onClick={handleSave}>
+                        </Button>
+                        <Button variant="default" type="button" disabled={submitting} onClick={handleSave}>
                             {submitting ? '保存中...' : '保存'}
-                        </button>
+                        </Button>
                     </div>
                 </div>
             </section>

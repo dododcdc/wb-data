@@ -325,9 +325,6 @@
     padding-bottom: 4px;
 }
 
-
-
-
 /* Main Content Styling */
 .query-main {
     flex: 1;
@@ -664,8 +661,6 @@
 .format-button-inline svg {
     color: var(--color-text-muted);
 }
-
-
 
 /* ── Section Header Right ───────────────────────────────────────────────── */
 .section-header-right {

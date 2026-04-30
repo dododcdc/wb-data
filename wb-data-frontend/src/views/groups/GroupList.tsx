@@ -31,6 +31,7 @@ import {
     parsePageSizeParam,
 } from './config';
 import './GroupList.css';
+import { Button } from 'components/ui/button';
 
 function buildNextSearchParams(currentSearchParams: URLSearchParams, mutate: (next: URLSearchParams) => void) {
     const next = new URLSearchParams(currentSearchParams);
@@ -251,8 +252,8 @@ export default function GroupList() {
                     />
                 </div>
                 <div className="group-toolbar-actions">
-                    <button
-                        className="group-primary-btn"
+                    <Button
+                        variant="default"
                         onClick={() => {
                             setIsFormOpen(true);
                         }}
@@ -260,7 +261,7 @@ export default function GroupList() {
                     >
                         <FolderPlus size={16} />
                         新建项目组
-                    </button>
+                    </Button>
                 </div>
             </section>
 
@@ -304,8 +305,8 @@ export default function GroupList() {
                             </div>
 
                             <div className="group-page-actions">
-                                <button
-                                    className="group-page-icon-btn"
+                                <Button
+                                    variant="outline" size="icon"
                                     type="button"
                                     aria-label="第一页"
                                     aria-disabled={prevDisabled}
@@ -313,9 +314,9 @@ export default function GroupList() {
                                     onClick={() => handlePageChange(1)}
                                 >
                                     <ChevronsLeft size={16} />
-                                </button>
-                                <button
-                                    className="group-page-icon-btn"
+                                </Button>
+                                <Button
+                                    variant="outline" size="icon"
                                     type="button"
                                     aria-label="上一页"
                                     aria-disabled={prevDisabled}
@@ -323,9 +324,9 @@ export default function GroupList() {
                                     onClick={() => handlePageChange(currentPage - 1)}
                                 >
                                     <ChevronLeft size={16} />
-                                </button>
-                                <button
-                                    className="group-page-icon-btn"
+                                </Button>
+                                <Button
+                                    variant="outline" size="icon"
                                     type="button"
                                     aria-label="下一页"
                                     aria-disabled={nextDisabled}
@@ -333,9 +334,9 @@ export default function GroupList() {
                                     onClick={() => handlePageChange(currentPage + 1)}
                                 >
                                     <ChevronRight size={16} />
-                                </button>
-                                <button
-                                    className="group-page-icon-btn"
+                                </Button>
+                                <Button
+                                    variant="outline" size="icon"
                                     type="button"
                                     aria-label="最后一页"
                                     aria-disabled={nextDisabled}
@@ -343,7 +344,7 @@ export default function GroupList() {
                                     onClick={() => handlePageChange(totalPages)}
                                 >
                                     <ChevronsRight size={16} />
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     </div>
