@@ -26,6 +26,7 @@ import { buildDataSourcePageQueryKey, DEFAULT_PAGE_SIZE, parsePageParam, parsePa
 import { DataSourcePagination } from './DataSourcePagination';
 import { DataSourceTable } from './DataSourceTable';
 import './DataSourceList.css';
+import { Button } from 'components/ui/button';
 
 function buildNextSearchParams(
     currentSearchParams: URLSearchParams,
@@ -309,10 +310,10 @@ export default function DataSourceList() {
                 </div>
                 <div className="datasource-toolbar-actions">
                     {canWrite && (
-                        <button className="datasource-primary-btn" onClick={() => { setEditingId(null); setIsFormOpen(true); }} type="button">
+                        <Button variant="default" onClick={() => { setEditingId(null); setIsFormOpen(true); }} type="button">
                             <DatabaseZap size={16} />
                             新建数据源
-                        </button>
+                        </Button>
                     )}
                 </div>
             </section>
@@ -403,22 +404,22 @@ export default function DataSourceList() {
                                 <span>{pendingDeleteTarget?.databaseName || '未配置默认库'}</span>
                             </div>
                             <div className="datasource-confirm-actions">
-                                <button
-                                    className="datasource-secondary-btn"
+                                <Button
+                                    variant="outline"
                                     disabled={pendingDeleteId != null}
                                     onClick={() => setPendingDeleteTarget(null)}
                                     type="button"
                                 >
                                     取消
-                                </button>
-                                <button
-                                    className="datasource-danger-btn"
+                                </Button>
+                                <Button
+                                    variant="destructive"
                                     disabled={!pendingDeleteTarget || pendingDeleteId != null}
                                     onClick={handleConfirmDelete}
                                     type="button"
                                 >
                                     {pendingDeleteId != null ? '删除中...' : '确认删除'}
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     </DialogContent>

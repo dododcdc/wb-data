@@ -37,6 +37,7 @@ import {
     parsePageSizeParam,
 } from './config';
 import './UserList.css';
+import { Button } from 'components/ui/button';
 
 function buildNextSearchParams(currentSearchParams: URLSearchParams, mutate: (next: URLSearchParams) => void) {
     const next = new URLSearchParams(currentSearchParams);
@@ -284,8 +285,8 @@ export default function UserList() {
                     />
                 </div>
                 <div className="user-toolbar-actions">
-                    <button
-                        className="user-primary-btn"
+                    <Button
+                        variant="default"
                         onClick={() => {
                             setEditingUser(null);
                             setIsFormOpen(true);
@@ -294,7 +295,7 @@ export default function UserList() {
                     >
                         <UserPlus size={16} />
                         新建用户
-                    </button>
+                    </Button>
                 </div>
             </section>
 
@@ -341,8 +342,8 @@ export default function UserList() {
                             </div>
 
                             <div className="user-page-actions">
-                                <button
-                                    className="user-page-icon-btn"
+                                <Button
+                                    variant="outline" size="icon"
                                     type="button"
                                     aria-label="第一页"
                                     aria-disabled={prevDisabled}
@@ -350,9 +351,9 @@ export default function UserList() {
                                     onClick={() => handlePageChange(1)}
                                 >
                                     <ChevronsLeft size={16} />
-                                </button>
-                                <button
-                                    className="user-page-icon-btn"
+                                </Button>
+                                <Button
+                                    variant="outline" size="icon"
                                     type="button"
                                     aria-label="上一页"
                                     aria-disabled={prevDisabled}
@@ -360,9 +361,9 @@ export default function UserList() {
                                     onClick={() => handlePageChange(currentPage - 1)}
                                 >
                                     <ChevronLeft size={16} />
-                                </button>
-                                <button
-                                    className="user-page-icon-btn"
+                                </Button>
+                                <Button
+                                    variant="outline" size="icon"
                                     type="button"
                                     aria-label="下一页"
                                     aria-disabled={nextDisabled}
@@ -370,9 +371,9 @@ export default function UserList() {
                                     onClick={() => handlePageChange(currentPage + 1)}
                                 >
                                     <ChevronRight size={16} />
-                                </button>
-                                <button
-                                    className="user-page-icon-btn"
+                                </Button>
+                                <Button
+                                    variant="outline" size="icon"
                                     type="button"
                                     aria-label="最后一页"
                                     aria-disabled={nextDisabled}
@@ -380,7 +381,7 @@ export default function UserList() {
                                     onClick={() => handlePageChange(totalPages)}
                                 >
                                     <ChevronsRight size={16} />
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     </div>
@@ -437,16 +438,16 @@ export default function UserList() {
                                 )}
                             </DialogDescription>
                             <div className="user-confirm-actions">
-                                <button
-                                    className="user-secondary-btn"
+                                <Button
+                                    variant="outline"
                                     disabled={pendingStatusId != null}
                                     onClick={() => setPendingDisableTarget(null)}
                                     type="button"
                                 >
                                     取消
-                                </button>
-                                <button
-                                    className="user-danger-btn"
+                                </Button>
+                                <Button
+                                    variant="destructive"
                                     disabled={!pendingDisableTarget || pendingStatusId != null}
                                     onClick={() => {
                                         if (!pendingDisableTarget) return;
@@ -455,7 +456,7 @@ export default function UserList() {
                                     type="button"
                                 >
                                     {pendingStatusId != null ? '禁用中...' : '确认禁用'}
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     </DialogContent>

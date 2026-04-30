@@ -1,6 +1,7 @@
 import { ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { PAGE_SIZE_OPTIONS } from './config';
+import { Button } from 'components/ui/button';
 
 interface DataSourcePaginationProps {
     total: number;
@@ -74,8 +75,8 @@ export function DataSourcePagination(props: DataSourcePaginationProps) {
                 </div>
 
                 <div className="datasource-page-actions">
-                    <button
-                        className="datasource-page-icon-btn"
+                    <Button
+                        variant="outline" size="icon"
                         type="button"
                         aria-label="第一页"
                         aria-disabled={prevDisabled}
@@ -83,9 +84,9 @@ export function DataSourcePagination(props: DataSourcePaginationProps) {
                         onClick={() => goToPage(1)}
                     >
                         <ChevronsLeft size={16} />
-                    </button>
-                    <button
-                        className="datasource-page-icon-btn"
+                    </Button>
+                    <Button
+                        variant="outline" size="icon"
                         type="button"
                         aria-label="上一页"
                         aria-disabled={prevDisabled}
@@ -93,9 +94,9 @@ export function DataSourcePagination(props: DataSourcePaginationProps) {
                         onClick={() => goToPage(currentPage - 1)}
                     >
                         <ChevronLeft size={16} />
-                    </button>
-                    <button
-                        className="datasource-page-icon-btn"
+                    </Button>
+                    <Button
+                        variant="outline" size="icon"
                         type="button"
                         aria-label="下一页"
                         aria-disabled={nextDisabled}
@@ -103,9 +104,9 @@ export function DataSourcePagination(props: DataSourcePaginationProps) {
                         onClick={() => goToPage(currentPage + 1)}
                     >
                         <ChevronRight size={16} />
-                    </button>
-                    <button
-                        className="datasource-page-icon-btn"
+                    </Button>
+                    <Button
+                        variant="outline" size="icon"
                         type="button"
                         aria-label="最后一页"
                         aria-disabled={nextDisabled}
@@ -113,7 +114,7 @@ export function DataSourcePagination(props: DataSourcePaginationProps) {
                         onClick={() => goToPage(totalPages)}
                     >
                         <ChevronsRight size={16} />
-                    </button>
+                    </Button>
                 </div>
             </div>
         </div>

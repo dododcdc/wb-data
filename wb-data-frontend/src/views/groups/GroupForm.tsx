@@ -13,6 +13,7 @@ import { SimpleSelect } from '../../components/SimpleSelect';
 import { createGroup, updateGroup } from '../../api/group';
 import { getErrorMessage } from '../../utils/error';
 import type { CreateGroupPayload, GroupDetail, UpdateGroupPayload } from '../../api/group';
+import { Button } from 'components/ui/button';
 
 interface GroupFormProps {
     open: boolean;
@@ -289,22 +290,22 @@ export default function GroupForm(props: GroupFormProps) {
                         </div>
 
                         <div className="group-form-footer">
-                            <button
-                                className="group-secondary-btn"
+                            <Button
+                                variant="outline"
                                 onClick={() => onOpenChange({ open: false })}
                                 type="button"
                                 disabled={saving}
                             >
                                 取消
-                            </button>
-                            <button
-                                className="group-primary-btn"
+                            </Button>
+                            <Button
+                                variant="default"
                                 onClick={handleSubmit}
                                 type="button"
                                 disabled={saving}
                             >
                                 {saving ? (isEditMode ? '保存中...' : '创建中...') : (isEditMode ? '保存修改' : '确认创建')}
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 </DialogContent>

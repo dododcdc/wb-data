@@ -73,37 +73,6 @@
     margin-left: auto;
 }
 
-.datasource-primary-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    height: 42px;
-    padding: 0 16px;
-    border: none;
-    border-radius: 12px;
-    background: var(--color-text-primary);
-    color: var(--color-bg-primary);
-    font-size: var(--text-md);
-    font-weight: 600;
-    transition: transform var(--transition-fast), background var(--transition-fast);
-    cursor: pointer;
-}
-
-.datasource-primary-btn:hover {
-    transform: translateY(-1px);
-    background: var(--color-text-secondary);
-}
-
-.datasource-primary-btn:focus-visible,
-.datasource-icon-btn:focus-visible,
-.datasource-page-icon-btn:focus-visible,
-.datasource-secondary-btn:focus-visible,
-.datasource-danger-btn:focus-visible {
-    outline: 2px solid var(--color-brand);
-    outline-offset: 2px;
-}
-
 .datasource-table-panel {
     display: flex;
     flex-direction: column;
@@ -376,36 +345,6 @@
     gap: 8px;
 }
 
-.datasource-icon-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg-primary);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
-}
-
-.datasource-icon-btn:hover:not(:disabled) {
-    border-color: var(--color-border-hover);
-    color: var(--color-link);
-}
-
-.datasource-icon-btn.danger:hover:not(:disabled) {
-    border-color: var(--color-error-border);
-    color: var(--color-error);
-}
-
-.datasource-icon-btn:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-}
-
 .datasource-pagination {
     display: flex;
     align-items: center;
@@ -471,33 +410,6 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-}
-
-.datasource-page-icon-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
-    padding: 0;
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
-    background: var(--color-bg-primary);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
-}
-
-.datasource-page-icon-btn:hover:not(:disabled) {
-    border-color: var(--color-border-hover);
-    color: var(--color-link);
-}
-
-.datasource-page-icon-btn:disabled,
-.datasource-page-icon-btn[aria-disabled='true'] {
-    opacity: 0.45;
-    cursor: not-allowed;
-    pointer-events: none;
 }
 
 .datasource-refresh-overlay {
@@ -592,49 +504,6 @@
     justify-content: flex-end;
     gap: 10px;
     margin-top: 22px;
-}
-
-.datasource-secondary-btn,
-.datasource-danger-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 96px;
-    height: 40px;
-    padding: 0 16px;
-    border-radius: 10px;
-    font-size: 0.92rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
-}
-
-.datasource-secondary-btn {
-    border: 1px solid var(--color-border);
-    background: var(--color-bg-primary);
-    color: var(--color-text-secondary);
-}
-
-.datasource-secondary-btn:hover:not(:disabled) {
-    border-color: var(--color-border-hover);
-    color: var(--color-text-primary);
-}
-
-.datasource-danger-btn {
-    border: 1px solid color-mix(in srgb, var(--color-error) 24%, transparent);
-    background: color-mix(in srgb, var(--color-error) 10%, white);
-    color: var(--color-error);
-}
-
-.datasource-danger-btn:hover:not(:disabled) {
-    transform: translateY(-1px);
-    background: color-mix(in srgb, var(--color-error) 14%, white);
-}
-
-.datasource-secondary-btn:disabled,
-.datasource-danger-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
 }
 
 .datasource-skeleton-toolbar {
@@ -875,10 +744,6 @@
         margin-left: 0;
     }
 
-    .datasource-primary-btn {
-        width: 100%;
-    }
-
     .datasource-table {
         min-width: 860px;
     }
@@ -922,11 +787,6 @@
 
     .datasource-confirm-actions {
         flex-direction: column-reverse;
-    }
-
-    .datasource-secondary-btn,
-    .datasource-danger-btn {
-        width: 100%;
     }
 
     .datasource-skeleton-toolbar,

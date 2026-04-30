@@ -2,6 +2,7 @@ import { Users, UserCog, Trash2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import type { MemberRecord } from '../../api/groupSettings';
 import { formatTimestamp, getRoleLabel } from './config';
+import { Button } from 'components/ui/button';
 
 interface MemberTableProps {
     data: MemberRecord[];
@@ -92,14 +93,14 @@ export default function MemberTable(props: MemberTableProps) {
                                                         <>
                                                             <Tooltip>
                                                                 <TooltipTrigger asChild>
-                                                                    <button
-                                                                        className="gs-icon-btn"
+                                                                    <Button
+                                                                        variant="outline" size="icon"
                                                                         type="button"
                                                                         aria-label="修改角色"
                                                                         onClick={() => onChangeRole(member)}
                                                                     >
                                                                         <UserCog size={16} />
-                                                                    </button>
+                                                                    </Button>
                                                                 </TooltipTrigger>
                                                                 <TooltipContent className="tooltip-content" side="bottom">
                                                                     修改角色
@@ -107,14 +108,14 @@ export default function MemberTable(props: MemberTableProps) {
                                                             </Tooltip>
                                                             <Tooltip>
                                                                 <TooltipTrigger asChild>
-                                                                    <button
-                                                                        className="gs-icon-btn"
+                                                                    <Button
+                                                                        variant="outline" size="icon"
                                                                         type="button"
                                                                         aria-label="移除成员"
                                                                         onClick={() => onRemove(member)}
                                                                     >
                                                                         <Trash2 size={16} />
-                                                                    </button>
+                                                                    </Button>
                                                                 </TooltipTrigger>
                                                                 <TooltipContent className="tooltip-content" side="bottom">
                                                                     移除

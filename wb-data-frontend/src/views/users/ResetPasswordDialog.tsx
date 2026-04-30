@@ -11,6 +11,7 @@ import {
 } from '../../components/ui/dialog';
 import { resetUserPassword, UserRecord } from '../../api/user';
 import { getErrorMessage } from '../../utils/error';
+import { Button } from 'components/ui/button';
 
 interface ResetPasswordDialogProps {
     open: boolean;
@@ -176,22 +177,22 @@ export default function ResetPasswordDialog(props: ResetPasswordDialogProps) {
                             </div>
 
                             <div className="user-form-footer">
-                                <button
-                                    className="user-secondary-btn"
+                                <Button
+                                    variant="outline"
                                     onClick={() => onOpenChange({ open: false })}
                                     type="button"
                                     disabled={saving}
                                 >
                                     取消
-                                </button>
-                                <button
-                                    className="user-primary-btn"
+                                </Button>
+                                <Button
+                                    variant="default"
                                     onClick={handleSubmit}
                                     type="button"
                                     disabled={saving || !user}
                                 >
                                     {saving ? '重置中...' : '确认重置'}
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     </div>

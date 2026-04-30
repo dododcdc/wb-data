@@ -2,6 +2,7 @@ import { Database, Edit3, Power, Trash2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { DataSource } from '../../api/datasource';
 import { formatConnection, formatTimestamp, getStatusLabel } from './config';
+import { Button } from 'components/ui/button';
 
 interface DataSourceTableProps {
     data: DataSource[];
@@ -96,28 +97,28 @@ export function DataSourceTable(props: DataSourceTableProps) {
                                         <div className="datasource-actions">
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
-                                                    <button
-                                                        className="datasource-icon-btn"
+                                                    <Button
+                                                        variant="outline" size="icon"
                                                         onClick={() => onEdit(item.id)}
                                                         aria-label="编辑数据源"
                                                         type="button"
                                                     >
                                                         <Edit3 size={16} />
-                                                    </button>
+                                                    </Button>
                                                 </TooltipTrigger>
                                                 <TooltipContent className="tooltip-content" side="bottom">编辑数据源</TooltipContent>
                                             </Tooltip>
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
-                                                    <button
-                                                        className="datasource-icon-btn"
+                                                    <Button
+                                                        variant="outline" size="icon"
                                                         disabled={statusPendingId === item.id}
                                                         onClick={() => onToggleStatus(item)}
                                                         aria-label={item.status === 'ENABLED' ? '停用数据源' : '启用数据源'}
                                                         type="button"
                                                     >
                                                         <Power size={16} />
-                                                    </button>
+                                                    </Button>
                                                 </TooltipTrigger>
                                                 <TooltipContent className="tooltip-content" side="bottom">
                                                     {item.status === 'ENABLED' ? '停用' : '启用'}
