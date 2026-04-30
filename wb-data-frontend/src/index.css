@@ -152,6 +152,8 @@
   --color-bg-primary: #F8F7F4;
   --color-bg-secondary: #F3F1EC;
   --color-bg-tertiary: #EFECE6;
+  --color-bg-hover: rgba(0, 0, 0, 0.04);
+  --color-surface-secondary: rgba(0, 0, 0, 0.02);
 
   /* ── Borders (warm) ── */
   --color-border: rgba(120, 110, 90, 0.12);
@@ -172,6 +174,9 @@
   --color-warning-bg: #FDF8EE;
   --color-warning: #B8860B;
   --color-warning-border: #E8D5A8;
+  --color-info-bg: #F0F6FD;
+  --color-info: #1D4ED8;
+  --color-info-border: #BFD3F5;
 
   /* ── Interactive ── */
   --color-link: #C4613F;
@@ -242,6 +247,17 @@
   --transition-fast: 150ms ease;
   --transition-normal: 200ms ease-in-out;
   --transition-slow: 300ms ease-in-out;
+
+  /* ── Z-Index ── */
+  --z-base: 0;
+  --z-dropdown: 50;
+  --z-sticky: 100;
+  --z-fixed: 200;
+  --z-overlay: 300;
+  --z-modal: 400;
+  --z-popover: 500;
+  --z-toast: 600;
+  --z-tooltip: 700;
 }
 
 .dark {
@@ -280,6 +296,8 @@
   --color-bg-primary: #1A1816;
   --color-bg-secondary: #141210;
   --color-bg-tertiary: #262320;
+  --color-bg-hover: rgba(255, 255, 255, 0.06);
+  --color-surface-secondary: rgba(255, 255, 255, 0.04);
 
   --color-text-primary: #EDE9E3;
   --color-text-secondary: #A09A90;
@@ -301,6 +319,9 @@
   --color-warning-bg: rgba(184, 134, 11, 0.15);
   --color-warning: #FCD34D;
   --color-warning-border: rgba(184, 134, 11, 0.25);
+  --color-info-bg: rgba(29, 78, 216, 0.15);
+  --color-info: #60A5FA;
+  --color-info-border: rgba(96, 165, 250, 0.25);
 
   --color-link: #E8936F;
   --color-link-hover: #F0A888;
