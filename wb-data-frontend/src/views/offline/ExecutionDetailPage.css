@@ -61,15 +61,15 @@
 }
 
 .offline-execution-status-text.is-running {
-    color: #2563eb;
+    color: var(--color-info);
 }
 
 .offline-execution-status-text.is-success {
-    color: #15803d;
+    color: var(--color-success);
 }
 
 .offline-execution-status-text.is-failed {
-    color: #dc2626;
+    color: var(--color-error);
 }
 
 .offline-execution-status-text.is-neutral {
@@ -155,8 +155,8 @@
 }
 
 .offline-task-item.is-active {
-    background: var(--color-primary-subtle, rgba(59, 130, 246, 0.12));
-    color: var(--color-primary, #2563eb);
+    background: var(--color-info-bg);
+    color: var(--color-info);
     font-weight: 600;
 }
 
@@ -176,9 +176,9 @@
     flex-shrink: 0;
 }
 
-.offline-task-icon.is-success { color: #16a34a; }
-.offline-task-icon.is-failed { color: #dc2626; }
-.offline-task-icon.is-running { color: #2563eb; }
+.offline-task-icon.is-success { color: var(--color-success); }
+.offline-task-icon.is-failed { color: var(--color-error); }
+.offline-task-icon.is-running { color: var(--color-info); }
 .offline-task-icon.is-animated { animation: offline-spin 2s linear infinite; }
 
 .offline-execution-detail-card {
