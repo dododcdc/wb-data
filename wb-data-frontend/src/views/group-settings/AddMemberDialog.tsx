@@ -37,12 +37,15 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
     const [showDropdown, setShowDropdown] = useState(false);
     const [searchError, setSearchError] = useState<string | null>(null);
     const searchTimerRef = useRef<number | null>(null);
+    const searchRequestRef = useRef(0);
     const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!open) {
+            searchRequestRef.current += 1;
             setSearchKeyword('');
             setUsers([]);
+            setLoading(false);
             setSelectedUser(null);
             setRole('DEVELOPER');
             setSubmitting(false);
@@ -61,24 +64,33 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
         searchTimerRef.current = window.setTimeout(() => {
             searchTimerRef.current = null;
             if (!searchKeyword.trim() && searchKeyword.length === 0) {
+                searchRequestRef.current += 1;
                 setUsers([]);
+                setLoading(false);
                 setShowDropdown(false);
                 setSearchError(null);
                 return;
             }
+            const requestId = searchRequestRef.current + 1;
+            searchRequestRef.current = requestId;
             setLoading(true);
             getAvailableUsers(groupId, searchKeyword.trim() || undefined)
                 .then((result) => {
+                    if (requestId !== searchRequestRef.current) return;
                     setUsers(result);
                     setShowDropdown(true);
                     setSearchError(null);
                 })
                 .catch(() => {
+                    if (requestId !== searchRequestRef.current) return;
                     setUsers([]);
                     setShowDropdown(true);
                     setSearchError('搜索失败，请稍后重试');
                 })
-                .finally(() => setLoading(false));
+                .finally(() => {
+                    if (requestId !== searchRequestRef.current) return;
+                    setLoading(false);
+                });
         }, 300);
 
         return () => {
@@ -102,15 +114,19 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
     }, [showDropdown]);
 
     const handleSelectUser = (user: AvailableUser) => {
+        searchRequestRef.current += 1;
         setSelectedUser(user);
+        setLoading(false);
         setShowDropdown(false);
         setSearchKeyword('');
     };
 
     const handleClearUser = () => {
+        searchRequestRef.current += 1;
         setSelectedUser(null);
         setSearchKeyword('');
         setUsers([]);
+        setLoading(false);
         setSearchError(null);
     };
 
@@ -157,6 +173,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                                             value={searchKeyword}
                                             disabled={submitting}
                                             onChange={(e) => {
+                                                searchRequestRef.current += 1;
                                                 setSearchKeyword(e.target.value);
                                                 setSearchError(null);
                                             }}
