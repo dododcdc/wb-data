@@ -30,6 +30,7 @@ import {
 } from '../types';
 import type { DataSource } from '../../../api/datasource';
 import type { QueryResult } from '../../../api/query';
+import type { FeedbackPayload } from '../../../hooks/useOperationFeedback';
 
 // ==================== Types ====================
 
@@ -63,6 +64,26 @@ interface UseQueryExecutionParams {
     editorRef: React.RefObject<MonacoEditorInstance | null>;
     /** Monaco instance ref */
     monacoRef: React.RefObject<typeof Monaco | null>;
+    /** Global operation feedback */
+    showFeedback: (payload: FeedbackPayload, durationMs?: number) => void;
+}
+
+const DOWNLOAD_ERROR_MESSAGE = '导出文件下载失败，请稍后重试。';
+
+async function resolveDownloadErrorMessage(response: Response) {
+    const readableResponse = typeof response.clone === 'function' ? response.clone() : response;
+    const bodyText = (await readableResponse.text()).trim();
+    if (!bodyText) return DOWNLOAD_ERROR_MESSAGE;
+
+    try {
+        const data = JSON.parse(bodyText) as { message?: unknown };
+        if (typeof data.message === 'string' && data.message.trim()) {
+            return data.message.trim();
+        }
+        return DOWNLOAD_ERROR_MESSAGE;
+    } catch {
+        return bodyText;
+    }
 }
 
 // ==================== Hook ====================
@@ -84,6 +105,7 @@ export function useQueryExecution(params: UseQueryExecutionParams) {
         setResultPanelState,
         editorRef,
         monacoRef,
+        showFeedback,
     } = params;
 
     // ---- Export state ----
@@ -363,7 +385,9 @@ export function useQueryExecution(params: UseQueryExecutionParams) {
                     Authorization: `Bearer ${getToken()}`,
                 },
             });
-            if (!response.ok) throw new Error('Download failed');
+            if (!response.ok) {
+                throw new Error(await resolveDownloadErrorMessage(response));
+            }
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
@@ -373,10 +397,16 @@ export function useQueryExecution(params: UseQueryExecutionParams) {
             link.click();
             document.body.removeChild(link);
             window.URL.revokeObjectURL(url);
-        } catch (err) {
-            console.error('Download error:', err);
+        } catch (error) {
+            showFeedback({
+                tone: 'error',
+                title: '下载失败',
+                detail: error instanceof Error && error.message
+                    ? error.message
+                    : DOWNLOAD_ERROR_MESSAGE,
+            });
         }
-    }, []);
+    }, [showFeedback]);
 
     // ==================== Effects ====================
 

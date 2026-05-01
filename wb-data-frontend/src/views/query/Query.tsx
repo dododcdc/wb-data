@@ -34,6 +34,7 @@ import { useSqlCompletion } from './hooks/useSqlCompletion';
 import { useMetadata } from './hooks/useMetadata';
 import { useKeyboardFocusMode } from '../../hooks/useKeyboardFocusMode';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
+import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { setupQueryEditorActions } from './queryEditorActions';
 import './Query.css';
 
@@ -42,6 +43,7 @@ import './Query.css';
 
 export default function Query() {
     useKeyboardFocusMode();
+    const { showFeedback } = useOperationFeedback();
 
     const currentGroup = useAuthStore((s) => s.currentGroup);
     const permissions = useAuthStore((s) => s.permissions);
@@ -95,6 +97,7 @@ export default function Query() {
         selectedDsId, selectedDb, getActiveDataSource,
         resultAutoOpen, resultCollapsed, setResultPanelState,
         editorRef, monacoRef,
+        showFeedback,
     });
 
     const {
