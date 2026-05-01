@@ -63,7 +63,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
 
         searchTimerRef.current = window.setTimeout(() => {
             searchTimerRef.current = null;
-            if (!searchKeyword.trim() && searchKeyword.length === 0) {
+            if (!searchKeyword.trim()) {
                 searchRequestRef.current += 1;
                 setUsers([]);
                 setLoading(false);
