@@ -48,7 +48,7 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
         range.selectNodeContents(editableLabelRef.current);
         selection.removeAllRanges();
         selection.addRange(range);
-    }, [data.isEditing]);
+    }, [data.isEditing, data.taskId]);
 
     const handleRenameCommit = () => {
         if (isComposingRef.current) {

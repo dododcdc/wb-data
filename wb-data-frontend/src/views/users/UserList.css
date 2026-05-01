@@ -400,123 +400,9 @@
     gap: 8px;
 }
 
-.user-confirm-dialog {
-    width: min(100%, 440px);
-    padding: 24px;
-    border: 1px solid var(--color-border);
-    border-radius: 16px;
-    background: var(--color-bg-primary);
-    box-shadow: 0 18px 36px rgba(80, 60, 40, 0.12);
-}
-
-.user-confirm-title {
-    margin: 0;
-    color: var(--color-text-primary);
-    font-family: var(--font-serif);
-    font-size: 1.1rem;
-    font-weight: 700;
-}
-
-.user-confirm-description {
-    margin-top: 10px;
-    color: var(--color-text-secondary);
-    line-height: 1.7;
-}
-
-.user-confirm-description strong {
-    color: var(--color-text-primary);
-}
-
-.user-confirm-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 22px;
-}
-
-.dialog-backdrop {
-    position: fixed;
-    inset: 0;
-    background-color: rgba(0, 0, 0, 0.4);
-    z-index: 1000;
-}
-
-.dialog-positioner {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1001;
-    padding: 24px;
-}
-
-.dialog-content {
-    background: transparent;
-    outline: none;
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-}
-
-.dialog-title {
-    font-size: 1.125rem;
-    font-weight: 600;
-    font-family: var(--font-serif);
-    color: var(--color-text-primary);
-    margin: 0;
-}
-
-.dialog-close-btn {
-    background: transparent;
-    border: none;
-    color: var(--color-text-muted);
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 8px;
-}
-
-.dialog-close-btn:hover {
-    background-color: var(--color-bg-tertiary);
-    color: var(--color-text-primary);
-}
-
-.sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
+/* User form content and layout (internal) */
+.user-form-content {
     padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border-width: 0;
-}
-
-.user-form-card {
-    animation: fadeSlideUp 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
-    background: var(--color-bg-primary);
-    border: 1px solid var(--color-border);
-    border-radius: 12px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
-    width: min(620px, 100%);
-    overflow: hidden;
-}
-
-.user-reset-dialog-card {
-    width: min(520px, 100%);
-}
-
-.user-form-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 24px;
-    border-bottom: 1px solid var(--color-border);
 }
 
 .user-form-content {
@@ -755,9 +641,6 @@
         justify-content: space-between;
     }
 
-    .user-confirm-actions {
-        flex-direction: column-reverse;
-    }
 
     .user-form-field-grid {
         grid-template-columns: minmax(0, 1fr);

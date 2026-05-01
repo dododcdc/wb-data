@@ -61,7 +61,7 @@ export default function ExecutionDetailPage() {
         setLogs([]);
         setLogsError(null);
         setSelectedTaskId(initialTaskId);
-    }, [executionId, groupId]);
+    }, [executionId, groupId, initialTaskId]);
 
     useEffect(() => {
         if (!groupId || !executionId) {

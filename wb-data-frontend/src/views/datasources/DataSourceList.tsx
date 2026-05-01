@@ -3,14 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DatabaseZap, Search } from 'lucide-react';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { useSearchParams } from 'react-router-dom';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogOverlay,
-    DialogPortal,
-    DialogTitle,
-} from '../../components/ui/dialog';
+import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import {
     DataSource,
@@ -381,50 +374,26 @@ export default function DataSourceList() {
                 }}
             />
 
-            <Dialog open={Boolean(pendingDeleteTarget)} onOpenChange={(nextOpen) => {
-                if (!nextOpen && pendingDeleteId == null) {
-                    setPendingDeleteTarget(null);
+            <ConfirmDialog
+                open={Boolean(pendingDeleteTarget)}
+                onOpenChange={(nextOpen) => {
+                    if (!nextOpen && pendingDeleteId == null) {
+                        setPendingDeleteTarget(null);
+                    }
+                }}
+                title="删除数据源"
+                description={
+                    pendingDeleteTarget ? (
+                        <>
+                            你将删除数据源 <strong>{pendingDeleteTarget.name}</strong>。删除后该连接配置将不再出现在目录里，请确认当前没有人继续依赖它。
+                        </>
+                    ) : ''
                 }
-            }}>
-                <DialogPortal>
-                    <DialogOverlay className="dialog-backdrop" />
-                    <DialogContent className="dialog-positioner">
-                        <div className="datasource-confirm-dialog">
-                            <DialogTitle className="datasource-confirm-title">删除数据源</DialogTitle>
-                            <DialogDescription className="datasource-confirm-description">
-                                {pendingDeleteTarget ? (
-                                    <>
-                                        你将删除数据源 <strong>{pendingDeleteTarget.name}</strong>。删除后该连接配置将不再出现在目录里，请确认当前没有人继续依赖它。
-                                    </>
-                                ) : ''}
-                            </DialogDescription>
-                            <div className="datasource-confirm-meta">
-                                <span>{pendingDeleteTarget?.type ?? '--'}</span>
-                                <span>{pendingDeleteTarget?.host ?? '--'}</span>
-                                <span>{pendingDeleteTarget?.databaseName || '未配置默认库'}</span>
-                            </div>
-                            <div className="datasource-confirm-actions">
-                                <Button
-                                    variant="outline"
-                                    disabled={pendingDeleteId != null}
-                                    onClick={() => setPendingDeleteTarget(null)}
-                                    type="button"
-                                >
-                                    取消
-                                </Button>
-                                <Button
-                                    variant="destructive"
-                                    disabled={!pendingDeleteTarget || pendingDeleteId != null}
-                                    onClick={handleConfirmDelete}
-                                    type="button"
-                                >
-                                    {pendingDeleteId != null ? '删除中...' : '确认删除'}
-                                </Button>
-                            </div>
-                        </div>
-                    </DialogContent>
-                </DialogPortal>
-            </Dialog>
+                onConfirm={handleConfirmDelete}
+                confirmText={pendingDeleteId != null ? '删除中...' : '确认删除'}
+                cancelText="取消"
+                variant="destructive"
+            />
         </div>
     );
 }

@@ -1,7 +1,7 @@
 
 import { Play, Loader2, PanelLeftClose, PanelLeft, Star, Wand2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../../components/ui/tooltip';
-import { DataSourceSelect } from '../../../components/DataSourceSelect';
+import { DataSourceSelect, type DataSourceOption } from '../../../components/DataSourceSelect';
 import type { DataSource } from '../../../api/datasource';
 
 export interface QueryToolbarProps {
@@ -15,8 +15,8 @@ export interface QueryToolbarProps {
     selectedDsId: string | null;
     defaultDsId: string | null;
     toggleDefaultDataSource: () => void;
-    dataSourceOptions: any[];
-    selectedDsOption: any;
+    dataSourceOptions: DataSourceOption[];
+    selectedDsOption: DataSourceOption | null;
     applySelectedDataSource: (val: string, ds: DataSource | null) => void;
     setDsKeyword: (val: string) => void;
     loadingDs: boolean;
@@ -26,9 +26,9 @@ export interface QueryToolbarProps {
     dsKeyword: string;
 
     // Toolbar - Database
-    databaseOptions: any[];
+    databaseOptions: DataSourceOption[];
     selectedDb: string | null;
-    selectedDbOption: any;
+    selectedDbOption: DataSourceOption | null;
     setSelectedDb: (val: string) => void;
     setDbKeyword: (val: string) => void;
     loadingDatabases: boolean;

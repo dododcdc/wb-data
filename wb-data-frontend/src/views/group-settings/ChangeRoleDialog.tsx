@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
 import {
     Dialog,
     DialogContent,
-    DialogOverlay,
-    DialogPortal,
-    DialogTitle,
     DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
 } from '../../components/ui/dialog';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import type { MemberRecord } from '../../api/groupSettings';
@@ -40,68 +39,51 @@ export default function ChangeRoleDialog(props: ChangeRoleDialogProps) {
 
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => { if (!submitting) onOpenChange({ open: nextOpen }); }}>
-            <DialogPortal>
-                <DialogOverlay className="dialog-backdrop" />
-                <DialogContent className="dialog-positioner">
-                    <div className="gs-dialog-card">
-                        <div className="gs-dialog-header">
-                            <DialogTitle className="gs-confirm-title">修改角色</DialogTitle>
-                            <Button
-                                variant="outline" size="icon"
-                                type="button"
-                                aria-label="关闭"
-                                disabled={submitting}
-                                onClick={() => onOpenChange({ open: false })}
-                            >
-                                <X size={16} />
-                            </Button>
-                        </div>
-                        <DialogDescription className="sr-only">
-                            修改成员 {member?.displayName} 的项目组角色
-                        </DialogDescription>
-                        <div className="gs-dialog-content">
-                            <div className="gs-dialog-section">
-                                {member ? (
-                                    <p className="gs-dialog-subtitle">
-                                        修改 <strong>{member.displayName}</strong> 的角色
-                                    </p>
-                                ) : null}
-                                <div className="gs-dialog-field-grid">
-                                    <div className="gs-dialog-input-group">
-                                        <label>角色</label>
-                                        <SimpleSelect
-                                            value={role}
-                                            options={ROLE_OPTIONS}
-                                            disabled={submitting}
-                                            onChange={setRole}
-                                        />
-                                    </div>
-                                </div>
+            <DialogContent style={{ maxWidth: '440px' }}>
+                <DialogHeader>
+                    <DialogTitle>修改角色</DialogTitle>
+                    <DialogDescription>
+                        修改成员 {member?.displayName} 的项目组角色
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="dialog-body gs-dialog-content">
+                    <div className="gs-dialog-section">
+                        <div className="gs-dialog-field-grid">
+                            <div className="gs-dialog-input-group">
+                                <label>角色</label>
+                                <SimpleSelect
+                                    value={role}
+                                    options={ROLE_OPTIONS}
+                                    disabled={submitting}
+                                    onChange={setRole}
+                                />
                             </div>
                         </div>
-                        <div className="gs-dialog-footer">
-                            <Button
-                                variant="outline"
-                                type="button"
-                                disabled={submitting}
-                                onClick={() => onOpenChange({ open: false })}
-                            >
-                                取消
-                            </Button>
-                            <Button
-                                variant="default"
-                                type="button"
-                                disabled={!canSubmit}
-                                onClick={() => {
-                                    if (member) onConfirm(member.id, role);
-                                }}
-                            >
-                                {submitting ? '保存中...' : '确认'}
-                            </Button>
-                        </div>
                     </div>
-                </DialogContent>
-            </DialogPortal>
+                </div>
+
+                <DialogFooter>
+                    <Button
+                        variant="outline"
+                        type="button"
+                        disabled={submitting}
+                        onClick={() => onOpenChange({ open: false })}
+                    >
+                        取消
+                    </Button>
+                    <Button
+                        variant="default"
+                        type="button"
+                        disabled={!canSubmit}
+                        onClick={() => {
+                            if (member) onConfirm(member.id, role);
+                        }}
+                    >
+                        {submitting ? '保存中...' : '确认'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
         </Dialog>
     );
 }

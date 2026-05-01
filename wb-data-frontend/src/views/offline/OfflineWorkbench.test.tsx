@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AxiosError } from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 import OfflineWorkbench from './OfflineWorkbench';
 import { readRecoverySnapshot, removeRecoverySnapshot, writeRecoverySnapshot } from './recoverySnapshotStore';
@@ -206,6 +206,22 @@ function createDeferred<T>() {
     return { promise, resolve, reject };
 }
 
+function renderOfflineWorkbench() {
+    const router = createMemoryRouter(
+        [
+            {
+                path: '/offline',
+                element: <OfflineWorkbench />,
+            },
+        ],
+        {
+            initialEntries: ['/offline'],
+        },
+    );
+
+    return render(<RouterProvider router={router} />);
+}
+
 describe('OfflineWorkbench save conflicts', () => {
     afterEach(() => {
         cleanup();
@@ -244,11 +260,7 @@ describe('OfflineWorkbench save conflicts', () => {
         };
         vi.mocked(offlineApi.saveOfflineFlowDocument).mockRejectedValue(conflictError);
 
-        render(
-            <MemoryRouter>
-                <OfflineWorkbench />
-            </MemoryRouter>,
-        );
+        renderOfflineWorkbench();
 
         fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
@@ -296,11 +308,7 @@ describe('OfflineWorkbench save conflicts', () => {
         };
         vi.mocked(offlineApi.saveOfflineFlowDocument).mockRejectedValue(conflictError);
 
-        render(
-            <MemoryRouter>
-                <OfflineWorkbench />
-            </MemoryRouter>,
-        );
+        renderOfflineWorkbench();
 
         fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
@@ -331,11 +339,7 @@ describe('OfflineWorkbench save conflicts', () => {
         const latestDocument = createDeferred<ReturnType<typeof makeFlowDocument>>();
         vi.mocked(offlineApi.saveOfflineFlowDocument).mockRejectedValue(conflictError);
 
-        render(
-            <MemoryRouter>
-                <OfflineWorkbench />
-            </MemoryRouter>,
-        );
+        renderOfflineWorkbench();
 
         fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
@@ -381,11 +385,7 @@ describe('OfflineWorkbench save conflicts', () => {
         const reloadedDocument = createDeferred<ReturnType<typeof makeFlowDocument>>();
         vi.mocked(offlineApi.saveOfflineFlowDocument).mockRejectedValue(conflictError);
 
-        render(
-            <MemoryRouter>
-                <OfflineWorkbench />
-            </MemoryRouter>,
-        );
+        renderOfflineWorkbench();
 
         fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
@@ -429,11 +429,7 @@ describe('OfflineWorkbench save conflicts', () => {
         };
         vi.mocked(offlineApi.saveOfflineFlowDocument).mockRejectedValue(conflictError);
 
-        render(
-            <MemoryRouter>
-                <OfflineWorkbench />
-            </MemoryRouter>,
-        );
+        renderOfflineWorkbench();
 
         fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
@@ -470,11 +466,7 @@ describe('OfflineWorkbench save conflicts', () => {
             throw new Error('feedback unavailable');
         });
 
-        render(
-            <MemoryRouter>
-                <OfflineWorkbench />
-            </MemoryRouter>,
-        );
+        renderOfflineWorkbench();
 
         fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
@@ -514,11 +506,7 @@ describe('OfflineWorkbench save conflicts', () => {
             documentUpdatedAt: 200,
         }));
 
-        render(
-            <MemoryRouter>
-                <OfflineWorkbench />
-            </MemoryRouter>,
-        );
+        renderOfflineWorkbench();
 
         fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
@@ -563,11 +551,7 @@ describe('OfflineWorkbench save conflicts', () => {
         const reloadedDocument = createDeferred<ReturnType<typeof makeFlowDocument>>();
         vi.mocked(offlineApi.saveOfflineFlowDocument).mockRejectedValue(conflictError);
 
-        render(
-            <MemoryRouter>
-                <OfflineWorkbench />
-            </MemoryRouter>,
-        );
+        renderOfflineWorkbench();
 
         fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');

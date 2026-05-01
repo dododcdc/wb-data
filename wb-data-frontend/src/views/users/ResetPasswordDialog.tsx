@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, Eye, EyeOff, X } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff } from 'lucide-react';
 import {
     Dialog,
-    DialogClose,
     DialogContent,
     DialogDescription,
-    DialogOverlay,
-    DialogPortal,
+    DialogHeader,
     DialogTitle,
+    DialogFooter,
 } from '../../components/ui/dialog';
 import { resetUserPassword, UserRecord } from '../../api/user';
 import { getErrorMessage } from '../../utils/error';
@@ -103,101 +102,92 @@ export default function ResetPasswordDialog(props: ResetPasswordDialogProps) {
 
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => onOpenChange({ open: nextOpen })}>
-            <DialogPortal>
-                <DialogOverlay className="dialog-backdrop" />
-                <DialogContent className="dialog-positioner">
-                    <div className="dialog-content user-form-card user-reset-dialog-card">
-                        <div className="user-form-header">
-                            <DialogTitle className="dialog-title">重置密码</DialogTitle>
-                            <DialogClose className="dialog-close-btn" aria-label="关闭">
-                                <X size={20} />
-                            </DialogClose>
+            <DialogContent style={{ maxWidth: '520px' }}>
+                <DialogHeader>
+                    <DialogTitle>重置密码</DialogTitle>
+                    <DialogDescription>
+                        为用户 <strong>{user?.username ?? '--'}</strong> 设置新密码
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="dialog-body user-form-content">
+                    <div className="user-form-section">
+                        <div className={`user-form-input-group ${fieldErrors.newPassword ? 'has-error' : ''}`}>
+                            <label htmlFor="reset-user-new-password">
+                                新密码 <span className="required">*</span>
+                            </label>
+                            <div className="user-form-password-field">
+                                <input
+                                    id="reset-user-new-password"
+                                    type={newPasswordVisible ? 'text' : 'password'}
+                                    value={newPassword}
+                                    placeholder="请输入新密码"
+                                    onChange={(event) => handleFieldChange('newPassword', event.target.value)}
+                                />
+                                <button
+                                    className="user-form-password-toggle"
+                                    type="button"
+                                    aria-label={newPasswordVisible ? '隐藏密码' : '显示密码'}
+                                    onClick={() => setNewPasswordVisible((current) => !current)}
+                                >
+                                    {newPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                            </div>
+                            {fieldErrors.newPassword ? <span className="input-error">{fieldErrors.newPassword}</span> : null}
                         </div>
 
-                        <div className="user-form-content">
-                            <DialogDescription className="user-reset-description">
-                                为用户 <strong>{user?.username ?? '--'}</strong> 设置新密码
-                            </DialogDescription>
-
-                            <div className="user-form-section">
-                                <div className={`user-form-input-group ${fieldErrors.newPassword ? 'has-error' : ''}`}>
-                                    <label htmlFor="reset-user-new-password">
-                                        新密码 <span className="required">*</span>
-                                    </label>
-                                    <div className="user-form-password-field">
-                                        <input
-                                            id="reset-user-new-password"
-                                            type={newPasswordVisible ? 'text' : 'password'}
-                                            value={newPassword}
-                                            placeholder="请输入新密码"
-                                            onChange={(event) => handleFieldChange('newPassword', event.target.value)}
-                                        />
-                                        <button
-                                            className="user-form-password-toggle"
-                                            type="button"
-                                            aria-label={newPasswordVisible ? '隐藏密码' : '显示密码'}
-                                            onClick={() => setNewPasswordVisible((current) => !current)}
-                                        >
-                                            {newPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                                        </button>
-                                    </div>
-                                    {fieldErrors.newPassword ? <span className="input-error">{fieldErrors.newPassword}</span> : null}
-                                </div>
-
-                                <div className={`user-form-input-group ${fieldErrors.confirmPassword ? 'has-error' : ''}`}>
-                                    <label htmlFor="reset-user-confirm-password">
-                                        确认密码 <span className="required">*</span>
-                                    </label>
-                                    <div className="user-form-password-field">
-                                        <input
-                                            id="reset-user-confirm-password"
-                                            type={confirmPasswordVisible ? 'text' : 'password'}
-                                            value={confirmPassword}
-                                            placeholder="请再次输入新密码"
-                                            onChange={(event) => handleFieldChange('confirmPassword', event.target.value)}
-                                        />
-                                        <button
-                                            className="user-form-password-toggle"
-                                            type="button"
-                                            aria-label={confirmPasswordVisible ? '隐藏密码' : '显示密码'}
-                                            onClick={() => setConfirmPasswordVisible((current) => !current)}
-                                        >
-                                            {confirmPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                                        </button>
-                                    </div>
-                                    {fieldErrors.confirmPassword ? <span className="input-error">{fieldErrors.confirmPassword}</span> : null}
-                                </div>
-
-                                {saveError ? (
-                                    <div className="form-feedback form-feedback-error" role="alert">
-                                        <AlertCircle size={14} />
-                                        <span>{saveError}</span>
-                                    </div>
-                                ) : null}
-                            </div>
-
-                            <div className="user-form-footer">
-                                <Button
-                                    variant="outline"
-                                    onClick={() => onOpenChange({ open: false })}
+                        <div className={`user-form-input-group ${fieldErrors.confirmPassword ? 'has-error' : ''}`}>
+                            <label htmlFor="reset-user-confirm-password">
+                                确认密码 <span className="required">*</span>
+                            </label>
+                            <div className="user-form-password-field">
+                                <input
+                                    id="reset-user-confirm-password"
+                                    type={confirmPasswordVisible ? 'text' : 'password'}
+                                    value={confirmPassword}
+                                    placeholder="请再次输入新密码"
+                                    onChange={(event) => handleFieldChange('confirmPassword', event.target.value)}
+                                />
+                                <button
+                                    className="user-form-password-toggle"
                                     type="button"
-                                    disabled={saving}
+                                    aria-label={confirmPasswordVisible ? '隐藏密码' : '显示密码'}
+                                    onClick={() => setConfirmPasswordVisible((current) => !current)}
                                 >
-                                    取消
-                                </Button>
-                                <Button
-                                    variant="default"
-                                    onClick={handleSubmit}
-                                    type="button"
-                                    disabled={saving || !user}
-                                >
-                                    {saving ? '重置中...' : '确认重置'}
-                                </Button>
+                                    {confirmPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
                             </div>
+                            {fieldErrors.confirmPassword ? <span className="input-error">{fieldErrors.confirmPassword}</span> : null}
                         </div>
+
+                        {saveError ? (
+                            <div className="form-feedback form-feedback-error" role="alert">
+                                <AlertCircle size={14} />
+                                <span>{saveError}</span>
+                            </div>
+                        ) : null}
                     </div>
-                </DialogContent>
-            </DialogPortal>
+                </div>
+
+                <DialogFooter>
+                    <Button
+                        variant="outline"
+                        onClick={() => onOpenChange({ open: false })}
+                        type="button"
+                        disabled={saving}
+                    >
+                        取消
+                    </Button>
+                    <Button
+                        variant="default"
+                        onClick={handleSubmit}
+                        type="button"
+                        disabled={saving || !user}
+                    >
+                        {saving ? '重置中...' : '确认重置'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
         </Dialog>
     );
 }
