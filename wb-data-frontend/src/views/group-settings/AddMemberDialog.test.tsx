@@ -136,4 +136,30 @@ describe('AddMemberDialog', () => {
         expect(dialog.queryByText('搜索失败，请稍后重试')).toBeNull();
         expect(dialog.getByRole('button', { name: /bob/i })).toBeTruthy();
     });
+
+    it('does not trigger a search for whitespace-only input', async () => {
+        vi.useFakeTimers();
+
+        render(
+            <AddMemberDialog
+                open
+                groupId={12}
+                onOpenChange={() => {}}
+                onSuccess={() => {}}
+            />,
+        );
+
+        const dialog = within(screen.getByRole('dialog'));
+        const input = dialog.getByPlaceholderText('搜索用户名或展示名');
+
+        fireEvent.change(input, { target: { value: '   ' } });
+
+        await act(async () => {
+            vi.advanceTimersByTime(300);
+        });
+
+        expect(getAvailableUsers).not.toHaveBeenCalled();
+        expect(dialog.queryByText('未找到匹配的用户')).toBeNull();
+        expect(dialog.queryByText('搜索失败，请稍后重试')).toBeNull();
+    });
 });
