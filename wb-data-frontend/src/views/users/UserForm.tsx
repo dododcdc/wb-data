@@ -3,12 +3,11 @@ import { AlertCircle, Eye, EyeOff, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import {
     Dialog,
-    DialogClose,
     DialogContent,
     DialogDescription,
-    DialogOverlay,
-    DialogPortal,
+    DialogHeader,
     DialogTitle,
+    DialogFooter,
 } from '../../components/ui/dialog';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { getUserGroups, createUser, getAllGroups, GroupSimple, updateUser, UserRecord } from '../../api/user';
@@ -288,166 +287,158 @@ export default function UserForm(props: UserFormProps) {
 
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => onOpenChange({ open: nextOpen })}>
-            <DialogPortal>
-                <DialogOverlay className="dialog-backdrop" />
-                <DialogContent className="dialog-positioner">
-                    <div className="dialog-content user-form-card">
-                        <div className="user-form-header">
-                            <DialogTitle className="dialog-title">{isEdit ? '编辑用户' : '新建用户'}</DialogTitle>
-                            <DialogClose className="dialog-close-btn" aria-label="关闭">
-                                <X size={20} />
-                            </DialogClose>
+            <DialogContent style={{ maxWidth: '720px' }}>
+                <DialogHeader>
+                    <DialogTitle>{isEdit ? '编辑用户' : '新建用户'}</DialogTitle>
+                    <DialogDescription className="sr-only">用户创建或编辑表单</DialogDescription>
+                </DialogHeader>
+
+                <div className="dialog-body user-form-content">
+                    <div className="user-form-section">
+                        <div className="user-form-field-grid">
+                            <div className={`user-form-input-group ${fieldErrors.username ? 'has-error' : ''}`}>
+                                <label htmlFor="user-form-username">
+                                    用户名 {!isEdit ? <span className="required">*</span> : null}
+                                </label>
+                                <input
+                                    id="user-form-username"
+                                    type="text"
+                                    value={formData.username}
+                                    placeholder="请输入用户名"
+                                    readOnly={isEdit}
+                                    className={isEdit ? 'user-form-readonly' : ''}
+                                    onChange={(event) => handleChange('username', event.target.value)}
+                                />
+                                {typeof fieldErrors.username === 'string' ? <span className="input-error">{fieldErrors.username}</span> : null}
+
+                            </div>
+
+                            <div className={`user-form-input-group ${fieldErrors.displayName ? 'has-error' : ''}`}>
+                                <label htmlFor="user-form-display-name">
+                                    展示名 <span className="required">*</span>
+                                </label>
+                                <input
+                                    id="user-form-display-name"
+                                    type="text"
+                                    value={formData.displayName}
+                                    placeholder="请输入展示名"
+                                    onChange={(event) => handleChange('displayName', event.target.value)}
+                                />
+                                {typeof fieldErrors.displayName === 'string' ? <span className="input-error">{fieldErrors.displayName}</span> : null}
+                            </div>
+
+                            {!isEdit ? (
+                                <div className={`user-form-input-group ${fieldErrors.password ? 'has-error' : ''}`}>
+                                    <label htmlFor="user-form-password">
+                                        初始密码 <span className="required">*</span>
+                                    </label>
+                                    <div className="user-form-password-field">
+                                        <input
+                                            id="user-form-password"
+                                            type={passwordVisible ? 'text' : 'password'}
+                                            value={formData.password}
+                                            placeholder="请输入初始密码"
+                                            onChange={(event) => handleChange('password', event.target.value)}
+                                        />
+                                        <button
+                                            className="user-form-password-toggle"
+                                            type="button"
+                                            aria-label={passwordVisible ? '隐藏密码' : '显示密码'}
+                                            onClick={() => setPasswordVisible((current) => !current)}
+                                        >
+                                            {passwordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        </button>
+                                    </div>
+                                    {typeof fieldErrors.password === 'string' ? <span className="input-error">{fieldErrors.password}</span> : null}
+                                </div>
+                            ) : null}
+
+                            <div className={`user-form-input-group ${fieldErrors.systemRole ? 'has-error' : ''}`}>
+                                <label htmlFor="user-form-system-role">系统角色</label>
+                                <SimpleSelect
+                                    id="user-form-system-role"
+                                    value={formData.systemRole}
+                                    options={SYSTEM_ROLE_OPTIONS}
+                                    disabled={editingSelf}
+                                    onChange={(value) => handleChange('systemRole', value)}
+                                />
+                                {editingSelf ? <span className="input-help">不可修改自己的角色</span> : null}
+                            </div>
                         </div>
-                        <DialogDescription className="sr-only">用户创建或编辑表单</DialogDescription>
 
-                        <div className="user-form-content">
-                            <div className="user-form-section">
-                                <div className="user-form-field-grid">
-                                    <div className={`user-form-input-group ${fieldErrors.username ? 'has-error' : ''}`}>
-                                        <label htmlFor="user-form-username">
-                                            用户名 {!isEdit ? <span className="required">*</span> : null}
-                                        </label>
-                                        <input
-                                            id="user-form-username"
-                                            type="text"
-                                            value={formData.username}
-                                            placeholder="请输入用户名"
-                                            readOnly={isEdit}
-                                            className={isEdit ? 'user-form-readonly' : ''}
-                                            onChange={(event) => handleChange('username', event.target.value)}
-                                        />
-                                        {typeof fieldErrors.username === 'string' ? <span className="input-error">{fieldErrors.username}</span> : null}
+                        <div className="user-form-divider">
+                            <span>{isEdit ? '项目组管理' : '加入项目组（可选）'}</span>
+                        </div>
 
-                                    </div>
-
-                                    <div className={`user-form-input-group ${fieldErrors.displayName ? 'has-error' : ''}`}>
-                                        <label htmlFor="user-form-display-name">
-                                            展示名 <span className="required">*</span>
-                                        </label>
-                                        <input
-                                            id="user-form-display-name"
-                                            type="text"
-                                            value={formData.displayName}
-                                            placeholder="请输入展示名"
-                                            onChange={(event) => handleChange('displayName', event.target.value)}
-                                        />
-                                        {typeof fieldErrors.displayName === 'string' ? <span className="input-error">{fieldErrors.displayName}</span> : null}
-                                    </div>
-
-                                    {!isEdit ? (
-                                        <div className={`user-form-input-group ${fieldErrors.password ? 'has-error' : ''}`}>
-                                            <label htmlFor="user-form-password">
-                                                初始密码 <span className="required">*</span>
-                                            </label>
-                                            <div className="user-form-password-field">
-                                                <input
-                                                    id="user-form-password"
-                                                    type={passwordVisible ? 'text' : 'password'}
-                                                    value={formData.password}
-                                                    placeholder="请输入初始密码"
-                                                    onChange={(event) => handleChange('password', event.target.value)}
-                                                />
-                                                <button
-                                                    className="user-form-password-toggle"
-                                                    type="button"
-                                                    aria-label={passwordVisible ? '隐藏密码' : '显示密码'}
-                                                    onClick={() => setPasswordVisible((current) => !current)}
-                                                >
-                                                    {passwordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                </button>
-                                            </div>
-                                            {typeof fieldErrors.password === 'string' ? <span className="input-error">{fieldErrors.password}</span> : null}
-                                        </div>
-                                    ) : null}
-
-                                    <div className={`user-form-input-group ${fieldErrors.systemRole ? 'has-error' : ''}`}>
-                                        <label htmlFor="user-form-system-role">系统角色</label>
+                        {groupRows.map((row) => {
+                            const rowErrors = groupRowErrors[row.key];
+                            const availableOptions = getAvailableGroupOptions(row.key);
+                            return (
+                                <div key={row.key} className="user-form-group-row">
+                                    <div className={`user-form-group-row-field ${rowErrors?.groupId ? 'has-error' : ''}`}>
                                         <SimpleSelect
-                                            id="user-form-system-role"
-                                            value={formData.systemRole}
-                                            options={SYSTEM_ROLE_OPTIONS}
-                                            disabled={editingSelf}
-                                            onChange={(value) => handleChange('systemRole', value)}
+                                            value={row.groupId}
+                                            options={row.groupId ? [...availableOptions, ...groupOptions.filter(o => o.value === row.groupId)] : availableOptions}
+                                            placeholder="请选择项目组"
+                                            onChange={(value) => updateGroupRow(row.key, 'groupId', value)}
                                         />
-                                        {editingSelf ? <span className="input-help">不可修改自己的角色</span> : null}
                                     </div>
-                                </div>
-
-                                <div className="user-form-divider">
-                                    <span>{isEdit ? '项目组管理' : '加入项目组（可选）'}</span>
-                                </div>
-
-                                {groupRows.map((row) => {
-                                    const rowErrors = groupRowErrors[row.key];
-                                    const availableOptions = getAvailableGroupOptions(row.key);
-                                    return (
-                                        <div key={row.key} className="user-form-group-row">
-                                            <div className={`user-form-group-row-field ${rowErrors?.groupId ? 'has-error' : ''}`}>
-                                                <SimpleSelect
-                                                    value={row.groupId}
-                                                    options={row.groupId ? [...availableOptions, ...groupOptions.filter(o => o.value === row.groupId)] : availableOptions}
-                                                    placeholder="请选择项目组"
-                                                    onChange={(value) => updateGroupRow(row.key, 'groupId', value)}
-                                                />
-                                            </div>
-                                            <div className={`user-form-group-row-field ${rowErrors?.groupRole ? 'has-error' : ''}`}>
-                                                <SimpleSelect
-                                                    value={row.groupRole}
-                                                    options={GROUP_ROLE_OPTIONS}
-                                                    onChange={(value) => updateGroupRow(row.key, 'groupRole', value)}
-                                                />
-                                            </div>
-                                            <button
-                                                type="button"
-                                                className="user-form-group-row-remove"
-                                                aria-label="移除此项目组"
-                                                onClick={() => removeGroupRow(row.key)}
-                                            >
-                                                <X size={16} />
-                                            </button>
-                                        </div>
-                                    );
-                                })}
-
-                                <button
-                                    type="button"
-                                    className="user-form-add-group-btn"
-                                    disabled={groupRows.length >= groupOptions.length}
-                                    onClick={addGroupRow}
-                                >
-                                    + 添加项目组
-                                </button>
-
-                                {saveError ? (
-                                    <div className="form-feedback form-feedback-error" role="alert">
-                                        <AlertCircle size={14} />
-                                        <span>{saveError}</span>
+                                    <div className={`user-form-group-row-field ${rowErrors?.groupRole ? 'has-error' : ''}`}>
+                                        <SimpleSelect
+                                            value={row.groupRole}
+                                            options={GROUP_ROLE_OPTIONS}
+                                            onChange={(value) => updateGroupRow(row.key, 'groupRole', value)}
+                                        />
                                     </div>
-                                ) : null}
-                            </div>
+                                    <button
+                                        type="button"
+                                        className="user-form-group-row-remove"
+                                        aria-label="移除此项目组"
+                                        onClick={() => removeGroupRow(row.key)}
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            );
+                        })}
 
-                            <div className="user-form-footer">
-                                <Button
-                                    variant="outline"
-                                    onClick={() => onOpenChange({ open: false })}
-                                    type="button"
-                                    disabled={saving}
-                                >
-                                    取消
-                                </Button>
-                                <Button
-                                    variant="default"
-                                    onClick={handleSubmit}
-                                    type="button"
-                                    disabled={saving}
-                                >
-                                    {saving ? '保存中...' : isEdit ? '保存修改' : '确认创建'}
-                                </Button>
+                        <button
+                            type="button"
+                            className="user-form-add-group-btn"
+                            disabled={groupRows.length >= groupOptions.length}
+                            onClick={addGroupRow}
+                        >
+                            + 添加项目组
+                        </button>
+
+                        {saveError ? (
+                            <div className="form-feedback form-feedback-error" role="alert">
+                                <AlertCircle size={14} />
+                                <span>{saveError}</span>
                             </div>
-                        </div>
+                        ) : null}
                     </div>
-                </DialogContent>
-            </DialogPortal>
+                </div>
+
+                <DialogFooter>
+                    <Button
+                        variant="outline"
+                        onClick={() => onOpenChange({ open: false })}
+                        type="button"
+                        disabled={saving}
+                    >
+                        取消
+                    </Button>
+                    <Button
+                        variant="default"
+                        onClick={handleSubmit}
+                        type="button"
+                        disabled={saving}
+                    >
+                        {saving ? '保存中...' : isEdit ? '保存修改' : '确认创建'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
         </Dialog>
     );
 }

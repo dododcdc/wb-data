@@ -10,7 +10,7 @@ import { Search, ChevronDown, Loader2 } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useRef, useState, type CompositionEvent, type UIEventHandler } from 'react';
 
-interface Option {
+export interface DataSourceOption {
     label: string;
     value: string;
     type?: string;
@@ -18,15 +18,15 @@ interface Option {
 }
 
 type DataSourceSelectProps = {
-    options: Option[];
+    options: DataSourceOption[];
     placeholder?: string;
     disabled?: boolean;
-    onChange?: (value: string, option?: Option) => void;
+    onChange?: (value: string, option?: DataSourceOption) => void;
     onInputChange?: (value: string) => void;
     loading?: boolean;
     loadingMore?: boolean;
     value?: string;
-    selectedOption?: Option | null;
+    selectedOption?: DataSourceOption | null;
     hasMore?: boolean;
     onLoadMore?: () => void;
     onOpenChange?: (open: boolean) => void;
@@ -110,7 +110,7 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
         setInputValue('');
     }, [open, resolvedValue]);
 
-    const handleValueChange = (newOption: Option | null) => {
+    const handleValueChange = (newOption: DataSourceOption | null) => {
         if (newOption) {
             setInputValue(newOption.label);
             if (onChange) {
@@ -174,7 +174,7 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
     };
 
     return (
-        <Combobox<Option>
+        <Combobox<DataSourceOption>
             value={resolvedValue}
             onValueChange={handleValueChange}
             onInputValueChange={handleInputValueChange}

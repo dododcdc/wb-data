@@ -64,13 +64,14 @@ describe('SqlEditor', () => {
         });
 
         function MockMonacoEditor(props: Record<string, unknown>) {
+            const onMount = props.onMount as ((editor: never, monaco: never) => void) | undefined;
+
             React.useEffect(() => {
-                const onMount = props.onMount as ((editor: never, monaco: never) => void) | undefined;
                 onMount?.(
                     { addAction: vi.fn() } as never,
                     { KeyMod: {}, KeyCode: {} } as never,
                 );
-            }, []);
+            }, [onMount]);
 
             return <div data-testid="monaco-editor">editor</div>;
         }

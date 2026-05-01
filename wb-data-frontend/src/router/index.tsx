@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { lazy, Suspense, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';

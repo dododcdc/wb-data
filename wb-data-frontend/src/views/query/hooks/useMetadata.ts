@@ -186,7 +186,7 @@ export function useMetadata(groupId: number | undefined) {
 
     // ==================== Data loading functions ====================
 
-    const loadDataSources = async ({ page, keyword, append }: { page: number; keyword: string; append: boolean }) => {
+    const loadDataSources = useCallback(async ({ page, keyword, append }: { page: number; keyword: string; append: boolean }) => {
         const requestId = ++dsRequestIdRef.current;
         if (append) {
             setLoadingDsMore(true);
@@ -215,7 +215,7 @@ export function useMetadata(groupId: number | undefined) {
                 }
             }
         }
-    };
+    }, [groupId]);
 
     const loadMoreDataSources = () => {
         if (loadingDs || loadingDsMore || !dsHasMore) return;
@@ -415,7 +415,7 @@ export function useMetadata(groupId: number | undefined) {
             loadDataSources({ page: 1, keyword: dsKeyword, append: false });
         }, 300);
         return () => clearTimeout(timer);
-    }, [dsKeyword, groupId]);
+    }, [dsKeyword, groupId, loadDataSources]);
 
     // Resolve preferred data source on mount
     useEffect(() => {

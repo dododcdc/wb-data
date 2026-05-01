@@ -3,13 +3,13 @@ import { X } from 'lucide-react';
 import {
     Dialog,
     DialogContent,
-    DialogOverlay,
-    DialogPortal,
-    DialogTitle,
     DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
 } from '../../components/ui/dialog';
 import { SimpleSelect } from '../../components/SimpleSelect';
-import type { AvailableUser, AddMemberPayload } from '../../api/groupSettings';
+import type { AddMemberPayload, AvailableUser } from '../../api/groupSettings';
 import { getAvailableUsers } from '../../api/groupSettings';
 import { Button } from '../../components/ui/button';
 
@@ -117,112 +117,100 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
 
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => { if (!submitting) onOpenChange({ open: nextOpen }); }}>
-            <DialogPortal>
-                <DialogOverlay className="dialog-backdrop" />
-                <DialogContent className="dialog-positioner">
-                    <div className="gs-dialog-card">
-                        <div className="gs-dialog-header">
-                            <DialogTitle className="gs-confirm-title">添加成员</DialogTitle>
-                            <Button
-                                variant="outline" size="icon"
-                                type="button"
-                                aria-label="关闭"
-                                disabled={submitting}
-                                onClick={() => onOpenChange({ open: false })}
-                            >
-                                <X size={16} />
-                            </Button>
-                        </div>
-                        <DialogDescription className="sr-only">向项目组添加新成员</DialogDescription>
-                        <div className="gs-dialog-content">
-                            <div className="gs-dialog-section">
-                                <div className="gs-dialog-field-grid">
-                                    <div className="gs-dialog-input-group">
-                                        <label>用户<span className="gs-required">*</span></label>
-                                        {selectedUser ? (
-                                            <div className="gs-selected-user">
-                                                <span>{selectedUser.username} — {selectedUser.displayName}</span>
-                                                <button
-                                                    className="gs-selected-user-clear"
-                                                    type="button"
-                                                    aria-label="清除选择"
-                                                    disabled={submitting}
-                                                    onClick={handleClearUser}
-                                                >
-                                                    <X size={14} />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="gs-user-search-container" ref={containerRef}>
-                                                <input
-                                                    className="gs-user-search-input"
-                                                    type="text"
-                                                    placeholder="搜索用户名或展示名"
-                                                    value={searchKeyword}
-                                                    disabled={submitting}
-                                                    onChange={(e) => setSearchKeyword(e.target.value)}
-                                                    onFocus={() => {
-                                                        if (users.length > 0) setShowDropdown(true);
-                                                    }}
-                                                />
-                                                {showDropdown ? (
-                                                    <div className="gs-user-dropdown">
-                                                        {loading ? (
-                                                            <div className="gs-user-dropdown-loading">搜索中...</div>
-                                                        ) : users.length === 0 ? (
-                                                            <div className="gs-user-dropdown-empty">未找到匹配的用户</div>
-                                                        ) : (
-                                                            users.map((user) => (
-                                                                <button
-                                                                    key={user.id}
-                                                                    className="gs-user-option"
-                                                                    type="button"
-                                                                    onClick={() => handleSelectUser(user)}
-                                                                >
-                                                                    {user.username}
-                                                                    <span className="gs-user-option-secondary">— {user.displayName}</span>
-                                                                </button>
-                                                            ))
-                                                        )}
-                                                    </div>
-                                                ) : null}
-                                            </div>
-                                        )}
-                                    </div>
+            <DialogContent style={{ maxWidth: '520px' }}>
+                <DialogHeader>
+                    <DialogTitle>添加成员</DialogTitle>
+                    <DialogDescription>向项目组添加新成员</DialogDescription>
+                </DialogHeader>
 
-                                    <div className="gs-dialog-input-group">
-                                        <label>角色</label>
-                                        <SimpleSelect
-                                            value={role}
-                                            options={ROLE_OPTIONS}
+                <div className="dialog-body gs-dialog-content">
+                    <div className="gs-dialog-section">
+                        <div className="gs-dialog-field-grid">
+                            <div className="gs-dialog-input-group">
+                                <label>用户<span className="gs-required">*</span></label>
+                                {selectedUser ? (
+                                    <div className="gs-selected-user">
+                                        <span>{selectedUser.username} — {selectedUser.displayName}</span>
+                                        <button
+                                            className="gs-selected-user-clear"
+                                            type="button"
+                                            aria-label="清除选择"
                                             disabled={submitting}
-                                            onChange={setRole}
-                                        />
+                                            onClick={handleClearUser}
+                                        >
+                                            <X size={14} />
+                                        </button>
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="gs-user-search-container" ref={containerRef}>
+                                        <input
+                                            className="gs-user-search-input"
+                                            type="text"
+                                            placeholder="搜索用户名或展示名"
+                                            value={searchKeyword}
+                                            disabled={submitting}
+                                            onChange={(e) => setSearchKeyword(e.target.value)}
+                                            onFocus={() => {
+                                                if (users.length > 0) setShowDropdown(true);
+                                            }}
+                                        />
+                                        {showDropdown ? (
+                                            <div className="gs-user-dropdown">
+                                                {loading ? (
+                                                    <div className="gs-user-dropdown-loading">搜索中...</div>
+                                                ) : users.length === 0 ? (
+                                                    <div className="gs-user-dropdown-empty">未找到匹配的用户</div>
+                                                ) : (
+                                                    users.map((user) => (
+                                                        <button
+                                                            key={user.id}
+                                                            className="gs-user-option"
+                                                            type="button"
+                                                            onClick={() => handleSelectUser(user)}
+                                                        >
+                                                            {user.username}
+                                                            <span className="gs-user-option-secondary">— {user.displayName}</span>
+                                                        </button>
+                                                    ))
+                                                )}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="gs-dialog-input-group">
+                                <label>角色</label>
+                                <SimpleSelect
+                                    value={role}
+                                    options={ROLE_OPTIONS}
+                                    disabled={submitting}
+                                    onChange={setRole}
+                                />
                             </div>
                         </div>
-                        <div className="gs-dialog-footer">
-                            <Button
-                                variant="outline"
-                                type="button"
-                                disabled={submitting}
-                                onClick={() => onOpenChange({ open: false })}
-                            >
-                                取消
-                            </Button>
-                            <Button
-                                variant="default"
-                                type="button"
-                                disabled={!canSubmit}
-                                onClick={handleSubmit}
-                            >
-                                {submitting ? '添加中...' : '添加'}
-                            </Button>
-                        </div>
                     </div>
-                </DialogContent>
-            </DialogPortal>
+                </div>
+
+                <DialogFooter>
+                    <Button
+                        variant="outline"
+                        type="button"
+                        disabled={submitting}
+                        onClick={() => onOpenChange({ open: false })}
+                    >
+                        取消
+                    </Button>
+                    <Button
+                        variant="default"
+                        type="button"
+                        disabled={!canSubmit}
+                        onClick={handleSubmit}
+                    >
+                        {submitting ? '添加中...' : '添加'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
         </Dialog>
     );
 }

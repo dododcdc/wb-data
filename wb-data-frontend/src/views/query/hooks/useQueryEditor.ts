@@ -65,7 +65,7 @@ export function useQueryEditor(): UseQueryEditorReturn {
     const { sqlToRun, dataSourceId, database, onBeforeExecute, onResultPanelState } = options ?? {};
 
     // Use provided SQL or editor content
-    let finalSql = sqlToRun ?? sql;
+    const finalSql = sqlToRun ?? sql;
 
     // Validate
     if (!dataSourceId) {

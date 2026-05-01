@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -36,11 +36,6 @@ export default function Login() {
     const [showPassword, setShowPassword] = useState(false);
     const [serverError, setServerError] = useState('');
 
-    if (token) {
-        navigate('/', { replace: true });
-        return null;
-    }
-
     const {
         register,
         handleSubmit,
@@ -50,6 +45,14 @@ export default function Login() {
         defaultValues: { username: '', password: '' },
         reValidateMode: 'onChange',
     });
+
+    useEffect(() => {
+        if (token) {
+            navigate('/', { replace: true });
+        }
+    }, [token, navigate]);
+
+    if (token) return null;
 
     async function onSubmit(values: LoginFormValues) {
         setServerError('');

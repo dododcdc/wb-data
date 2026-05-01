@@ -1,35 +1,4 @@
-/* Dialog Styles */
-.datasource-dialog-backdrop {
-    position: fixed;
-    inset: 0;
-    background-color: rgba(0, 0, 0, 0.4);
-    z-index: 1000;
-}
-
-.datasource-dialog-positioner {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1001;
-    padding: 40px;
-}
-
-.datasource-dialog-backdrop[hidden],
-.datasource-dialog-positioner[hidden],
-.datasource-dialog-backdrop[data-state="closed"],
-.datasource-dialog-positioner[data-state="closed"] {
-    display: none !important;
-}
-
-.datasource-dialog-content {
-    background: transparent;
-    outline: none;
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-}
+/* Internal form layout styles */
 
 .sr-only {
     position: absolute;
@@ -43,48 +12,6 @@
     border-width: 0;
 }
 
-/* Form Header (now inside the modal) */
-.form-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 24px;
-    background-color: var(--color-bg-primary);
-    border-bottom: 1px solid var(--color-border);
-}
-
-.datasource-dialog-title {
-    font-size: 1.125rem;
-    font-weight: 600;
-    font-family: var(--font-serif);
-    color: var(--color-text-primary);
-    margin: 0;
-}
-
-.datasource-dialog-close-btn {
-    background: transparent;
-    border: none;
-    color: var(--color-text-muted);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    border-radius: 4px;
-    transition: all 0.2s;
-}
-
-.datasource-dialog-close-btn:focus-visible {
-    outline: 2px solid var(--color-brand);
-    outline-offset: 2px;
-}
-
-.datasource-dialog-close-btn:hover {
-    background-color: var(--color-bg-tertiary);
-    color: var(--color-text-primary);
-}
-
-.datasource-dialog-close-btn:focus-visible,
 .test-action-btn:focus-visible,
 .cancel-btn:focus-visible,
 .submit-btn:focus-visible {
@@ -92,21 +19,6 @@
     outline-offset: 2px;
 }
 
-/* Modal Card overrides */
-.console-form-card {
-    animation: fadeSlideUp 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
-    background: var(--color-bg-primary);
-    border: 1px solid var(--color-border);
-    border-radius: 12px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
-    width: 1040px;
-    max-width: 100%;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    max-height: calc(100vh - 80px);
-    /* Leave padding */
-}
 
 .form-content {
     flex: 1;
@@ -500,13 +412,6 @@
 }
 
 @media (max-width: 1100px) {
-    .datasource-dialog-positioner {
-        padding: 24px;
-    }
-
-    .console-form-card {
-        width: min(100%, 920px);
-    }
 
     .form-side-panel {
         flex-basis: 280px;
@@ -524,14 +429,6 @@
 }
 
 @media (max-width: 820px) {
-    .datasource-dialog-positioner {
-        padding: 16px;
-    }
-
-    .console-form-card {
-        width: 100%;
-        max-height: calc(100vh - 32px);
-    }
 
     .form-main-layout {
         flex-direction: column;
@@ -581,13 +478,6 @@
 }
 
 @media (max-width: 560px) {
-    .form-header {
-        padding: 14px 16px;
-    }
-
-    .datasource-dialog-title {
-        font-size: 1rem;
-    }
 
     .form-side-panel,
     .form-main-panel {

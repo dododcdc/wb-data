@@ -6,8 +6,7 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
-    DialogOverlay,
-    DialogPortal,
+    DialogHeader,
     DialogTitle,
 } from '../../components/ui/dialog';
 
@@ -31,99 +30,95 @@ export function SaveConflictDialog(props: SaveConflictDialogProps) {
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogPortal>
-                <DialogOverlay className="offline-dialog-backdrop" />
-                <DialogContent className="offline-dialog-positioner">
-                    <div className="offline-dialog-card" style={{ width: 'min(480px, 90vw)' }}>
-                        <div className="offline-dialog-header">
-                            <div>
-                                <DialogTitle className="offline-dialog-title">保存冲突</DialogTitle>
-                                <DialogDescription className="offline-dialog-description">
-                                    服务器版本已更新。请选择覆盖保存、加载最新内容，或稍后处理。
-                                </DialogDescription>
+            <DialogContent style={{ maxWidth: '480px' }} hideClose>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                    <DialogHeader style={{ flex: 1 }}>
+                        <DialogTitle>保存冲突</DialogTitle>
+                        <DialogDescription>
+                            服务器版本已更新。请选择覆盖保存、加载最新内容，或稍后处理。
+                        </DialogDescription>
+                    </DialogHeader>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="关闭"
+                        onClick={() => onOpenChange(false)}
+                        disabled={pending}
+                    >
+                        <X size={16} />
+                    </Button>
+                </div>
+
+                <div className="dialog-body" style={{ display: 'grid', gap: 12 }}>
+                    <div className="offline-conflict-copy">
+                        <AlertTriangle size={16} />
+                        <div>
+                            <strong>当前保存的依据版本已经变化</strong>
+                            <p>你的本地草稿仍然保留，只有明确选择后才会覆盖或丢弃。</p>
+                        </div>
+                    </div>
+
+                    {confirmOverwrite ? (
+                        <div style={{ display: 'grid', gap: 8 }}>
+                            <p style={{ fontSize: 13, color: 'var(--muted-foreground)' }}>
+                                覆盖保存会以你当前草稿为准，直接写回最新服务器版本。
+                            </p>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setConfirmOverwrite(false)}
+                                    disabled={pending}
+                                >
+                                    返回
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={onOverwrite}
+                                    disabled={pending}
+                                >
+                                    {pending ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                                    {pending ? '覆盖中…' : '确认覆盖保存'}
+                                </Button>
                             </div>
-                            <button
-                                className="offline-dialog-close"
+                        </div>
+                    ) : (
+                        <div style={{ display: 'grid', gap: 8 }}>
+                            <Button
                                 type="button"
-                                aria-label="关闭"
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => setConfirmOverwrite(true)}
+                                disabled={pending}
+                            >
+                                用我的覆盖
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={onDiscardAndReload}
+                                disabled={pending}
+                            >
+                                丢弃本地并加载服务器
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
                                 onClick={() => onOpenChange(false)}
                                 disabled={pending}
                             >
-                                <X size={16} />
-                            </button>
+                                稍后处理
+                            </Button>
                         </div>
-
-                        <div style={{ display: 'grid', gap: 12 }}>
-                            <div className="offline-conflict-copy">
-                                <AlertTriangle size={16} />
-                                <div>
-                                    <strong>当前保存的依据版本已经变化</strong>
-                                    <p>你的本地草稿仍然保留，只有明确选择后才会覆盖或丢弃。</p>
-                                </div>
-                            </div>
-
-                            {confirmOverwrite ? (
-                                <div style={{ display: 'grid', gap: 8 }}>
-                                    <p style={{ fontSize: 13, color: 'var(--muted-foreground)' }}>
-                                        覆盖保存会以你当前草稿为准，直接写回最新服务器版本。
-                                    </p>
-                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => setConfirmOverwrite(false)}
-                                            disabled={pending}
-                                        >
-                                            返回
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            variant="destructive"
-                                            size="sm"
-                                            onClick={onOverwrite}
-                                            disabled={pending}
-                                        >
-                                            {pending ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                                            {pending ? '覆盖中…' : '确认覆盖保存'}
-                                        </Button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div style={{ display: 'grid', gap: 8 }}>
-                                    <Button
-                                        type="button"
-                                        variant="destructive"
-                                        size="sm"
-                                        onClick={() => setConfirmOverwrite(true)}
-                                        disabled={pending}
-                                    >
-                                        用我的覆盖
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={onDiscardAndReload}
-                                        disabled={pending}
-                                    >
-                                        丢弃本地并加载服务器
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => onOpenChange(false)}
-                                        disabled={pending}
-                                    >
-                                        稍后处理
-                                    </Button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </DialogContent>
-            </DialogPortal>
+                    )}
+                </div>
+            </DialogContent>
         </Dialog>
     );
 }

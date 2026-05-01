@@ -2,12 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
     Dialog,
-    DialogClose,
     DialogContent,
     DialogDescription,
-    DialogOverlay,
-    DialogPortal,
+    DialogHeader,
     DialogTitle,
+    DialogFooter,
 } from '../../components/ui/dialog';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import {
@@ -19,7 +18,7 @@ import {
     testNewConnection,
     updateDataSource,
 } from '../../api/datasource';
-import { CheckCircle, AlertCircle, X } from 'lucide-react';
+import { CheckCircle, AlertCircle } from 'lucide-react';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { getErrorMessage } from '../../utils/error';
 import './DataSourceForm.css';
@@ -476,200 +475,184 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
 
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => onOpenChange({ open: nextOpen })}>
-            <DialogPortal>
-                <DialogOverlay className="datasource-dialog-backdrop" />
-                <DialogContent className="datasource-dialog-positioner">
-                    <div className="datasource-dialog-content console-form-card">
-                        <div className="form-header">
-                            <DialogTitle className="datasource-dialog-title">
-                                {isEdit ? '编辑数据源' : '新建数据源'}
-                            </DialogTitle>
-                            <DialogClose className="datasource-dialog-close-btn" aria-label="关闭">
-                                <X size={20} />
-                            </DialogClose>
+            <DialogContent style={{ maxWidth: '960px' }}>
+                <DialogHeader>
+                    <DialogTitle>
+                        {isEdit ? '编辑数据源' : '新建数据源'}
+                    </DialogTitle>
+                    <DialogDescription className="sr-only">
+                        Form to configure settings for a data source connection.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="dialog-body form-content">
+                    {isLoadingDetails ? (
+                        <div className="form-loading-state" role="status" aria-live="polite">
+                            <div className="form-loading-spinner" aria-hidden="true" />
+                            <strong>正在加载数据源信息</strong>
+                            <p>稍等一下，正在同步当前配置。</p>
                         </div>
-                        <DialogDescription className="sr-only">
-                            Form to configure settings for a data source connection.
-                        </DialogDescription>
-
-                        <div className="form-content">
-                            {isLoadingDetails ? (
-                                <div className="form-loading-state" role="status" aria-live="polite">
-                                    <div className="form-loading-spinner" aria-hidden="true" />
-                                    <strong>正在加载数据源信息</strong>
-                                    <p>稍等一下，正在同步当前配置。</p>
-                                </div>
-                            ) : (
-                                <div className="form-main-layout">
-                                <div className="form-side-panel">
-                                    <div className="side-panel-section">
-                                        <h3 className="sub-section-title">标识与类型</h3>
-                                        <div className={`input-group ${fieldErrors.name ? 'has-error' : ''}`}>
-                                            <label htmlFor="ds-name">数据源名称 <span className="required">*</span></label>
-                                            <input id="ds-name" type="text" value={formData.name} onChange={e => handleChange('name', e.target.value)} placeholder="如：生产环境主库" />
-                                            {typeof fieldErrors.name === 'string' ? <span className="input-error">{fieldErrors.name}</span> : null}
-                                        </div>
-                                        <div className={`input-group ${fieldErrors.type ? 'has-error' : ''}`}>
-                                            <label htmlFor="datasource-form-type-select">数据库类型 <span className="required">*</span></label>
-                                            <SimpleSelect
-                                                id="datasource-form-type-select"
-                                                value={effectiveType}
-                                                onChange={handleTypeChange}
-                                                disabled={pluginQuery.isLoading || typeOptions.length === 0}
-                                                options={typeOptions}
-                                                placeholder="选择数据库类型"
-                                            />
-                                            {typeof fieldErrors.type === 'string' ? <span className="input-error">{fieldErrors.type}</span> : null}
-                                        </div>
-                                        {pluginError ? (
-                                            <p className="config-section-tip">
-                                                数据源插件加载失败：{pluginError.message}
-                                            </p>
-                                        ) : null}
-                                        {loadError ? (
-                                            <div className="form-feedback form-feedback-error">
-                                                <AlertCircle size={14} />
-                                                <span>{loadError}</span>
-                                            </div>
-                                        ) : null}
-                                        <div className="input-group">
-                                            <label htmlFor="ds-owner">负责人</label>
-                                            <input id="ds-owner" type="text" value={formData.owner} onChange={e => handleChange('owner', e.target.value)} placeholder="项目负责人姓名" />
-                                        </div>
-                                        <div className="input-group">
-                                            <label htmlFor="ds-description">备注描述</label>
-                                            <textarea
-                                                id="ds-description"
-                                                value={formData.description}
-                                                onChange={e => handleChange('description', e.target.value)}
-                                                placeholder="简要描述业务用途..."
-                                                rows={3}
-                                            />
-                                        </div>
+                    ) : (
+                        <div className="form-main-layout">
+                            <div className="form-side-panel">
+                                <div className="side-panel-section">
+                                    <h3 className="sub-section-title">标识与类型</h3>
+                                    <div className={`input-group ${fieldErrors.name ? 'has-error' : ''}`}>
+                                        <label htmlFor="ds-name">数据源名称 <span className="required">*</span></label>
+                                        <input id="ds-name" type="text" value={formData.name} onChange={e => handleChange('name', e.target.value)} placeholder="如：生产环境主库" />
+                                        {typeof fieldErrors.name === 'string' ? <span className="input-error">{fieldErrors.name}</span> : null}
                                     </div>
-                                </div>
-
-                                <div className="form-main-panel">
-                                    <div className="config-section">
-                                        <h3 className="sub-section-title">连接配置</h3>
-                                        {selectedPlugin?.helperText ? (
-                                            <p className="config-section-tip">{selectedPlugin.helperText}</p>
-                                        ) : null}
-                                        <div className="field-grid">
-                                            {connectionFields.map((field) => {
-                                                if (!isPluginEditableField(field.key)) {
-                                                    return null;
-                                                }
-
-                                                const fieldKey = field.key;
-
-                                                return (
-                                                    <div key={fieldKey} className={`${getFieldLayoutClass(field)} ${fieldErrors[fieldKey] ? 'has-error' : ''}`}>
-                                                        <label htmlFor={`ds-conn-${fieldKey}`}>
-                                                            {field.label}
-                                                            {field.required ? <span className="required">*</span> : null}
-                                                        </label>
-                                                        <input
-                                                            id={`ds-conn-${fieldKey}`}
-                                                            type={field.inputType === 'password' ? 'password' : 'text'}
-                                                            value={formData[fieldKey]}
-                                                            onChange={(event) => handlePluginFieldChange(fieldKey, event.target.value)}
-                                                            placeholder={getFieldPlaceholder(field, isEdit)}
-                                                        />
-                                                        {typeof fieldErrors[fieldKey] === 'string' ? <span className="input-error">{fieldErrors[fieldKey]}</span> : null}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
+                                    <div className={`input-group ${fieldErrors.type ? 'has-error' : ''}`}>
+                                        <label htmlFor="datasource-form-type-select">数据库类型 <span className="required">*</span></label>
+                                        <SimpleSelect
+                                            id="datasource-form-type-select"
+                                            value={effectiveType}
+                                            onChange={handleTypeChange}
+                                            disabled={pluginQuery.isLoading || typeOptions.length === 0}
+                                            options={typeOptions}
+                                            placeholder="选择数据库类型"
+                                        />
+                                        {typeof fieldErrors.type === 'string' ? <span className="input-error">{fieldErrors.type}</span> : null}
                                     </div>
-
-                                    <div className="panel-divider" />
-
-                                    <div className="config-section">
-                                        <h3 className="sub-section-title">身份核验</h3>
-                                        <div className="field-grid">
-                                            {authenticationFields.map((field) => {
-                                                if (!isPluginEditableField(field.key)) {
-                                                    return null;
-                                                }
-
-                                                const fieldKey = field.key;
-
-                                                return (
-                                                    <div key={fieldKey} className={`${getFieldLayoutClass(field)} ${fieldErrors[fieldKey] ? 'has-error' : ''}`}>
-                                                        <label htmlFor={`ds-auth-${fieldKey}`}>
-                                                            {field.label}
-                                                            {field.required ? <span className="required">*</span> : null}
-                                                        </label>
-                                                        <input
-                                                            id={`ds-auth-${fieldKey}`}
-                                                            type={field.inputType === 'password' ? 'password' : 'text'}
-                                                            value={formData[fieldKey]}
-                                                            onChange={(event) => handlePluginFieldChange(fieldKey, event.target.value)}
-                                                            placeholder={getFieldPlaceholder(field, isEdit)}
-                                                        />
-                                                        {typeof fieldErrors[fieldKey] === 'string' ? <span className="input-error">{fieldErrors[fieldKey]}</span> : null}
-                                                        {isEdit && fieldKey === 'password' ? (
-                                                            <span className="input-help">留空则保持当前密码不变</span>
-                                                        ) : null}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                </div>
-                                </div>
-                            )}
-
-                            <div className="console-form-footer">
-                                <div className="footer-left">
-                                    <button
-                                        className="test-action-btn"
-                                        onClick={onTestConnection}
-                                        disabled={testing || isLoadingDetails || !supportsConnectionTest || !selectedPlugin}
-                                        type="button"
-                                    >
-                                        {testing || testingIndicatorVisible ? '正在测试...' : supportsConnectionTest ? '测试连接' : '测试连接（待支持）'}
-                                    </button>
-                                    {(testing || testingIndicatorVisible || testResult === 'success' || (testResult === 'fail' && testMessage)) ? (
-                                        <div
-                                            className={`form-feedback ${
-                                                testing || testingIndicatorVisible ? 'form-feedback-info' : testResult === 'success' ? 'form-feedback-success' : 'form-feedback-error'
-                                            }`}
-                                            role="status"
-                                            aria-live="polite"
-                                        >
-                                            {testing || testingIndicatorVisible ? <div className="form-feedback-spinner" aria-hidden="true" /> : testResult === 'success' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
-                                            <span>{testing || testingIndicatorVisible ? '正在验证连接配置，请稍等...' : testMessage}</span>
-                                        </div>
+                                    {pluginError ? (
+                                        <p className="config-section-tip">
+                                            数据源插件加载失败：{pluginError.message}
+                                        </p>
                                     ) : null}
-                                    {!selectedPlugin ? (
-                                        <div className="test-note">
-                                            当前没有可用的数据源插件，请先检查后端插件目录。
-                                        </div>
-                                    ) : !supportsConnectionTest ? (
-                                        <div className="test-note">
-                                            当前版本暂未接入该类型的测试连接。
-                                        </div>
-                                    ) : null}
-                                    {saveError ? (
+                                    {loadError ? (
                                         <div className="form-feedback form-feedback-error">
                                             <AlertCircle size={14} />
-                                            <span>{saveError}</span>
+                                            <span>{loadError}</span>
                                         </div>
                                     ) : null}
+                                    <div className="input-group">
+                                        <label htmlFor="ds-owner">负责人</label>
+                                        <input id="ds-owner" type="text" value={formData.owner} onChange={e => handleChange('owner', e.target.value)} placeholder="项目负责人姓名" />
+                                    </div>
+                                    <div className="input-group">
+                                        <label htmlFor="ds-description">备注描述</label>
+                                        <textarea
+                                            id="ds-description"
+                                            value={formData.description}
+                                            onChange={e => handleChange('description', e.target.value)}
+                                            placeholder="简要描述业务用途..."
+                                            rows={3}
+                                        />
+                                    </div>
                                 </div>
-                                <div className="footer-right">
-                                    <button className="cancel-btn" onClick={() => onOpenChange({ open: false })} type="button">取消</button>
-                                    <button className="submit-btn" onClick={onSave} disabled={saving || isLoadingDetails || !selectedPlugin} type="button">
-                                        {saving ? '保存中...' : '确认保存'}
-                                    </button>
+                            </div>
+
+                            <div className="form-main-panel">
+                                <div className="config-section">
+                                    <h3 className="sub-section-title">连接配置</h3>
+                                    {selectedPlugin?.helperText ? (
+                                        <p className="config-section-tip">{selectedPlugin.helperText}</p>
+                                    ) : null}
+                                    <div className="field-grid">
+                                        {connectionFields.map((field) => {
+                                            if (!isPluginEditableField(field.key)) {
+                                                return null;
+                                            }
+
+                                            const fieldKey = field.key;
+
+                                            return (
+                                                <div key={fieldKey} className={`${getFieldLayoutClass(field)} ${fieldErrors[fieldKey] ? 'has-error' : ''}`}>
+                                                    <label htmlFor={`ds-conn-${fieldKey}`}>
+                                                        {field.label}
+                                                        {field.required ? <span className="required">*</span> : null}
+                                                    </label>
+                                                    <input
+                                                        id={`ds-conn-${fieldKey}`}
+                                                        type={field.inputType === 'password' ? 'password' : 'text'}
+                                                        value={formData[fieldKey]}
+                                                        onChange={(event) => handlePluginFieldChange(fieldKey, event.target.value)}
+                                                        placeholder={getFieldPlaceholder(field, isEdit)}
+                                                    />
+                                                    {typeof fieldErrors[fieldKey] === 'string' ? <span className="input-error">{fieldErrors[fieldKey]}</span> : null}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div className="panel-divider" />
+
+                                <div className="config-section">
+                                    <h3 className="sub-section-title">身份核验</h3>
+                                    <div className="field-grid">
+                                        {authenticationFields.map((field) => {
+                                            if (!isPluginEditableField(field.key)) {
+                                                return null;
+                                            }
+
+                                            const fieldKey = field.key;
+
+                                            return (
+                                                <div key={fieldKey} className={`${getFieldLayoutClass(field)} ${fieldErrors[fieldKey] ? 'has-error' : ''}`}>
+                                                    <label htmlFor={`ds-auth-${fieldKey}`}>
+                                                        {field.label}
+                                                        {field.required ? <span className="required">*</span> : null}
+                                                    </label>
+                                                    <input
+                                                        id={`ds-auth-${fieldKey}`}
+                                                        type={field.inputType === 'password' ? 'password' : 'text'}
+                                                        value={formData[fieldKey]}
+                                                        onChange={(event) => handlePluginFieldChange(fieldKey, event.target.value)}
+                                                        placeholder={getFieldPlaceholder(field, isEdit)}
+                                                    />
+                                                    {typeof fieldErrors[fieldKey] === 'string' ? <span className="input-error">{fieldErrors[fieldKey]}</span> : null}
+                                                    {isEdit && fieldKey === 'password' ? (
+                                                        <span className="input-help">留空则保持当前密码不变</span>
+                                                    ) : null}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             </div>
                         </div>
+                    )}
+                </div>
+
+                <DialogFooter className="console-form-footer" style={{ padding: '16px 24px' }}>
+                    <div className="footer-left" style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+                        <button
+                            className="test-action-btn"
+                            onClick={onTestConnection}
+                            disabled={testing || isLoadingDetails || !supportsConnectionTest || !selectedPlugin}
+                            type="button"
+                        >
+                            {testing || testingIndicatorVisible ? '正在测试...' : supportsConnectionTest ? '测试连接' : '测试连接（待支持）'}
+                        </button>
+                        {(testing || testingIndicatorVisible || testResult === 'success' || (testResult === 'fail' && testMessage)) ? (
+                            <div
+                                className={`form-feedback ${
+                                    testing || testingIndicatorVisible ? 'form-feedback-info' : testResult === 'success' ? 'form-feedback-success' : 'form-feedback-error'
+                                }`}
+                                role="status"
+                                aria-live="polite"
+                                style={{ margin: 0 }}
+                            >
+                                {testing || testingIndicatorVisible ? <div className="form-feedback-spinner" aria-hidden="true" /> : testResult === 'success' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                                <span>{testing || testingIndicatorVisible ? '正在验证连接配置，请稍等...' : testMessage}</span>
+                            </div>
+                        ) : null}
+                        {saveError ? (
+                            <div className="form-feedback form-feedback-error" style={{ margin: 0 }}>
+                                <AlertCircle size={14} />
+                                <span>{saveError}</span>
+                            </div>
+                        ) : null}
                     </div>
-                </DialogContent>
-            </DialogPortal>
+                    <div className="footer-right" style={{ display: 'flex', gap: 12 }}>
+                        <button className="cancel-btn" onClick={() => onOpenChange({ open: false })} type="button">取消</button>
+                        <button className="submit-btn" onClick={onSave} disabled={saving || isLoadingDetails || !selectedPlugin} type="button">
+                            {saving ? '保存中...' : '确认保存'}
+                        </button>
+                    </div>
+                </DialogFooter>
+            </DialogContent>
         </Dialog>
     );
 }

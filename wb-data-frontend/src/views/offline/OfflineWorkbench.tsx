@@ -68,9 +68,9 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
-    DialogOverlay,
-    DialogPortal,
+    DialogHeader,
     DialogTitle,
+    DialogFooter,
 } from '../../components/ui/dialog';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { getErrorMessage } from '../../utils/error';
@@ -137,6 +137,11 @@ interface SaveConflictState {
     path: string;
     pendingSession: FlowDraftSession;
 }
+
+type NavigationBlocker = ReturnType<typeof useBlocker>;
+type PendingNavigationState =
+    | { type: 'flow'; flowPath: string }
+    | { type: 'router'; blocker: NavigationBlocker };
 
 function flattenDocumentNodes(document: OfflineFlowDocument | null) {
     return document?.stages.flatMap((stage) => stage.nodes) ?? [];
@@ -498,53 +503,48 @@ function ExecutionDialog(props: ExecutionDialogProps) {
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogPortal>
-                <DialogOverlay className="offline-dialog-backdrop" />
-                <DialogContent className="offline-dialog-positioner">
-                    <div className="offline-dialog-card offline-execution-dialog">
-                        <div className="offline-dialog-header hidden" />
-
-                        <div className="offline-dialog-toolbar">
-                            <div className="offline-execution-toolbar-left">
-                                <label className="offline-execution-filter">
-                                    <span>用户</span>
-                                    <div className="offline-execution-filter-control">
-                                        <SimpleSelect
-                                            options={requestedByOptions}
-                                            value={requestedByFilter == null ? 'ALL' : 'ME'}
-                                            menuPlacement="down"
-                                            onChange={(value) => onRequestedByFilterChange(value === 'ME' ? currentUserId : null)}
-                                        />
-                                    </div>
-                                </label>
+            <DialogContent className="offline-execution-dialog" hideClose>
+                <div className="offline-dialog-toolbar">
+                    <div className="offline-execution-toolbar-left">
+                        <label className="offline-execution-filter">
+                            <span>用户</span>
+                            <div className="offline-execution-filter-control">
+                                <SimpleSelect
+                                    options={requestedByOptions}
+                                    value={requestedByFilter == null ? 'ALL' : 'ME'}
+                                    menuPlacement="down"
+                                    onChange={(value) => onRequestedByFilterChange(value === 'ME' ? currentUserId : null)}
+                                />
                             </div>
-                            <div className="offline-execution-toolbar-right">
-                                <Button type="button" variant="outline" size="sm" onClick={onRefresh}>
-                                    <RefreshCcw size={14} />
-                                    刷新
-                                </Button>
+                        </label>
+                    </div>
+                    <div className="offline-execution-toolbar-right">
+                        <Button type="button" variant="outline" size="sm" onClick={onRefresh}>
+                            <RefreshCcw size={14} />
+                            刷新
+                        </Button>
 
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    className="offline-button-stop"
-                                    onClick={onStopAll}
-                                    disabled={executions.every((item) => !isActiveStatus(item.status)) || actionPending === 'ALL'}
-                                >
-                                    {actionPending === 'ALL' ? <LoaderCircle size={14} className="offline-spin" /> : <TerminalSquare size={14} />}
-                                    停止
-                                </Button>
-                                <button
-                                    className="offline-dialog-close-inline"
-                                    type="button"
-                                    aria-label="关闭"
-                                    onClick={() => onOpenChange(false)}
-                                >
-                                    <X size={16} />
-                                </button>
-                            </div>
-                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="offline-button-stop"
+                            onClick={onStopAll}
+                            disabled={executions.every((item) => !isActiveStatus(item.status)) || actionPending === 'ALL'}
+                        >
+                            {actionPending === 'ALL' ? <LoaderCircle size={14} className="offline-spin" /> : <TerminalSquare size={14} />}
+                            停止
+                        </Button>
+                        <button
+                            className="offline-dialog-close-inline"
+                            type="button"
+                            aria-label="关闭"
+                            onClick={() => onOpenChange(false)}
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                </div>
 
                         <div className="offline-execution-layout">
                             <section className="offline-execution-list">
@@ -696,9 +696,7 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                 )}
                             </section>
                         </div>
-                    </div>
-                </DialogContent>
-            </DialogPortal>
+            </DialogContent>
         </Dialog>
     );
 }
@@ -736,26 +734,13 @@ function ScheduleDialog(props: ScheduleDialogProps) {
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogPortal>
-                <DialogOverlay className="offline-dialog-backdrop" />
-                <DialogContent className="offline-dialog-positioner">
-                    <div className="offline-dialog-card offline-schedule-dialog">
-                        <div className="offline-dialog-header">
-                            <div>
-                                <DialogTitle className="offline-dialog-title">调度配置</DialogTitle>
-                                <DialogDescription className="offline-dialog-description">
-                                    {path ?? '尚未选择 Flow'}
-                                </DialogDescription>
-                            </div>
-                            <button
-                                className="offline-dialog-close"
-                                type="button"
-                                aria-label="关闭调度配置"
-                                onClick={() => onOpenChange(false)}
-                            >
-                                <X size={16} />
-                            </button>
-                        </div>
+            <DialogContent className="offline-schedule-dialog">
+                <DialogHeader>
+                    <DialogTitle>调度配置</DialogTitle>
+                    <DialogDescription>
+                        {path ?? '尚未选择 Flow'}
+                    </DialogDescription>
+                </DialogHeader>
 
                         <div className="offline-schedule-meta">
                             {loading ? (
@@ -813,9 +798,7 @@ function ScheduleDialog(props: ScheduleDialogProps) {
                                 保存调度
                             </Button>
                         </div>
-                    </div>
-                </DialogContent>
-            </DialogPortal>
+            </DialogContent>
         </Dialog>
     );
 }
@@ -907,11 +890,7 @@ export default function OfflineWorkbench() {
     const openFlowDocumentRef = useRef<(pathValue: string, options?: { preferRecoverySnapshot?: boolean }) => Promise<boolean>>(async () => false);
     const leaveCurrentFlowRef = useRef<((session: FlowDraftSession | null, groupIdValue?: number | null) => void) | null>(null);
     const nodeEditorDraftSchedulerRef = useRef<ReturnType<typeof createNodeEditorDraftScheduler> | null>(null);
-    const [pendingNavigation, setPendingNavigation] = useState<{
-        type: 'flow' | 'router';
-        flowPath?: string;
-        blocker?: any;
-    } | null>(null);
+    const [pendingNavigation, setPendingNavigation] = useState<PendingNavigationState | null>(null);
 
     if (!nodeEditorDraftSchedulerRef.current) {
         nodeEditorDraftSchedulerRef.current = createNodeEditorDraftScheduler({
@@ -1180,7 +1159,7 @@ export default function OfflineWorkbench() {
                 setFlowLoading(false);
             }
         }
-    }, [applyFlowDocumentPayload, captureGroupActionGuard, draftSession, groupId, leaveCurrentFlow, loadScheduleSnapshot, showFeedback]);
+    }, [applyFlowDocumentPayload, captureGroupActionGuard, draftSession, groupId, isDirty, leaveCurrentFlow, loadScheduleSnapshot, showFeedback]);
 
     useEffect(() => {
         openFlowDocumentRef.current = openFlowDocument;
@@ -1298,7 +1277,7 @@ export default function OfflineWorkbench() {
         } finally {
             setNewFlowCreating(false);
         }
-    }, [groupId, newFlowName, newFlowParentPath, showFeedback, refreshRepoTree]);
+    }, [groupId, newFlowName, newFlowParentPath, showFeedback, refreshRepoTree, openFlowDocument]);
 
     const handleCreateFolder = useCallback(async () => {
         if (!groupId || !newFolderName.trim()) return;
@@ -1939,7 +1918,7 @@ export default function OfflineWorkbench() {
             }
         }
         return true;
-    }, [flowDocument, showFeedback]);
+    }, [flowDocument, nodeIssues, showFeedback]);
 
     const persistFlowSession = useCallback(async (sessionForSave: FlowDraftSession) => {
         if (!groupId) {
@@ -2038,7 +2017,6 @@ export default function OfflineWorkbench() {
         }
     }, [
         activeFlowPath,
-        applyFlowDocumentPayload,
         draftSession,
         groupId,
         persistFlowSession,
@@ -2063,7 +2041,7 @@ export default function OfflineWorkbench() {
         setPendingNavigation(null);
 
         if (target.type === 'router') {
-            target.blocker.proceed();
+            target.blocker.proceed?.();
         } else if (target.type === 'flow' && target.flowPath) {
             void openFlowDocument(target.flowPath, { force: true });
         }
@@ -2072,7 +2050,7 @@ export default function OfflineWorkbench() {
     const handleCancelLeave = useCallback(() => {
         if (!pendingNavigation) return;
         if (pendingNavigation.type === 'router') {
-            pendingNavigation.blocker.reset();
+            pendingNavigation.blocker.reset?.();
         }
         setPendingNavigation(null);
     }, [pendingNavigation]);
@@ -2778,26 +2756,14 @@ export default function OfflineWorkbench() {
                 setCommitDialogOpen(open);
                 if (!open) { setCommitMessage(''); }
             }}>
-                <DialogPortal>
-                    <DialogOverlay className="offline-dialog-backdrop" />
-                    <DialogContent className="offline-dialog-positioner">
-                        <div className="offline-dialog-card" style={{ width: 'min(460px, 90vw)' }}>
-                            <div className="offline-dialog-header">
-                                <div>
-                                    <DialogTitle className="offline-dialog-title">版本提交 (Commit)</DialogTitle>
-                                    <DialogDescription className="offline-dialog-description">
-                                        将当前修改的内容标记为一个版本
-                                    </DialogDescription>
-                                </div>
-                                <button
-                                    className="offline-dialog-close"
-                                    type="button"
-                                    onClick={() => { setCommitDialogOpen(false); setCommitMessage(''); }}
-                                >
-                                    <X size={16} />
-                                </button>
-                            </div>
-                            <div className="offline-dialog-body" style={{ marginBottom: 16 }}>
+                <DialogContent style={{ maxWidth: '460px' }}>
+                    <DialogHeader>
+                        <DialogTitle>版本提交 (Commit)</DialogTitle>
+                        <DialogDescription>
+                            将当前修改的内容标记为一个版本
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="dialog-body">
                                 <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
                                     提交说明
                                 </label>
@@ -2809,33 +2775,28 @@ export default function OfflineWorkbench() {
                                     style={{ width: '100%' }}
                                 />
                             </div>
-                            <div className="offline-dialog-actions">
-                                <div />
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => { setCommitDialogOpen(false); setCommitMessage(''); }}
-                                        disabled={committing}
-                                    >
-                                        取消
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="default"
-                                        size="sm"
-                                        onClick={() => void handleCommit()}
-                                        disabled={!commitMessage.trim() || committing}
-                                    >
-                                        {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                                        {committing ? '提交中…' : '提交'}
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                    </DialogContent>
-                </DialogPortal>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => { setCommitDialogOpen(false); setCommitMessage(''); }}
+                            disabled={committing}
+                        >
+                            取消
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            onClick={() => void handleCommit()}
+                            disabled={!commitMessage.trim() || committing}
+                        >
+                            {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                            {committing ? '提交中…' : '提交'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
             </Dialog>
 
             <NodeEditorDialog
@@ -2853,86 +2814,67 @@ export default function OfflineWorkbench() {
                 setNewFlowDialogOpen(open);
                 if (!open) { setNewFlowName(''); setNewFlowParentPath(''); }
             }}>
-                <DialogPortal>
-                    <DialogOverlay className="offline-dialog-backdrop" />
-                    <DialogContent className="offline-dialog-positioner">
-                        <div className="offline-dialog-card" style={{ width: 'min(520px, 90vw)' }}>
-                            <div className="offline-dialog-header">
-                                <div>
-                                    <DialogTitle className="offline-dialog-title">新建 Flow</DialogTitle>
-                                    <DialogDescription className="offline-dialog-description">
-                                        输入 Flow 名称，将自动创建空白的 Flow 文件
-                                    </DialogDescription>
-                                </div>
-                                <button
-                                    className="offline-dialog-close"
-                                    type="button"
-                                    aria-label="关闭"
-                                    onClick={() => { setNewFlowDialogOpen(false); setNewFlowName(''); setNewFlowParentPath(''); }}
-                                >
-                                    <X size={16} />
-                                </button>
-                            </div>
-                            <div className="offline-dialog-body">
-                                <div style={{ marginBottom: 16 }}>
-                                    <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
-                                        Flow 名称
-                                    </label>
-                                    <Input
-                                        value={newFlowName}
-                                        onChange={(e) => setNewFlowName(e.target.value)}
-                                        placeholder="例如：data_pipeline"
-                                        autoFocus
-                                        style={{ width: '100%' }}
-                                    />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
-                                        存储路径 {newFlowParentPath ? `（已选：${newFlowParentPath.replace('_flows/', '')}）` : `（默认：${repoTree?.root.name ?? '根目录'}）`}
-                                    </label>
-                                    {repoTree ? (
-                                        <PathPicker
-                                            rootNode={repoTree.root}
-                                            selectedPath={newFlowParentPath}
-                                            onSelect={setNewFlowParentPath}
-                                        />
-                                    ) : (
-                                        <div style={{ padding: '12px 12px', color: 'var(--color-text-secondary)', fontSize: '0.84rem' }}>
-                                            加载目录树中...
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="offline-dialog-actions">
-                                <div />
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => { setNewFlowDialogOpen(false); setNewFlowName(''); setNewFlowParentPath(''); }}
-                                        disabled={newFlowCreating}
-                                    >
-                                        取消
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="default"
-                                        size="sm"
-                                        onClick={() => void handleCreateFlow()}
-                                        disabled={!newFlowName.trim() || newFlowCreating}
-                                    >
-                                        {newFlowCreating ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                                        {newFlowCreating ? '创建中…' : '创建'}
-                                    </Button>
-                                </div>
-                            </div>
+                <DialogContent style={{ maxWidth: '520px' }}>
+                    <DialogHeader>
+                        <DialogTitle>新建 Flow</DialogTitle>
+                        <DialogDescription>
+                            输入 Flow 名称，将自动创建空白的 Flow 文件
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="dialog-body">
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
+                                Flow 名称
+                            </label>
+                            <Input
+                                value={newFlowName}
+                                onChange={(e) => setNewFlowName(e.target.value)}
+                                placeholder="例如：data_pipeline"
+                                autoFocus
+                                style={{ width: '100%' }}
+                            />
                         </div>
-                    </DialogContent>
-                </DialogPortal>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
+                                存储路径 {newFlowParentPath ? `（已选：${newFlowParentPath.replace('_flows/', '')}）` : `（默认：${repoTree?.root.name ?? '根目录'}）`}
+                            </label>
+                            {repoTree ? (
+                                <PathPicker
+                                    rootNode={repoTree.root}
+                                    selectedPath={newFlowParentPath}
+                                    onSelect={setNewFlowParentPath}
+                                />
+                            ) : (
+                                <div style={{ padding: '12px 12px', color: 'var(--color-text-secondary)', fontSize: '0.84rem' }}>
+                                    加载目录树中...
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => { setNewFlowDialogOpen(false); setNewFlowName(''); setNewFlowParentPath(''); }}
+                            disabled={newFlowCreating}
+                        >
+                            取消
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            onClick={() => void handleCreateFlow()}
+                            disabled={!newFlowName.trim() || newFlowCreating}
+                        >
+                            {newFlowCreating ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                            {newFlowCreating ? '创建中…' : '创建'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
             </Dialog>
 
-            {/* 新建文件夹 Dialog */}
             <Dialog open={newFolderDialogOpen} onOpenChange={(open) => {
                 setNewFolderDialogOpen(open);
                 if (!open) {
@@ -2940,313 +2882,223 @@ export default function OfflineWorkbench() {
                     setNewFolderParentPath('');
                 }
             }}>
-                <DialogPortal>
-                    <DialogOverlay className="offline-dialog-backdrop" />
-                    <DialogContent className="offline-dialog-positioner">
-                        <div className="offline-dialog-card" style={{ width: 'min(460px, 90vw)' }}>
-                            <div className="offline-dialog-header">
-                                <div>
-                                    <DialogTitle className="offline-dialog-title">新建文件夹</DialogTitle>
-                                    <DialogDescription className="offline-dialog-description">
-                                        输入文件夹名称，将在指定路径下创建文件夹
-                                    </DialogDescription>
-                                </div>
-                                <button
-                                    className="offline-dialog-close"
-                                    type="button"
-                                    aria-label="关闭"
-                                    onClick={() => { setNewFolderDialogOpen(false); setNewFolderName(''); setNewFolderParentPath(''); }}
-                                >
-                                    <X size={16} />
-                                </button>
-                            </div>
-                            <div className="offline-dialog-body">
-                                <div style={{ marginBottom: 16 }}>
-                                    <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
-                                        文件夹名称
-                                    </label>
-                                    <Input
-                                        value={newFolderName}
-                                        onChange={(e) => setNewFolderName(e.target.value)}
-                                        placeholder="例如：data_pipeline"
-                                        autoFocus
-                                        style={{ width: '100%' }}
-                                    />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
-                                        存储路径 {newFolderParentPath ? `（已选：${newFolderParentPath.replace('_flows/', '')}）` : `（默认：${repoTree?.root.name ?? '根目录'}）`}
-                                    </label>
-                                    {repoTree ? (
-                                        <PathPicker
-                                            rootNode={repoTree.root}
-                                            selectedPath={newFolderParentPath}
-                                            onSelect={setNewFolderParentPath}
-                                        />
-                                    ) : (
-                                        <div style={{ padding: '12px 12px', color: 'var(--color-text-secondary)', fontSize: '0.84rem' }}>
-                                            加载目录树中...
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="offline-dialog-actions">
-                                <div />
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => { setNewFolderDialogOpen(false); setNewFolderName(''); setNewFolderParentPath(''); }}
-                                        disabled={newFolderCreating}
-                                    >
-                                        取消
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="default"
-                                        size="sm"
-                                        onClick={() => void handleCreateFolder()}
-                                        disabled={!newFolderName.trim() || newFolderCreating}
-                                    >
-                                        {newFolderCreating ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                                        {newFolderCreating ? '创建中…' : '创建'}
-                                    </Button>
-                                </div>
-                            </div>
+                <DialogContent style={{ maxWidth: '460px' }}>
+                    <DialogHeader>
+                        <DialogTitle>新建文件夹</DialogTitle>
+                        <DialogDescription>
+                            输入文件夹名称，将在指定路径下创建文件夹
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="dialog-body">
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
+                                文件夹名称
+                            </label>
+                            <Input
+                                value={newFolderName}
+                                onChange={(e) => setNewFolderName(e.target.value)}
+                                placeholder="例如：data_pipeline"
+                                autoFocus
+                                style={{ width: '100%' }}
+                            />
                         </div>
-                    </DialogContent>
-                </DialogPortal>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
+                                存储路径 {newFolderParentPath ? `（已选：${newFolderParentPath.replace('_flows/', '')}）` : `（默认：${repoTree?.root.name ?? '根目录'}）`}
+                            </label>
+                            {repoTree ? (
+                                <PathPicker
+                                    rootNode={repoTree.root}
+                                    selectedPath={newFolderParentPath}
+                                    onSelect={setNewFolderParentPath}
+                                />
+                            ) : (
+                                <div style={{ padding: '12px 12px', color: 'var(--color-text-secondary)', fontSize: '0.84rem' }}>
+                                    加载目录树中...
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => { setNewFolderDialogOpen(false); setNewFolderName(''); setNewFolderParentPath(''); }}
+                            disabled={newFolderCreating}
+                        >
+                            取消
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            onClick={() => void handleCreateFolder()}
+                            disabled={!newFolderName.trim() || newFolderCreating}
+                        >
+                            {newFolderCreating ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                            {newFolderCreating ? '创建中…' : '创建'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
             </Dialog>
 
             {/* 删除 Flow 确认对话框 */}
             <Dialog open={deleteFlowDialogOpen} onOpenChange={setDeleteFlowDialogOpen}>
-                <DialogPortal>
-                    <DialogOverlay className="offline-dialog-backdrop" />
-                    <DialogContent className="offline-dialog-positioner">
-                        <div className="offline-dialog-card" style={{ width: 'min(420px, 90vw)' }}>
-                            <div className="offline-dialog-header">
-                                <div>
-                                    <DialogTitle className="offline-dialog-title">确认删除 Flow</DialogTitle>
-                                    <DialogDescription className="offline-dialog-description">
-                                        确定要删除 Flow「{deleteFlowName}」吗？此操作不可恢复。
-                                    </DialogDescription>
-                                </div>
-                                <button
-                                    className="offline-dialog-close"
-                                    type="button"
-                                    aria-label="关闭"
-                                    onClick={() => setDeleteFlowDialogOpen(false)}
-                                >
-                                    <X size={16} />
-                                </button>
-                            </div>
-                            <div className="offline-dialog-actions">
-                                <div />
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setDeleteFlowDialogOpen(false)}
-                                        disabled={deleteFlowLoading}
-                                    >
-                                        取消
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="destructive"
-                                        size="sm"
-                                        onClick={() => void handleDeleteFlow()}
-                                        disabled={deleteFlowLoading}
-                                    >
-                                        {deleteFlowLoading ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                                        {deleteFlowLoading ? '删除中…' : '删除'}
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                    </DialogContent>
-                </DialogPortal>
+                <DialogContent style={{ maxWidth: '420px' }}>
+                    <DialogHeader>
+                        <DialogTitle>确认删除 Flow</DialogTitle>
+                        <DialogDescription>
+                            确定要删除 Flow「{deleteFlowName}」吗？此操作不可恢复。
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDeleteFlowDialogOpen(false)}
+                            disabled={deleteFlowLoading}
+                        >
+                            取消
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => void handleDeleteFlow()}
+                            disabled={deleteFlowLoading}
+                        >
+                            {deleteFlowLoading ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                            {deleteFlowLoading ? '删除中…' : '删除'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
             </Dialog>
 
             {/* 删除文件夹确认对话框 */}
             <Dialog open={deleteFolderDialogOpen} onOpenChange={setDeleteFolderDialogOpen}>
-                <DialogPortal>
-                    <DialogOverlay className="offline-dialog-backdrop" />
-                    <DialogContent className="offline-dialog-positioner">
-                        <div className="offline-dialog-card" style={{ width: 'min(420px, 90vw)' }}>
-                            <div className="offline-dialog-header">
-                                <div>
-                                    <DialogTitle className="offline-dialog-title">确认删除文件夹</DialogTitle>
-                                    <DialogDescription className="offline-dialog-description">
-                                        确定要删除文件夹「{deleteFolderName}」吗？其下所有内容都将被物理删除，此操作不可恢复。
-                                    </DialogDescription>
-                                </div>
-                                <button
-                                    className="offline-dialog-close"
-                                    type="button"
-                                    aria-label="关闭"
-                                    onClick={() => setDeleteFolderDialogOpen(false)}
-                                >
-                                    <X size={16} />
-                                </button>
-                            </div>
-                            <div className="offline-dialog-actions">
-                                <div />
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setDeleteFolderDialogOpen(false)}
-                                        disabled={deleteFolderLoading}
-                                    >
-                                        取消
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="destructive"
-                                        size="sm"
-                                        onClick={() => void handleDeleteFolder()}
-                                        disabled={deleteFolderLoading}
-                                    >
-                                        {deleteFolderLoading ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                                        {deleteFolderLoading ? '删除中…' : '删除'}
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                    </DialogContent>
-                </DialogPortal>
+                <DialogContent style={{ maxWidth: '420px' }}>
+                    <DialogHeader>
+                        <DialogTitle>确认删除文件夹</DialogTitle>
+                        <DialogDescription>
+                            确定要删除文件夹「{deleteFolderName}」吗？其下所有内容都将被物理删除，此操作不可恢复。
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDeleteFolderDialogOpen(false)}
+                            disabled={deleteFolderLoading}
+                        >
+                            取消
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => void handleDeleteFolder()}
+                            disabled={deleteFolderLoading}
+                        >
+                            {deleteFolderLoading ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                            {deleteFolderLoading ? '删除中…' : '删除'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
             </Dialog>
 
             {/* 重命名文件夹对话框 */}
             <Dialog open={renameFolderDialogOpen} onOpenChange={setRenameFolderDialogOpen}>
-                <DialogPortal>
-                    <DialogOverlay className="offline-dialog-backdrop" />
-                    <DialogContent className="offline-dialog-positioner">
-                        <div className="offline-dialog-card" style={{ width: 'min(420px, 90vw)' }}>
-                            <div className="offline-dialog-header">
-                                <div>
-                                    <DialogTitle className="offline-dialog-title">重命名文件夹</DialogTitle>
-                                    <DialogDescription className="offline-dialog-description">
-                                        将文件夹「{renameFolderOriginalName}」重命名为：
-                                    </DialogDescription>
-                                </div>
-                                <button
-                                    className="offline-dialog-close"
-                                    type="button"
-                                    aria-label="关闭"
-                                    onClick={() => setRenameFolderDialogOpen(false)}
-                                >
-                                    <X size={16} />
-                                </button>
-                            </div>
-                            <div className="offline-dialog-body" style={{ marginTop: 12 }}>
-                                <Input
-                                    value={renameFolderName}
-                                    onChange={(e) => setRenameFolderName(e.target.value)}
-                                    placeholder="输入新名称"
-                                    autoFocus
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && renameFolderName.trim()) {
-                                            void handleRenameFolder();
-                                        }
-                                    }}
-                                />
-                            </div>
-                            <div className="offline-dialog-actions">
-                                <div />
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setRenameFolderDialogOpen(false)}
-                                        disabled={renameFolderLoading}
-                                    >
-                                        取消
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="default"
-                                        size="sm"
-                                        onClick={() => void handleRenameFolder()}
-                                        disabled={!renameFolderName.trim() || renameFolderLoading}
-                                    >
-                                        {renameFolderLoading ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                                        {renameFolderLoading ? '重命名中…' : '重命名'}
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                    </DialogContent>
-                </DialogPortal>
+                <DialogContent style={{ maxWidth: '420px' }}>
+                    <DialogHeader>
+                        <DialogTitle>重命名文件夹</DialogTitle>
+                        <DialogDescription>
+                            将文件夹「{renameFolderOriginalName}」重命名为：
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="dialog-body" style={{ marginTop: 12 }}>
+                        <Input
+                            value={renameFolderName}
+                            onChange={(e) => setRenameFolderName(e.target.value)}
+                            placeholder="输入新名称"
+                            autoFocus
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && renameFolderName.trim()) {
+                                    void handleRenameFolder();
+                                }
+                            }}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setRenameFolderDialogOpen(false)}
+                            disabled={renameFolderLoading}
+                        >
+                            取消
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            onClick={() => void handleRenameFolder()}
+                            disabled={!renameFolderName.trim() || renameFolderLoading}
+                        >
+                            {renameFolderLoading ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                            {renameFolderLoading ? '重命名中…' : '重命名'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
             </Dialog>
 
             {/* 重命名 Flow 对话框 */}
             <Dialog open={renameFlowDialogOpen} onOpenChange={setRenameFlowDialogOpen}>
-                <DialogPortal>
-                    <DialogOverlay className="offline-dialog-backdrop" />
-                    <DialogContent className="offline-dialog-positioner">
-                        <div className="offline-dialog-card" style={{ width: 'min(420px, 90vw)' }}>
-                            <div className="offline-dialog-header">
-                                <div>
-                                    <DialogTitle className="offline-dialog-title">重命名 Flow</DialogTitle>
-                                    <DialogDescription className="offline-dialog-description">
-                                        将「{renameFlowOriginalName}」重命名为：
-                                    </DialogDescription>
-                                </div>
-                                <button
-                                    className="offline-dialog-close"
-                                    type="button"
-                                    aria-label="关闭"
-                                    onClick={() => setRenameFlowDialogOpen(false)}
-                                >
-                                    <X size={16} />
-                                </button>
-                            </div>
-                            <div className="offline-dialog-body" style={{ marginTop: 12 }}>
-                                <Input
-                                    value={renameFlowName}
-                                    onChange={(e) => setRenameFlowName(e.target.value)}
-                                    placeholder="输入新名称"
-                                    autoFocus
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && renameFlowName.trim()) {
-                                            void handleRenameFlow();
-                                        }
-                                    }}
-                                />
-                            </div>
-                            <div className="offline-dialog-actions">
-                                <div />
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setRenameFlowDialogOpen(false)}
-                                        disabled={renameFlowLoading}
-                                    >
-                                        取消
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="default"
-                                        size="sm"
-                                        onClick={() => void handleRenameFlow()}
-                                        disabled={!renameFlowName.trim() || renameFlowLoading}
-                                    >
-                                        {renameFlowLoading ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                                        {renameFlowLoading ? '重命名中…' : '重命名'}
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                    </DialogContent>
-                </DialogPortal>
+                <DialogContent style={{ maxWidth: '420px' }}>
+                    <DialogHeader>
+                        <DialogTitle>重命名 Flow</DialogTitle>
+                        <DialogDescription>
+                            将「{renameFlowOriginalName}」重命名为：
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="dialog-body" style={{ marginTop: 12 }}>
+                        <Input
+                            value={renameFlowName}
+                            onChange={(e) => setRenameFlowName(e.target.value)}
+                            placeholder="输入新名称"
+                            autoFocus
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && renameFlowName.trim()) {
+                                    void handleRenameFlow();
+                                }
+                            }}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setRenameFlowDialogOpen(false)}
+                            disabled={renameFlowLoading}
+                        >
+                            取消
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            onClick={() => void handleRenameFlow()}
+                            disabled={!renameFlowName.trim() || renameFlowLoading}
+                        >
+                            {renameFlowLoading ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                            {renameFlowLoading ? '重命名中…' : '重命名'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
             </Dialog>
 
             {/* 右键菜单 */}
@@ -3326,57 +3178,54 @@ export default function OfflineWorkbench() {
             )}
 
             <Dialog open={pendingNavigation !== null} onOpenChange={(open) => { if (!open) handleCancelLeave(); }}>
-                <DialogPortal>
-                    <DialogOverlay className="offline-dialog-backdrop" />
-                    <DialogContent className="offline-dialog-positioner">
-                        <div className="offline-dialog-card is-warning" style={{ width: '400px' }}>
-                            <div className="offline-dialog-header">
-                                <div className="flex items-center gap-3">
-                                    <div className="offline-dialog-icon-wrap is-warning">
-                                        <AlertTriangle size={20} />
-                                    </div>
-                                    <div>
-                                        <DialogTitle className="offline-dialog-title">您有未保存的更改</DialogTitle>
-                                        <DialogDescription className="offline-dialog-description">
-                                            离开此页面将导致所有未保存的修改丢失。
-                                        </DialogDescription>
-                                    </div>
-                                </div>
+                <DialogContent style={{ maxWidth: '400px' }}>
+                    <DialogHeader>
+                        <div className="flex items-center gap-3">
+                            <div className="bg-amber-100 text-amber-600 w-10 h-10 rounded-full flex items-center justify-center shrink-0">
+                                <AlertTriangle size={20} />
                             </div>
-                            <div className="offline-dialog-body" style={{ padding: '0 24px 20px' }}>
-                                <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
-                                    您希望在离开前保存当前 Flow 的修改吗？
-                                </p>
-                            </div>
-                            <div className="offline-dialog-actions" style={{ background: 'var(--color-surface-muted)', borderTop: '1px solid var(--color-border-subtle)', padding: '12px 20px' }}>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={handleCancelLeave}
-                                >
-                                    取消
-                                </Button>
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="hover:bg-red-50 hover:text-red-600 hover:border-red-200"
-                                        onClick={() => void handleConfirmLeave('discard')}
-                                    >
-                                        放弃修改
-                                    </Button>
-                                    <Button
-                                        variant="default"
-                                        size="sm"
-                                        onClick={() => void handleConfirmLeave('save')}
-                                    >
-                                        保存并离开
-                                    </Button>
-                                </div>
+                            <div>
+                                <DialogTitle>您有未保存的更改</DialogTitle>
+                                <DialogDescription>
+                                    离开此页面将导致所有未保存的修改丢失。
+                                </DialogDescription>
                             </div>
                         </div>
-                    </DialogContent>
-                </DialogPortal>
+                    </DialogHeader>
+
+                    <div className="dialog-body" style={{ padding: '0 0 20px' }}>
+                        <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
+                            您希望在离开前保存当前 Flow 的修改吗？
+                        </p>
+                    </div>
+
+                    <DialogFooter>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleCancelLeave}
+                        >
+                            取消
+                        </Button>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                                onClick={() => void handleConfirmLeave('discard')}
+                            >
+                                放弃修改
+                            </Button>
+                            <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => void handleConfirmLeave('save')}
+                            >
+                                保存并离开
+                            </Button>
+                        </div>
+                    </DialogFooter>
+                </DialogContent>
             </Dialog>
 
             {/* 点击其他区域关闭右键菜单 */}
@@ -3390,4 +3239,3 @@ export default function OfflineWorkbench() {
         </section>
     );
 }
-

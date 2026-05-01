@@ -10,14 +10,7 @@ import {
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogOverlay,
-    DialogPortal,
-    DialogTitle,
-} from '../../components/ui/dialog';
+import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import {
@@ -413,55 +406,31 @@ export default function UserList() {
                 }}
             />
 
-            <Dialog
+            <ConfirmDialog
                 open={Boolean(pendingDisableTarget)}
                 onOpenChange={(nextOpen) => {
                     if (!nextOpen && pendingStatusId == null) {
                         setPendingDisableTarget(null);
                     }
                 }}
-            >
-                <DialogPortal>
-                    <DialogOverlay className="dialog-backdrop" />
-                    <DialogContent className="dialog-positioner">
-                        <div className="user-confirm-dialog">
-                            <DialogTitle className="user-confirm-title">禁用用户</DialogTitle>
-                            <DialogDescription className="user-confirm-description">
-                                {pendingDisableTarget ? (
-                                    <>
-                                        确定要禁用用户 <strong>{pendingDisableTarget.username}</strong> 吗？
-                                        <br />
-                                        禁用后该用户将无法登录系统，但其已有数据不会被删除。
-                                    </>
-                                ) : (
-                                    ''
-                                )}
-                            </DialogDescription>
-                            <div className="user-confirm-actions">
-                                <Button
-                                    variant="outline"
-                                    disabled={pendingStatusId != null}
-                                    onClick={() => setPendingDisableTarget(null)}
-                                    type="button"
-                                >
-                                    取消
-                                </Button>
-                                <Button
-                                    variant="destructive"
-                                    disabled={!pendingDisableTarget || pendingStatusId != null}
-                                    onClick={() => {
-                                        if (!pendingDisableTarget) return;
-                                        toggleStatusMutation.mutate({ id: pendingDisableTarget.id, status: 'DISABLED' });
-                                    }}
-                                    type="button"
-                                >
-                                    {pendingStatusId != null ? '禁用中...' : '确认禁用'}
-                                </Button>
-                            </div>
-                        </div>
-                    </DialogContent>
-                </DialogPortal>
-            </Dialog>
+                title="禁用用户"
+                description={
+                    pendingDisableTarget ? (
+                        <>
+                            确定要禁用用户 <strong>{pendingDisableTarget.username}</strong> 吗？
+                            <br />
+                            禁用后该用户将无法登录系统，但其已有数据不会被删除。
+                        </>
+                    ) : ''
+                }
+                onConfirm={() => {
+                    if (!pendingDisableTarget) return;
+                    toggleStatusMutation.mutate({ id: pendingDisableTarget.id, status: 'DISABLED' });
+                }}
+                confirmText={pendingStatusId != null ? '禁用中...' : '确认禁用'}
+                cancelText="取消"
+                variant="destructive"
+            />
         </div>
     );
 }

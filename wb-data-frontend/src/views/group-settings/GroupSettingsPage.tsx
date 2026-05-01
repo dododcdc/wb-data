@@ -11,14 +11,7 @@ import {
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogOverlay,
-    DialogPortal,
-    DialogTitle,
-} from '../../components/ui/dialog';
+import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import { useAuthStore } from '../../utils/auth';
@@ -464,55 +457,31 @@ export default function GroupSettingsPage() {
                 submitting={updateRoleMutation.isPending}
             />
 
-            <Dialog
+            <ConfirmDialog
                 open={Boolean(pendingRemoveTarget)}
                 onOpenChange={(nextOpen) => {
                     if (!nextOpen && pendingRemoveId == null) {
                         setPendingRemoveTarget(null);
                     }
                 }}
-            >
-                <DialogPortal>
-                    <DialogOverlay className="dialog-backdrop" />
-                    <DialogContent className="dialog-positioner">
-                        <div className="gs-confirm-dialog">
-                            <DialogTitle className="gs-confirm-title">移除成员</DialogTitle>
-                            <DialogDescription className="gs-confirm-description">
-                                {pendingRemoveTarget ? (
-                                    <>
-                                        确定要将 <strong>{pendingRemoveTarget.displayName}</strong> 从项目组中移除吗？
-                                        <br />
-                                        移除后该成员将无法访问此项目组的资源。
-                                    </>
-                                ) : (
-                                    ''
-                                )}
-                            </DialogDescription>
-                            <div className="gs-confirm-actions">
-                                <Button
-                                    variant="outline"
-                                    disabled={pendingRemoveId != null}
-                                    onClick={() => setPendingRemoveTarget(null)}
-                                    type="button"
-                                >
-                                    取消
-                                </Button>
-                                <Button
-                                    variant="destructive"
-                                    disabled={!pendingRemoveTarget || pendingRemoveId != null}
-                                    onClick={() => {
-                                        if (!pendingRemoveTarget) return;
-                                        removeMemberMutation.mutate(pendingRemoveTarget.id);
-                                    }}
-                                    type="button"
-                                >
-                                    {pendingRemoveId != null ? '移除中...' : '确认移除'}
-                                </Button>
-                            </div>
-                        </div>
-                    </DialogContent>
-                </DialogPortal>
-            </Dialog>
+                title="移除成员"
+                description={pendingRemoveTarget ? (
+                    <>
+                        确定要将 <strong>{pendingRemoveTarget.displayName}</strong> 从项目组中移除吗？
+                        <br />
+                        移除后该成员将无法访问此项目组的资源。
+                    </>
+                ) : ''}
+                variant="destructive"
+                confirmText={pendingRemoveId != null ? '移除中...' : '确认移除'}
+                onConfirm={() => {
+                    if (pendingRemoveTarget) {
+                        removeMemberMutation.mutate(pendingRemoveTarget.id);
+                    }
+                }}
+                isLoading={pendingRemoveId != null}
+                icon="warning"
+            />
         </div>
     );
 }
