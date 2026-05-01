@@ -35,6 +35,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
     const [role, setRole] = useState('DEVELOPER');
     const [submitting, setSubmitting] = useState(false);
     const [showDropdown, setShowDropdown] = useState(false);
+    const [searchError, setSearchError] = useState<string | null>(null);
     const searchTimerRef = useRef<number | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -46,6 +47,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
             setRole('DEVELOPER');
             setSubmitting(false);
             setShowDropdown(false);
+            setSearchError(null);
         }
     }, [open]);
 
@@ -61,6 +63,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
             if (!searchKeyword.trim() && searchKeyword.length === 0) {
                 setUsers([]);
                 setShowDropdown(false);
+                setSearchError(null);
                 return;
             }
             setLoading(true);
@@ -68,9 +71,12 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                 .then((result) => {
                     setUsers(result);
                     setShowDropdown(true);
+                    setSearchError(null);
                 })
                 .catch(() => {
                     setUsers([]);
+                    setShowDropdown(true);
+                    setSearchError('搜索失败，请稍后重试');
                 })
                 .finally(() => setLoading(false));
         }, 300);
@@ -105,6 +111,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
         setSelectedUser(null);
         setSearchKeyword('');
         setUsers([]);
+        setSearchError(null);
     };
 
     const handleSubmit = () => {
@@ -149,7 +156,10 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                                             placeholder="搜索用户名或展示名"
                                             value={searchKeyword}
                                             disabled={submitting}
-                                            onChange={(e) => setSearchKeyword(e.target.value)}
+                                            onChange={(e) => {
+                                                setSearchKeyword(e.target.value);
+                                                setSearchError(null);
+                                            }}
                                             onFocus={() => {
                                                 if (users.length > 0) setShowDropdown(true);
                                             }}
@@ -158,6 +168,8 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                                             <div className="gs-user-dropdown">
                                                 {loading ? (
                                                     <div className="gs-user-dropdown-loading">搜索中...</div>
+                                                ) : searchError ? (
+                                                    <div className="gs-user-dropdown-empty">{searchError}</div>
                                                 ) : users.length === 0 ? (
                                                     <div className="gs-user-dropdown-empty">未找到匹配的用户</div>
                                                 ) : (
