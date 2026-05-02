@@ -163,7 +163,7 @@ export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectPr
                 <ComboboxInput 
                     placeholder={placeholder}
                     className={cn(
-                        "!h-full w-full pl-9 pr-8 !p-0 !m-0 !bg-transparent text-sm !border-0 focus-visible:ring-0 !shadow-none outline-none",
+                        "!h-full w-full !pl-9 !pr-8 !m-0 !bg-transparent text-sm !border-0 focus-visible:ring-0 !shadow-none outline-none",
                         triggerClassName
                     )}
                     onCompositionStart={() => { isComposingRef.current = true }}
