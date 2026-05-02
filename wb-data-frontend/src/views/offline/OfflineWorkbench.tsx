@@ -505,7 +505,7 @@ function ExecutionDialog(props: ExecutionDialogProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="offline-execution-dialog" hideClose>
-                <div className="offline-dialog-toolbar">
+                <div className="dialog-toolbar offline-dialog-toolbar">
                     <div className="offline-execution-toolbar-left">
                         <label className="offline-execution-filter">
                             <span>用户</span>
@@ -537,9 +537,10 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                             停止
                         </Button>
                         <button
-                            className="offline-dialog-close-inline"
                             type="button"
                             aria-label="关闭"
+                            data-slot="dialog-close"
+                            className="dialog-close-button"
                             onClick={() => onOpenChange(false)}
                         >
                             <X size={16} />

@@ -31,23 +31,23 @@ export function SaveConflictDialog(props: SaveConflictDialogProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent style={{ maxWidth: '480px' }} hideClose>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                    <DialogHeader style={{ flex: 1 }}>
+                <div className="dialog-toolbar">
+                    <DialogHeader className="flex-1" style={{ padding: 0, borderBottom: 'none' }}>
                         <DialogTitle>保存冲突</DialogTitle>
                         <DialogDescription>
                             服务器版本已更新。请选择覆盖保存、加载最新内容，或稍后处理。
                         </DialogDescription>
                     </DialogHeader>
-                    <Button
+                    <button
                         type="button"
-                        variant="ghost"
-                        size="icon-sm"
+                        data-slot="dialog-close"
+                        className="dialog-close-button"
                         aria-label="关闭"
                         onClick={() => onOpenChange(false)}
                         disabled={pending}
                     >
                         <X size={16} />
-                    </Button>
+                    </button>
                 </div>
 
                 <div className="dialog-body" style={{ display: 'grid', gap: 12 }}>
