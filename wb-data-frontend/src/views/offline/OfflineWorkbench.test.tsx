@@ -692,7 +692,7 @@ describe('OfflineWorkbench destructive confirmations', () => {
             firstAttempt.reject(new Error('delete failed'));
             try {
                 await firstAttempt.promise;
-            } catch (e) {
+            } catch {
                 // ignore
             }
         });
