@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 import {
     Dialog,
     DialogContent,
@@ -82,6 +83,13 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
         onSuccess({ userId: selectedUser.id, role }, selectedUser.displayName);
     };
 
+    const handleClearUser = () => {
+        setSelectedUser(null);
+        setSearchKeyword('');
+        setUsers([]);
+        setSearchError(null);
+    };
+
     const userOptions: SearchSelectOption[] = users.map(u => ({
         label: u.username,
         value: String(u.id),
@@ -102,22 +110,32 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                         <div className="gs-dialog-field-grid">
                             <div className="gs-dialog-input-group">
                                 <label>用户<span className="gs-required">*</span></label>
-                                <SearchSelect
-                                    options={userOptions}
-                                    placeholder="搜索用户名或展示名"
-                                    disabled={submitting}
-                                    loading={loading}
-                                    emptyText={searchError || '请输入关键词搜索'}
-                                    onInputChange={setSearchKeyword}
-                                    onChange={(_, opt) => {
-                                        setSelectedUser(opt ? (opt.raw as AvailableUser) : null);
-                                    }}
-                                    selectedOption={selectedUser ? {
-                                        label: selectedUser.username,
-                                        value: String(selectedUser.id),
-                                        secondaryLabel: selectedUser.displayName
-                                    } : null}
-                                />
+                                {selectedUser ? (
+                                    <div className="gs-selected-user">
+                                        <span>{selectedUser.username} — {selectedUser.displayName}</span>
+                                        <button
+                                            className="gs-selected-user-clear"
+                                            type="button"
+                                            aria-label="清除选择"
+                                            disabled={submitting}
+                                            onClick={handleClearUser}
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <SearchSelect
+                                        options={userOptions}
+                                        placeholder="搜索用户名或展示名"
+                                        disabled={submitting}
+                                        loading={loading}
+                                        emptyText={searchError || '请输入关键词搜索'}
+                                        onInputChange={setSearchKeyword}
+                                        onChange={(_, opt) => {
+                                            if (opt) setSelectedUser(opt.raw as AvailableUser);
+                                        }}
+                                    />
+                                )}
                             </div>
 
                             <div className="gs-dialog-input-group">
