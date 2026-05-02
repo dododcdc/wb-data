@@ -18,6 +18,7 @@
     font-size: 0.92rem;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     box-sizing: border-box;
+    cursor: pointer;
 }
 
 .simple-select-trigger:hover:not(:disabled) {
@@ -92,6 +93,7 @@
     font-size: 0.92rem;
     text-align: left;
     white-space: nowrap;
+    cursor: pointer;
 }
 
 .simple-select-option span {

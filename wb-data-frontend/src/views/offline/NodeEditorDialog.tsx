@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
 import type * as Monaco from 'monaco-editor';
-import { Database, Inbox, X } from 'lucide-react';
+import { Database, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import {
     Dialog,
@@ -183,24 +183,6 @@ export function NodeEditorDialog({
 
                     <TooltipProvider delayDuration={300}>
                         <div className="flex items-center gap-1">
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <button
-                                        type="button"
-                                        className="p-1.5 rounded hover:bg-white hover:shadow-sm text-gray-500 hover:text-indigo-600 transition-all active:scale-95"
-                                        aria-label="关闭并保留草稿"
-                                        onClick={() => onTempSave(content, currentDataSourceId, currentDS?.type)}
-                                    >
-                                        <Inbox size={18} />
-                                    </button>
-                                </TooltipTrigger>
-                                <TooltipContent className="tooltip-content z-[2100]" side="bottom">
-                                    关闭编辑器并保留当前草稿
-                                </TooltipContent>
-                            </Tooltip>
-
-                            <div className="w-[1px] h-4 bg-gray-200 mx-1" />
-
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <button
