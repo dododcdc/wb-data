@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within, cleanup } from '@testing-library/react';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -34,31 +34,21 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-beforeAll(() => {
-  // stub window.confirm to avoid jsdom 'Not implemented' error and prevent crash when code calls window.confirm
-  // return true so user confirms by default; tests still expect an in-app dialog which production doesn't render
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (window as any).confirm = vi.fn(() => true);
-});
-
 function renderWithQuery(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
 describe('GitSettingsTab - confirm dialog behavior (spec tests)', () => {
-  it('opens a confirm dialog when delete is triggered (expected to fail until dialog is implemented)', async () => {
+  it('opens a confirm dialog when delete is triggered', async () => {
     getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
 
     renderWithQuery(<GitSettingsTab groupId={1} />);
 
-    // Delete button should be present
     const deleteBtn = await screen.findByRole('button', { name: /删除配置/ });
     fireEvent.click(deleteBtn);
 
-    // When in-app confirm dialog is implemented this should find the dialog.
-    // Currently the production code uses window.confirm and so this will fail.
-    await screen.findByRole('dialog');
+    expect(await screen.findByRole('dialog')).toBeTruthy();
   });
 
   it('clicking confirm disables actions and keeps dialog open while delete is pending', async () => {
@@ -80,8 +70,8 @@ describe('GitSettingsTab - confirm dialog behavior (spec tests)', () => {
     fireEvent.click(confirmBtn);
 
     // While delete is pending both buttons should be disabled and the dialog should remain open
-    await waitFor(() => expect(confirmBtn.disabled).toBeTruthy());
-    expect(cancelBtn.disabled).toBeTruthy();
+    await waitFor(() => expect(confirmBtn.hasAttribute('disabled')).toBeTruthy());
+    expect(cancelBtn.hasAttribute('disabled')).toBeTruthy();
     expect(screen.getByRole('dialog')).toBeTruthy();
 
     // Attempt to dismiss the dialog while delete is pending (Escape key)
@@ -125,7 +115,7 @@ describe('GitSettingsTab - confirm dialog behavior (spec tests)', () => {
 
     // First attempt
     fireEvent.click(confirmBtn);
-    await waitFor(() => expect(confirmBtn.disabled).toBeTruthy());
+    await waitFor(() => expect(confirmBtn.hasAttribute('disabled')).toBeTruthy());
 
     // Simulate failure
     act(() => {
@@ -133,13 +123,13 @@ describe('GitSettingsTab - confirm dialog behavior (spec tests)', () => {
     });
 
     // After failure, dialog should still be visible and allow retry via the confirm button
-    await waitFor(() => expect(confirmBtn.disabled).toBeFalsy());
+    await waitFor(() => expect(confirmBtn.hasAttribute('disabled')).toBeFalsy());
     // dialog remains open after failure
     expect(screen.getByRole('dialog')).toBeTruthy();
 
     // Retry via dialog confirm button
     fireEvent.click(confirmBtn);
-    await waitFor(() => expect(confirmBtn.disabled).toBeTruthy());
+    await waitFor(() => expect(confirmBtn.hasAttribute('disabled')).toBeTruthy());
 
     // cleanup: resolve second
     act(() => {
