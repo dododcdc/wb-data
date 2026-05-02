@@ -110,7 +110,6 @@ export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectPr
         }
         if (isComposingRef.current) return;
         
-        // Filter out internal changes that aren't user typing
         if (details?.reason && !['input-change', 'input-clear', 'input-paste'].includes(details.reason)) {
             return;
         }
@@ -121,10 +120,6 @@ export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectPr
 
     const handleOpenChangeInternal = (nextOpen: boolean) => {
         setOpen(nextOpen);
-        if (!nextOpen) {
-            setInputValue(resolvedValue?.label ?? '');
-            onInputChange?.('');
-        }
         onOpenChange?.(nextOpen);
     };
 
