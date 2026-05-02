@@ -687,7 +687,8 @@ describe('OfflineWorkbench destructive confirmations', () => {
 
         // Wait for the first attempt to complete and for the confirm button to become enabled before retrying.
         await waitFor(() => {
-            expect(within(dialog).getByRole('button', { name: '删除' })).not.toHaveAttribute('disabled');
+            const btn = within(dialog).getByRole('button', { name: '删除' }) as HTMLButtonElement;
+            if (btn.disabled) throw new Error('confirm button still disabled');
         });
 
         // Now retry the delete action.
