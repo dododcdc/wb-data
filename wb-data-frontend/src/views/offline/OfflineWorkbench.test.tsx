@@ -673,39 +673,49 @@ describe('OfflineWorkbench destructive confirmations', () => {
 
     it('keeps the folder delete dialog open after failure, blocks dismissal while retrying, and closes it after success', async () => {
         const offlineApi = await import('../../api/offline');
+        const firstAttempt = createDeferred<void>();
         const retryDeferred = createDeferred<void>();
         vi.mocked(offlineApi.deleteOfflineFolder)
-            .mockRejectedValueOnce(new Error('delete failed'))
+            .mockReturnValueOnce(firstAttempt.promise)
             .mockReturnValueOnce(retryDeferred.promise);
 
         renderOfflineWorkbench();
 
-        const dialog = await openFolderDeleteDialog();
+        await openFolderDeleteDialog();
         expect(screen.getByRole('heading', { name: '确认删除文件夹' })).toBeTruthy();
 
+        // trigger first delete attempt
         fireEvent.click(screen.getByRole('button', { name: '删除' }));
 
-        // Wait for the first attempt to complete and for the confirm button to become enabled before retrying.
+        // settle the first attempt as a failure inside act to ensure state updates
+        await act(async () => {
+            firstAttempt.reject(new Error('delete failed'));
+            try {
+                await firstAttempt.promise;
+            } catch (e) {
+                // ignore
+            }
+        });
+
+        // Wait for the dialog to be back to idle retry state before clicking delete again.
         await waitFor(() => {
-            const btn = within(dialog).getByRole('button', { name: '删除' }) as HTMLButtonElement;
+            const dlg = screen.getByRole('dialog', { name: '确认删除文件夹' });
+            const btn = within(dlg).getByRole('button', { name: '删除' }) as HTMLButtonElement;
             if (btn.disabled) throw new Error('confirm button still disabled');
         });
 
-        // Now retry the delete action.
-        fireEvent.click(within(dialog).getByRole('button', { name: '删除' }));
+        // Now retry the delete action using fresh DOM queries
+        fireEvent.click(within(screen.getByRole('dialog', { name: '确认删除文件夹' })).getByRole('button', { name: '删除' }));
 
+        // Expect the ConfirmDialog to show the pending state label "处理中..." (product gap intentionally fails if missing)
         await waitFor(() => {
-            const loadingBtn = within(dialog).queryByRole('button', { name: '处理中...' });
-            if (loadingBtn) {
-                expect(loadingBtn).toHaveAttribute('disabled');
-            } else {
-                // Fallback: the confirm button may not change its label; ensure it's disabled while retrying.
-                expect(within(dialog).getByRole('button', { name: '删除' })).toHaveAttribute('disabled');
-            }
-            expect(within(dialog).getByRole('button', { name: '取消' })).toHaveAttribute('disabled');
+            const dlg = screen.getByRole('dialog', { name: '确认删除文件夹' });
+            const loadingBtn = within(dlg).getByRole('button', { name: '处理中...' });
+            expect(loadingBtn).toHaveAttribute('disabled');
+            expect(within(dlg).getByRole('button', { name: '取消' })).toHaveAttribute('disabled');
         });
 
-        fireEvent.keyDown(dialog, { key: 'Escape' });
+        fireEvent.keyDown(screen.getByRole('dialog', { name: '确认删除文件夹' }), { key: 'Escape' });
         expect(screen.getByRole('dialog', { name: '确认删除文件夹' })).toBeTruthy();
 
         await act(async () => {
