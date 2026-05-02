@@ -592,7 +592,7 @@
     color: var(--color-text-secondary);
 }
 
-.gs-dialog-input-group input,
+.gs-dialog-input-group > input,
 .gs-dialog-input-group .simple-select-trigger {
     height: 38px;
     padding: 0 12px;
@@ -605,7 +605,7 @@
     box-sizing: border-box;
 }
 
-.gs-dialog-input-group input:focus {
+.gs-dialog-input-group > input:focus {
     border-color: var(--color-focus);
     outline: none;
     box-shadow: 0 0 0 3px var(--color-focus-glow);
@@ -619,12 +619,12 @@
     box-shadow: 0 0 0 3px var(--color-focus-glow);
 }
 
-.gs-dialog-input-group.has-error input,
+.gs-dialog-input-group.has-error > input,
 .gs-dialog-input-group.has-error .simple-select-trigger {
     border-color: var(--color-error);
 }
 
-.gs-dialog-input-group.has-error input:focus,
+.gs-dialog-input-group.has-error > input:focus,
 .gs-dialog-input-group.has-error .simple-select-trigger:focus,
 .gs-dialog-input-group.has-error .simple-select-trigger:focus-visible,
 .gs-dialog-input-group.has-error .simple-select.is-open .simple-select-trigger {
