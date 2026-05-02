@@ -310,17 +310,6 @@ describe('OfflineWorkbench save conflicts', () => {
             fileUpdatedAt: 100,
         });
         vi.mocked(offlineApi.listOfflineExecutions).mockResolvedValue([]);
-        vi.mocked(offlineApi.getOfflineExecution).mockResolvedValue({
-            executionId: 'exec-1',
-            flowPath: '_flows/example/flow.yaml',
-            status: 'SUCCESS',
-            displayName: '示例执行',
-            triggeredBy: 7,
-            startDate: '2026-05-01T00:00:00Z',
-            endDate: '2026-05-01T00:01:00Z',
-            durationMs: 60000,
-            taskRuns: [],
-        });
     });
 
     it('opens the save conflict dialog instead of reloading the latest server version on a 409 save', async () => {
