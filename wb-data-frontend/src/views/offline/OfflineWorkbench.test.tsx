@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { AxiosError } from 'axios';
+import { AxiosError, AxiosHeaders } from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
@@ -224,6 +224,22 @@ function createDeferred<T>() {
         reject = rej;
     });
     return { promise, resolve, reject };
+}
+
+function createApiDeferred<TResponse>() {
+    return createDeferred<TResponse>();
+}
+
+function makeDeleteResponse() {
+    return {
+        data: undefined,
+        status: 204,
+        statusText: 'No Content',
+        headers: AxiosHeaders.from({}),
+        config: {
+            headers: AxiosHeaders.from({}),
+        },
+    };
 }
 
 function renderOfflineWorkbench() {
@@ -643,7 +659,7 @@ describe('OfflineWorkbench destructive confirmations', () => {
 
     it('keeps the flow delete dialog open while the request is pending and closes it after success', async () => {
         const offlineApi = await import('../../api/offline');
-        const deleteDeferred = createDeferred<void>();
+        const deleteDeferred = createApiDeferred<Awaited<ReturnType<typeof offlineApi.deleteOfflineFlow>>>();
         vi.mocked(offlineApi.deleteOfflineFlow).mockReturnValueOnce(deleteDeferred.promise);
 
         renderOfflineWorkbench();
@@ -662,7 +678,7 @@ describe('OfflineWorkbench destructive confirmations', () => {
         expect(screen.getByRole('dialog', { name: '确认删除 Flow' })).toBeTruthy();
 
         await act(async () => {
-            deleteDeferred.resolve(undefined);
+            deleteDeferred.resolve(makeDeleteResponse());
             await deleteDeferred.promise;
         });
 
@@ -673,8 +689,8 @@ describe('OfflineWorkbench destructive confirmations', () => {
 
     it('keeps the folder delete dialog open after failure, blocks dismissal while retrying, and closes it after success', async () => {
         const offlineApi = await import('../../api/offline');
-        const firstAttempt = createDeferred<void>();
-        const retryDeferred = createDeferred<void>();
+        const firstAttempt = createApiDeferred<Awaited<ReturnType<typeof offlineApi.deleteOfflineFolder>>>();
+        const retryDeferred = createApiDeferred<Awaited<ReturnType<typeof offlineApi.deleteOfflineFolder>>>();
         vi.mocked(offlineApi.deleteOfflineFolder)
             .mockReturnValueOnce(firstAttempt.promise)
             .mockReturnValueOnce(retryDeferred.promise);
@@ -719,7 +735,7 @@ describe('OfflineWorkbench destructive confirmations', () => {
         expect(screen.getByRole('dialog', { name: '确认删除文件夹' })).toBeTruthy();
 
         await act(async () => {
-            retryDeferred.resolve(undefined);
+            retryDeferred.resolve(makeDeleteResponse());
             await retryDeferred.promise;
         });
 
