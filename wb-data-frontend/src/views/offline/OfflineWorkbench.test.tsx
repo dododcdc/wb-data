@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AxiosError } from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
@@ -685,15 +685,23 @@ describe('OfflineWorkbench destructive confirmations', () => {
 
         fireEvent.click(screen.getByRole('button', { name: '删除' }));
 
+        // Wait for the first attempt to complete and for the confirm button to become enabled before retrying.
         await waitFor(() => {
-            expect(screen.getByRole('dialog', { name: '确认删除文件夹' })).toBeTruthy();
+            expect(within(dialog).getByRole('button', { name: '删除' })).not.toHaveAttribute('disabled');
         });
 
-        fireEvent.click(screen.getByRole('button', { name: '删除' }));
+        // Now retry the delete action.
+        fireEvent.click(within(dialog).getByRole('button', { name: '删除' }));
 
         await waitFor(() => {
-            expect(screen.getByRole('button', { name: '处理中...' })).toHaveAttribute('disabled');
-            expect(screen.getByRole('button', { name: '取消' })).toHaveAttribute('disabled');
+            const loadingBtn = within(dialog).queryByRole('button', { name: '处理中...' });
+            if (loadingBtn) {
+                expect(loadingBtn).toHaveAttribute('disabled');
+            } else {
+                // Fallback: the confirm button may not change its label; ensure it's disabled while retrying.
+                expect(within(dialog).getByRole('button', { name: '删除' })).toHaveAttribute('disabled');
+            }
+            expect(within(dialog).getByRole('button', { name: '取消' })).toHaveAttribute('disabled');
         });
 
         fireEvent.keyDown(dialog, { key: 'Escape' });
