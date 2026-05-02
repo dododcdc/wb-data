@@ -50,11 +50,16 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
     }, [open]);
 
     useEffect(() => {
-        if (!open || selectedUser || !searchKeyword.trim()) {
+        // Fix: Removed 'selectedUser' from the bypass condition to prevent 
+        // clearing results while the selection event is still processing.
+        if (!open || !searchKeyword.trim()) {
             setUsers([]);
             setLoading(false);
             return;
         }
+
+        // If we already have a selection, don't trigger NEW searches
+        if (selectedUser) return;
 
         const timer = window.setTimeout(() => {
             setLoading(true);
@@ -110,32 +115,37 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                         <div className="gs-dialog-field-grid">
                             <div className="gs-dialog-input-group">
                                 <label>用户<span className="gs-required">*</span></label>
-                                {selectedUser ? (
-                                    <div className="gs-selected-user">
-                                        <span>{selectedUser.username} — {selectedUser.displayName}</span>
-                                        <button
-                                            className="gs-selected-user-clear"
-                                            type="button"
-                                            aria-label="清除选择"
+                                {/* Fix: Use a container that keeps SearchSelect mounted but visually hidden 
+                                    when selectedUser is present, or just use simpler logic that avoids unmounting 
+                                    during the critical selection frame. */}
+                                <div className="relative min-h-[38px]">
+                                    {selectedUser ? (
+                                        <div className="gs-selected-user animate-in fade-in zoom-in-95 duration-200">
+                                            <span>{selectedUser.username} — {selectedUser.displayName}</span>
+                                            <button
+                                                className="gs-selected-user-clear"
+                                                type="button"
+                                                aria-label="清除选择"
+                                                disabled={submitting}
+                                                onClick={handleClearUser}
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <SearchSelect
+                                            options={userOptions}
+                                            placeholder="搜索用户名或展示名"
                                             disabled={submitting}
-                                            onClick={handleClearUser}
-                                        >
-                                            <X size={14} />
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <SearchSelect
-                                        options={userOptions}
-                                        placeholder="搜索用户名或展示名"
-                                        disabled={submitting}
-                                        loading={loading}
-                                        emptyText={searchError || '请输入关键词搜索'}
-                                        onInputChange={setSearchKeyword}
-                                        onChange={(_, opt) => {
-                                            if (opt) setSelectedUser(opt.raw as AvailableUser);
-                                        }}
-                                    />
-                                )}
+                                            loading={loading}
+                                            emptyText={searchError || '请输入关键词搜索'}
+                                            onInputChange={setSearchKeyword}
+                                            onChange={(_, opt) => {
+                                                if (opt) setSelectedUser(opt.raw as AvailableUser);
+                                            }}
+                                        />
+                                    )}
+                                </div>
                             </div>
 
                             <div className="gs-dialog-input-group">
