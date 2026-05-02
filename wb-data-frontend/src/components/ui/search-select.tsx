@@ -155,7 +155,7 @@ export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectPr
             isItemEqualToValue={(item, val) => item.value === val.value}
         >
             <div className={cn(
-                "relative flex items-center h-9 bg-background border border-input rounded-md overflow-hidden focus-within:ring-1 focus-within:ring-ring transition-shadow",
+                "relative flex items-center !h-[38px] !bg-transparent border border-input rounded-md overflow-hidden focus-within:ring-1 focus-within:ring-ring transition-shadow",
                 theme === 'dark' && "dark",
                 className
             )}>
@@ -163,7 +163,7 @@ export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectPr
                 <ComboboxInput 
                     placeholder={placeholder}
                     className={cn(
-                        "h-full w-full pl-9 pr-8 bg-transparent text-sm border-0 focus-visible:ring-0 shadow-none outline-none",
+                        "!h-full w-full pl-9 pr-8 !p-0 !m-0 !bg-transparent text-sm !border-0 focus-visible:ring-0 !shadow-none outline-none",
                         triggerClassName
                     )}
                     onCompositionStart={() => { isComposingRef.current = true }}
