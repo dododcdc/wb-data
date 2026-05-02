@@ -33,18 +33,24 @@ const DialogContent = React.forwardRef<
     <div className={cn("dialog-positioner", fullScreen ? "p-0 block" : "grid place-items-center p-6")}>
       <DialogPrimitive.Content
         ref={ref}
+        data-slot="dialog-content"
         className={cn(
-          !fullScreen && "dialog-content max-w-[520px]",
-          fullScreen && "fixed inset-0 flex flex-col bg-white z-[1050]",
+          "dialog-content",
+          fullScreen && "dialog-content-fullscreen",
           className
         )}
         {...props}
       >
         {children}
         {!hideClose && (
-          <DialogPrimitive.Close className="dialog-close-icon">
+          <DialogPrimitive.Close
+            type="button"
+            aria-label="关闭"
+            data-slot="dialog-close"
+            className="dialog-close-button dialog-close-icon"
+          >
             <X size={18} />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">关闭</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Content>

@@ -126,7 +126,7 @@ export function NodeEditorDialog({
                 hideClose
                 fullScreen
             >
-                <div className="flex items-center justify-between border-b px-4 py-2 bg-[#fdfcfb] shadow-sm z-10">
+                <div className="dialog-toolbar flex items-center justify-between gap-4 bg-[#fdfcfb] shadow-sm z-10">
                     <div className="flex items-center gap-5">
                         {/* Identity Section */}
                         <div className="flex items-center gap-3">
@@ -205,11 +205,12 @@ export function NodeEditorDialog({
                                 <TooltipTrigger asChild>
                                     <button
                                         type="button"
-                                        className="p-1.5 rounded hover:bg-white hover:shadow-sm text-gray-400 hover:text-red-500 transition-all active:scale-95"
                                         aria-label="关闭"
+                                        data-slot="dialog-close"
+                                        className="dialog-close-button"
                                         onClick={handleAttemptClose}
                                     >
-                                        <X size={20} />
+                                        <X size={18} />
                                     </button>
                                 </TooltipTrigger>
                                 <TooltipContent className="tooltip-content z-[2100]" side="bottom">
