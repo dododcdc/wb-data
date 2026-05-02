@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import {
     Dialog,
     DialogContent,
@@ -9,6 +8,7 @@ import {
     DialogFooter,
 } from '../../components/ui/dialog';
 import { SimpleSelect } from '../../components/SimpleSelect';
+import { SearchSelect, type SearchSelectOption } from '../../components/ui/search-select';
 import type { AddMemberPayload, AvailableUser } from '../../api/groupSettings';
 import { getAvailableUsers } from '../../api/groupSettings';
 import { Button } from '../../components/ui/button';
@@ -34,101 +34,47 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
     const [selectedUser, setSelectedUser] = useState<AvailableUser | null>(null);
     const [role, setRole] = useState('DEVELOPER');
     const [submitting, setSubmitting] = useState(false);
-    const [showDropdown, setShowDropdown] = useState(false);
     const [searchError, setSearchError] = useState<string | null>(null);
-    const searchTimerRef = useRef<number | null>(null);
-    const searchRequestRef = useRef(0);
-    const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!open) {
-            searchRequestRef.current += 1;
             setSearchKeyword('');
             setUsers([]);
             setLoading(false);
             setSelectedUser(null);
             setRole('DEVELOPER');
             setSubmitting(false);
-            setShowDropdown(false);
             setSearchError(null);
         }
     }, [open]);
 
     useEffect(() => {
-        if (!open || selectedUser) return;
-
-        if (searchTimerRef.current !== null) {
-            window.clearTimeout(searchTimerRef.current);
+        if (!open || selectedUser || !searchKeyword.trim()) {
+            setUsers([]);
+            setLoading(false);
+            return;
         }
 
-        searchTimerRef.current = window.setTimeout(() => {
-            searchTimerRef.current = null;
-            if (!searchKeyword.trim()) {
-                searchRequestRef.current += 1;
-                setUsers([]);
-                setLoading(false);
-                setShowDropdown(false);
-                setSearchError(null);
-                return;
-            }
-            const requestId = searchRequestRef.current + 1;
-            searchRequestRef.current = requestId;
+        const timer = window.setTimeout(() => {
             setLoading(true);
-            getAvailableUsers(groupId, searchKeyword.trim() || undefined)
+            setSearchError(null);
+            getAvailableUsers(groupId, searchKeyword.trim())
                 .then((result) => {
-                    if (requestId !== searchRequestRef.current) return;
                     setUsers(result);
-                    setShowDropdown(true);
-                    setSearchError(null);
+                    if (result.length === 0) {
+                        setSearchError('未找到匹配的用户');
+                    }
                 })
                 .catch(() => {
-                    if (requestId !== searchRequestRef.current) return;
-                    setUsers([]);
-                    setShowDropdown(true);
                     setSearchError('搜索失败，请稍后重试');
                 })
                 .finally(() => {
-                    if (requestId !== searchRequestRef.current) return;
                     setLoading(false);
                 });
         }, 300);
 
-        return () => {
-            if (searchTimerRef.current !== null) {
-                window.clearTimeout(searchTimerRef.current);
-            }
-        };
+        return () => window.clearTimeout(timer);
     }, [open, groupId, searchKeyword, selectedUser]);
-
-    useEffect(() => {
-        if (!showDropdown) return;
-
-        const handleClickOutside = (e: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-                setShowDropdown(false);
-            }
-        };
-
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [showDropdown]);
-
-    const handleSelectUser = (user: AvailableUser) => {
-        searchRequestRef.current += 1;
-        setSelectedUser(user);
-        setLoading(false);
-        setShowDropdown(false);
-        setSearchKeyword('');
-    };
-
-    const handleClearUser = () => {
-        searchRequestRef.current += 1;
-        setSelectedUser(null);
-        setSearchKeyword('');
-        setUsers([]);
-        setLoading(false);
-        setSearchError(null);
-    };
 
     const handleSubmit = () => {
         if (!selectedUser || submitting) return;
@@ -136,7 +82,12 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
         onSuccess({ userId: selectedUser.id, role }, selectedUser.displayName);
     };
 
-    const canSubmit = selectedUser !== null && !submitting;
+    const userOptions: SearchSelectOption[] = users.map(u => ({
+        label: u.username,
+        value: String(u.id),
+        secondaryLabel: u.displayName,
+        raw: u
+    }));
 
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => { if (!submitting) onOpenChange({ open: nextOpen }); }}>
@@ -151,61 +102,22 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                         <div className="gs-dialog-field-grid">
                             <div className="gs-dialog-input-group">
                                 <label>用户<span className="gs-required">*</span></label>
-                                {selectedUser ? (
-                                    <div className="gs-selected-user">
-                                        <span>{selectedUser.username} — {selectedUser.displayName}</span>
-                                        <button
-                                            className="gs-selected-user-clear"
-                                            type="button"
-                                            aria-label="清除选择"
-                                            disabled={submitting}
-                                            onClick={handleClearUser}
-                                        >
-                                            <X size={14} />
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="gs-user-search-container" ref={containerRef}>
-                                        <input
-                                            className="gs-user-search-input"
-                                            type="text"
-                                            placeholder="搜索用户名或展示名"
-                                            value={searchKeyword}
-                                            disabled={submitting}
-                                            onChange={(e) => {
-                                                searchRequestRef.current += 1;
-                                                setSearchKeyword(e.target.value);
-                                                setSearchError(null);
-                                            }}
-                                            onFocus={() => {
-                                                if (users.length > 0) setShowDropdown(true);
-                                            }}
-                                        />
-                                        {showDropdown ? (
-                                            <div className="gs-user-dropdown">
-                                                {loading ? (
-                                                    <div className="gs-user-dropdown-loading">搜索中...</div>
-                                                ) : searchError ? (
-                                                    <div className="gs-user-dropdown-empty">{searchError}</div>
-                                                ) : users.length === 0 ? (
-                                                    <div className="gs-user-dropdown-empty">未找到匹配的用户</div>
-                                                ) : (
-                                                    users.map((user) => (
-                                                        <button
-                                                            key={user.id}
-                                                            className="gs-user-option"
-                                                            type="button"
-                                                            onClick={() => handleSelectUser(user)}
-                                                        >
-                                                            {user.username}
-                                                            <span className="gs-user-option-secondary">— {user.displayName}</span>
-                                                        </button>
-                                                    ))
-                                                )}
-                                            </div>
-                                        ) : null}
-                                    </div>
-                                )}
+                                <SearchSelect
+                                    options={userOptions}
+                                    placeholder="搜索用户名或展示名"
+                                    disabled={submitting}
+                                    loading={loading}
+                                    emptyText={searchError || '请输入关键词搜索'}
+                                    onInputChange={setSearchKeyword}
+                                    onChange={(_, opt) => {
+                                        setSelectedUser(opt ? (opt.raw as AvailableUser) : null);
+                                    }}
+                                    selectedOption={selectedUser ? {
+                                        label: selectedUser.username,
+                                        value: String(selectedUser.id),
+                                        secondaryLabel: selectedUser.displayName
+                                    } : null}
+                                />
                             </div>
 
                             <div className="gs-dialog-input-group">
@@ -233,7 +145,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                     <Button
                         variant="default"
                         type="button"
-                        disabled={!canSubmit}
+                        disabled={!selectedUser || submitting}
                         onClick={handleSubmit}
                     >
                         {submitting ? '添加中...' : '添加'}
