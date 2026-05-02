@@ -32,7 +32,8 @@
     outline-offset: 2px;
   }
 
-  button:not(:disabled) {
+  button:not(:disabled),
+  [role="option"]:not([data-disabled]) {
     cursor: pointer;
   }
 

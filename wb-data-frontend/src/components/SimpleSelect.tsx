@@ -1,6 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown } from 'lucide-react';
-import './SimpleSelect.css';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from './ui/select';
 
 type SelectOption = {
     label: string;
@@ -15,6 +19,7 @@ type SimpleSelectProps = {
     id?: string;
     menuPlacement?: 'auto' | 'up' | 'down';
     onChange: (value: string) => void;
+    className?: string;
 };
 
 export function SimpleSelect(props: SimpleSelectProps) {
@@ -26,107 +31,31 @@ export function SimpleSelect(props: SimpleSelectProps) {
         id,
         menuPlacement = 'auto',
         onChange,
+        className,
     } = props;
 
-    const [open, setOpen] = useState(false);
-    const [openUpward, setOpenUpward] = useState(false);
-    const rootRef = useRef<HTMLDivElement | null>(null);
-    const selectedOption = useMemo(
-        () => options.find((option) => option.value === value) ?? null,
-        [options, value],
-    );
-
-    useEffect(() => {
-        if (!open) {
-            return;
-        }
-
-        if (menuPlacement === 'up') {
-            setOpenUpward(true);
-            return;
-        }
-
-        if (menuPlacement === 'down') {
-            setOpenUpward(false);
-            return;
-        }
-
-        const root = rootRef.current;
-        if (root) {
-            const rect = root.getBoundingClientRect();
-            const estimatedMenuHeight = Math.min(options.length, 6) * 40 + 16;
-            const spaceBelow = window.innerHeight - rect.bottom;
-            const spaceAbove = rect.top;
-            setOpenUpward(spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow);
-        }
-
-        const handleEscape = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                setOpen(false);
-            }
-        };
-
-        document.addEventListener('keydown', handleEscape, true);
-
-        return () => {
-            document.removeEventListener('keydown', handleEscape, true);
-        };
-    }, [menuPlacement, open, options.length]);
+    // Map menuPlacement to SelectContent side
+    const side = menuPlacement === 'auto' ? 'bottom' : menuPlacement;
 
     return (
-        <div
-            ref={rootRef}
-            className={`simple-select ${open ? 'is-open' : ''} ${disabled ? 'is-disabled' : ''}`}
+        <Select 
+            value={value} 
+            onValueChange={onChange} 
+            disabled={disabled}
         >
-            <button
-                id={id}
-                type="button"
-                className={`simple-select-trigger ${selectedOption ? '' : 'is-placeholder'}`}
-                aria-haspopup="listbox"
-                aria-expanded={open}
-                disabled={disabled}
-                onClick={() => setOpen((current) => !current)}
+            <SelectTrigger 
+                id={id} 
+                className={className}
             >
-                <span className="simple-select-label">
-                    {selectedOption?.label ?? placeholder}
-                </span>
-                <ChevronDown size={16} className="simple-select-icon" />
-            </button>
-
-            {open ? (
-                <>
-                    <div
-                        className="simple-select-overlay"
-                        onPointerDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setOpen(false);
-                        }}
-                    />
-                    <div className={`simple-select-menu ${openUpward ? 'open-upward' : ''}`} role="listbox" aria-labelledby={id}>
-                    {options.map((option) => {
-                        const selected = option.value === value;
-
-                        return (
-                            <button
-                                key={option.value}
-                                type="button"
-                                className={`simple-select-option ${selected ? 'is-selected' : ''}`}
-                                role="option"
-                                aria-selected={selected}
-                                onClick={() => {
-                                    onChange(option.value);
-                                    setOpen(false);
-                                }}
-                            >
-                                <span>{option.label}</span>
-                                {selected ? <Check size={16} /> : null}
-                            </button>
-                        );
-                    })}
-                    </div>
-                </>
-            ) : null}
-        </div>
+                <SelectValue placeholder={placeholder} />
+            </SelectTrigger>
+            <SelectContent side={side} align="start">
+                {options.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
     );
 }
