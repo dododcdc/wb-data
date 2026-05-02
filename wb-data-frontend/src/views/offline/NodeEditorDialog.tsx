@@ -13,7 +13,7 @@ import { SqlEditor } from '../../components/sql-editor/SqlEditor';
 import { loadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import { registerSqlEditorTheme } from '../../components/sql-editor/sqlEditorTheme';
 import type { OfflineFlowNode } from '../../api/offline';
-import { OfflineDataSourcePicker } from './OfflineDataSourcePicker';
+import { DataSourceSelect } from '../../components/DataSourceSelect';
 import { useNodeEditorDataSources } from './useNodeEditorDataSources';
 import {
     buildNodeEditorDataSourceOptions,
@@ -158,7 +158,7 @@ export function NodeEditorDialog({
                                     <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">数据源</span>
                                 </div>
                                 <div className="min-w-[260px]">
-                                    <OfflineDataSourcePicker
+                                    <DataSourceSelect
                                         options={dataSourceSelectOptions}
                                         selectedOption={currentDS ? {
                                             label: currentDS.name,
@@ -166,10 +166,10 @@ export function NodeEditorDialog({
                                             type: currentDS.type,
                                             raw: currentDS,
                                         } : null}
-                                        onSelect={(option) => {
-                                            setCurrentDataSourceId(Number(option.value));
+                                        onChange={(val) => {
+                                            setCurrentDataSourceId(Number(val));
                                         }}
-                                        onSearch={handleSearchKeywordChange}
+                                        onInputChange={handleSearchKeywordChange}
                                         loading={dataSourcesLoading}
                                         loadingMore={dataSourcesLoadingMore}
                                         hasMore={dataSourcesHasMore}
