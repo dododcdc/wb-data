@@ -127,4 +127,27 @@ describe('NodeEditorDialog', () => {
 
         expect(container.innerHTML).toBe('');
     });
+
+    it('uses the shared close affordance contract for the top-bar close action', () => {
+        const onOpenChange = vi.fn();
+
+        render(
+            <NodeEditorDialog
+                open
+                groupId={1}
+                activeNode={makeShellNode()}
+                content="echo hello"
+                onOpenChange={onOpenChange}
+                onTempSave={() => {}}
+                onContentChange={() => {}}
+            />,
+        );
+
+        const closeButton = screen.getByRole('button', { name: '关闭' });
+        expect(closeButton.getAttribute('data-slot')).toBe('dialog-close');
+        expect(closeButton.className).toContain('dialog-close-button');
+
+        fireEvent.click(closeButton);
+        expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
 });
