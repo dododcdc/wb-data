@@ -109,6 +109,8 @@ vi.mock('../../api/offline', async () => {
         getOfflineFlowDocument: vi.fn(),
         getOfflineSchedule: vi.fn(),
         saveOfflineFlowDocument: vi.fn(),
+        deleteOfflineFlow: vi.fn(),
+        deleteOfflineFolder: vi.fn(),
     };
 });
 
@@ -127,7 +129,33 @@ function makeRepoStatus() {
     };
 }
 
-function makeRepoTree() {
+function makeRepoTree(options?: { includeFolder?: boolean }) {
+    const children: Array<{
+        id: string;
+        kind: 'FLOW' | 'DIRECTORY';
+        name: string;
+        path: string;
+        children: Array<never>;
+    }> = [
+        {
+            id: 'flow-1',
+            kind: 'FLOW',
+            name: 'Example Flow',
+            path: '_flows/example/flow.yaml',
+            children: [],
+        },
+    ];
+
+    if (options?.includeFolder) {
+        children.unshift({
+            id: 'folder-1',
+            kind: 'DIRECTORY',
+            name: 'Drafts',
+            path: '_flows/drafts',
+            children: [],
+        });
+    }
+
     return {
         groupId: 1,
         root: {
@@ -135,15 +163,7 @@ function makeRepoTree() {
             kind: 'ROOT' as const,
             name: '_flows',
             path: '_flows',
-            children: [
-                {
-                    id: 'flow-1',
-                    kind: 'FLOW' as const,
-                    name: 'Example Flow',
-                    path: '_flows/example/flow.yaml',
-                    children: [],
-                },
-            ],
+            children,
         },
     };
 }
@@ -220,6 +240,24 @@ function renderOfflineWorkbench() {
     );
 
     return render(<RouterProvider router={router} />);
+}
+
+async function openFlowDeleteDialog() {
+    fireEvent.contextMenu(await screen.findByRole('button', { name: 'Example Flow' }), {
+        clientX: 120,
+        clientY: 80,
+    });
+    fireEvent.click(await screen.findByRole('button', { name: '删除' }));
+    return screen.findByRole('dialog', { name: '确认删除 Flow' });
+}
+
+async function openFolderDeleteDialog() {
+    fireEvent.contextMenu(await screen.findByRole('button', { name: 'Drafts' }), {
+        clientX: 120,
+        clientY: 80,
+    });
+    fireEvent.click(await screen.findByRole('button', { name: '删除' }));
+    return screen.findByRole('dialog', { name: '确认删除文件夹' });
 }
 
 describe('OfflineWorkbench save conflicts', () => {
@@ -577,3 +615,98 @@ describe('OfflineWorkbench save conflicts', () => {
         });
     });
 });
+
+describe('OfflineWorkbench destructive confirmations', () => {
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        setCurrentGroup({ id: 1, name: 'Team' });
+        const offlineApi = await import('../../api/offline');
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue(makeRepoStatus());
+        vi.mocked(offlineApi.getOfflineRepoTree).mockResolvedValue(makeRepoTree({ includeFolder: true }));
+        vi.mocked(offlineApi.getOfflineRepoRemote).mockResolvedValue({ hasRemote: false, remoteUrl: null });
+        vi.mocked(offlineApi.getOfflineFlowDocument).mockResolvedValue(makeFlowDocument());
+        vi.mocked(offlineApi.getOfflineSchedule).mockResolvedValue({
+            groupId: 1,
+            path: '_flows/example/flow.yaml',
+            triggerId: 'trigger-1',
+            cron: '',
+            timezone: null,
+            enabled: false,
+            contentHash: 'schedule-hash',
+            fileUpdatedAt: 100,
+        });
+    });
+
+    afterEach(() => {
+        cleanup();
+    });
+
+    it('keeps the flow delete dialog open while the request is pending and closes it after success', async () => {
+        const offlineApi = await import('../../api/offline');
+        const deleteDeferred = createDeferred<void>();
+        vi.mocked(offlineApi.deleteOfflineFlow).mockReturnValueOnce(deleteDeferred.promise);
+
+        renderOfflineWorkbench();
+
+        const dialog = await openFlowDeleteDialog();
+        expect(screen.getByRole('heading', { name: '确认删除 Flow' })).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('button', { name: '删除' }));
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '处理中...' })).toHaveAttribute('disabled');
+            expect(screen.getByRole('button', { name: '取消' })).toHaveAttribute('disabled');
+        });
+
+        fireEvent.keyDown(dialog, { key: 'Escape' });
+        expect(screen.getByRole('dialog', { name: '确认删除 Flow' })).toBeTruthy();
+
+        await act(async () => {
+            deleteDeferred.resolve(undefined);
+            await deleteDeferred.promise;
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: '确认删除 Flow' })).toBeNull();
+        });
+    });
+
+    it('keeps the folder delete dialog open after failure, blocks dismissal while retrying, and closes it after success', async () => {
+        const offlineApi = await import('../../api/offline');
+        const retryDeferred = createDeferred<void>();
+        vi.mocked(offlineApi.deleteOfflineFolder)
+            .mockRejectedValueOnce(new Error('delete failed'))
+            .mockReturnValueOnce(retryDeferred.promise);
+
+        renderOfflineWorkbench();
+
+        const dialog = await openFolderDeleteDialog();
+        expect(screen.getByRole('heading', { name: '确认删除文件夹' })).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('button', { name: '删除' }));
+
+        await waitFor(() => {
+            expect(screen.getByRole('dialog', { name: '确认删除文件夹' })).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: '删除' }));
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '处理中...' })).toHaveAttribute('disabled');
+            expect(screen.getByRole('button', { name: '取消' })).toHaveAttribute('disabled');
+        });
+
+        fireEvent.keyDown(dialog, { key: 'Escape' });
+        expect(screen.getByRole('dialog', { name: '确认删除文件夹' })).toBeTruthy();
+
+        await act(async () => {
+            retryDeferred.resolve(undefined);
+            await retryDeferred.promise;
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: '确认删除文件夹' })).toBeNull();
+        });
+    });
+});
+
