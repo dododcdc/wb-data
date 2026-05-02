@@ -9,7 +9,7 @@ import {
 } from './combobox';
 import { Search, ChevronDown, Loader2 } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useCallback, useEffect, useRef, useState, type CompositionEvent, type UIEventHandler } from 'react';
+import { useCallback, useEffect, useRef, useState, type UIEventHandler } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface SearchSelectOption {
@@ -49,7 +49,7 @@ export interface SearchSelectProps<T extends SearchSelectOption> {
 export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectProps<T>) {
     const {
         options,
-        value,
+        value: propValue,
         selectedOption,
         placeholder = '搜索...',
         disabled,
@@ -73,49 +73,45 @@ export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectPr
     } = props;
 
     const isComposingRef = useRef(false);
-    const skipNextInputRef = useRef(false);
     const [inputValue, setInputValue] = useState('');
     const [open, setOpen] = useState(false);
-    const scrollRef = useRef<HTMLDivElement | null>(null);
     const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
 
-    const resolvedValue = options.find(opt => opt.value === value) || selectedOption || null;
+    // Track the current value as a simple string ID for maximum stability
+    const activeValue = propValue || selectedOption?.value || '';
 
-    const handleScrollElementRef = useCallback((node: HTMLDivElement | null) => {
-        if (scrollRef.current === node) return;
-        scrollRef.current = node;
-        setScrollElement(node);
-    }, []);
-
+    // Synchronize inputValue with the selected option only when not open or when selectedOption changes
     useEffect(() => {
         if (!open) {
-            setInputValue(resolvedValue?.label ?? '');
+            const currentLabel = selectedOption?.label || options.find(o => o.value === propValue)?.label || '';
+            setInputValue(currentLabel);
         }
-    }, [open, resolvedValue]);
+    }, [open, selectedOption, propValue, options]);
 
-    const handleValueChange = (newOption: T | null) => {
-        if (newOption) {
-            setInputValue(newOption.label);
-            onChange?.(newOption.value, newOption);
-        } else {
-            setInputValue('');
+    const handleValueChange = (newValue: string | null) => {
+        if (!newValue) {
             onChange?.('', null);
+            return;
+        }
+        // Find the full option object corresponding to the string ID
+        const option = options.find(o => o.value === newValue) || (selectedOption?.value === newValue ? selectedOption : null);
+        if (option) {
+            setInputValue(option.label);
+            onChange?.(option.value, option);
         }
     };
 
     const handleInputChangeInternal = (nextValue: string, details?: { reason?: string }) => {
-        if (skipNextInputRef.current) {
-            skipNextInputRef.current = false;
-            return;
-        }
         if (isComposingRef.current) return;
         
-        if (details?.reason && !['input-change', 'input-clear', 'input-paste'].includes(details.reason)) {
-            return;
+        // Only trigger search when the user is actually typing
+        if (details?.reason === 'input-change' || details?.reason === 'input-clear' || !details?.reason) {
+            setInputValue(nextValue);
+            onInputChange?.(nextValue);
+        } else if (details?.reason === 'option-select') {
+            // When an option is selected, the combobox will update the input value automatically
+            setInputValue(nextValue);
         }
-
-        setInputValue(nextValue);
-        onInputChange?.(nextValue);
     };
 
     const handleOpenChangeInternal = (nextOpen: boolean) => {
@@ -138,16 +134,13 @@ export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectPr
     });
 
     return (
-        <Combobox<T>
-            value={resolvedValue}
+        <Combobox<string>
+            value={activeValue}
             onValueChange={handleValueChange}
             onInputValueChange={handleInputChangeInternal}
             inputValue={inputValue}
             onOpenChange={handleOpenChangeInternal}
             disabled={disabled}
-            itemToStringLabel={(item) => item?.label ?? ''}
-            itemToStringValue={(item) => item?.value ?? ''}
-            isItemEqualToValue={(item, val) => item.value === val.value}
         >
             <div className={cn(
                 "relative flex items-center !h-[38px] !bg-transparent border border-input rounded-md overflow-hidden focus-within:ring-1 focus-within:ring-ring transition-shadow",
@@ -164,8 +157,6 @@ export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectPr
                     onCompositionStart={() => { isComposingRef.current = true }}
                     onCompositionEnd={(e) => {
                         isComposingRef.current = false;
-                        skipNextInputRef.current = true;
-                        setTimeout(() => { skipNextInputRef.current = false }, 0);
                         const val = e.currentTarget.value;
                         setInputValue(val);
                         onInputChange?.(val);
@@ -181,7 +172,7 @@ export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectPr
                 align="start"
                 className="w-[var(--anchor-width)] max-h-[300px]"
                 onScroll={handleScroll}
-                ref={handleScrollElementRef}
+                ref={setScrollElement}
             >
                 {loading ? (
                     <div className="p-4 text-sm text-muted-foreground text-center flex items-center justify-center gap-2">
@@ -202,7 +193,7 @@ export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectPr
                                             className="absolute left-0 top-0 w-full"
                                             style={{ transform: `translateY(${virtualRow.start}px)` }}
                                         >
-                                            <ComboboxItem value={item}>
+                                            <ComboboxItem value={item.value}>
                                                 {renderItem ? renderItem(item) : (
                                                     <div className="flex items-center gap-2 overflow-hidden">
                                                         {item.icon}
@@ -222,7 +213,7 @@ export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectPr
                             </div>
                         ) : (
                             options.map((item) => (
-                                <ComboboxItem key={item.value} value={item}>
+                                <ComboboxItem key={item.value} value={item.value}>
                                     {renderItem ? renderItem(item) : (
                                         <div className="flex items-center gap-2 overflow-hidden">
                                             {item.icon}
