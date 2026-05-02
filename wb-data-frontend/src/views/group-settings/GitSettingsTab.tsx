@@ -8,6 +8,7 @@ import { SimpleSelect } from '../../components/SimpleSelect';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { getErrorMessage } from '../../utils/error';
 import { LoaderCircle } from 'lucide-react';
+import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 
 const PROVIDERS = [
     { value: 'github', label: 'GitHub' },
@@ -32,6 +33,7 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
     const [token, setToken] = useState('');
     const [baseUrl, setBaseUrl] = useState('https://github.com');
     const [testLoading, setTestLoading] = useState(false);
+    const [confirmOpen, setConfirmOpen] = useState(false);
 
     const queryClient = useQueryClient();
 
@@ -56,6 +58,8 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
     const deleteMutation = useMutation({
         mutationFn: () => deleteGitConfig(groupId),
         onSuccess: () => {
+            // Close the confirm dialog on successful delete
+            setConfirmOpen(false);
             showFeedback({ tone: 'success', title: '删除成功', detail: '' });
             setProvider('github');
             setUsername('');
@@ -127,19 +131,40 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
             <div className="git-settings-header">
                 <h2 className="git-settings-title">远程仓库配置</h2>
                 {config && (
-                    <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => {
-                            if (window.confirm('确定要删除此 Git 配置吗？删除后如需再次使用需重新填写凭证。')) {
+                    <>
+                        <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => setConfirmOpen(true)}
+                            disabled={deleteMutation.isPending}
+                        >
+                            {deleteMutation.isPending ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                            删除配置
+                        </Button>
+
+                        <ConfirmDialog
+                            open={confirmOpen}
+                            onOpenChange={(open) => {
+                                // Prevent closing while delete is pending
+                                if (!open && deleteMutation.isPending) return;
+                                setConfirmOpen(open);
+                            }}
+                            title="删除 Git 配置"
+                            description={<>
+                                删除后如需再次使用需重新填写凭证。
+                                {config && (
+                                  <div style={{ marginTop: 8 }}>
+                                    配置: {config.provider}{config.username ? `，用户 ${config.username}` : ''}
+                                  </div>
+                                )}
+                              </>}
+                            variant="destructive"
+                            onConfirm={() => {
                                 deleteMutation.mutate();
-                            }
-                        }}
-                        disabled={deleteMutation.isPending}
-                    >
-                        {deleteMutation.isPending ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                        删除配置
-                    </Button>
+                            }}
+                            isLoading={deleteMutation.isPending}
+                        />
+                    </>
                 )}
             </div>
 
