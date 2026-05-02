@@ -72,6 +72,7 @@ import {
     DialogTitle,
     DialogFooter,
 } from '../../components/ui/dialog';
+import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { getErrorMessage } from '../../utils/error';
 import { useAuthStore } from '../../utils/auth';
@@ -2943,71 +2944,39 @@ export default function OfflineWorkbench() {
                 </DialogContent>
             </Dialog>
 
-            {/* 删除 Flow 确认对话框 */}
-            <Dialog open={deleteFlowDialogOpen} onOpenChange={setDeleteFlowDialogOpen}>
-                <DialogContent style={{ maxWidth: '420px' }}>
-                    <DialogHeader>
-                        <DialogTitle>确认删除 Flow</DialogTitle>
-                        <DialogDescription>
-                            确定要删除 Flow「{deleteFlowName}」吗？此操作不可恢复。
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setDeleteFlowDialogOpen(false)}
-                            disabled={deleteFlowLoading}
-                        >
-                            取消
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => void handleDeleteFlow()}
-                            disabled={deleteFlowLoading}
-                        >
-                            {deleteFlowLoading ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                            {deleteFlowLoading ? '删除中…' : '删除'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ConfirmDialog
+                open={deleteFlowDialogOpen}
+                onOpenChange={(nextOpen) => {
+                    if (!deleteFlowLoading) {
+                        setDeleteFlowDialogOpen(nextOpen);
+                    }
+                }}
+                title="确认删除 Flow"
+                description={`确定要删除 Flow「${deleteFlowName}」吗？此操作不可恢复。`}
+                confirmText="删除"
+                cancelText="取消"
+                variant="destructive"
+                icon="warning"
+                isLoading={deleteFlowLoading}
+                onConfirm={() => void handleDeleteFlow()}
+            />
 
-            {/* 删除文件夹确认对话框 */}
-            <Dialog open={deleteFolderDialogOpen} onOpenChange={setDeleteFolderDialogOpen}>
-                <DialogContent style={{ maxWidth: '420px' }}>
-                    <DialogHeader>
-                        <DialogTitle>确认删除文件夹</DialogTitle>
-                        <DialogDescription>
-                            确定要删除文件夹「{deleteFolderName}」吗？其下所有内容都将被物理删除，此操作不可恢复。
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setDeleteFolderDialogOpen(false)}
-                            disabled={deleteFolderLoading}
-                        >
-                            取消
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => void handleDeleteFolder()}
-                            disabled={deleteFolderLoading}
-                        >
-                            {deleteFolderLoading ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                            {deleteFolderLoading ? '删除中…' : '删除'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ConfirmDialog
+                open={deleteFolderDialogOpen}
+                onOpenChange={(nextOpen) => {
+                    if (!deleteFolderLoading) {
+                        setDeleteFolderDialogOpen(nextOpen);
+                    }
+                }}
+                title="确认删除文件夹"
+                description={`确定要删除文件夹「${deleteFolderName}」吗？其下所有内容都将被物理删除，此操作不可恢复。`}
+                confirmText="删除"
+                cancelText="取消"
+                variant="destructive"
+                icon="warning"
+                isLoading={deleteFolderLoading}
+                onConfirm={() => void handleDeleteFolder()}
+            />
 
             {/* 重命名文件夹对话框 */}
             <Dialog open={renameFolderDialogOpen} onOpenChange={setRenameFolderDialogOpen}>
