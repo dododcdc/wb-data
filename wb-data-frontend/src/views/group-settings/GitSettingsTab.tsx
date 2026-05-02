@@ -150,14 +150,20 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
                                 setConfirmOpen(open);
                             }}
                             title="删除 Git 配置"
-                            description={<>
-                                删除后如需再次使用需重新填写凭证。
-                                {config && (
-                                  <div style={{ marginTop: 8 }}>
-                                    配置: {config.provider}{config.username ? `，用户 ${config.username}` : ''}
-                                  </div>
-                                )}
-                              </>}
+                            description={
+                                <>
+                                    删除后如需再次使用需重新填写凭证。
+                                    {config ? (
+                                        <>
+                                            <br />
+                                            <span>
+                                                配置: {config.provider}
+                                                {config.username ? `，用户 ${config.username}` : ''}
+                                            </span>
+                                        </>
+                                    ) : null}
+                                </>
+                            }
                             variant="destructive"
                             onConfirm={() => {
                                 deleteMutation.mutate();
