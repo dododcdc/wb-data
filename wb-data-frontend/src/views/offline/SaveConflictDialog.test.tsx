@@ -55,6 +55,23 @@ describe('SaveConflictDialog', () => {
         expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 
+    it('uses the shared close affordance contract and keeps pending disable behavior', () => {
+        render(
+            <SaveConflictDialog
+                open
+                pending
+                onOpenChange={() => {}}
+                onOverwrite={() => {}}
+                onDiscardAndReload={() => {}}
+            />,
+        );
+
+        const closeButton = screen.getByRole('button', { name: '关闭' });
+        expect(closeButton.getAttribute('data-slot')).toBe('dialog-close');
+        expect(closeButton.className).toContain('dialog-close-button');
+        expect((closeButton as HTMLButtonElement).disabled).toBe(true);
+    });
+
     it('calls onDiscardAndReload directly', () => {
         const onDiscardAndReload = vi.fn();
         render(

@@ -111,6 +111,8 @@ vi.mock('../../api/offline', async () => {
         saveOfflineFlowDocument: vi.fn(),
         deleteOfflineFlow: vi.fn(),
         deleteOfflineFolder: vi.fn(),
+        listOfflineExecutions: vi.fn(),
+        getOfflineExecution: vi.fn(),
     };
 });
 
@@ -276,6 +278,13 @@ async function openFolderDeleteDialog() {
     return screen.findByRole('dialog', { name: '确认删除文件夹' });
 }
 
+async function openExecutionResultsDialog() {
+    fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+    await screen.findByTestId('flow-canvas');
+    fireEvent.click(screen.getByRole('button', { name: '执行结果' }));
+    return screen.findByRole('dialog');
+}
+
 describe('OfflineWorkbench save conflicts', () => {
     afterEach(() => {
         cleanup();
@@ -299,6 +308,18 @@ describe('OfflineWorkbench save conflicts', () => {
             enabled: false,
             contentHash: 'schedule-hash',
             fileUpdatedAt: 100,
+        });
+        vi.mocked(offlineApi.listOfflineExecutions).mockResolvedValue([]);
+        vi.mocked(offlineApi.getOfflineExecution).mockResolvedValue({
+            executionId: 'exec-1',
+            flowPath: '_flows/example/flow.yaml',
+            status: 'SUCCESS',
+            displayName: '示例执行',
+            triggeredBy: 7,
+            startDate: '2026-05-01T00:00:00Z',
+            endDate: '2026-05-01T00:01:00Z',
+            durationMs: 60000,
+            taskRuns: [],
         });
     });
 
@@ -347,6 +368,22 @@ describe('OfflineWorkbench save conflicts', () => {
 
         await waitFor(() => {
             expect(screen.getByTestId('flow-canvas').textContent).toBe('_flows/example/flow.yaml');
+        });
+    });
+
+    it('uses the shared close affordance for the execution dialog toolbar close action', async () => {
+        renderOfflineWorkbench();
+
+        const dialog = await openExecutionResultsDialog();
+        const closeButton = within(dialog).getByRole('button', { name: '关闭' });
+
+        expect(closeButton.getAttribute('data-slot')).toBe('dialog-close');
+        expect(closeButton.className).toContain('dialog-close-button');
+
+        fireEvent.click(closeButton);
+
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog')).toBeNull();
         });
     });
 
