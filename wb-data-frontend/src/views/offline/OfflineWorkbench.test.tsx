@@ -654,8 +654,8 @@ describe('OfflineWorkbench destructive confirmations', () => {
         fireEvent.click(screen.getByRole('button', { name: '删除' }));
 
         await waitFor(() => {
-            expect(screen.getByRole('button', { name: '处理中...' })).toHaveAttribute('disabled');
-            expect(screen.getByRole('button', { name: '取消' })).toHaveAttribute('disabled');
+            expect((screen.getByRole('button', { name: '处理中...' }) as HTMLButtonElement).disabled).toBe(true);
+            expect((screen.getByRole('button', { name: '取消' }) as HTMLButtonElement).disabled).toBe(true);
         });
 
         fireEvent.keyDown(dialog, { key: 'Escape' });
@@ -711,8 +711,8 @@ describe('OfflineWorkbench destructive confirmations', () => {
         await waitFor(() => {
             const dlg = screen.getByRole('dialog', { name: '确认删除文件夹' });
             const loadingBtn = within(dlg).getByRole('button', { name: '处理中...' });
-            expect(loadingBtn).toHaveAttribute('disabled');
-            expect(within(dlg).getByRole('button', { name: '取消' })).toHaveAttribute('disabled');
+            expect((loadingBtn as HTMLButtonElement).disabled).toBe(true);
+            expect((within(dlg).getByRole('button', { name: '取消' }) as HTMLButtonElement).disabled).toBe(true);
         });
 
         fireEvent.keyDown(screen.getByRole('dialog', { name: '确认删除文件夹' }), { key: 'Escape' });
@@ -728,4 +728,3 @@ describe('OfflineWorkbench destructive confirmations', () => {
         });
     });
 });
-
