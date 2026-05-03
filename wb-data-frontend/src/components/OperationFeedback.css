@@ -13,7 +13,7 @@
     position: fixed;
     top: 68px;
     right: 24px;
-    z-index: 2000;
+    z-index: var(--z-toast);
     display: flex;
     align-items: center;
     justify-content: space-between;

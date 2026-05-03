@@ -102,7 +102,7 @@
 }
 
 .ds-select-positioner {
-    z-index: 2000 !important;
+    z-index: var(--z-popover);
     width: var(--reference-width);
 }
 

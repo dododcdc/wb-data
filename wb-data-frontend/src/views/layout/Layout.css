@@ -15,7 +15,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 32px;
-    z-index: 100;
+    z-index: var(--z-sticky);
 }
 
 .layout-progress-shell {
@@ -155,7 +155,7 @@
         grid-template-rows 0.3s cubic-bezier(0.16, 1, 0.3, 1),
         opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1),
         visibility 0s 0.3s;
-    z-index: 200;
+    z-index: var(--z-fixed);
 }
 
 .nav-dropdown-panel.open {
