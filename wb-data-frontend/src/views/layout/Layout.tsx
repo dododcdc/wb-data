@@ -28,6 +28,7 @@ import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import { OperationFeedback } from '../../components/OperationFeedback';
 import { loadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import './Layout.css';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 
 interface NavItem {
     kind: 'link';
@@ -298,6 +299,7 @@ export default function Layout() {
         item.children.some((child) => location.pathname === child.path || location.pathname.startsWith(child.path + '/'));
 
     return (
+        <TooltipProvider delayDuration={400}>
         <div className="layout-container">
             <header className="global-navbar">
                 <TopProgressBar visible={showRouteProgress} settling={routeProgressSettling} />
@@ -415,9 +417,14 @@ export default function Layout() {
                         <span className="user-avater">{userInfo?.displayName?.charAt(0).toUpperCase() || '?'}</span>
                         <span>{userInfo?.displayName || userInfo?.username || '未知用户'}</span>
                     </div>
-                    <button className="logout-btn" onClick={handleLogout} title="退出登录">
-                        <LogOut size={16} />
-                    </button>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <button className="logout-btn" onClick={handleLogout}>
+                                <LogOut size={16} />
+                            </button>
+                        </TooltipTrigger>
+                        <TooltipContent>退出登录</TooltipContent>
+                    </Tooltip>
                 </div>
             </header>
             <OperationFeedback />
@@ -427,5 +434,6 @@ export default function Layout() {
                 </div>
             </main>
         </div>
+        </TooltipProvider>
     );
 }

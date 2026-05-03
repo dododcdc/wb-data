@@ -1,5 +1,5 @@
 import { Database, Edit3, Power, Trash2 } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { DataSource } from '../../api/datasource';
 import { formatConnection, formatTimestamp, getStatusLabel } from './config';
 import { Button } from '../../components/ui/button';
@@ -74,7 +74,6 @@ export function DataSourceTable(props: DataSourceTableProps) {
                             <td className="datasource-updated-at datasource-updated-column">{formatTimestamp(item.updatedAt)}</td>
                             {canWrite && (
                                 <td className="datasource-actions-column">
-                                    <TooltipProvider delayDuration={400}>
                                     <div className="datasource-actions">
                                         <Tooltip>
                                             <TooltipTrigger asChild>
@@ -120,7 +119,6 @@ export function DataSourceTable(props: DataSourceTableProps) {
                                             <TooltipContent className="tooltip-content" side="bottom">删除数据源</TooltipContent>
                                         </Tooltip>
                                     </div>
-                                    </TooltipProvider>
                                 </td>
                             )}
                         </tr>

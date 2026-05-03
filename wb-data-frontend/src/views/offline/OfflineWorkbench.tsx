@@ -4,7 +4,7 @@ import { ReactFlowProvider, type Node, type Edge } from '@xyflow/react';
 import { useNavigate, useBlocker } from 'react-router-dom';
 import FlowCanvas from './FlowCanvas';
 import '../core/RouteSkeletons.css';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import {
     AlertTriangle,
     ArrowUpRight,
@@ -592,9 +592,19 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                             <>
                                                 <div className="offline-detail-body">
                                                     <div className="offline-detail-meta-minimal">
-                                                        <span title="开始时间">{formatDateTime(detail.startDate ?? detail.createdAt)}</span>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <span>{formatDateTime(detail.startDate ?? detail.createdAt)}</span>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>开始时间</TooltipContent>
+                                                        </Tooltip>
                                                         <span className="meta-sep">→</span>
-                                                        <span title="结束时间">{detail.endDate ? formatDateTime(detail.endDate) : '进行中'}</span>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <span>{detail.endDate ? formatDateTime(detail.endDate) : '进行中'}</span>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>结束时间</TooltipContent>
+                                                        </Tooltip>
                                                         <span className="meta-divider">|</span>
                                                         <span className="offline-branch-badge-tiny">{detail.branch ?? '—'}</span>
                                                         <span className="meta-divider">|</span>
@@ -639,9 +649,14 @@ function ExecutionDialog(props: ExecutionDialogProps) {
 
                                                                     return (
                                                                         <div key={task.taskId} className="offline-tasks-list-row">
-                                                                            <div className="col-node" title={task.taskId}>
-                                                                                <strong>{task.taskId}</strong>
-                                                                            </div>
+                                                                            <Tooltip>
+                                                                                <TooltipTrigger asChild>
+                                                                                    <div className="col-node">
+                                                                                        <strong>{task.taskId}</strong>
+                                                                                    </div>
+                                                                                </TooltipTrigger>
+                                                                                <TooltipContent>{task.taskId}</TooltipContent>
+                                                                            </Tooltip>
                                                                             <div className="col-time">
                                                                                 {task.startDate ? formatDateTime(task.startDate).split(' ')[1] : '—'}
                                                                             </div>
@@ -2330,7 +2345,6 @@ export default function OfflineWorkbench() {
                     <div className="offline-rail-toolbar">
                         <span className="offline-branch-badge">{branchLabel}</span>
                         {canWrite && (
-                            <TooltipProvider delayDuration={400}>
                                 <div className="offline-rail-toolbar-actions">
                                 <Tooltip>
                                     <TooltipTrigger asChild>
@@ -2406,7 +2420,6 @@ export default function OfflineWorkbench() {
                                     </TooltipContent>
                                 </Tooltip>
                                 </div>
-                            </TooltipProvider>
                         )}
                     </div>
 
@@ -2487,8 +2500,7 @@ export default function OfflineWorkbench() {
                                     全选
                                 </label>
 
-                                <TooltipProvider delayDuration={400}>
-                                    <Tooltip>
+                                <Tooltip>
                                         <TooltipTrigger asChild>
                                             <button
                                                 type="button"
@@ -2652,7 +2664,6 @@ export default function OfflineWorkbench() {
                                             添加 Shell 节点
                                         </TooltipContent>
                                     </Tooltip>
-                                </TooltipProvider>
                             </header>
 
                             {staleDraft ? (

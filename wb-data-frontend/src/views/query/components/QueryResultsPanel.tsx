@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Loader2, Code2, Download, FileText, Sheet, AlertTriangle, CheckCircle2, Clock3, Info, Pin, X, ChevronDown, ChevronUp } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../../components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../../components/ui/tooltip';
 import {
     isMac,
     PINNED_RESULT_LIMIT,
@@ -100,8 +100,7 @@ export function QueryResultsPanel({
                                 >
                                     <span className="result-tab-dot" aria-hidden="true" />
                                     <span className="result-tab-label">{formatResultTabLabel(item.tabNumber)}</span>
-                                    <TooltipProvider delayDuration={300}>
-                                        <Tooltip>
+                                    <Tooltip>
                                             <TooltipTrigger asChild>
                                                 <button
                                                     type="button"
@@ -119,7 +118,6 @@ export function QueryResultsPanel({
                                                 {item.isPinned ? '取消钉住' : '钉住该结果'}
                                             </TooltipContent>
                                         </Tooltip>
-                                    </TooltipProvider>
                                     <button
                                         type="button"
                                         className="result-tab-close"
@@ -152,8 +150,7 @@ export function QueryResultsPanel({
                                         ? <Loader2 size={12} className="result-tab-spinner animate-spin" />
                                         : null}
                                     <span className="result-tab-label">{formatResultTabLabel(currentResultTabNumber!)}</span>
-                                    <TooltipProvider delayDuration={300}>
-                                        <Tooltip>
+                                    <Tooltip>
                                             <TooltipTrigger asChild>
                                                 <button
                                                     type="button"
@@ -174,7 +171,6 @@ export function QueryResultsPanel({
                                                 {currentResultCanPin ? '钉住当前结果' : `最多保留 ${PINNED_RESULT_LIMIT} 个结果`}
                                             </TooltipContent>
                                         </Tooltip>
-                                    </TooltipProvider>
                                 </div>
                             ) : null}
                         </div>
@@ -196,32 +192,40 @@ export function QueryResultsPanel({
                 </div>
                 <div className="section-header-right">
                     {!resultCollapsed && activeSavedResult ? (
-                        <button
-                            type="button"
-                            className="export-button result-secondary-action"
-                            onClick={handleFillSavedSql}
-                            title="回填 SQL 到编辑器"
-                        >
-                            <Code2 size={14} />
-                            <span>回填 SQL</span>
-                        </button>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="export-button result-secondary-action"
+                                    onClick={handleFillSavedSql}
+                                >
+                                    <Code2 size={14} />
+                                    <span>回填 SQL</span>
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent>回填 SQL 到编辑器</TooltipContent>
+                        </Tooltip>
                     ) : null}
                     {!resultCollapsed && shouldShowExportTasksButton && canExport ? (
                         <div className="export-wrapper" ref={exportTasksMenuRef}>
-                            <button
-                                className={`export-button export-tasks-button ${showExportTasksMenu ? 'is-active' : ''}`.trim()}
-                                onClick={() => {
-                                    setShowExportMenu(false);
-                                    setShowExportTasksMenu((visible) => !visible);
-                                }}
-                                title="查看导出任务"
-                                aria-haspopup="dialog"
-                                aria-expanded={showExportTasksMenu}
-                            >
-                                {loadingExportTasks && showExportTasksMenu ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-                                <span>导出任务</span>
-                                {activeExportTaskCount > 0 ? <span className="export-task-badge">{activeExportTaskCount}</span> : null}
-                            </button>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        className={`export-button export-tasks-button ${showExportTasksMenu ? 'is-active' : ''}`.trim()}
+                                        onClick={() => {
+                                            setShowExportMenu(false);
+                                            setShowExportTasksMenu((visible) => !visible);
+                                        }}
+                                        aria-haspopup="dialog"
+                                        aria-expanded={showExportTasksMenu}
+                                    >
+                                        {loadingExportTasks && showExportTasksMenu ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                                        <span>导出任务</span>
+                                        {activeExportTaskCount > 0 ? <span className="export-task-badge">{activeExportTaskCount}</span> : null}
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent>查看导出任务</TooltipContent>
+                            </Tooltip>
                             {showExportTasksMenu && (
                                 <div className="export-menu export-tasks-menu" role="dialog" aria-label="导出任务">
                                     <div className="export-tasks-header">
@@ -288,20 +292,24 @@ export function QueryResultsPanel({
                     ) : null}
                     {!resultCollapsed && displayedResultHasTable && canExport && (
                         <div className="export-wrapper" ref={exportMenuRef}>
-                            <button
-                                className="export-button"
-                                onClick={() => {
-                                    setShowExportTasksMenu(false);
-                                    setShowExportMenu((visible) => !visible);
-                                }}
-                                title="导出结果"
-                                aria-haspopup="menu"
-                                aria-expanded={showExportMenu}
-                                disabled={exportState.status === 'exporting'}
-                            >
-                                {exportState.status === 'exporting' ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                                <span>{exportState.status === 'exporting' ? '导出中' : '导出'}</span>
-                            </button>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        className="export-button"
+                                        onClick={() => {
+                                            setShowExportTasksMenu(false);
+                                            setShowExportMenu((visible) => !visible);
+                                        }}
+                                        aria-haspopup="menu"
+                                        aria-expanded={showExportMenu}
+                                        disabled={exportState.status === 'exporting'}
+                                    >
+                                        {exportState.status === 'exporting' ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                                        <span>{exportState.status === 'exporting' ? '导出中' : '导出'}</span>
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent>导出结果</TooltipContent>
+                            </Tooltip>
                             {showExportMenu && (
                                 <div className="export-menu" role="menu">
                                     <button className="export-menu-item" role="menuitem" onClick={() => void createAsyncExportTask('csv')}>
@@ -326,24 +334,22 @@ export function QueryResultsPanel({
                             )}
                         </div>
                     )}
-                    <TooltipProvider delayDuration={400}>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <button
-                                    type="button"
-                                    className={`section-toggle-button ${hasHiddenResultHint ? 'has-notice' : ''}`.trim()}
-                                    onClick={toggleResultPanel}
-                                    aria-label={resultCollapsed ? '展开查询结果' : '收起查询结果'}
-                                >
-                                    {resultCollapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                                    {hasHiddenResultHint ? <span className="sidebar-toggle-notice" aria-hidden="true" /> : null}
-                                </button>
-                            </TooltipTrigger>
-                            <TooltipContent className="tooltip-content" side="top">
-                                {resultCollapsed ? '展开查询结果' : '收起查询结果'} <kbd>{isMac ? '⌘' : 'Ctrl'}+J</kbd>
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <button
+                                type="button"
+                                className={`section-toggle-button ${hasHiddenResultHint ? 'has-notice' : ''}`.trim()}
+                                onClick={toggleResultPanel}
+                                aria-label={resultCollapsed ? '展开查询结果' : '收起查询结果'}
+                            >
+                                {resultCollapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                {hasHiddenResultHint ? <span className="sidebar-toggle-notice" aria-hidden="true" /> : null}
+                            </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="tooltip-content" side="top">
+                            {resultCollapsed ? '展开查询结果' : '收起查询结果'} <kbd>{isMac ? '⌘' : 'Ctrl'}+J</kbd>
+                        </TooltipContent>
+                    </Tooltip>
                 </div>
             </div>
             {!resultCollapsed && (

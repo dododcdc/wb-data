@@ -1,5 +1,5 @@
 import { FolderKanban, Pencil, Ban, CheckCircle } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { GroupDetail } from '../../api/group';
 import { formatTimestamp } from './config';
 import { Button } from '../../components/ui/button';
@@ -61,7 +61,6 @@ export function GroupTable(props: GroupTableProps) {
                             <td>{item.memberCount}</td>
                             <td className="group-time-cell">{formatTimestamp(item.createdAt)}</td>
                             <td className="group-actions-column">
-                                <TooltipProvider delayDuration={400}>
                                 <div className="group-actions">
                                     <Tooltip>
                                         <TooltipTrigger asChild>
@@ -114,7 +113,6 @@ export function GroupTable(props: GroupTableProps) {
                                         </Tooltip>
                                     )}
                                 </div>
-                                </TooltipProvider>
                             </td>
                         </tr>
                     ))}

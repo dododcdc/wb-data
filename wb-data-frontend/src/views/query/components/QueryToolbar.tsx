@@ -1,6 +1,6 @@
 
 import { Play, Loader2, PanelLeftClose, PanelLeft, Star, Wand2 } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../../components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../../components/ui/tooltip';
 import { DataSourceSelect, type DataSourceOption } from '../../../components/DataSourceSelect';
 import type { DataSource } from '../../../api/datasource';
 
@@ -72,8 +72,7 @@ export function QueryToolbar({
     return (
         <header className={`query-toolbar ${sidebarCollapsed ? '' : 'has-left-separator'}`.trim()}>
                 <div className="toolbar-left">
-                    <TooltipProvider delayDuration={400}>
-                        <Tooltip>
+                    <Tooltip>
                             <TooltipTrigger asChild>
                                 <button
                                     className={`sidebar-toggle-button toolbar-sidebar-toggle ${hasHiddenMetadataHint ? 'has-notice' : ''}`}
@@ -88,11 +87,9 @@ export function QueryToolbar({
                                 {sidebarCollapsed ? '展开表结构' : '收起表结构'} <kbd>{isMac ? '⌘' : 'Ctrl'}+B</kbd>
                             </TooltipContent>
                         </Tooltip>
-                    </TooltipProvider>
                     <span className="toolbar-divider" />
                     <div className="toolbar-ds-group">
                         {selectedDsId ? (
-                            <TooltipProvider delayDuration={400}>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <button
@@ -108,7 +105,6 @@ export function QueryToolbar({
                                         {defaultDsId === selectedDsId ? '取消默认数据源' : '设为默认数据源'}
                                     </TooltipContent>
                                 </Tooltip>
-                            </TooltipProvider>
                         ) : null}
                         <DataSourceSelect
                             options={dataSourceOptions}
@@ -151,8 +147,7 @@ export function QueryToolbar({
                     )}
                 </div>
                 <div className="toolbar-right">
-                    <TooltipProvider delayDuration={400}>
-                        <Tooltip>
+                    <Tooltip>
                             <TooltipTrigger asChild>
                                 <button
                                     className="format-button-inline"
@@ -180,7 +175,6 @@ export function QueryToolbar({
                                 执行 <kbd>{isMac ? '⌘' : 'Ctrl'}+↵</kbd>
                             </TooltipContent>
                         </Tooltip>
-                    </TooltipProvider>
                 </div>
             </header>
     );

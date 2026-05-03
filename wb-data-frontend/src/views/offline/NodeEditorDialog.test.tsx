@@ -2,6 +2,7 @@ import { cleanup, render, screen, fireEvent } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NodeEditorDialog } from './NodeEditorDialog';
 import type { OfflineFlowNode } from '../../api/offline';
+import { TooltipProvider } from '../../components/ui/tooltip';
 
 // Mock the shared SqlEditor to verify SQL nodes use it
 vi.mock('../../components/sql-editor/SqlEditor', () => ({
@@ -62,6 +63,7 @@ const makeShellNode = (overrides?: Partial<OfflineFlowNode>): OfflineFlowNode =>
 describe('NodeEditorDialog', () => {
     it('uses the shared SqlEditor for SQL nodes and shows the data source picker', () => {
         render(
+            <TooltipProvider>
             <NodeEditorDialog
                 open
                 groupId={1}
@@ -70,7 +72,8 @@ describe('NodeEditorDialog', () => {
                 onOpenChange={() => {}}
                 onTempSave={() => {}}
                 onContentChange={() => {}}
-            />,
+            />
+            </TooltipProvider>,
         );
 
         const editor = screen.getByTestId('shared-sql-editor');
@@ -80,6 +83,7 @@ describe('NodeEditorDialog', () => {
 
     it('uses the shared SqlEditor for HIVE_SQL nodes', () => {
         render(
+            <TooltipProvider>
             <NodeEditorDialog
                 open
                 groupId={1}
@@ -88,7 +92,8 @@ describe('NodeEditorDialog', () => {
                 onOpenChange={() => {}}
                 onTempSave={() => {}}
                 onContentChange={() => {}}
-            />,
+            />
+            </TooltipProvider>,
         );
 
         const editor = screen.getByTestId('shared-sql-editor');
@@ -97,6 +102,7 @@ describe('NodeEditorDialog', () => {
 
     it('does not render the data source picker for Shell nodes', () => {
         render(
+            <TooltipProvider>
             <NodeEditorDialog
                 open
                 groupId={1}
@@ -105,7 +111,8 @@ describe('NodeEditorDialog', () => {
                 onOpenChange={() => {}}
                 onTempSave={() => {}}
                 onContentChange={() => {}}
-            />,
+            />
+            </TooltipProvider>,
         );
 
         // Shell nodes should NOT have the data source label
@@ -132,6 +139,7 @@ describe('NodeEditorDialog', () => {
         const onOpenChange = vi.fn();
 
         render(
+            <TooltipProvider>
             <NodeEditorDialog
                 open
                 groupId={1}
@@ -140,7 +148,8 @@ describe('NodeEditorDialog', () => {
                 onOpenChange={onOpenChange}
                 onTempSave={() => {}}
                 onContentChange={() => {}}
-            />,
+            />
+            </TooltipProvider>,
         );
 
         const closeButton = screen.getByRole('button', { name: '关闭' });
