@@ -57,3 +57,4 @@ output/
 skills-lock.json
 docs/
 **/CLAUDE.md
+.playwright-mcp/
