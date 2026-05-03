@@ -618,7 +618,6 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                         position: 'absolute',
                         left: contextMenu.x,
                         top: contextMenu.y,
-                        zIndex: 10000,
                     }}
                     onClick={(e) => e.stopPropagation()}
                 >

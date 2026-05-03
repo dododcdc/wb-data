@@ -263,6 +263,7 @@
   --z-popover: 500;
   --z-toast: 600;
   --z-tooltip: 700;
+  --z-context-menu: 800;
 }
 
 .dark {
@@ -449,7 +450,7 @@
 .dialog-overlay {
     position: fixed;
     inset: 0;
-    z-index: 1000;
+    z-index: var(--z-overlay);
     background: rgba(32, 25, 17, 0.45);
     backdrop-filter: blur(4px);
     animation: dialogOverlayFadeIn 200ms ease;
@@ -458,7 +459,7 @@
 .dialog-positioner {
     position: fixed;
     inset: 0;
-    z-index: 1001;
+    z-index: var(--z-modal);
     display: grid;
     place-items: center;
     padding: 24px;

@@ -1363,6 +1363,13 @@ button.offline-tree-row {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    z-index: var(--z-context-menu);
+}
+
+.offline-context-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--z-context-menu) - 1);
 }
 
 .offline-context-menu-item {

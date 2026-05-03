@@ -3090,7 +3090,6 @@ export default function OfflineWorkbench() {
                         position: 'fixed',
                         left: contextMenuPosition.x,
                         top: contextMenuPosition.y,
-                        zIndex: 9999,
                     }}
                     onClick={(e) => e.stopPropagation()}
                 >
@@ -3212,7 +3211,7 @@ export default function OfflineWorkbench() {
             {/* 点击其他区域关闭右键菜单 */}
             {contextMenuOpen && (
                 <div
-                    style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+                    className="offline-context-menu-backdrop"
                     onClick={() => setContextMenuOpen(false)}
                     onContextMenu={(e) => { e.preventDefault(); setContextMenuOpen(false); }}
                 />
