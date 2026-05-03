@@ -3,6 +3,8 @@ package com.wbdata.group.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.wbdata.common.dto.PageQuery;
+import com.wbdata.common.dto.PageResult;
 import com.wbdata.auth.enums.GroupRole;
 import com.wbdata.auth.enums.SystemRole;
 import com.wbdata.group.dto.*;
@@ -68,15 +70,14 @@ public class GroupSettingsService {
         return GroupSettingsResponse.from(groupMapper.selectById(groupId));
     }
 
-    public IPage<MemberResponse> listMembers(Long groupId, int page, int size, String keyword) {
-        Page<MemberResponse> pageParam = new Page<>(page, size);
-        return memberMapper.selectMembersWithUser(pageParam, groupId, keyword);
+    public PageResult<MemberResponse> listMembers(Long groupId, PageQuery query) {
+        Page<MemberResponse> pageParam = query.toMyBatisPage();
+        return PageResult.of(memberMapper.selectMembersWithUser(pageParam, groupId, query.getKeyword()));
     }
 
-
-    public IPage<AvailableUserResponse> listAvailableUsers(Long groupId, int page, int size, String keyword) {
-        Page<WbUser> pageParam = new Page<>(page, size);
-        return userMapper.selectAvailableUsers(pageParam, groupId, keyword)
+    public PageResult<AvailableUserResponse> listAvailableUsers(Long groupId, PageQuery query) {
+        Page<WbUser> pageParam = query.toMyBatisPage();
+        return PageResult.of(userMapper.selectAvailableUsers(pageParam, groupId, query.getKeyword()))
                 .convert(AvailableUserResponse::from);
     }
 

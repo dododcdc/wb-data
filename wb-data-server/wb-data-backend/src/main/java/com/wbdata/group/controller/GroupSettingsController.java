@@ -3,8 +3,9 @@ package com.wbdata.group.controller;
 import com.wbdata.auth.context.RequireGroupAuth;
 import com.wbdata.auth.dto.AuthContextResponse;
 import com.wbdata.auth.enums.Permission;
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.wbdata.common.Result;
+import com.wbdata.common.dto.PageQuery;
+import com.wbdata.common.dto.PageResult;
 import com.wbdata.group.dto.*;
 import com.wbdata.group.service.GroupSettingsService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -43,24 +44,21 @@ public class GroupSettingsController {
 
     @Operation(summary = "成员列表")
     @GetMapping("/members")
-    public Result<IPage<MemberResponse>> listMembers(
+    public Result<PageResult<MemberResponse>> listMembers(
             @RequireGroupAuth(Permission.MEMBER_READ) AuthContextResponse context,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String keyword) {
+            @Validated PageQuery query) {
         return Result.success(groupSettingsService.listMembers(
-                context.currentGroup().id(), page, size, keyword));
+                context.currentGroup().id(), query));
     }
 
     @Operation(summary = "可添加用户列表")
     @GetMapping("/available-users")
-    public Result<IPage<AvailableUserResponse>> listAvailableUsers(
+    public Result<PageResult<AvailableUserResponse>> listAvailableUsers(
             @RequireGroupAuth(Permission.MEMBER_MANAGE) AuthContextResponse context,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size,
-            @RequestParam(required = false) String keyword) {
+            @Validated PageQuery query) {
+        // 由于前端可能需要更大的分页大小，我们可以在此设置默认值或让前端传
         return Result.success(groupSettingsService.listAvailableUsers(
-                context.currentGroup().id(), page, size, keyword));
+                context.currentGroup().id(), query));
     }
 
     @Operation(summary = "添加成员")

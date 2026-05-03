@@ -3,6 +3,8 @@ package com.wbdata.group.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.wbdata.common.dto.PageQuery;
+import com.wbdata.common.dto.PageResult;
 import com.wbdata.group.dto.CreateGroupRequest;
 import com.wbdata.group.dto.GroupDetailResponse;
 import com.wbdata.group.dto.UpdateGroupRequest;
@@ -46,12 +48,12 @@ public class GroupService {
                 .collect(Collectors.toList());
     }
 
-    public IPage<GroupDetailResponse> listGroups(int page, int size, String keyword) {
-        Page<WbProjectGroup> pageParam = new Page<>(page, size);
+    public PageResult<GroupDetailResponse> listGroups(PageQuery query) {
+        Page<WbProjectGroup> pageParam = query.toMyBatisPage();
         LambdaQueryWrapper<WbProjectGroup> wrapper = new LambdaQueryWrapper<>();
 
-        if (keyword != null && !keyword.isBlank()) {
-            String kw = "%" + keyword.trim() + "%";
+        if (query.getKeyword() != null && !query.getKeyword().isBlank()) {
+            String kw = "%" + query.getKeyword().trim() + "%";
             wrapper.like(WbProjectGroup::getName, kw);
         }
 
@@ -60,13 +62,13 @@ public class GroupService {
 
         List<WbProjectGroup> records = result.getRecords();
         if (records.isEmpty()) {
-            return result.convert(g -> GroupDetailResponse.from(g, 0L));
+            return PageResult.of(result).convert(g -> GroupDetailResponse.from(g, 0L));
         }
 
         List<Long> groupIds = records.stream().map(WbProjectGroup::getId).toList();
         Map<Long, Long> memberCountMap = countMembersByGroupIds(groupIds);
 
-        return result.convert(g ->
+        return PageResult.of(result).convert(g ->
                 GroupDetailResponse.from(g, memberCountMap.getOrDefault(g.getId(), 0L)));
     }
 
@@ -172,11 +174,18 @@ public class GroupService {
     }
 
     private Map<Long, Long> countMembersByGroupIds(List<Long> groupIds) {
-        List<WbProjectGroupMember> members = groupMemberMapper.selectList(
-                new LambdaQueryWrapper<WbProjectGroupMember>()
-                        .in(WbProjectGroupMember::getGroupId, groupIds));
-        return members.stream()
-                .collect(Collectors.groupingBy(WbProjectGroupMember::getGroupId, Collectors.counting()));
+        // 使用 selectMaps 直接在数据库层面进行 GROUP BY 聚合
+        List<Map<String, Object>> counts = groupMemberMapper.selectMaps(
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<WbProjectGroupMember>()
+                        .select("group_id", "COUNT(*) as count")
+                        .in("group_id", groupIds)
+                        .groupBy("group_id")
+        );
+
+        return counts.stream().collect(Collectors.toMap(
+                m -> (Long) m.get("group_id"),
+                m -> ((Number) m.get("count")).longValue()
+        ));
     }
 
     private void initLocalRepo(Long groupId) {

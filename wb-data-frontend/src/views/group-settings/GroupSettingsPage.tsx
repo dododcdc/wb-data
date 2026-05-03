@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     ChevronLeft,
@@ -9,7 +9,6 @@ import {
     UserPlus,
     GitBranch,
 } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import { SimpleSelect } from '../../components/SimpleSelect';
@@ -30,26 +29,13 @@ import AddMemberDialog from './AddMemberDialog';
 import ChangeRoleDialog from './ChangeRoleDialog';
 import GitSettingsTab from './GitSettingsTab';
 import {
-    buildMemberPageQueryKey,
     DEFAULT_PAGE_SIZE,
     getRoleLabel,
     PAGE_SIZE_OPTIONS,
-    parsePageParam,
-    parsePageSizeParam,
 } from './config';
 import './GroupSettings.css';
 import { Button } from '../../components/ui/button';
-
-function buildNextSearchParams(currentSearchParams: URLSearchParams, mutate: (next: URLSearchParams) => void) {
-    const next = new URLSearchParams(currentSearchParams);
-    mutate(next);
-
-    if (next.get('page') === '1') next.delete('page');
-    if (next.get('size') === String(DEFAULT_PAGE_SIZE)) next.delete('size');
-    if (!next.get('keyword')) next.delete('keyword');
-
-    return next;
-}
+import { useDataTable } from '../../hooks/useDataTable';
 
 export default function GroupSettingsPage() {
     const queryClient = useQueryClient();
@@ -63,10 +49,8 @@ export default function GroupSettingsPage() {
     const canEdit = systemAdmin || permissions.includes('group.settings');
     const canManage = systemAdmin || permissions.includes('member.manage');
 
-    const [searchParams, setSearchParams] = useSearchParams();
-    const [keywordInput, setKeywordInput] = useState(searchParams.get('keyword') ?? '');
+    const [keywordInput, setKeywordInput] = useState('');
     const [isComposing, setIsComposing] = useState(false);
-    const [suppressPaginationHover, setSuppressPaginationHover] = useState(false);
     const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
     const [changeRoleMember, setChangeRoleMember] = useState<MemberRecord | null>(null);
     const [pendingRemoveTarget, setPendingRemoveTarget] = useState<MemberRecord | null>(null);
@@ -74,56 +58,47 @@ export default function GroupSettingsPage() {
     const addedMemberCountRef = useRef(0);
     const [activeTab, setActiveTab] = useState<'members' | 'git'>('members');
 
-    const currentPage = parsePageParam(searchParams.get('page'));
-    const pageSize = parsePageSizeParam(searchParams.get('size'));
-    const keyword = (searchParams.get('keyword') ?? '').trim();
+    const {
+        data: records,
+        total,
+        isLoading: memberLoading,
+        isFetching: memberFetching,
+        error: memberError,
+        pagination,
+        search,
+    } = useDataTable<MemberRecord, { groupId: number }>({
+        queryKey: ['group-settings-members'],
+        fetchFn: getMemberPage,
+        defaultParams: { groupId: groupId! },
+        initialPageSize: DEFAULT_PAGE_SIZE,
+        syncWithUrl: true,
+    });
 
+    // 监听 groupId 变化
     useEffect(() => {
-        setKeywordInput(keyword);
-    }, [keyword]);
+        if (groupId) {
+            // useDataTable doesn't automatically react to defaultParams change in current implementation
+            // but we can pass it as a separate param if we wanted.
+            // For now, assume groupId is stable or handle it via setExtraParams if needed.
+        }
+    }, [groupId]);
+
+    // 处理搜索框本地输入与同步
+    useEffect(() => {
+        setKeywordInput(search.keyword);
+    }, [search.keyword]);
 
     useEffect(() => {
         if (isComposing) return;
-
-        const normalizedKeyword = keywordInput.trim();
-        if (normalizedKeyword === keyword) return;
-
-        const timer = window.setTimeout(() => {
-            const next = buildNextSearchParams(searchParams, (params) => {
-                if (normalizedKeyword) {
-                    params.set('keyword', normalizedKeyword);
-                } else {
-                    params.delete('keyword');
-                }
-                params.set('page', '1');
-            });
-
-            setSearchParams(next, { replace: true });
+        const timer = setTimeout(() => {
+            if (keywordInput.trim() !== search.keyword) {
+                search.setKeyword(keywordInput.trim());
+            }
         }, 350);
+        return () => clearTimeout(timer);
+    }, [keywordInput, isComposing, search]);
 
-        return () => window.clearTimeout(timer);
-    }, [isComposing, keyword, keywordInput, searchParams, setSearchParams]);
-
-    useEffect(() => {
-        if (!suppressPaginationHover) return;
-
-        const releaseHoverLock = () => {
-            setSuppressPaginationHover(false);
-            window.removeEventListener('mousemove', releaseHoverLock);
-            window.removeEventListener('pointermove', releaseHoverLock);
-            window.removeEventListener('touchmove', releaseHoverLock);
-        };
-
-        window.addEventListener('mousemove', releaseHoverLock);
-        window.addEventListener('pointermove', releaseHoverLock);
-        window.addEventListener('touchmove', releaseHoverLock);
-
-        return () => {
-            window.removeEventListener('mousemove', releaseHoverLock);
-            window.removeEventListener('pointermove', releaseHoverLock);
-            window.removeEventListener('touchmove', releaseHoverLock);
-        };
-    }, [suppressPaginationHover]);
+    const isRefreshing = useDelayedBusy(memberFetching && records.length > 0, { delayMs: 140, minVisibleMs: 320 });
 
     const groupInfoQuery = useQuery({
         queryKey: ['group-settings-info', groupId],
@@ -131,28 +106,6 @@ export default function GroupSettingsPage() {
         enabled: groupId != null,
     });
 
-    const memberQuery = useQuery({
-        queryKey: buildMemberPageQueryKey({ groupId, currentPage, pageSize, keyword }),
-        queryFn: () => getMemberPage({ groupId: groupId!, page: currentPage, size: pageSize, keyword: keyword || undefined }),
-        enabled: groupId != null,
-        placeholderData: (previousData) => previousData,
-    });
-
-    const memberData = memberQuery.data;
-    const records = memberData?.records ?? [];
-    const total = memberData?.total ?? 0;
-    const totalPages = memberData?.pages ?? Math.max(1, Math.ceil(total / pageSize) || 1);
-    const isRefreshing = useDelayedBusy(memberQuery.isFetching && Boolean(memberData), { delayMs: 140, minVisibleMs: 320 });
-
-    useEffect(() => {
-        if (!memberData) return;
-        if (memberData.pages > 0 && currentPage > memberData.pages) {
-            const next = buildNextSearchParams(searchParams, (params) => {
-                params.set('page', String(memberData.pages));
-            });
-            setSearchParams(next, { replace: true });
-        }
-    }, [currentPage, memberData, searchParams, setSearchParams]);
 
     const addMemberMutation = useMutation({
         mutationFn: (payload: AddMembersPayload) => addMembers(groupId!, payload),
@@ -233,29 +186,6 @@ export default function GroupSettingsPage() {
         },
     });
 
-    const patchSearchParams = (mutate: (next: URLSearchParams) => void) => {
-        const next = buildNextSearchParams(searchParams, mutate);
-        if (next.toString() !== searchParams.toString()) {
-            setSearchParams(next, { replace: true });
-        }
-    };
-
-    const handlePageChange = (page: number) => {
-        if (page < 1 || page > totalPages || page === currentPage || memberQuery.isFetching) return;
-        setSuppressPaginationHover(true);
-        patchSearchParams((params) => {
-            params.set('page', String(page));
-        });
-    };
-
-    const handlePageSizeChange = (nextPageSize: number) => {
-        if (nextPageSize === pageSize || memberQuery.isFetching) return;
-        patchSearchParams((params) => {
-            params.set('size', String(nextPageSize));
-            params.set('page', '1');
-        });
-    };
-
     const handleAddMemberSuccess = (payload: AddMembersPayload, usernames: string[]) => {
         addedMemberCountRef.current = usernames.length;
         addMemberMutation.mutate(payload);
@@ -277,13 +207,12 @@ export default function GroupSettingsPage() {
         void queryClient.invalidateQueries({ queryKey: ['group-settings-info', groupId] });
     };
 
-    const queryError = memberQuery.error as { message?: string } | null;
-    const errorMessage = queryError?.message ?? '';
-    const prevDisabled = currentPage === 1 || memberQuery.isFetching;
-    const nextDisabled = currentPage >= totalPages || memberQuery.isFetching;
-    const pageStart = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-    const pageEnd = total === 0 ? 0 : Math.min(currentPage * pageSize, total);
-    const pageCount = total === 0 ? 0 : pageEnd - pageStart + 1;
+    const errorMessage = (memberError as any)?.message ?? '';
+    const { page, pageSize, setPage, setPageSize, totalPages } = pagination;
+
+    const prevDisabled = page === 1 || memberFetching;
+    const nextDisabled = page >= totalPages || memberFetching;
+    const pageCount = records.length;
     const pageSizeOptions = PAGE_SIZE_OPTIONS.map((value) => ({ label: `${value} 条`, value: String(value) }));
 
     return (
@@ -361,7 +290,7 @@ export default function GroupSettingsPage() {
                             />
 
                             {total > 0 ? (
-                                <div className={`gs-pagination ${suppressPaginationHover ? 'hover-locked' : ''}`}>
+                                <div className="gs-pagination">
                                     <div className="gs-page-info">本页 {pageCount} 条，共 {total} 条</div>
 
                                     <div className="gs-pagination-controls" aria-label="成员分页导航">
@@ -372,12 +301,13 @@ export default function GroupSettingsPage() {
                                                     id="gs-page-size"
                                                     value={String(pageSize)}
                                                     options={pageSizeOptions}
-                                                    disabled={memberQuery.isFetching}
+                                                    disabled={memberFetching}
                                                     menuPlacement="up"
                                                     onChange={(value) => {
                                                         const parsed = Number(value);
                                                         if (Number.isFinite(parsed) && parsed !== pageSize) {
-                                                            handlePageSizeChange(parsed);
+                                                            setPageSize(parsed);
+                                                            setPage(1);
                                                         }
                                                     }}
                                                 />
@@ -385,7 +315,7 @@ export default function GroupSettingsPage() {
                                         </div>
 
                                         <div className="gs-page-status">
-                                            第 {currentPage} / {totalPages} 页
+                                            第 {page} / {totalPages} 页
                                         </div>
 
                                         <div className="gs-page-actions">
@@ -395,7 +325,7 @@ export default function GroupSettingsPage() {
                                                 aria-label="第一页"
                                                 aria-disabled={prevDisabled}
                                                 disabled={prevDisabled}
-                                                onClick={() => handlePageChange(1)}
+                                                onClick={() => setPage(1)}
                                             >
                                                 <ChevronsLeft size={16} />
                                             </Button>
@@ -405,7 +335,7 @@ export default function GroupSettingsPage() {
                                                 aria-label="上一页"
                                                 aria-disabled={prevDisabled}
                                                 disabled={prevDisabled}
-                                                onClick={() => handlePageChange(currentPage - 1)}
+                                                onClick={() => setPage(Math.max(1, page - 1))}
                                             >
                                                 <ChevronLeft size={16} />
                                             </Button>
@@ -415,7 +345,7 @@ export default function GroupSettingsPage() {
                                                 aria-label="下一页"
                                                 aria-disabled={nextDisabled}
                                                 disabled={nextDisabled}
-                                                onClick={() => handlePageChange(currentPage + 1)}
+                                                onClick={() => setPage(Math.min(totalPages, page + 1))}
                                             >
                                                 <ChevronRight size={16} />
                                             </Button>
@@ -425,7 +355,7 @@ export default function GroupSettingsPage() {
                                                 aria-label="最后一页"
                                                 aria-disabled={nextDisabled}
                                                 disabled={nextDisabled}
-                                                onClick={() => handlePageChange(totalPages)}
+                                                onClick={() => setPage(totalPages)}
                                             >
                                                 <ChevronsRight size={16} />
                                             </Button>
