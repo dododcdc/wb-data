@@ -39,6 +39,24 @@ const DialogContent = React.forwardRef<
           fullScreen && "dialog-content-fullscreen",
           className
         )}
+        onPointerDownOutside={(e) => {
+          if (e.target instanceof Element && e.target.closest('[data-slot="select-content"], [data-slot="combobox-content"]')) {
+            e.preventDefault()
+          }
+          props.onPointerDownOutside?.(e)
+        }}
+        onInteractOutside={(e) => {
+          if (e.target instanceof Element && e.target.closest('[data-slot="select-content"], [data-slot="combobox-content"]')) {
+            e.preventDefault()
+          }
+          props.onInteractOutside?.(e)
+        }}
+        onFocusOutside={(e) => {
+          if (e.target instanceof Element && e.target.closest('[data-slot="select-content"], [data-slot="combobox-content"]')) {
+            e.preventDefault()
+          }
+          props.onFocusOutside?.(e)
+        }}
         {...props}
       >
         {children}

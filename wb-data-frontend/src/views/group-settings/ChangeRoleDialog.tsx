@@ -38,7 +38,7 @@ export default function ChangeRoleDialog(props: ChangeRoleDialogProps) {
     const canSubmit = member !== null && role !== '' && role !== member?.role && !submitting;
 
     return (
-        <Dialog open={open} onOpenChange={(nextOpen) => { if (!submitting) onOpenChange({ open: nextOpen }); }}>
+        <Dialog modal={false} open={open} onOpenChange={(nextOpen) => { if (!submitting) onOpenChange({ open: nextOpen }); }}>
             <DialogContent style={{ maxWidth: '440px' }}>
                 <DialogHeader>
                     <DialogTitle>修改角色</DialogTitle>
