@@ -1,6 +1,6 @@
-import { SearchSelect, type SearchSelectOption } from '@/components/ui/search-select';
+import { SearchAutocomplete, type SearchAutocompleteOption } from '@/components/ui/search-autocomplete';
 
-export interface DataSourceOption extends SearchSelectOption {
+export interface DataSourceOption extends SearchAutocompleteOption {
     type?: string;
 }
 
@@ -27,7 +27,7 @@ type DataSourceSelectProps = {
 
 export function DataSourceSelect(props: DataSourceSelectProps) {
     return (
-        <SearchSelect<DataSourceOption>
+        <SearchAutocomplete<DataSourceOption>
             {...props}
             renderItem={(item) => (
                 <div className="flex items-center gap-2 overflow-hidden">

@@ -1,5 +1,6 @@
 import { Loader2, Search, X } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { cn } from '@/lib/utils';
 
@@ -10,9 +11,9 @@ import {
     ComboboxInput,
     ComboboxItem,
 } from './combobox';
-import type { SearchSelectOption } from './search-select';
+import type { SearchAutocompleteOption } from './search-autocomplete';
 
-export interface MultiSearchSelectProps<T extends SearchSelectOption> {
+export interface MultiSearchAutocompleteProps<T extends SearchAutocompleteOption> {
     options: T[];
     values: string[];
     selectedOptions?: T[];
@@ -25,9 +26,16 @@ export interface MultiSearchSelectProps<T extends SearchSelectOption> {
     triggerClassName?: string;
     onChange?: (values: string[], options: T[]) => void;
     onInputChange?: (value: string) => void;
+    loadingMore?: boolean;
+    loadingMoreText?: string;
+    hasMore?: boolean;
+    loadMoreText?: string;
+    onLoadMore?: () => void;
+    virtualize?: boolean;
+    virtualItemSize?: number;
 }
 
-export function MultiSearchSelect<T extends SearchSelectOption>(props: MultiSearchSelectProps<T>) {
+export function MultiSearchAutocomplete<T extends SearchAutocompleteOption>(props: MultiSearchAutocompleteProps<T>) {
     const {
         options,
         values,
@@ -41,11 +49,19 @@ export function MultiSearchSelect<T extends SearchSelectOption>(props: MultiSear
         triggerClassName,
         onChange,
         onInputChange,
+        loadingMore,
+        loadingMoreText = '加载更多...',
+        hasMore,
+        loadMoreText = '继续滚动加载更多',
+        onLoadMore,
+        virtualize = false,
+        virtualItemSize = 36,
     } = props;
 
     const isComposingRef = useRef(false);
     const [inputValue, setInputValue] = useState('');
     const [open, setOpen] = useState(false);
+    const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
     const hasQuery = inputValue.trim().length > 0;
 
     const optionLookup = useMemo(() => {
@@ -95,6 +111,20 @@ export function MultiSearchSelect<T extends SearchSelectOption>(props: MultiSear
         onInputChange?.('');
         setOpen(false);
     };
+
+    const handleScroll: React.UIEventHandler<HTMLDivElement> = (event) => {
+        if (!onLoadMore || !hasMore || loading || loadingMore) return;
+        const target = event.currentTarget;
+        const nearBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 24;
+        if (nearBottom) onLoadMore();
+    };
+
+    const virtualizer = useVirtualizer({
+        count: availableOptions.length,
+        getScrollElement: () => scrollElement,
+        estimateSize: () => virtualItemSize,
+        overscan: 6,
+    });
 
     return (
         <div className="space-y-2">
@@ -175,7 +205,13 @@ export function MultiSearchSelect<T extends SearchSelectOption>(props: MultiSear
                     />
                 </div>
 
-                <ComboboxContent sideOffset={4} align="start" className="w-[var(--anchor-width)] max-h-[300px]">
+                <ComboboxContent 
+                    sideOffset={4} 
+                    align="start" 
+                    className="w-[var(--anchor-width)] max-h-[300px]"
+                    onScroll={handleScroll}
+                    ref={setScrollElement}
+                >
                     {loading ? (
                         <div className="flex items-center justify-center gap-2 p-4 text-center text-sm text-muted-foreground">
                             <Loader2 className="size-4 animate-spin" />
@@ -185,20 +221,59 @@ export function MultiSearchSelect<T extends SearchSelectOption>(props: MultiSear
                         <ComboboxEmpty>{emptyText}</ComboboxEmpty>
                     ) : (
                         <div className="p-1">
-                            {availableOptions.map((option) => (
-                                <ComboboxItem key={option.value} value={option.value}>
-                                    <div className="flex items-center gap-2 overflow-hidden">
-                                        {option.icon}
-                                        {option.badge}
-                                        <span className="truncate">{option.label}</span>
-                                        {option.secondaryLabel ? (
-                                            <span className="truncate text-xs text-muted-foreground">
-                                                {option.secondaryLabel}
-                                            </span>
-                                        ) : null}
-                                    </div>
-                                </ComboboxItem>
-                            ))}
+                            {virtualize && virtualizer ? (
+                                <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+                                    {virtualizer.getVirtualItems().map((virtualRow: any) => {
+                                        const option = availableOptions[virtualRow.index];
+                                        return (
+                                            <div
+                                                key={option.value}
+                                                className="absolute left-0 top-0 w-full"
+                                                style={{ transform: `translateY(${virtualRow.start}px)` }}
+                                            >
+                                                <ComboboxItem value={option.value}>
+                                                    <div className="flex items-center gap-2 overflow-hidden">
+                                                        {option.icon}
+                                                        {option.badge}
+                                                        <span className="truncate">{option.label}</span>
+                                                        {option.secondaryLabel ? (
+                                                            <span className="truncate text-xs text-muted-foreground">
+                                                                {option.secondaryLabel}
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
+                                                </ComboboxItem>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                availableOptions.map((option) => (
+                                    <ComboboxItem key={option.value} value={option.value}>
+                                        <div className="flex items-center gap-2 overflow-hidden">
+                                            {option.icon}
+                                            {option.badge}
+                                            <span className="truncate">{option.label}</span>
+                                            {option.secondaryLabel ? (
+                                                <span className="truncate text-xs text-muted-foreground">
+                                                    {option.secondaryLabel}
+                                                </span>
+                                            ) : null}
+                                        </div>
+                                    </ComboboxItem>
+                                ))
+                            )}
+                            {loadingMore && (
+                                <div className="flex items-center justify-center gap-2 px-3 py-2 text-xs text-muted-foreground border-t border-border/50 mt-1">
+                                    <Loader2 className="animate-spin" size={12} />
+                                    <span>{loadingMoreText}</span>
+                                </div>
+                            )}
+                            {!loadingMore && hasMore && (
+                                <div className="px-3 py-2 text-xs text-muted-foreground text-center opacity-70">
+                                    {loadMoreText}
+                                </div>
+                            )}
                         </div>
                     )}
                 </ComboboxContent>
