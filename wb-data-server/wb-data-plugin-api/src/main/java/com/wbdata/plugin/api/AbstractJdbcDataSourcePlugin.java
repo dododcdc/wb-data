@@ -166,24 +166,35 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
 
     @Override
     public java.util.List<ColumnMetadata> getColumns(DataSourceConnectionInfo connectionInfo, String databaseName, String tableName) {
-        java.util.List<ColumnMetadata> columns = new java.util.ArrayList<>();
+        java.util.Set<String> primaryKeys = new java.util.HashSet<>();
         try (Connection connection = getConnection(connectionInfo)) {
             java.sql.DatabaseMetaData metaData = connection.getMetaData();
+
+            try (java.sql.ResultSet pkRs = metaData.getPrimaryKeys(databaseName, null, tableName)) {
+                while (pkRs.next()) {
+                    primaryKeys.add(pkRs.getString("COLUMN_NAME"));
+                }
+            } catch (Exception e) {
+                // 某些驱动不支持 getPrimaryKeys，降级为全部当作非主键
+            }
+
+            java.util.List<ColumnMetadata> columns = new java.util.ArrayList<>();
             try (java.sql.ResultSet colRs = metaData.getColumns(databaseName, null, tableName, "%")) {
                 while (colRs.next()) {
+                    String columnName = colRs.getString("COLUMN_NAME");
                     columns.add(new ColumnMetadata(
-                            colRs.getString("COLUMN_NAME"),
+                            columnName,
                             colRs.getString("TYPE_NAME"),
                             colRs.getInt("COLUMN_SIZE"),
                             colRs.getInt("NULLABLE") == java.sql.DatabaseMetaData.columnNullable,
                             colRs.getString("REMARKS"),
-                            false));
+                            primaryKeys.contains(columnName)));
                 }
             }
+            return columns;
         } catch (Exception e) {
             throw new DataSourceException("获取字段列表失败: " + databaseName + "." + tableName, e);
         }
-        return columns;
     }
 
     @Override
