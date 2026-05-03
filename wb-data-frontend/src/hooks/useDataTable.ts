@@ -11,14 +11,14 @@ interface PageResult<T> {
 }
 
 interface UseDataTableOptions<T, TParams> {
-    queryKey: any[];
+    queryKey: unknown[];
     fetchFn: (params: TParams & { page: number; size: number; keyword?: string }) => Promise<PageResult<T>>;
     defaultParams?: Partial<TParams>;
     initialPageSize?: number;
     syncWithUrl?: boolean;
 }
 
-export function useDataTable<T, TParams = {}>({
+export function useDataTable<T, TParams = Record<string, unknown>>({
     queryKey,
     fetchFn,
     defaultParams = {} as TParams,

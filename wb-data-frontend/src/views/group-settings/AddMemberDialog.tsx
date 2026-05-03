@@ -165,7 +165,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                                     placeholder="搜索用户名"
                                     disabled={submitting}
                                     loading={loading}
-                                    emptyText={searchKeyword.trim() ? searchError : null}
+                                    emptyText={searchKeyword.trim() ? (searchError || undefined) : undefined}
                                     onInputChange={setSearchKeyword}
                                     onChange={(_, options) => {
                                         setSelectedUsers(options.map((option) => option.raw as AvailableUser));

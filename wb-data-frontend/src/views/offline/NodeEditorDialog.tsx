@@ -47,7 +47,6 @@ export function NodeEditorDialog({
     groupId,
     content,
     onOpenChange,
-    onTempSave: _onTempSave,
     onContentChange,
     onDraftChange,
 }: NodeEditorDialogProps) {

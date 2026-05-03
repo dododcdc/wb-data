@@ -223,7 +223,7 @@ export function MultiSearchAutocomplete<T extends SearchAutocompleteOption>(prop
                         <div className="p-1">
                             {virtualize && virtualizer ? (
                                 <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
-                                    {virtualizer.getVirtualItems().map((virtualRow: any) => {
+                                    {virtualizer.getVirtualItems().map((virtualRow) => {
                                         const option = availableOptions[virtualRow.index];
                                         return (
                                             <div

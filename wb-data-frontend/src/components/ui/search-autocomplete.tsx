@@ -18,7 +18,7 @@ export interface SearchAutocompleteOption {
     secondaryLabel?: string;
     icon?: React.ReactNode;
     badge?: React.ReactNode;
-    raw?: any;
+    raw?: unknown;
 }
 
 export interface SearchAutocompleteProps<T extends SearchAutocompleteOption> {
