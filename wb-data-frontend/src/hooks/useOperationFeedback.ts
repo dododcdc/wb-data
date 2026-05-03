@@ -1,5 +1,7 @@
+import { useCallback } from 'react';
 import { create } from 'zustand';
 import { FEEDBACK_DURATION } from '../constants/feedback';
+import { getErrorMessage } from '../utils/error';
 
 export type FeedbackTone = 'success' | 'error' | 'info';
 
@@ -43,5 +45,18 @@ export const useFeedbackStore = create<FeedbackState>((set, get) => ({
 export function useOperationFeedback() {
     const show = useFeedbackStore((s) => s.show);
     const dismiss = useFeedbackStore((s) => s.dismiss);
-    return { showFeedback: show, dismissFeedback: dismiss };
+
+    const showSuccess = useCallback((title: string, detail?: string) => {
+        show({ tone: 'success', title, detail: detail ?? '' });
+    }, [show]);
+
+    const showError = useCallback((error: unknown, title: string) => {
+        show({
+            tone: 'error',
+            title,
+            detail: getErrorMessage(error, title),
+        });
+    }, [show]);
+
+    return { showFeedback: show, dismissFeedback: dismiss, showSuccess, showError };
 }
