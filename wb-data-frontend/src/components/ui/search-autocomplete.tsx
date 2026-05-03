@@ -12,7 +12,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useEffect, useRef, useState, type UIEventHandler } from 'react';
 import { cn } from '@/lib/utils';
 
-export interface SearchSelectOption {
+export interface SearchAutocompleteOption {
     label: string;
     value: string;
     secondaryLabel?: string;
@@ -21,7 +21,7 @@ export interface SearchSelectOption {
     raw?: any;
 }
 
-export interface SearchSelectProps<T extends SearchSelectOption> {
+export interface SearchAutocompleteProps<T extends SearchAutocompleteOption> {
     options: T[];
     value?: string;
     selectedOption?: T | null;
@@ -46,9 +46,10 @@ export interface SearchSelectProps<T extends SearchSelectOption> {
     onLoadMore?: () => void;
     onOpenChange?: (open: boolean) => void;
     renderItem?: (option: T) => React.ReactNode;
+    hideChevron?: boolean;
 }
 
-export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectProps<T>) {
+export function SearchAutocomplete<T extends SearchAutocompleteOption>(props: SearchAutocompleteProps<T>) {
     const {
         options,
         value: propValue,
@@ -73,6 +74,7 @@ export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectPr
         onLoadMore,
         onOpenChange,
         renderItem,
+        hideChevron,
     } = props;
 
     const isComposingRef = useRef(false);
@@ -166,9 +168,11 @@ export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectPr
                         onInputChange?.(val);
                     }}
                 />
-                <ComboboxTrigger className="absolute right-0 top-0 bottom-0 w-8 border-l border-transparent flex items-center justify-center hover:bg-muted/50 transition-colors">
-                    <ChevronDown size={14} className="text-muted-foreground" />
-                </ComboboxTrigger>
+                {!hideChevron && (
+                    <ComboboxTrigger className="absolute right-0 top-0 bottom-0 w-8 border-l border-transparent flex items-center justify-center hover:bg-muted/50 transition-colors">
+                        <ChevronDown size={14} className="text-muted-foreground" />
+                    </ComboboxTrigger>
+                )}
             </div>
             
             <ComboboxContent

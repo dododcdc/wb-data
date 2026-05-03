@@ -54,8 +54,8 @@ export const getMemberPage = (params: { groupId: number; page?: number; size?: n
     return request.get<unknown, PageResult<MemberRecord>>('/api/v1/group-settings/members', { params });
 };
 
-export const getAvailableUsers = (groupId: number, keyword?: string) => {
-    return request.get<unknown, AvailableUser[]>('/api/v1/group-settings/available-users', { params: { groupId, keyword } });
+export const getAvailableUsers = (groupId: number, keyword?: string, page: number = 1, size: number = 50) => {
+    return request.get<unknown, PageResult<AvailableUser>>('/api/v1/group-settings/available-users', { params: { groupId, keyword, page, size } });
 };
 
 export const addMember = (groupId: number, data: AddMemberPayload) => {

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wbdata.user.mapper.WbUserMapper">
+
+    <select id="selectAvailableUsers" resultType="com.wbdata.user.entity.WbUser">
+        SELECT u.*
+        FROM wb_user u
+        WHERE u.status = 'ACTIVE'
+          AND u.system_role != 'SYSTEM_ADMIN'
+          AND NOT EXISTS (
+              SELECT 1 FROM wb_project_group_member m 
+              WHERE m.group_id = #{groupId} AND m.user_id = u.id
+          )
+        <if test="keyword != null and keyword != ''">
+            <bind name="kw" value="'%' + keyword + '%'" />
+            AND (u.username LIKE #{kw} OR u.display_name LIKE #{kw})
+        </if>
+    </select>
+
+</mapper>

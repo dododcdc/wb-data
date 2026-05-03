@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wbdata.group.mapper.WbProjectGroupMemberMapper">
+
+    <select id="selectMembersWithUser" resultType="com.wbdata.group.dto.MemberResponse">
+        SELECT 
+            m.id AS id,
+            m.user_id AS userId,
+            u.username AS username,
+            u.display_name AS displayName,
+            m.role AS role,
+            m.created_at AS createdAt
+        FROM wb_project_group_member m
+        INNER JOIN wb_user u ON m.user_id = u.id
+        WHERE m.group_id = #{groupId}
+        <if test="keyword != null and keyword != ''">
+            <bind name="kw" value="'%' + keyword.toLowerCase() + '%'" />
+            AND (LOWER(u.username) LIKE #{kw} OR LOWER(u.display_name) LIKE #{kw})
+        </if>
+        ORDER BY m.role ASC, m.created_at ASC
+    </select>
+
+</mapper>

@@ -2,28 +2,28 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useMemo, useState } from 'react';
 
-import { MultiSearchSelect } from './multi-search-select';
-import type { SearchSelectOption } from './search-select';
+import { MultiSearchAutocomplete } from './multi-search-autocomplete';
+import type { SearchAutocompleteOption } from './search-autocomplete';
 
-const OPTIONS: SearchSelectOption[] = [
+const OPTIONS: SearchAutocompleteOption[] = [
     { label: 'dev_alpha', value: '4' },
     { label: 'ga_alpha', value: '5' },
 ];
 
-function ControlledMultiSearchSelect(props: {
-    onChange?: (values: string[], options: SearchSelectOption[]) => void;
+function ControlledMultiSearchAutocomplete(props: {
+    onChange?: (values: string[], options: SearchAutocompleteOption[]) => void;
 }) {
     const { onChange } = props;
     const [keyword, setKeyword] = useState('');
     const [values, setValues] = useState<string[]>([]);
-    const [selectedOptions, setSelectedOptions] = useState<SearchSelectOption[]>([]);
+    const [selectedOptions, setSelectedOptions] = useState<SearchAutocompleteOption[]>([]);
     const visibleOptions = useMemo(
         () => OPTIONS.filter((option) => option.label.toLowerCase().includes(keyword.trim().toLowerCase())),
         [keyword],
     );
 
     return (
-        <MultiSearchSelect
+        <MultiSearchAutocomplete
             options={visibleOptions}
             values={values}
             selectedOptions={selectedOptions}
@@ -42,11 +42,11 @@ afterEach(() => {
     cleanup();
 });
 
-describe('MultiSearchSelect', () => {
+describe('MultiSearchAutocomplete', () => {
     it('adds multiple users, supports remove-one, and clears all selections', async () => {
         const handleChange = vi.fn();
 
-        render(<ControlledMultiSearchSelect onChange={handleChange} />);
+        render(<ControlledMultiSearchAutocomplete onChange={handleChange} />);
 
         const input = screen.getByPlaceholderText('搜索用户名');
 
@@ -79,7 +79,7 @@ describe('MultiSearchSelect', () => {
     });
 
     it('clears the visible input after selecting a user instead of showing the user id', async () => {
-        render(<ControlledMultiSearchSelect />);
+        render(<ControlledMultiSearchAutocomplete />);
 
         const input = screen.getByPlaceholderText('搜索用户名') as HTMLInputElement;
 
@@ -90,7 +90,7 @@ describe('MultiSearchSelect', () => {
     });
 
     it('does not render a dropdown trigger when the picker is search-only', () => {
-        const { container } = render(<ControlledMultiSearchSelect />);
+        const { container } = render(<ControlledMultiSearchAutocomplete />);
 
         expect(container.querySelector('[data-slot="combobox-trigger"]')).toBeNull();
     });

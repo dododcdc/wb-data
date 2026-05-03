@@ -8,8 +8,8 @@ import {
     DialogFooter,
 } from '../../components/ui/dialog';
 import { SimpleSelect } from '../../components/SimpleSelect';
-import { MultiSearchSelect } from '../../components/ui/multi-search-select';
-import type { SearchSelectOption } from '../../components/ui/search-select';
+import { MultiSearchAutocomplete } from '../../components/ui/multi-search-autocomplete';
+import type { SearchAutocompleteOption } from '../../components/ui/search-autocomplete';
 import type { AddMembersPayload, AvailableUser } from '../../api/groupSettings';
 import { getAvailableUsers } from '../../api/groupSettings';
 import { Button } from '../../components/ui/button';
@@ -36,6 +36,9 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
     const [role, setRole] = useState('DEVELOPER');
     const [submitting, setSubmitting] = useState(false);
     const [searchError, setSearchError] = useState<string | null>(null);
+    const [page, setPage] = useState(1);
+    const [hasMore, setHasMore] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
     const searchRequestIdRef = useRef(0);
 
     useEffect(() => {
@@ -47,6 +50,9 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
             setRole('DEVELOPER');
             setSubmitting(false);
             setSearchError(null);
+            setPage(1);
+            setHasMore(false);
+            setLoadingMore(false);
             searchRequestIdRef.current = 0;
         }
     }, [open]);
@@ -70,13 +76,15 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
         const timer = window.setTimeout(() => {
             setLoading(true);
             setSearchError(null);
-            getAvailableUsers(groupId, trimmedKeyword)
+            getAvailableUsers(groupId, trimmedKeyword, 1, 50)
                 .then((result) => {
                     if (searchRequestIdRef.current !== requestId) {
                         return;
                     }
-                    setUsers(result);
-                    setSearchError(result.length === 0 ? '未找到匹配的用户' : null);
+                    setUsers(result.records);
+                    setHasMore(result.current < result.pages);
+                    setPage(1);
+                    setSearchError(result.records.length === 0 ? '未找到匹配的用户' : null);
                 })
                 .catch(() => {
                     if (searchRequestIdRef.current !== requestId) {
@@ -95,6 +103,27 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
         return () => window.clearTimeout(timer);
     }, [open, groupId, searchKeyword]);
 
+    const handleLoadMore = () => {
+        if (!hasMore || loading || loadingMore) return;
+        const trimmedKeyword = searchKeyword.trim();
+        const requestId = searchRequestIdRef.current;
+        const nextPage = page + 1;
+        
+        setLoadingMore(true);
+        getAvailableUsers(groupId, trimmedKeyword, nextPage, 50)
+            .then((result) => {
+                if (searchRequestIdRef.current !== requestId) return;
+                setUsers(prev => [...prev, ...result.records]);
+                setHasMore(nextPage < result.pages);
+                setPage(nextPage);
+            })
+            .finally(() => {
+                if (searchRequestIdRef.current === requestId) {
+                    setLoadingMore(false);
+                }
+            });
+    };
+
     const handleSubmit = () => {
         if (selectedUsers.length === 0 || submitting) return;
         setSubmitting(true);
@@ -104,13 +133,13 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
         );
     };
 
-    const userOptions: SearchSelectOption[] = users.map((user) => ({
+    const userOptions: SearchAutocompleteOption[] = users.map((user) => ({
         label: user.username,
         value: String(user.id),
         raw: user,
     }));
 
-    const selectedUserOptions: SearchSelectOption[] = selectedUsers.map((user) => ({
+    const selectedUserOptions: SearchAutocompleteOption[] = selectedUsers.map((user) => ({
         label: user.username,
         value: String(user.id),
         raw: user,
@@ -129,7 +158,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                         <div className="gs-dialog-field-grid">
                             <div className="gs-dialog-input-group">
                                 <label>用户<span className="gs-required">*</span></label>
-                                <MultiSearchSelect
+                                <MultiSearchAutocomplete
                                     options={userOptions}
                                     values={selectedUsers.map((user) => String(user.id))}
                                     selectedOptions={selectedUserOptions}
@@ -141,6 +170,10 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                                     onChange={(_, options) => {
                                         setSelectedUsers(options.map((option) => option.raw as AvailableUser));
                                     }}
+                                    virtualize={true}
+                                    hasMore={hasMore}
+                                    loadingMore={loadingMore}
+                                    onLoadMore={handleLoadMore}
                                 />
                             </div>
 

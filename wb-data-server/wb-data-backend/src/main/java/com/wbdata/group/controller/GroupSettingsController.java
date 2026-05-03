@@ -54,11 +54,13 @@ public class GroupSettingsController {
 
     @Operation(summary = "可添加用户列表")
     @GetMapping("/available-users")
-    public Result<List<AvailableUserResponse>> listAvailableUsers(
+    public Result<IPage<AvailableUserResponse>> listAvailableUsers(
             @RequireGroupAuth(Permission.MEMBER_MANAGE) AuthContextResponse context,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String keyword) {
         return Result.success(groupSettingsService.listAvailableUsers(
-                context.currentGroup().id(), keyword));
+                context.currentGroup().id(), page, size, keyword));
     }
 
     @Operation(summary = "添加成员")

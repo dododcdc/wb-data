@@ -69,102 +69,15 @@ public class GroupSettingsService {
     }
 
     public IPage<MemberResponse> listMembers(Long groupId, int page, int size, String keyword) {
-        LambdaQueryWrapper<WbProjectGroupMember> memberWrapper = new LambdaQueryWrapper<WbProjectGroupMember>()
-                .eq(WbProjectGroupMember::getGroupId, groupId);
-        memberWrapper.orderByAsc(WbProjectGroupMember::getRole);
-        memberWrapper.orderByAsc(WbProjectGroupMember::getCreatedAt);
-
-        if (keyword != null && !keyword.isBlank()) {
-            return listMembersWithKeyword(groupId, page, size, keyword.trim());
-        }
-
-        Page<WbProjectGroupMember> pageParam = new Page<>(page, size);
-        IPage<WbProjectGroupMember> memberPage = memberMapper.selectPage(pageParam, memberWrapper);
-
-        if (memberPage.getRecords().isEmpty()) {
-            return memberPage.convert(m -> new MemberResponse());
-        }
-
-        List<Long> userIds = memberPage.getRecords().stream()
-                .map(WbProjectGroupMember::getUserId).toList();
-        Map<Long, WbUser> userMap = userMapper.selectBatchIds(userIds).stream()
-                .collect(Collectors.toMap(WbUser::getId, Function.identity()));
-
-        return memberPage.convert(m -> toMemberResponse(m, userMap.get(m.getUserId())));
-    }
-
-    private IPage<MemberResponse> listMembersWithKeyword(Long groupId, int page, int size, String keyword) {
-        List<WbProjectGroupMember> allMembers = memberMapper.selectList(
-                new LambdaQueryWrapper<WbProjectGroupMember>()
-                        .eq(WbProjectGroupMember::getGroupId, groupId));
-
-        if (allMembers.isEmpty()) {
-            Page<MemberResponse> emptyPage = new Page<>(page, size);
-            emptyPage.setTotal(0);
-            emptyPage.setRecords(List.of());
-            return emptyPage;
-        }
-
-        List<Long> allUserIds = allMembers.stream().map(WbProjectGroupMember::getUserId).toList();
-        Map<Long, WbUser> userMap = userMapper.selectBatchIds(allUserIds).stream()
-                .collect(Collectors.toMap(WbUser::getId, Function.identity()));
-
-        String kw = keyword.toLowerCase();
-        List<WbProjectGroupMember> filtered = allMembers.stream()
-                .filter(m -> {
-                    WbUser u = userMap.get(m.getUserId());
-                    if (u == null) return false;
-                    return (u.getUsername() != null && u.getUsername().toLowerCase().contains(kw))
-                            || (u.getDisplayName() != null && u.getDisplayName().toLowerCase().contains(kw));
-                })
-                .sorted((a, b) -> {
-                    int roleCmp = a.getRole().compareTo(b.getRole());
-                    if (roleCmp != 0) return roleCmp;
-                    if (a.getCreatedAt() == null || b.getCreatedAt() == null) return 0;
-                    return a.getCreatedAt().compareTo(b.getCreatedAt());
-                })
-                .toList();
-
-        long total = filtered.size();
-        int fromIndex = (page - 1) * size;
-        int toIndex = Math.min(fromIndex + size, filtered.size());
-        List<MemberResponse> records = (fromIndex >= filtered.size())
-                ? List.of()
-                : filtered.subList(fromIndex, toIndex).stream()
-                .map(m -> toMemberResponse(m, userMap.get(m.getUserId())))
-                .toList();
-
-        Page<MemberResponse> result = new Page<>(page, size);
-        result.setTotal(total);
-        result.setRecords(records);
-        return result;
+        Page<MemberResponse> pageParam = new Page<>(page, size);
+        return memberMapper.selectMembersWithUser(pageParam, groupId, keyword);
     }
 
 
-    public List<AvailableUserResponse> listAvailableUsers(Long groupId, String keyword) {
-        List<WbProjectGroupMember> existingMembers = memberMapper.selectList(
-                new LambdaQueryWrapper<WbProjectGroupMember>()
-                        .eq(WbProjectGroupMember::getGroupId, groupId));
-        Set<Long> existingUserIds = existingMembers.stream()
-                .map(WbProjectGroupMember::getUserId)
-                .collect(Collectors.toSet());
-
-        LambdaQueryWrapper<WbUser> userWrapper = new LambdaQueryWrapper<WbUser>()
-                .eq(WbUser::getStatus, "ACTIVE");
-        if (!existingUserIds.isEmpty()) {
-            userWrapper.notIn(WbUser::getId, existingUserIds);
-        }
-        if (keyword != null && !keyword.isBlank()) {
-            String kw = "%" + keyword.trim() + "%";
-            userWrapper.and(w -> w.like(WbUser::getUsername, kw)
-                    .or().like(WbUser::getDisplayName, kw));
-        }
-        userWrapper.last("LIMIT 50");
-
-        return userMapper.selectList(userWrapper).stream()
-                .filter(user -> !isSystemAdmin(user))
-                .map(AvailableUserResponse::from)
-                .toList();
+    public IPage<AvailableUserResponse> listAvailableUsers(Long groupId, int page, int size, String keyword) {
+        Page<WbUser> pageParam = new Page<>(page, size);
+        return userMapper.selectAvailableUsers(pageParam, groupId, keyword)
+                .convert(AvailableUserResponse::from);
     }
 
 
