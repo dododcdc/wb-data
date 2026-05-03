@@ -4,7 +4,6 @@ import {
     SelectContent,
     SelectItem,
     SelectTrigger,
-    SelectValue,
 } from './ui/select';
 
 type SelectOption = {

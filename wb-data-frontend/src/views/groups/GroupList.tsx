@@ -42,12 +42,10 @@ export default function GroupList() {
     const {
         data: records,
         total,
-        isLoading,
         isFetching,
         error,
         pagination,
         search,
-        refresh,
     } = useDataTable<GroupDetail>({
         queryKey: ['groups'],
         fetchFn: getGroupPage,
@@ -112,7 +110,7 @@ export default function GroupList() {
         enableMutation.mutate(item.id);
     };
 
-    const errorMessage = (error as any)?.message ?? '';
+    const errorMessage = error instanceof Error ? error.message : String(error || '');
     const { page, pageSize, setPage, setPageSize, totalPages } = pagination;
 
     const prevDisabled = page === 1 || isFetching;

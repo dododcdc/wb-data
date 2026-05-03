@@ -61,7 +61,6 @@ export default function GroupSettingsPage() {
     const {
         data: records,
         total,
-        isLoading: memberLoading,
         isFetching: memberFetching,
         error: memberError,
         pagination,
@@ -207,7 +206,7 @@ export default function GroupSettingsPage() {
         void queryClient.invalidateQueries({ queryKey: ['group-settings-info', groupId] });
     };
 
-    const errorMessage = (memberError as any)?.message ?? '';
+    const errorMessage = memberError instanceof Error ? memberError.message : String(memberError || '');
     const { page, pageSize, setPage, setPageSize, totalPages } = pagination;
 
     const prevDisabled = page === 1 || memberFetching;
