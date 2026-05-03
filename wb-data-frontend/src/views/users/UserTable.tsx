@@ -1,5 +1,5 @@
 import { Edit3, KeyRound, Power, Users } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { UserRecord } from '../../api/user';
 import { formatTimestamp, getStatusLabel, getSystemRoleLabel } from './config';
 import { Button } from '../../components/ui/button';
@@ -68,7 +68,6 @@ export function UserTable(props: UserTableProps) {
                             <td className="user-time-cell">{formatTimestamp(item.lastLoginAt)}</td>
                             <td className="user-time-cell">{formatTimestamp(item.createdAt)}</td>
                             <td className="user-actions-column">
-                                <TooltipProvider delayDuration={400}>
                                 <div className="user-actions">
                                     <Tooltip>
                                         <TooltipTrigger asChild>
@@ -113,7 +112,6 @@ export function UserTable(props: UserTableProps) {
                                         <TooltipContent className="tooltip-content" side="bottom">重置密码</TooltipContent>
                                     </Tooltip>
                                 </div>
-                                </TooltipProvider>
                             </td>
                         </tr>
                     ))}

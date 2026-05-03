@@ -1,5 +1,5 @@
 import { Users, UserCog, Trash2 } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import type { MemberRecord } from '../../api/groupSettings';
 import { formatTimestamp, getRoleLabel } from './config';
 import { Button } from '../../components/ui/button';
@@ -68,8 +68,7 @@ export default function MemberTable(props: MemberTableProps) {
                                 <td className="gs-time-cell">{formatTimestamp(member.createdAt)}</td>
                                 {canManage ? (
                                     <td className="gs-actions-column">
-                                        <TooltipProvider delayDuration={400}>
-                                            <div className="gs-actions">
+                                        <div className="gs-actions">
                                                 {showActions && !isOnlyAdmin ? (
                                                     <>
                                                         <Tooltip>
@@ -105,7 +104,6 @@ export default function MemberTable(props: MemberTableProps) {
                                                     </>
                                                 ) : null}
                                             </div>
-                                        </TooltipProvider>
                                     </td>
                                 ) : null}
                             </tr>

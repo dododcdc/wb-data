@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { CircleAlert } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import type { OfflineFlowNodeKind } from '../../api/offline';
 import { getOfflineNodeKindClassName, getOfflineNodeKindLabel } from './offlineNodeKinds';
 import { getTaskStatusIcon, isRunningStatus } from './executionPresentation';
@@ -143,8 +143,7 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
                         {data.taskId}
                     </strong>
                 ) : (
-                    <TooltipProvider delayDuration={200}>
-                        <Tooltip open={tooltipOpen}>
+                    <Tooltip open={tooltipOpen}>
                             <TooltipTrigger asChild>
                                 <strong 
                                     ref={labelRef}
@@ -169,7 +168,6 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
                                 {data.taskId}
                             </TooltipContent>
                         </Tooltip>
-                    </TooltipProvider>
                 )}
                 <span className={`flow-canvas-node-kind is-${getOfflineNodeKindClassName(data.kind)}`}>
                     {getOfflineNodeKindLabel(data.kind)}
@@ -183,7 +181,6 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
                 )}
 
                 {data.validationError && (
-                    <TooltipProvider delayDuration={100}>
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <div className="flow-canvas-node-error-icon">
@@ -197,7 +194,6 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
                                 {data.validationError}
                             </TooltipContent>
                         </Tooltip>
-                    </TooltipProvider>
                 )}
             </div>
             <Handle

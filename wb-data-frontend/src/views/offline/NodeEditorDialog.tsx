@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
 import type * as Monaco from 'monaco-editor';
 import { Database, X } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import {
     Dialog,
     DialogContent,
@@ -180,8 +180,7 @@ export function NodeEditorDialog({
                         )}
                     </div>
 
-                    <TooltipProvider delayDuration={300}>
-                        <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1">
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <button
@@ -199,7 +198,6 @@ export function NodeEditorDialog({
                                 </TooltipContent>
                             </Tooltip>
                         </div>
-                    </TooltipProvider>
                 </div>
                 <div
                     className="flex-1 min-h-0 relative"
