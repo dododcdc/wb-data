@@ -19,7 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -34,6 +33,7 @@ public class GroupSettingsService {
 
     private final WbProjectGroupMapper groupMapper;
     private final WbProjectGroupMemberMapper memberMapper;
+    private final WbProjectGroupMemberService memberService;
     private final WbUserMapper userMapper;
 
     public GroupSettingsResponse getGroupInfo(Long groupId) {
@@ -195,7 +195,8 @@ public class GroupSettingsService {
     @Transactional
     public void addMembers(Long groupId, AddMembersRequest req, Long operatorId) {
         List<Long> requestedUserIds = req.getUserIds().stream()
-                .collect(Collectors.collectingAndThen(Collectors.toCollection(LinkedHashSet::new), List::copyOf));
+                .distinct()
+                .toList();
 
         List<WbUser> users = userMapper.selectBatchIds(requestedUserIds);
         Map<Long, WbUser> userMap = users.stream()
@@ -215,15 +216,18 @@ public class GroupSettingsService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "所选用户中存在已加入本项目组的成员");
         }
 
-        for (Long userId : requestedUserIds) {
-            WbProjectGroupMember member = new WbProjectGroupMember();
-            member.setGroupId(groupId);
-            member.setUserId(userId);
-            member.setRole(req.getRole());
-            member.setCreatedBy(operatorId);
-            member.setUpdatedBy(operatorId);
-            memberMapper.insert(member);
-        }
+        List<WbProjectGroupMember> members = requestedUserIds.stream()
+                .map(userId -> {
+                    WbProjectGroupMember member = new WbProjectGroupMember();
+                    member.setGroupId(groupId);
+                    member.setUserId(userId);
+                    member.setRole(req.getRole());
+                    member.setCreatedBy(operatorId);
+                    member.setUpdatedBy(operatorId);
+                    return member;
+                })
+                .toList();
+        memberService.saveBatch(members);
     }
 
 
