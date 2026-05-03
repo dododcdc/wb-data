@@ -70,6 +70,7 @@ public final class HiveDataSourcePlugin extends AbstractJdbcDataSourcePlugin {
 
     @Override
     public PageResult<TableSummary> getTables(DataSourceConnectionInfo connectionInfo, String databaseName, String keyword, int page, int size) {
+        validateIdentifier(databaseName);
         String resolvedDatabase = resolveDatabaseName(connectionInfo, databaseName);
         List<TableSummary> allTables = new ArrayList<>();
         String normalizedKeyword = keyword == null ? null : keyword.trim().toLowerCase(Locale.ROOT);
@@ -102,6 +103,8 @@ public final class HiveDataSourcePlugin extends AbstractJdbcDataSourcePlugin {
 
     @Override
     public List<ColumnMetadata> getColumns(DataSourceConnectionInfo connectionInfo, String databaseName, String tableName) {
+        validateIdentifier(databaseName);
+        validateIdentifier(tableName);
         String resolvedDatabase = resolveDatabaseName(connectionInfo, databaseName);
         List<ColumnMetadata> columns = new ArrayList<>();
         String sql = "DESCRIBE " + quoteIdentifier(resolvedDatabase) + "." + quoteIdentifier(tableName);

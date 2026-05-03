@@ -393,6 +393,18 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
         return databaseName == null || databaseName.isBlank() ? fallback : databaseName;
     }
 
+    /**
+     * 校验数据库标识符是否只包含安全字符（字母、数字、下划线）。
+     * 用于防止通过数据库名构造拼接 SQL 语句时引入注入风险。
+     *
+     * @throws DataSourceException 如果标识符包含非法字符
+     */
+    protected static void validateIdentifier(String identifier) {
+        if (identifier != null && !identifier.matches("[a-zA-Z0-9_]+")) {
+            throw new DataSourceException("数据库标识符包含非法字符: " + identifier);
+        }
+    }
+
     protected String connectionParam(Map<String, Object> params, String key) {
         if (params == null || key == null)
             return null;

@@ -8,11 +8,7 @@ public interface DataSourcePlugin {
         return testConnectionDetailed(connectionInfo).success();
     }
 
-    default ConnectionTestResult testConnectionDetailed(DataSourceConnectionInfo connectionInfo) {
-        return testConnection(connectionInfo)
-                ? ConnectionTestResult.success("连接成功")
-                : ConnectionTestResult.failure("连接失败，请检查地址、端口和认证信息");
-    }
+    ConnectionTestResult testConnectionDetailed(DataSourceConnectionInfo connectionInfo);
 
     java.util.List<String> getDatabases(DataSourceConnectionInfo connectionInfo);
 
