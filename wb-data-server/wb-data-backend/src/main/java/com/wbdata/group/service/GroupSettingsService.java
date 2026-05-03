@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wbdata.auth.enums.GroupRole;
+import com.wbdata.auth.enums.SystemRole;
 import com.wbdata.group.dto.*;
 import com.wbdata.group.entity.WbProjectGroup;
 import com.wbdata.group.entity.WbProjectGroupMember;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -27,6 +29,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class GroupSettingsService {
+
+    private static final String SYSTEM_ADMIN_MEMBER_REASON = "系统管理员账号已拥有全局权限，不可加入项目组";
 
     private final WbProjectGroupMapper groupMapper;
     private final WbProjectGroupMemberMapper memberMapper;
@@ -140,8 +144,7 @@ public class GroupSettingsService {
     public List<AvailableUserResponse> listAvailableUsers(Long groupId, String keyword) {
         List<WbProjectGroupMember> existingMembers = memberMapper.selectList(
                 new LambdaQueryWrapper<WbProjectGroupMember>()
-                        .eq(WbProjectGroupMember::getGroupId, groupId)
-                        .select(WbProjectGroupMember::getUserId));
+                        .eq(WbProjectGroupMember::getGroupId, groupId));
         Set<Long> existingUserIds = existingMembers.stream()
                 .map(WbProjectGroupMember::getUserId)
                 .collect(Collectors.toSet());
@@ -159,6 +162,7 @@ public class GroupSettingsService {
         userWrapper.last("LIMIT 50");
 
         return userMapper.selectList(userWrapper).stream()
+                .filter(user -> !isSystemAdmin(user))
                 .map(AvailableUserResponse::from)
                 .toList();
     }
@@ -167,9 +171,7 @@ public class GroupSettingsService {
     @Transactional
     public MemberResponse addMember(Long groupId, AddMemberRequest req, Long operatorId) {
         WbUser user = userMapper.selectById(req.getUserId());
-        if (user == null || !"ACTIVE".equals(user.getStatus())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "指定的用户不存在或已禁用");
-        }
+        ensureAddableUser(user);
 
         boolean alreadyMember = memberMapper.exists(new LambdaQueryWrapper<WbProjectGroupMember>()
                 .eq(WbProjectGroupMember::getGroupId, groupId)
@@ -188,6 +190,40 @@ public class GroupSettingsService {
 
         WbProjectGroupMember inserted = memberMapper.selectById(member.getId());
         return toMemberResponse(inserted, user);
+    }
+
+    @Transactional
+    public void addMembers(Long groupId, AddMembersRequest req, Long operatorId) {
+        List<Long> requestedUserIds = req.getUserIds().stream()
+                .collect(Collectors.collectingAndThen(Collectors.toCollection(LinkedHashSet::new), List::copyOf));
+
+        List<WbUser> users = userMapper.selectBatchIds(requestedUserIds);
+        Map<Long, WbUser> userMap = users.stream()
+                .collect(Collectors.toMap(WbUser::getId, Function.identity()));
+
+        for (Long userId : requestedUserIds) {
+            ensureAddableUser(userMap.get(userId));
+        }
+
+        Set<Long> existingUserIds = memberMapper.selectList(new LambdaQueryWrapper<WbProjectGroupMember>()
+                        .eq(WbProjectGroupMember::getGroupId, groupId)
+                        .in(WbProjectGroupMember::getUserId, requestedUserIds))
+                .stream()
+                .map(WbProjectGroupMember::getUserId)
+                .collect(Collectors.toSet());
+        if (!existingUserIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "所选用户中存在已加入本项目组的成员");
+        }
+
+        for (Long userId : requestedUserIds) {
+            WbProjectGroupMember member = new WbProjectGroupMember();
+            member.setGroupId(groupId);
+            member.setUserId(userId);
+            member.setRole(req.getRole());
+            member.setCreatedBy(operatorId);
+            member.setUpdatedBy(operatorId);
+            memberMapper.insert(member);
+        }
     }
 
 
@@ -252,5 +288,18 @@ public class GroupSettingsService {
         resp.setRole(member.getRole());
         resp.setCreatedAt(member.getCreatedAt());
         return resp;
+    }
+
+    private void ensureAddableUser(WbUser user) {
+        if (user == null || !"ACTIVE".equals(user.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "指定的用户不存在或已禁用");
+        }
+        if (isSystemAdmin(user)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, SYSTEM_ADMIN_MEMBER_REASON);
+        }
+    }
+
+    private boolean isSystemAdmin(WbUser user) {
+        return SystemRole.SYSTEM_ADMIN.name().equals(user.getSystemRole());
     }
 }

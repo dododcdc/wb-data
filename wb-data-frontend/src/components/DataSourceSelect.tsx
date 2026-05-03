@@ -8,16 +8,20 @@ type DataSourceSelectProps = {
     options: DataSourceOption[];
     placeholder?: string;
     disabled?: boolean;
+    ariaLabel?: string;
+    disableClientFilter?: boolean;
     onChange?: (value: string, option: DataSourceOption | null) => void;
     onInputChange?: (value: string) => void;
     loading?: boolean;
     loadingMore?: boolean;
+    emptyText?: string;
     value?: string;
     selectedOption?: DataSourceOption | null;
     hasMore?: boolean;
     onLoadMore?: () => void;
     onOpenChange?: (open: boolean) => void;
     virtualize?: boolean;
+    virtualItemSize?: number;
     theme?: 'light' | 'dark';
 };
 

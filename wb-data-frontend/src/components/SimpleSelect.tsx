@@ -34,17 +34,20 @@ export function SimpleSelect(props: SimpleSelectProps) {
         className,
     } = props;
 
-    // Map menuPlacement to SelectContent side
-    const side = menuPlacement === 'auto' ? 'bottom' : menuPlacement;
+    const side = menuPlacement === 'up' ? 'top' : 'bottom';
 
     return (
-        <Select 
-            value={value} 
-            onValueChange={onChange} 
+        <Select
+            value={value}
+            onValueChange={(nextValue) => {
+                if (nextValue) {
+                    onChange(nextValue);
+                }
+            }}
             disabled={disabled}
         >
-            <SelectTrigger 
-                id={id} 
+            <SelectTrigger
+                id={id}
                 className={className}
             >
                 <SelectValue placeholder={placeholder} />

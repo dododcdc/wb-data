@@ -70,6 +70,15 @@ public class GroupSettingsController {
                 context.currentGroup().id(), req, context.user().id()));
     }
 
+    @Operation(summary = "批量添加成员")
+    @PostMapping("/members/batch")
+    public Result<Void> addMembers(
+            @RequireGroupAuth(Permission.MEMBER_MANAGE) AuthContextResponse context,
+            @Validated @RequestBody AddMembersRequest req) {
+        groupSettingsService.addMembers(context.currentGroup().id(), req, context.user().id());
+        return Result.success(null);
+    }
+
     @Operation(summary = "修改成员角色")
     @PutMapping("/members/{id}/role")
     public Result<Void> updateMemberRole(

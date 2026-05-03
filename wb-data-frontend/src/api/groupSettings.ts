@@ -33,6 +33,11 @@ export interface AddMemberPayload {
     role: string;
 }
 
+export interface AddMembersPayload {
+    userIds: number[];
+    role: string;
+}
+
 export interface UpdateMemberRolePayload {
     role: string;
 }
@@ -55,6 +60,10 @@ export const getAvailableUsers = (groupId: number, keyword?: string) => {
 
 export const addMember = (groupId: number, data: AddMemberPayload) => {
     return request.post<unknown, MemberRecord>('/api/v1/group-settings/members', data, { params: { groupId } });
+};
+
+export const addMembers = (groupId: number, data: AddMembersPayload) => {
+    return request.post<unknown, void>('/api/v1/group-settings/members/batch', data, { params: { groupId } });
 };
 
 export const updateMemberRole = (groupId: number, memberId: number, data: UpdateMemberRolePayload) => {

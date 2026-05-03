@@ -9,7 +9,7 @@ import {
 } from './combobox';
 import { Search, ChevronDown, Loader2 } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useCallback, useEffect, useRef, useState, type UIEventHandler } from 'react';
+import { useEffect, useRef, useState, type UIEventHandler } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface SearchSelectOption {
@@ -39,6 +39,8 @@ export interface SearchSelectProps<T extends SearchSelectOption> {
     theme?: 'light' | 'dark';
     className?: string;
     triggerClassName?: string;
+    ariaLabel?: string;
+    disableClientFilter?: boolean;
     onChange?: (value: string, option: T | null) => void;
     onInputChange?: (value: string) => void;
     onLoadMore?: () => void;
@@ -65,6 +67,7 @@ export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectPr
         theme = 'light',
         className,
         triggerClassName,
+        ariaLabel,
         onChange,
         onInputChange,
         onLoadMore,
@@ -150,6 +153,7 @@ export function SearchSelect<T extends SearchSelectOption>(props: SearchSelectPr
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={14} />
                 <ComboboxInput 
                     placeholder={placeholder}
+                    aria-label={ariaLabel}
                     className={cn(
                         "!h-full w-full !pl-9 !pr-8 !m-0 !bg-transparent text-sm !border-0 focus-visible:ring-0 !shadow-none outline-none",
                         triggerClassName

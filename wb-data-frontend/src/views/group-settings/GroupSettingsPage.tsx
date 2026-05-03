@@ -16,14 +16,14 @@ import { SimpleSelect } from '../../components/SimpleSelect';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import { useAuthStore } from '../../utils/auth';
 import {
-    addMember,
+    addMembers,
     getMemberPage,
     getGroupSettings,
     removeMember,
     updateGroupSettings,
     updateMemberRole,
 } from '../../api/groupSettings';
-import type { AddMemberPayload, MemberRecord } from '../../api/groupSettings';
+import type { AddMembersPayload, MemberRecord } from '../../api/groupSettings';
 import GroupInfoCard from './GroupInfoCard';
 import MemberTable from './MemberTable';
 import AddMemberDialog from './AddMemberDialog';
@@ -71,7 +71,7 @@ export default function GroupSettingsPage() {
     const [changeRoleMember, setChangeRoleMember] = useState<MemberRecord | null>(null);
     const [pendingRemoveTarget, setPendingRemoveTarget] = useState<MemberRecord | null>(null);
     const [pendingRemoveId, setPendingRemoveId] = useState<number | null>(null);
-    const addMemberDisplayNameRef = useRef<string>('');
+    const addedMemberCountRef = useRef(0);
     const [activeTab, setActiveTab] = useState<'members' | 'git'>('members');
 
     const currentPage = parsePageParam(searchParams.get('page'));
@@ -155,13 +155,13 @@ export default function GroupSettingsPage() {
     }, [currentPage, memberData, searchParams, setSearchParams]);
 
     const addMemberMutation = useMutation({
-        mutationFn: (payload: AddMemberPayload) => addMember(groupId!, payload),
+        mutationFn: (payload: AddMembersPayload) => addMembers(groupId!, payload),
         onSuccess: () => {
             setIsAddMemberOpen(false);
             showFeedback({
                 tone: 'success',
                 title: '成员已添加',
-                detail: `${addMemberDisplayNameRef.current || '新成员'} 已加入项目组。`,
+                detail: `已添加 ${addedMemberCountRef.current} 名成员。`,
             });
             void queryClient.invalidateQueries({ queryKey: ['group-settings-members'] });
         },
@@ -256,8 +256,8 @@ export default function GroupSettingsPage() {
         });
     };
 
-    const handleAddMemberSuccess = (payload: AddMemberPayload, displayName: string) => {
-        addMemberDisplayNameRef.current = displayName;
+    const handleAddMemberSuccess = (payload: AddMembersPayload, usernames: string[]) => {
+        addedMemberCountRef.current = usernames.length;
         addMemberMutation.mutate(payload);
     };
 

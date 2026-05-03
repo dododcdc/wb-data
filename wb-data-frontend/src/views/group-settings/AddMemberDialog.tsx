@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import {
     Dialog,
     DialogContent,
@@ -9,8 +8,9 @@ import {
     DialogFooter,
 } from '../../components/ui/dialog';
 import { SimpleSelect } from '../../components/SimpleSelect';
-import { SearchSelect, type SearchSelectOption } from '../../components/ui/search-select';
-import type { AddMemberPayload, AvailableUser } from '../../api/groupSettings';
+import { MultiSearchSelect } from '../../components/ui/multi-search-select';
+import type { SearchSelectOption } from '../../components/ui/search-select';
+import type { AddMembersPayload, AvailableUser } from '../../api/groupSettings';
 import { getAvailableUsers } from '../../api/groupSettings';
 import { Button } from '../../components/ui/button';
 
@@ -18,7 +18,7 @@ interface AddMemberDialogProps {
     open: boolean;
     groupId: number;
     onOpenChange: (details: { open: boolean }) => void;
-    onSuccess: (payload: AddMemberPayload, displayName: string) => void;
+    onSuccess: (payload: AddMembersPayload, usernames: string[]) => void;
 }
 
 const ROLE_OPTIONS = [
@@ -32,74 +32,88 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
     const [searchKeyword, setSearchKeyword] = useState('');
     const [users, setUsers] = useState<AvailableUser[]>([]);
     const [loading, setLoading] = useState(false);
-    const [selectedUser, setSelectedUser] = useState<AvailableUser | null>(null);
+    const [selectedUsers, setSelectedUsers] = useState<AvailableUser[]>([]);
     const [role, setRole] = useState('DEVELOPER');
     const [submitting, setSubmitting] = useState(false);
     const [searchError, setSearchError] = useState<string | null>(null);
+    const searchRequestIdRef = useRef(0);
 
     useEffect(() => {
         if (!open) {
             setSearchKeyword('');
             setUsers([]);
             setLoading(false);
-            setSelectedUser(null);
+            setSelectedUsers([]);
             setRole('DEVELOPER');
             setSubmitting(false);
             setSearchError(null);
+            searchRequestIdRef.current = 0;
         }
     }, [open]);
 
     useEffect(() => {
-        // Fix: Removed 'selectedUser' from the bypass condition to prevent 
-        // clearing results while the selection event is still processing.
-        if (!open || !searchKeyword.trim()) {
-            setUsers([]);
-            setLoading(false);
+        if (!open) {
             return;
         }
 
-        // If we already have a selection, don't trigger NEW searches
-        if (selectedUser) return;
+        const trimmedKeyword = searchKeyword.trim();
+        const requestId = searchRequestIdRef.current + 1;
+        searchRequestIdRef.current = requestId;
+
+        if (!trimmedKeyword) {
+            setUsers([]);
+            setLoading(false);
+            setSearchError(null);
+            return;
+        }
 
         const timer = window.setTimeout(() => {
             setLoading(true);
             setSearchError(null);
-            getAvailableUsers(groupId, searchKeyword.trim())
+            getAvailableUsers(groupId, trimmedKeyword)
                 .then((result) => {
-                    setUsers(result);
-                    if (result.length === 0) {
-                        setSearchError('未找到匹配的用户');
+                    if (searchRequestIdRef.current !== requestId) {
+                        return;
                     }
+                    setUsers(result);
+                    setSearchError(result.length === 0 ? '未找到匹配的用户' : null);
                 })
                 .catch(() => {
+                    if (searchRequestIdRef.current !== requestId) {
+                        return;
+                    }
+                    setUsers([]);
                     setSearchError('搜索失败，请稍后重试');
                 })
                 .finally(() => {
-                    setLoading(false);
+                    if (searchRequestIdRef.current === requestId) {
+                        setLoading(false);
+                    }
                 });
         }, 300);
 
         return () => window.clearTimeout(timer);
-    }, [open, groupId, searchKeyword, selectedUser]);
+    }, [open, groupId, searchKeyword]);
 
     const handleSubmit = () => {
-        if (!selectedUser || submitting) return;
+        if (selectedUsers.length === 0 || submitting) return;
         setSubmitting(true);
-        onSuccess({ userId: selectedUser.id, role }, selectedUser.displayName);
+        onSuccess(
+            { userIds: selectedUsers.map((user) => user.id), role },
+            selectedUsers.map((user) => user.username),
+        );
     };
 
-    const handleClearUser = () => {
-        setSelectedUser(null);
-        setSearchKeyword('');
-        setUsers([]);
-        setSearchError(null);
-    };
+    const userOptions: SearchSelectOption[] = users.map((user) => ({
+        label: user.username,
+        value: String(user.id),
+        raw: user,
+    }));
 
-    const userOptions: SearchSelectOption[] = users.map(u => ({
-        label: u.username,
-        value: String(u.id),
-        secondaryLabel: u.displayName,
-        raw: u
+    const selectedUserOptions: SearchSelectOption[] = selectedUsers.map((user) => ({
+        label: user.username,
+        value: String(user.id),
+        raw: user,
     }));
 
     return (
@@ -115,37 +129,19 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                         <div className="gs-dialog-field-grid">
                             <div className="gs-dialog-input-group">
                                 <label>用户<span className="gs-required">*</span></label>
-                                {/* Fix: Use a container that keeps SearchSelect mounted but visually hidden 
-                                    when selectedUser is present, or just use simpler logic that avoids unmounting 
-                                    during the critical selection frame. */}
-                                <div className="relative min-h-[38px]">
-                                    {selectedUser ? (
-                                        <div className="gs-selected-user animate-in fade-in zoom-in-95 duration-200">
-                                            <span>{selectedUser.username} — {selectedUser.displayName}</span>
-                                            <button
-                                                className="gs-selected-user-clear"
-                                                type="button"
-                                                aria-label="清除选择"
-                                                disabled={submitting}
-                                                onClick={handleClearUser}
-                                            >
-                                                <X size={14} />
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <SearchSelect
-                                            options={userOptions}
-                                            placeholder="搜索用户名或展示名"
-                                            disabled={submitting}
-                                            loading={loading}
-                                            emptyText={searchError || '请输入关键词搜索'}
-                                            onInputChange={setSearchKeyword}
-                                            onChange={(_, opt) => {
-                                                if (opt) setSelectedUser(opt.raw as AvailableUser);
-                                            }}
-                                        />
-                                    )}
-                                </div>
+                                <MultiSearchSelect
+                                    options={userOptions}
+                                    values={selectedUsers.map((user) => String(user.id))}
+                                    selectedOptions={selectedUserOptions}
+                                    placeholder="搜索用户名"
+                                    disabled={submitting}
+                                    loading={loading}
+                                    emptyText={searchError || '请输入关键词搜索'}
+                                    onInputChange={setSearchKeyword}
+                                    onChange={(_, options) => {
+                                        setSelectedUsers(options.map((option) => option.raw as AvailableUser));
+                                    }}
+                                />
                             </div>
 
                             <div className="gs-dialog-input-group">
@@ -173,10 +169,10 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                     <Button
                         variant="default"
                         type="button"
-                        disabled={!selectedUser || submitting}
+                        disabled={selectedUsers.length === 0 || submitting}
                         onClick={handleSubmit}
                     >
-                        {submitting ? '添加中...' : '添加'}
+                        {submitting ? '添加中...' : `添加 ${selectedUsers.length} 名成员`}
                     </Button>
                 </DialogFooter>
             </DialogContent>
