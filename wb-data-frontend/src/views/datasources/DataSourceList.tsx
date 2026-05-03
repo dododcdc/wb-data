@@ -190,7 +190,7 @@ export default function DataSourceList() {
                 tone: 'error',
                 title: '删除失败',
                 detail: (error as { message?: string } | null)?.message ?? '数据源删除失败，请稍后重试。',
-            }, 5000);
+            });
         },
         onSettled: () => {
             setPendingDeleteId(null);
@@ -231,7 +231,7 @@ export default function DataSourceList() {
                 tone: 'error',
                 title: '状态更新失败',
                 detail: (error as { message?: string } | null)?.message ?? '数据源状态更新失败，请稍后重试。',
-            }, 5000);
+            });
         },
         onSettled: () => {
             setPendingStatusId(null);

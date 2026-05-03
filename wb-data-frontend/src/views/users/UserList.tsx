@@ -168,14 +168,11 @@ export default function UserList() {
             context?.previousPages.forEach(([queryKey, page]) => {
                 queryClient.setQueryData(queryKey, page);
             });
-            showFeedback(
-                {
-                    tone: 'error',
-                    title: '状态更新失败',
-                    detail: (error as { message?: string } | null)?.message ?? '用户状态更新失败，请稍后重试。',
-                },
-                5000,
-            );
+            showFeedback({
+                tone: 'error',
+                title: '状态更新失败',
+                detail: (error as { message?: string } | null)?.message ?? '用户状态更新失败，请稍后重试。',
+            });
         },
         onSettled: () => {
             setPendingStatusId(null);

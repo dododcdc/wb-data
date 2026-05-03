@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { FEEDBACK_DURATION } from '../constants/feedback';
 
 export type FeedbackTone = 'success' | 'error' | 'info';
 
@@ -15,19 +16,19 @@ interface FeedbackState {
     dismiss: () => void;
 }
 
-const DEFAULT_DURATION = 3600;
-
 export const useFeedbackStore = create<FeedbackState>((set, get) => ({
     current: null,
     timerId: null,
 
-    show: (payload, durationMs = DEFAULT_DURATION) => {
+    show: (payload, durationMs) => {
         const prev = get().timerId;
         if (prev != null) window.clearTimeout(prev);
 
+        const ms = durationMs ?? FEEDBACK_DURATION[payload.tone];
+
         const id = window.setTimeout(() => {
             set({ current: null, timerId: null });
-        }, durationMs);
+        }, ms);
 
         set({ current: payload, timerId: id });
     },

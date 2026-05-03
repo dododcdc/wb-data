@@ -119,14 +119,11 @@ export default function GroupSettingsPage() {
         },
         onError: (error) => {
             setIsAddMemberOpen(false);
-            showFeedback(
-                {
-                    tone: 'error',
-                    title: '添加成员失败',
-                    detail: (error as { message?: string } | null)?.message ?? '无法添加成员，请稍后重试。',
-                },
-                5000,
-            );
+            showFeedback({
+                tone: 'error',
+                title: '添加成员失败',
+                detail: (error as { message?: string } | null)?.message ?? '无法添加成员，请稍后重试。',
+            });
         },
     });
 
@@ -145,14 +142,11 @@ export default function GroupSettingsPage() {
         },
         onError: (error) => {
             setChangeRoleMember(null);
-            showFeedback(
-                {
-                    tone: 'error',
-                    title: '角色变更失败',
-                    detail: (error as { message?: string } | null)?.message ?? '角色变更失败，请稍后重试。',
-                },
-                5000,
-            );
+            showFeedback({
+                tone: 'error',
+                title: '角色变更失败',
+                detail: (error as { message?: string } | null)?.message ?? '角色变更失败，请稍后重试。',
+            });
         },
     });
 
@@ -171,14 +165,11 @@ export default function GroupSettingsPage() {
             setPendingRemoveTarget(null);
         },
         onError: (error) => {
-            showFeedback(
-                {
-                    tone: 'error',
-                    title: '移除成员失败',
-                    detail: (error as { message?: string } | null)?.message ?? '无法移除该成员，请稍后重试。',
-                },
-                5000,
-            );
+            showFeedback({
+                tone: 'error',
+                title: '移除成员失败',
+                detail: (error as { message?: string } | null)?.message ?? '无法移除该成员，请稍后重试。',
+            });
         },
         onSettled: () => {
             setPendingRemoveId(null);
