@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
     Select,
     SelectContent,
@@ -34,7 +35,10 @@ export function SimpleSelect(props: SimpleSelectProps) {
         className,
     } = props;
 
+    const [open, setOpen] = useState(false);
     const side = menuPlacement === 'up' ? 'top' : 'bottom';
+
+    const selectedOption = options.find((opt) => opt.value === value);
 
     return (
         <Select
@@ -44,13 +48,17 @@ export function SimpleSelect(props: SimpleSelectProps) {
                     onChange(nextValue);
                 }
             }}
+            open={open}
+            onOpenChange={setOpen}
             disabled={disabled}
         >
             <SelectTrigger
                 id={id}
                 className={className}
             >
-                <SelectValue placeholder={placeholder} />
+                <span data-slot="select-value" className="flex flex-1 text-left truncate">
+                    {selectedOption ? selectedOption.label : <span className="text-muted-foreground">{placeholder}</span>}
+                </span>
             </SelectTrigger>
             <SelectContent side={side} align="start">
                 {options.map((option) => (

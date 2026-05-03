@@ -1,13 +1,13 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useMemo, useState } from 'react';
 
 import { MultiSearchSelect } from './multi-search-select';
 import type { SearchSelectOption } from './search-select';
 
 const OPTIONS: SearchSelectOption[] = [
-    { label: 'dev_alpha', value: '2' },
-    { label: 'ga_alpha', value: '3' },
+    { label: 'dev_alpha', value: '4' },
+    { label: 'ga_alpha', value: '5' },
 ];
 
 function ControlledMultiSearchSelect(props: {
@@ -38,6 +38,10 @@ function ControlledMultiSearchSelect(props: {
     );
 }
 
+afterEach(() => {
+    cleanup();
+});
+
 describe('MultiSearchSelect', () => {
     it('adds multiple users, supports remove-one, and clears all selections', async () => {
         const handleChange = vi.fn();
@@ -50,7 +54,7 @@ describe('MultiSearchSelect', () => {
         fireEvent.change(input, { target: { value: 'dev' } });
         fireEvent.click(await screen.findByRole('option', { name: 'dev_alpha' }));
 
-        expect(handleChange).toHaveBeenLastCalledWith(['2'], [{ label: 'dev_alpha', value: '2' }]);
+        expect(handleChange).toHaveBeenLastCalledWith(['4'], [{ label: 'dev_alpha', value: '4' }]);
         expect(screen.getByText('dev_alpha')).toBeTruthy();
 
         fireEvent.change(input, { target: { value: 'ga' } });
@@ -58,19 +62,36 @@ describe('MultiSearchSelect', () => {
         fireEvent.click(await screen.findByRole('option', { name: 'ga_alpha' }));
 
         expect(handleChange).toHaveBeenLastCalledWith(
-            ['2', '3'],
+            ['4', '5'],
             [
-                { label: 'dev_alpha', value: '2' },
-                { label: 'ga_alpha', value: '3' },
+                { label: 'dev_alpha', value: '4' },
+                { label: 'ga_alpha', value: '5' },
             ],
         );
         expect(screen.getByRole('button', { name: '移除 ga_alpha', hidden: true })).toBeTruthy();
 
         fireEvent.click(screen.getByRole('button', { name: '移除 dev_alpha', hidden: true }));
-        expect(handleChange).toHaveBeenLastCalledWith(['3'], [{ label: 'ga_alpha', value: '3' }]);
+        expect(handleChange).toHaveBeenLastCalledWith(['5'], [{ label: 'ga_alpha', value: '5' }]);
 
         fireEvent.click(screen.getByRole('button', { name: '清空全部已选成员', hidden: true }));
         expect(handleChange).toHaveBeenLastCalledWith([], []);
         expect(screen.queryByRole('button', { name: '移除 ga_alpha', hidden: true })).toBeNull();
+    });
+
+    it('clears the visible input after selecting a user instead of showing the user id', async () => {
+        render(<ControlledMultiSearchSelect />);
+
+        const input = screen.getByPlaceholderText('搜索用户名') as HTMLInputElement;
+
+        fireEvent.change(input, { target: { value: 'dev' } });
+        fireEvent.click(await screen.findByRole('option', { name: 'dev_alpha' }));
+
+        expect(input.value).toBe('');
+    });
+
+    it('does not render a dropdown trigger when the picker is search-only', () => {
+        const { container } = render(<ControlledMultiSearchSelect />);
+
+        expect(container.querySelector('[data-slot="combobox-trigger"]')).toBeNull();
     });
 });

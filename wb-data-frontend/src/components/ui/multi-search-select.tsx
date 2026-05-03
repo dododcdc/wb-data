@@ -1,4 +1,4 @@
-import { Loader2, Search, X, ChevronDown } from 'lucide-react';
+import { Loader2, Search, X } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
@@ -9,7 +9,6 @@ import {
     ComboboxEmpty,
     ComboboxInput,
     ComboboxItem,
-    ComboboxTrigger,
 } from './combobox';
 import type { SearchSelectOption } from './search-select';
 
@@ -47,6 +46,7 @@ export function MultiSearchSelect<T extends SearchSelectOption>(props: MultiSear
     const isComposingRef = useRef(false);
     const [inputValue, setInputValue] = useState('');
     const [open, setOpen] = useState(false);
+    const hasQuery = inputValue.trim().length > 0;
 
     const optionLookup = useMemo(() => {
         const entries = new Map<string, T>();
@@ -82,7 +82,7 @@ export function MultiSearchSelect<T extends SearchSelectOption>(props: MultiSear
 
         setInputValue(nextValue);
         if (!disabled) {
-            setOpen(true);
+            setOpen(nextValue.trim().length > 0);
         }
         onInputChange?.(nextValue);
     };
@@ -93,7 +93,7 @@ export function MultiSearchSelect<T extends SearchSelectOption>(props: MultiSear
         emitChange([...values, nextValue]);
         setInputValue('');
         onInputChange?.('');
-        setOpen(true);
+        setOpen(false);
     };
 
     return (
@@ -131,7 +131,8 @@ export function MultiSearchSelect<T extends SearchSelectOption>(props: MultiSear
             ) : null}
 
             <Combobox
-                open={disabled ? false : open}
+                value={null}
+                open={disabled ? false : open && hasQuery}
                 inputValue={inputValue}
                 onOpenChange={setOpen}
                 onInputValueChange={handleInputChange}
@@ -148,11 +149,19 @@ export function MultiSearchSelect<T extends SearchSelectOption>(props: MultiSear
                     <ComboboxInput
                         placeholder={placeholder}
                         className={cn(
-                            '!m-0 !h-full w-full !border-0 !bg-transparent !pl-9 !pr-8 text-sm !shadow-none outline-none focus-visible:ring-0',
+                            '!m-0 !h-full w-full !border-0 !bg-transparent !pl-9 !pr-3 text-sm !shadow-none outline-none focus-visible:ring-0',
                             triggerClassName,
                         )}
-                        onFocus={() => setOpen(true)}
-                        onClick={() => setOpen(true)}
+                        onFocus={(event) => {
+                            if (event.currentTarget.value.trim().length > 0) {
+                                setOpen(true);
+                            }
+                        }}
+                        onClick={(event) => {
+                            if (event.currentTarget.value.trim().length > 0) {
+                                setOpen(true);
+                            }
+                        }}
                         onCompositionStart={() => {
                             isComposingRef.current = true;
                         }}
@@ -160,12 +169,10 @@ export function MultiSearchSelect<T extends SearchSelectOption>(props: MultiSear
                             isComposingRef.current = false;
                             const nextValue = event.currentTarget.value;
                             setInputValue(nextValue);
+                            setOpen(nextValue.trim().length > 0);
                             onInputChange?.(nextValue);
                         }}
                     />
-                    <ComboboxTrigger className="absolute right-0 top-0 bottom-0 flex w-8 items-center justify-center border-l border-transparent transition-colors hover:bg-muted/50">
-                        <ChevronDown size={14} className="text-muted-foreground" />
-                    </ComboboxTrigger>
                 </div>
 
                 <ComboboxContent sideOffset={4} align="start" className="w-[var(--anchor-width)] max-h-[300px]">

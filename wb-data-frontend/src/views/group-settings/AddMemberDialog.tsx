@@ -117,7 +117,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
     }));
 
     return (
-        <Dialog open={open} onOpenChange={(nextOpen) => { if (!submitting) onOpenChange({ open: nextOpen }); }}>
+        <Dialog modal={false} open={open} onOpenChange={(nextOpen) => { if (!submitting) onOpenChange({ open: nextOpen }); }}>
             <DialogContent style={{ maxWidth: '520px' }}>
                 <DialogHeader>
                     <DialogTitle>添加成员</DialogTitle>
@@ -136,7 +136,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                                     placeholder="搜索用户名"
                                     disabled={submitting}
                                     loading={loading}
-                                    emptyText={searchError || '请输入关键词搜索'}
+                                    emptyText={searchKeyword.trim() ? searchError : null}
                                     onInputChange={setSearchKeyword}
                                     onChange={(_, options) => {
                                         setSelectedUsers(options.map((option) => option.raw as AvailableUser));

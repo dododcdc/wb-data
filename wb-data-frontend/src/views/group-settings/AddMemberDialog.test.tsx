@@ -231,4 +231,30 @@ describe('AddMemberDialog', () => {
         fireEvent.click(screen.getByRole('button', { name: '清空全部已选成员', hidden: true }));
         expect(dialog.getByRole('button', { name: '添加 0 名成员', hidden: true }).hasAttribute('disabled')).toBeTruthy();
     });
+
+    it('closes the member picker popup after selecting a user', async () => {
+        vi.useFakeTimers();
+        getAvailableUsers.mockResolvedValueOnce([{ id: 7, username: 'bob', displayName: 'Bob 管理员' }]);
+
+        render(
+            <AddMemberDialog
+                open
+                groupId={12}
+                onOpenChange={() => {}}
+                onSuccess={() => {}}
+            />,
+        );
+
+        const dialog = within(screen.getByRole('dialog'));
+
+        fireEvent.change(dialog.getByPlaceholderText('搜索用户名'), { target: { value: 'bob' } });
+        await advanceDebounce();
+        fireEvent.click(screen.getByRole('option', { name: 'bob', hidden: true }));
+
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(screen.queryByText('请输入关键词搜索')).toBeNull();
+    });
 });
