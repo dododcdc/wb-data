@@ -53,10 +53,14 @@ class GroupSettingsServiceTest {
     void listAvailableUsers_excludesSystemAdminAccounts() {
         com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.wbdata.user.entity.WbUser> pageResult = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>();
         pageResult.setRecords(List.of(activeUser(7L, "dev_alpha", "Dev Alpha", "USER")));
-        
+
         when(userMapper.selectAvailableUsers(any(), any(), any())).thenReturn((com.baomidou.mybatisplus.core.metadata.IPage) pageResult);
 
-        List<AvailableUserResponse> result = service.listAvailableUsers(12L, 1, 50, "a").getRecords();
+        com.wbdata.common.dto.PageQuery pageQuery = new com.wbdata.common.dto.PageQuery();
+        pageQuery.setPage(1);
+        pageQuery.setSize(50);
+        pageQuery.setKeyword("a");
+        List<AvailableUserResponse> result = service.listAvailableUsers(12L, pageQuery).getRecords();
 
         assertThat(result)
                 .extracting(AvailableUserResponse::getUsername)

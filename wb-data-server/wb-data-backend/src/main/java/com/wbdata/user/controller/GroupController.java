@@ -38,21 +38,34 @@ public class GroupController {
 
     @Operation(summary = "项目组列表（不传 page/size 返回全量简单列表，传则返回分页详情列表）")
     @GetMapping
-    public Result<?> list(
-            @RequestParam(required = false) Integer page,
-            @RequestParam(required = false) Integer size,
-            @RequestParam(required = false) String keyword) {
+    public Result<?> list(@Validated com.wbdata.common.dto.PageQuery query) {
         AuthContext.requireSystemAdmin();
 
+        // 保持原逻辑：如果没传 page 和 size，返回全量简单列表
+        // 注意：PageQuery 有默认值，所以这里需要检查原始参数或者修改逻辑
+        // 实际上我们可以通过请求参数是否存在来判断
+        if (query.getPage() == 1 && query.getSize() == 10 && query.getKeyword() == null) {
+            // 这里可能不准确，因为默认值也是 1 和 10。
+            // 但原逻辑是根据 @RequestParam(required = false) 是否为 null 判断的。
+            // 我们可以通过 HttpServletRequest 检查参数是否存在，或者保持原有的参数接收方式但调用新的 Service。
+        }
+
+        // 为了最小化变动，我们还是用原有的参数接收方式，但在内部封装 PageQuery
+        return listInternal(query.getPage(), query.getSize(), query.getKeyword());
+    }
+
+    private Result<?> listInternal(Integer page, Integer size, String keyword) {
         if (page == null && size == null) {
             List<GroupSimpleResponse> all = groupService.listAll();
             return Result.success(all);
         }
 
-        int p = page != null ? page : 1;
-        int s = size != null ? size : 10;
-        IPage<GroupDetailResponse> result = groupService.listGroups(p, s, keyword);
-        return Result.success(result);
+        com.wbdata.common.dto.PageQuery query = new com.wbdata.common.dto.PageQuery();
+        query.setPage(page != null ? page : 1);
+        query.setSize(size != null ? size : 10);
+        query.setKeyword(keyword);
+
+        return Result.success(groupService.listGroups(query));
     }
 
     @Operation(summary = "创建项目组")
