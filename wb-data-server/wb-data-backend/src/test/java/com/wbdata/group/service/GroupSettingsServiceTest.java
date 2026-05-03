@@ -41,6 +41,9 @@ class GroupSettingsServiceTest {
     private WbProjectGroupMemberMapper memberMapper;
 
     @Mock
+    private WbProjectGroupMemberService memberService;
+
+    @Mock
     private WbUserMapper userMapper;
 
     @InjectMocks
@@ -90,9 +93,9 @@ class GroupSettingsServiceTest {
 
         service.addMembers(12L, req, 99L);
 
-        ArgumentCaptor<WbProjectGroupMember> captor = ArgumentCaptor.forClass(WbProjectGroupMember.class);
-        verify(memberMapper, times(2)).insert(captor.capture());
-        assertThat(captor.getAllValues())
+        ArgumentCaptor<List<WbProjectGroupMember>> captor = ArgumentCaptor.forClass(List.class);
+        verify(memberService).saveBatch(captor.capture());
+        assertThat(captor.getValue())
                 .extracting(
                         WbProjectGroupMember::getGroupId,
                         WbProjectGroupMember::getUserId,
