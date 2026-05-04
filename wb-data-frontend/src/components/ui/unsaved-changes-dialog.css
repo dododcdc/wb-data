@@ -1,0 +1,98 @@
+.uc-dialog-content {
+    max-width: 440px;
+    padding: 0;
+    overflow: hidden;
+}
+
+.uc-header {
+    padding: 32px 32px 12px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+.uc-icon-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background-color: var(--color-warning-bg);
+    color: var(--color-warning);
+    flex-shrink: 0;
+}
+
+.uc-title-group {
+    flex: 1;
+}
+
+.uc-title {
+    margin: 0;
+    font-size: 1.15rem !important;
+    font-weight: 700 !important;
+    color: var(--color-text-primary);
+    line-height: 1.4 !important;
+}
+
+.uc-body {
+    padding: 0 32px 32px 88px;
+}
+
+.uc-description {
+    margin: 0;
+    font-size: 0.9rem !important;
+    line-height: 1.6 !important;
+    color: var(--color-text-secondary);
+}
+
+.uc-footer {
+    padding: 16px 24px;
+    background-color: var(--color-bg-secondary);
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 12px;
+}
+
+.btn-cancel {
+    color: var(--color-text-secondary) !important;
+    padding: 0 16px !important;
+}
+
+.btn-cancel:hover {
+    background-color: rgba(0, 0, 0, 0.06) !important;
+    color: var(--color-text-primary) !important;
+}
+
+.btn-discard {
+    color: var(--color-error) !important;
+    border-color: transparent !important;
+}
+
+.btn-discard:hover {
+    background-color: var(--color-error-bg) !important;
+    border-color: var(--color-error-border) !important;
+}
+
+.uc-close-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    color: var(--color-text-muted);
+    opacity: 0.6;
+    transition: opacity 0.2s;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+}
+
+.uc-close-btn:hover {
+    opacity: 1;
+}

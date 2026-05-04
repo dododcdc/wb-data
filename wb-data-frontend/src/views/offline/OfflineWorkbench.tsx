@@ -77,6 +77,7 @@ import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { getErrorMessage } from '../../utils/error';
 import { useAuthStore } from '../../utils/auth';
 import { NodeEditorDialog } from './NodeEditorDialog';
+import { UnsavedChangesDialog } from '../../components/ui/unsaved-changes-dialog';
 import {
     applyCanvasStateToDocument,
     buildEdgesFromCanvasEdges,
@@ -3157,56 +3158,12 @@ export default function OfflineWorkbench() {
                 </div>
             )}
 
-            <Dialog open={pendingNavigation !== null} onOpenChange={(open) => { if (!open) handleCancelLeave(); }}>
-                <DialogContent style={{ maxWidth: '400px' }}>
-                    <DialogHeader>
-                        <div className="flex items-center gap-3">
-                            <div className="bg-amber-100 text-amber-600 w-10 h-10 rounded-full flex items-center justify-center shrink-0">
-                                <AlertTriangle size={20} />
-                            </div>
-                            <div>
-                                <DialogTitle>您有未保存的更改</DialogTitle>
-                                <DialogDescription>
-                                    离开此页面将导致所有未保存的修改丢失。
-                                </DialogDescription>
-                            </div>
-                        </div>
-                    </DialogHeader>
-
-                    <div className="dialog-body" style={{ padding: '0 0 20px' }}>
-                        <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
-                            您希望在离开前保存当前 Flow 的修改吗？
-                        </p>
-                    </div>
-
-                    <DialogFooter>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleCancelLeave}
-                        >
-                            取消
-                        </Button>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="hover:bg-red-50 hover:text-red-600 hover:border-red-200"
-                                onClick={() => void handleConfirmLeave('discard')}
-                            >
-                                放弃修改
-                            </Button>
-                            <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => void handleConfirmLeave('save')}
-                            >
-                                保存并离开
-                            </Button>
-                        </div>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <UnsavedChangesDialog
+                open={pendingNavigation !== null}
+                onOpenChange={(open) => { if (!open) handleCancelLeave(); }}
+                onSave={() => void handleConfirmLeave('save')}
+                onDiscard={() => void handleConfirmLeave('discard')}
+            />
 
             {/* 点击其他区域关闭右键菜单 */}
             {contextMenuOpen && (
