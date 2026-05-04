@@ -2312,3 +2312,87 @@ button.offline-tree-row {
     flex-direction: column;
     padding: 0;
 }
+
+/* Switch toggle */
+.offline-switch {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    border: none;
+    background: #d4d4d4;
+    cursor: pointer;
+    transition: background 0.2s;
+    padding: 0;
+    flex-shrink: 0;
+}
+.offline-switch[data-enabled="true"] {
+    background: #22c55e;
+}
+.offline-switch:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.offline-switch-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: white;
+    transition: transform 0.2s;
+    display: block;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.offline-switch[data-enabled="true"] .offline-switch-thumb {
+    transform: translateX(18px);
+}
+
+/* Schedule preview */
+.offline-schedule-preview {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+.offline-schedule-preview.is-error {
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+.offline-schedule-preview.is-empty {
+    background: #f5f5f5;
+    border-color: #e5e5e5;
+}
+.offline-schedule-preview-label {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 4px;
+}
+.offline-schedule-preview-text {
+    font-size: 12px;
+    color: #166534;
+}
+.offline-schedule-preview-text.is-error {
+    color: #dc2626;
+}
+.offline-schedule-preview.is-empty .offline-schedule-preview-text {
+    color: #999;
+}
+
+/* Hint text */
+.offline-schedule-hint {
+    font-size: 11px;
+    color: #999;
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+/* Field hint */
+.offline-field-hint {
+    font-size: 11px;
+    color: #999;
+    margin-top: 4px;
+    display: block;
+}

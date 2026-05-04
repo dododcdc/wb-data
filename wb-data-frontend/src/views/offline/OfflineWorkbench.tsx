@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CronExpressionParser } from 'cron-parser';
 import { AxiosError } from 'axios';
 import { ReactFlowProvider, type Node, type Edge } from '@xyflow/react';
 import { useNavigate, useBlocker, useSearchParams } from 'react-router-dom';
@@ -9,7 +10,6 @@ import {
     AlertTriangle,
     ArrowUpRight,
     ChevronRight,
-    Clock3,
     Database,
     FileCode2,
     FolderOpen,
@@ -723,6 +723,12 @@ function ExecutionDialog(props: ExecutionDialogProps) {
     );
 }
 
+function flowNameFromPath(path: string | null): string {
+    if (!path) return '尚未选择 Flow';
+    const parts = path.split('/');
+    return parts.length >= 2 ? parts[1] : path;
+}
+
 interface ScheduleDialogProps {
     open: boolean;
     schedule: OfflineScheduleResponse | null;
@@ -754,72 +760,94 @@ function ScheduleDialog(props: ScheduleDialogProps) {
         onToggle,
     } = props;
 
+    const preview = useMemo(() => {
+        if (!cron.trim()) return { type: 'empty' as const };
+        try {
+            const interval = CronExpressionParser.parse(cron, { tz: timezone || undefined });
+            const times: string[] = [];
+            for (let i = 0; i < 3; i++) {
+                times.push(interval.next().toISOString());
+            }
+            return { type: 'ok' as const, times };
+        } catch {
+            return { type: 'error' as const };
+        }
+    }, [cron, timezone]);
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="offline-schedule-dialog">
                 <DialogHeader>
-                    <DialogTitle>调度配置</DialogTitle>
-                    <DialogDescription>
-                        {path ?? '尚未选择 Flow'}
-                    </DialogDescription>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                            <DialogTitle>调度配置</DialogTitle>
+                            <DialogDescription>
+                                {flowNameFromPath(path)}
+                            </DialogDescription>
+                        </div>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={schedule?.enabled ?? false}
+                            disabled={saving || loading || !schedule}
+                            onClick={() => onToggle(!(schedule?.enabled ?? false))}
+                            className="offline-switch"
+                            data-enabled={schedule?.enabled ?? false}
+                        >
+                            <span className="offline-switch-thumb" />
+                        </button>
+                    </div>
                 </DialogHeader>
 
-                        <div className="offline-schedule-meta">
-                            {loading ? (
-                                <div className="offline-list-placeholder">正在读取当前调度配置...</div>
-                            ) : schedule ? (
-                                <>
-                                    <StatusPill tone={schedule.enabled ? 'success' : 'neutral'}>
-                                        {schedule.enabled ? '已启用' : '已停用'}
-                                    </StatusPill>
-                                    <span>Trigger：{schedule.triggerId}</span>
-                                    <span>最近版本：{schedule.contentHash.slice(0, 12)}</span>
-                                </>
-                            ) : (
-                                <span>当前 Flow 还没有 Schedule trigger，保存后会自动创建。</span>
-                            )}
-                        </div>
+                <div className="offline-form-grid">
+                    <label className="offline-field">
+                        <span>Cron 表达式</span>
+                        <Input
+                            value={cron}
+                            placeholder="例如：0 10 * * *"
+                            onChange={(event) => onCronChange(event.target.value)}
+                            disabled={saving}
+                        />
+                        <span className="offline-field-hint">分 时 日 月 周</span>
+                    </label>
+                    <label className="offline-field">
+                        <span>时区</span>
+                        <Input
+                            value={timezone}
+                            placeholder="例如：Asia/Shanghai"
+                            onChange={(event) => onTimezoneChange(event.target.value)}
+                            disabled={saving}
+                        />
+                    </label>
+                </div>
 
-                        <div className="offline-form-grid">
-                            <label className="offline-field">
-                                <span>Cron 表达式</span>
-                                <Input
-                                    value={cron}
-                                    placeholder="例如：0 10 * * *"
-                                    onChange={(event) => onCronChange(event.target.value)}
-                                    disabled={saving}
-                                />
-                            </label>
-                            <label className="offline-field">
-                                <span>时区</span>
-                                <Input
-                                    value={timezone}
-                                    placeholder="例如：Asia/Shanghai"
-                                    onChange={(event) => onTimezoneChange(event.target.value)}
-                                    disabled={saving}
-                                />
-                            </label>
+                <div className={`offline-schedule-preview ${preview.type === 'error' ? 'is-error' : preview.type === 'empty' ? 'is-empty' : ''}`}>
+                    <div className="offline-schedule-preview-label">未来 3 次执行时间</div>
+                    {preview.type === 'empty' && (
+                        <div className="offline-schedule-preview-text">请先配置调度时间</div>
+                    )}
+                    {preview.type === 'error' && (
+                        <div className="offline-schedule-preview-text is-error">无效的 cron 表达式</div>
+                    )}
+                    {preview.type === 'ok' && preview.times.map((t, i) => (
+                        <div key={i} className="offline-schedule-preview-text">
+                            {new Date(t).toLocaleString('zh-CN', { timeZone: timezone || undefined, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                         </div>
+                    ))}
+                </div>
 
-                        <div className="offline-dialog-actions">
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => onToggle(!(schedule?.enabled ?? false))}
-                                disabled={saving || loading || !schedule}
-                            >
-                                <Clock3 size={14} />
-                                {schedule?.enabled ? '停用调度' : '启用调度'}
-                            </Button>
-                            <Button
-                                type="button"
-                                onClick={onSave}
-                                disabled={saving || loading || cron.trim().length === 0}
-                            >
-                                {saving ? <LoaderCircle size={14} className="offline-spin" /> : <Save size={14} />}
-                                保存调度
-                            </Button>
-                        </div>
+                <p className="offline-schedule-hint">设置将在 Commit + Push 后由 Kestra 同步生效</p>
+
+                <div className="offline-dialog-actions">
+                    <Button
+                        type="button"
+                        onClick={onSave}
+                        disabled={saving || loading || cron.trim().length === 0 || preview.type === 'error'}
+                    >
+                        {saving ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                        暂存调度
+                    </Button>
+                </div>
             </DialogContent>
         </Dialog>
     );
