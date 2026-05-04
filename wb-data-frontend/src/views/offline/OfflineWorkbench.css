@@ -2329,7 +2329,7 @@ button.offline-tree-row {
     padding: 0;
     flex-shrink: 0;
 }
-.offline-switch[data-enabled="true"] {
+.offline-switch[aria-checked="true"] {
     background: #22c55e;
 }
 .offline-switch:disabled {
@@ -2348,7 +2348,7 @@ button.offline-tree-row {
     display: block;
     box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
-.offline-switch[data-enabled="true"] .offline-switch-thumb {
+.offline-switch[aria-checked="true"] .offline-switch-thumb {
     transform: translateX(18px);
 }
 
@@ -2362,15 +2362,15 @@ button.offline-tree-row {
 }
 .offline-schedule-preview.is-error {
     background: #fef2f2;
-    border-color: #fecaca;
+    border-color: var(--color-danger);
 }
 .offline-schedule-preview.is-empty {
-    background: #f5f5f5;
-    border-color: #e5e5e5;
+    background: var(--color-surface-secondary);
+    border-color: var(--color-border);
 }
 .offline-schedule-preview-label {
     font-size: 12px;
-    color: #666;
+    color: var(--color-text-secondary);
     margin-bottom: 4px;
 }
 .offline-schedule-preview-text {
@@ -2378,16 +2378,16 @@ button.offline-tree-row {
     color: #166534;
 }
 .offline-schedule-preview-text.is-error {
-    color: #dc2626;
+    color: var(--color-danger);
 }
 .offline-schedule-preview.is-empty .offline-schedule-preview-text {
-    color: #999;
+    color: var(--color-text-muted);
 }
 
 /* Hint text */
 .offline-schedule-hint {
     font-size: 11px;
-    color: #999;
+    color: var(--color-text-muted);
     text-align: center;
     margin-bottom: 10px;
 }
@@ -2395,7 +2395,7 @@ button.offline-tree-row {
 /* Field hint */
 .offline-field-hint {
     font-size: 11px;
-    color: #999;
+    color: var(--color-text-muted);
     margin-top: 4px;
     display: block;
 }
