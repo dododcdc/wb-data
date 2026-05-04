@@ -189,11 +189,6 @@ function formatDuration(durationMs: number | null) {
     return `${minutes}m ${remainingSeconds}s`;
 }
 
-function StatusPill(props: { tone: 'neutral' | 'success' | 'danger' | 'active'; children: string }) {
-    const { tone, children } = props;
-    return <span className={`offline-pill is-${tone}`}>{children}</span>;
-}
-
 function collectTreeDirectoryIds(node: OfflineRepoTreeNode): string[] {
     return node.children.flatMap((child) => {
         if (child.kind !== 'DIRECTORY') {
@@ -836,8 +831,6 @@ function ScheduleDialog(props: ScheduleDialogProps) {
                     ))}
                 </div>
 
-                <p className="offline-schedule-hint">设置将在 Commit + Push 后由 Kestra 同步生效</p>
-
                 <div className="offline-dialog-actions">
                     <Button
                         type="button"
@@ -848,6 +841,8 @@ function ScheduleDialog(props: ScheduleDialogProps) {
                         暂存调度
                     </Button>
                 </div>
+
+                <p className="offline-schedule-hint">设置将在 Commit + Push 后由 Kestra 同步生效</p>
             </DialogContent>
         </Dialog>
     );
