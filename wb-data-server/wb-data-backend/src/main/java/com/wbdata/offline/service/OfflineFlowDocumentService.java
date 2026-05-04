@@ -53,7 +53,6 @@ public class OfflineFlowDocumentService {
     private final OfflineProperties offlineProperties;
     private final OfflineFlowContentService offlineFlowContentService;
     private final DataSourceService dataSourceService;
-    private final OfflineFlowGraphValidation graphValidation = new OfflineFlowGraphValidation();
     private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -155,7 +154,15 @@ public class OfflineFlowDocumentService {
     private void saveWithGraph(SaveOfflineFlowDocumentRequest request, String flowSource) throws IOException {
         Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
         GraphDraft graphDraft = prepareGraphDraft(request.groupId(), request.stages(), request.edges());
-        graphValidation.assertNoImplicitDependencies(graphDraft.nodes(), graphDraft.edges());
+
+        // SQL / HiveSQL 节点必须绑定数据源
+        for (var node : graphDraft.nodes()) {
+            if (("SQL".equalsIgnoreCase(node.kind()) || "HIVE_SQL".equalsIgnoreCase(node.kind()))
+                    && node.dataSourceId() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "节点 " + node.taskId() + " 是 SQL 类型，保存前必须绑定数据源");
+            }
+        }
 
         String compiledYaml = yamlSupport.compileGraph(
                 flowSource,

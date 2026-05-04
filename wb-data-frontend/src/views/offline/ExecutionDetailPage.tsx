@@ -190,7 +190,9 @@ export default function ExecutionDetailPage() {
                                     <ListFilter size={14} />
                                     <span className="offline-task-name">全部日志</span>
                                 </button>
-                                {detail.taskRuns?.map((task) => {
+                                {detail.taskRuns
+                                    ?.filter(task => !task.taskId.startsWith('parallel_') && task.taskId !== 'flow_dag')
+                                    .map((task) => {
                                     const StatusIcon = getTaskStatusIcon(task.status);
                                     const isRunning = isRunningStatus(task.status);
                                     return (

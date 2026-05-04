@@ -104,13 +104,13 @@ import {
     getExecutionStatusLabel, 
     getTaskStatusIcon,
     isActiveStatus,
-    isRunningStatus 
+    isRunningStatus,
+    isStoppable 
 } from './executionPresentation';
 import {
     findFirstNodeWithInvalidDataSource,
     validateSqlNodeDataSourceRequirement,
 } from './nodeEditorDataSourceRules';
-import { validateSaveFlowDependencies } from './saveFlowDependencyValidation';
 import {
     getOfflineNodeDefaultScript,
     getOfflineNodeScriptExtension,
@@ -127,6 +127,7 @@ import { clearDeletedFolderDraftState } from './deletedFolderDraftState';
 import { finalizeNodeEditorDraftOnClose } from './nodeEditorCloseDraftState';
 import { resolveSelectionStateAfterAddingNode } from './nodeSelectionState';
 import { resolvePendingNodeEditorDraftAfterDocumentChange } from './pendingNodeEditorDraftState';
+import { isAcyclic } from './dagUtils';
 import { SaveConflictDialog } from './SaveConflictDialog';
 import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
 
@@ -506,6 +507,7 @@ function ExecutionDialog(props: ExecutionDialogProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="offline-execution-dialog" hideClose>
+                <DialogTitle className="sr-only">执行结果</DialogTitle>
                 <div className="dialog-toolbar offline-dialog-toolbar">
                     <div className="offline-execution-toolbar-left">
                         <label className="offline-execution-filter">
@@ -526,17 +528,19 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                             刷新
                         </Button>
 
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="offline-button-stop"
-                            onClick={onStopAll}
-                            disabled={executions.every((item) => !isActiveStatus(item.status)) || actionPending === 'ALL'}
-                        >
-                            {actionPending === 'ALL' ? <LoaderCircle size={14} className="offline-spin" /> : <TerminalSquare size={14} />}
-                            停止
-                        </Button>
+                        {(executions.some((item) => isStoppable(item.status)) || actionPending === 'ALL') && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="offline-button-stop"
+                                onClick={onStopAll}
+                                disabled={actionPending === 'ALL'}
+                            >
+                                {actionPending === 'ALL' ? <LoaderCircle size={14} className="offline-spin" /> : <TerminalSquare size={14} />}
+                                停止
+                            </Button>
+                        )}
                         <button
                             type="button"
                             aria-label="关闭"
@@ -1990,13 +1994,40 @@ export default function OfflineWorkbench() {
             : draftSession;
         const draftDocument = sessionForSave.workingDraft;
 
-        const validation = validateSaveFlowDependencies({
-            nodeIds: draftDocument.stages.flatMap((s) => s.nodes.map((n) => n.taskId)),
-            edges: draftDocument.edges,
-        });
-        if (!validation.allowed) {
-            if (validation.feedback) showFeedback(validation.feedback);
+        const allNodeIds = draftDocument.stages.flatMap(s => s.nodes.map(n => n.taskId));
+
+        if (!isAcyclic(
+            draftDocument.stages.flatMap(s => s.nodes.map(n => ({ id: n.taskId } as Node))),
+            draftDocument.edges as Edge[],
+        )) {
+            showFeedback({ tone: 'error', title: '保存失败', detail: '画布中存在循环依赖，请检查连线。' });
             return false;
+        }
+
+        // 禁止孤立节点：所有节点必须属于同一张连通图
+        if (allNodeIds.length > 1) {
+            const adj = new Map<string, Set<string>>();
+            for (const id of allNodeIds) adj.set(id, new Set());
+            for (const e of draftDocument.edges) {
+                adj.get(e.source)?.add(e.target);
+                adj.get(e.target)?.add(e.source);
+            }
+            const visited = new Set<string>();
+            const stack = [allNodeIds[0]];
+            visited.add(allNodeIds[0]);
+            while (stack.length > 0) {
+                const cur = stack.pop()!;
+                for (const nb of adj.get(cur) ?? []) {
+                    if (!visited.has(nb)) {
+                        visited.add(nb);
+                        stack.push(nb);
+                    }
+                }
+            }
+            if (visited.size !== allNodeIds.length) {
+                showFeedback({ tone: 'error', title: '保存失败', detail: '画布中存在未连接的节点，请将所有节点连入一张依赖图。' });
+                return false;
+            }
         }
 
         setSavingFlow(true);
@@ -2739,7 +2770,7 @@ export default function OfflineWorkbench() {
                 onStopExecution={(executionId) => void handleStopExecution(executionId)}
                 onOpenExecutionPage={(executionId) => navigate(`/offline/executions/${encodeURIComponent(executionId)}`)}
                 onStopAll={() => void handleStopAllExecutions()}
-                onOpenTaskLogs={(executionId, taskId) => navigate(`/offline/executions/${encodeURIComponent(executionId)}?taskId=${encodeURIComponent(taskId)}`)}
+                onOpenTaskLogs={(executionId, taskId) => window.open(`/offline/executions/${encodeURIComponent(executionId)}?taskId=${encodeURIComponent(taskId)}`, '_blank')}
                 onRequestedByFilterChange={(requestedBy) => {
                     setExecutionRequestedByFilter(requestedBy);
                     void refreshExecutions(activeExecutionId, requestedBy);

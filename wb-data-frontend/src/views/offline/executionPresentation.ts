@@ -10,11 +10,16 @@ export interface ExecutionPresentation {
 }
 
 export function isRunningStatus(status: string | null | undefined) {
-    return status === 'RUNNING' || status === 'PAUSED';
+    return status === 'RUNNING' || status === 'PAUSED' || status === 'RETRYING';
 }
 
 export function isActiveStatus(status: string | null | undefined) {
     return isRunningStatus(status) || status === 'CREATED' || status === 'QUEUED';
+}
+
+/** 可被手动停止的状态（RUNNING/PAUSED/RETRYING 实际在跑，CREATED/QUEUED 在等待队列中） */
+export function isStoppable(status: string | null | undefined) {
+    return isActiveStatus(status);
 }
 
 export function getExecutionStatusLabel(status: string | null | undefined) {
@@ -24,6 +29,7 @@ export function getExecutionStatusLabel(status: string | null | undefined) {
     if (status === 'KILLED') return '已停止';
     if (status === 'QUEUED' || status === 'CREATED') return '就绪';
     if (status === 'PAUSED') return '已暂停';
+    if (status === 'RETRYING') return '重试中';
     if (isRunningStatus(status)) return '执行中';
     return status || '等待执行';
 }
@@ -61,6 +67,7 @@ export const taskStatusIcon = {
     SUCCESS: CheckCircle2,
     FAILED: XCircle,
     RUNNING: LoaderCircle,
+    RETRYING: LoaderCircle,
     CREATED: Clock,
     QUEUED: Clock,
     PAUSED: PlayCircle,
