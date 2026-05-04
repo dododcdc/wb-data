@@ -1926,6 +1926,7 @@ button.offline-tree-row {
 .offline-form-grid {
     display: grid;
     gap: 14px;
+    max-width: 320px;
 }
 
 .offline-field {

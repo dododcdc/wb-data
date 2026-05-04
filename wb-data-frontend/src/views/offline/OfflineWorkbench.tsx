@@ -723,8 +723,8 @@ const TIMEZONES: string[] = Intl.supportedValuesOf('timeZone');
 
 function flowNameFromPath(path: string | null): string {
     if (!path) return '尚未选择 Flow';
-    const parts = path.split('/');
-    return parts.length >= 2 ? parts[1] : path;
+    const filename = path.split('/').pop()!;
+    return filename.replace(/\.ya?ml$/, '');
 }
 
 interface ScheduleDialogProps {
@@ -825,12 +825,6 @@ function ScheduleDialog(props: ScheduleDialogProps) {
                             <ComboboxInput
                                 placeholder="搜索时区..."
                                 disabled={saving}
-                                onFocus={(e) => {
-                                    const val = (e.target as HTMLInputElement).value;
-                                    requestAnimationFrame(() => {
-                                        (e.target as HTMLInputElement).setSelectionRange(val.length, val.length);
-                                    });
-                                }}
                             />
                             <ComboboxContent>
                                 {filteredTimezones.map((tz) => (
@@ -2327,7 +2321,7 @@ export default function OfflineWorkbench() {
         } finally {
             setScheduleSaving(false);
         }
-    }, [activeFlowPath, groupId, openFlowDocument, schedule, scheduleCron, scheduleTimezone, showFeedback]);
+    }, [activeFlowPath, groupId, loadScheduleSnapshot, openFlowDocument, schedule, scheduleCron, scheduleTimezone, showFeedback]);
 
     const handleScheduleToggle = useCallback(async (enabled: boolean) => {
         if (!groupId || !activeFlowPath || !schedule) return;
@@ -2341,6 +2335,7 @@ export default function OfflineWorkbench() {
                 fileUpdatedAt: schedule.fileUpdatedAt,
             });
             await openFlowDocument(activeFlowPath);
+            await loadScheduleSnapshot(activeFlowPath);
             showFeedback({
                 tone: 'success',
                 title: enabled ? '调度已启用' : '调度已停用',
@@ -2355,7 +2350,7 @@ export default function OfflineWorkbench() {
         } finally {
             setScheduleSaving(false);
         }
-    }, [activeFlowPath, groupId, openFlowDocument, schedule, showFeedback]);
+    }, [activeFlowPath, groupId, loadScheduleSnapshot, openFlowDocument, schedule, showFeedback]);
 
     const handleRestoreStaleDraft = useCallback(() => {
         if (!staleDraft) return;
