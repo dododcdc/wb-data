@@ -125,8 +125,13 @@ export default function ExecutionDetailPage() {
     }, []);
 
     const handleBack = useCallback(() => {
-        navigate('/offline');
-    }, [navigate]);
+        const flowPath = detail?.flowPath;
+        if (flowPath) {
+            navigate(`/offline?flowPath=${encodeURIComponent(flowPath)}`);
+        } else {
+            navigate('/offline');
+        }
+    }, [navigate, detail?.flowPath]);
 
     const levelCounts = useMemo(() => computeLevelCounts(logs), [logs]);
 
