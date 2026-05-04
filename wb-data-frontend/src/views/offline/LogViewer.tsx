@@ -1,5 +1,5 @@
 // wb-data-frontend/src/views/offline/LogViewer.tsx
-import { useMemo, useCallback, useRef } from 'react';
+import { useMemo, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import type { OfflineExecutionLogEntry } from '../../api/offline';
 import { formatTime } from './formatUtils';
@@ -30,7 +30,14 @@ function highlightMatches(text: string, query: string) {
     ).join('');
 }
 
-export default function LogViewer({ logs, selectedTaskId, activeLevels, searchQuery, onAtBottomChange }: LogViewerProps) {
+export interface LogViewerHandle {
+    scrollToBottom: () => void;
+}
+
+const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer(
+    { logs, selectedTaskId, activeLevels, searchQuery, onAtBottomChange },
+    ref,
+) {
     const virtuosoRef = useRef<VirtuosoHandle>(null);
 
     const filtered = useMemo(() => {
@@ -61,6 +68,14 @@ export default function LogViewer({ logs, selectedTaskId, activeLevels, searchQu
         },
         [onAtBottomChange],
     );
+
+    const scrollToBottom = useCallback(() => {
+        if (filtered.length > 0) {
+            virtuosoRef.current?.scrollToIndex({ index: filtered.length - 1, behavior: 'smooth' });
+        }
+    }, [filtered.length]);
+
+    useImperativeHandle(ref, () => ({ scrollToBottom }), [scrollToBottom]);
 
     const renderItem = useCallback(
         (_index: number, item: LogViewerItem) => {
@@ -101,4 +116,6 @@ export default function LogViewer({ logs, selectedTaskId, activeLevels, searchQu
             />
         </div>
     );
-}
+});
+
+export default LogViewer;

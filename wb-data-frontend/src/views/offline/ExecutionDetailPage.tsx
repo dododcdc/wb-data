@@ -1,5 +1,5 @@
 // wb-data-frontend/src/views/offline/ExecutionDetailPage.tsx
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
     getOfflineExecution,
@@ -13,7 +13,7 @@ import { isRunningStatus } from './executionPresentation';
 import ExecutionTopBar from './ExecutionTopBar';
 import ExecutionNodeTabs from './ExecutionNodeTabs';
 import LogToolbar from './LogToolbar';
-import LogViewer from './LogViewer';
+import LogViewer, { type LogViewerHandle } from './LogViewer';
 import './ExecutionDetailPage.css';
 
 function computeLevelCounts(logs: OfflineExecutionLogEntry[]) {
@@ -46,6 +46,7 @@ export default function ExecutionDetailPage() {
     const [activeLevels, setActiveLevels] = useState<Set<string>>(new Set());
     const [searchQuery, setSearchQuery] = useState('');
     const [isAtBottom, setIsAtBottom] = useState(true);
+    const logViewerRef = useRef<LogViewerHandle>(null);
 
     // Reset when execution changes
     useEffect(() => {
@@ -152,7 +153,7 @@ export default function ExecutionDetailPage() {
                 activeLevels={activeLevels}
                 onToggleLevel={handleToggleLevel}
                 onSearch={setSearchQuery}
-                onScrollToBottom={() => setIsAtBottom(true)}
+                onScrollToBottom={() => logViewerRef.current?.scrollToBottom()}
                 isAtBottom={isAtBottom}
             />
             {logsLoading ? (
@@ -174,6 +175,7 @@ export default function ExecutionDetailPage() {
                 </div>
             ) : (
                 <LogViewer
+                    ref={logViewerRef}
                     logs={logs}
                     selectedTaskId={selectedTaskId}
                     activeLevels={activeLevels}
