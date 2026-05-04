@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Search, ArrowDown } from 'lucide-react';
+// wb-data-frontend/src/views/offline/LogToolbar.tsx
+import { useState, useCallback } from 'react';
+import { Search, ArrowDownToLine, X } from 'lucide-react';
 
 interface LogToolbarProps {
     levelCounts: { ERROR: number; WARN: number; INFO: number };
@@ -10,7 +11,11 @@ interface LogToolbarProps {
     isAtBottom: boolean;
 }
 
-const LEVELS = ['ERROR', 'WARN', 'INFO'] as const;
+const LEVELS = [
+    { key: 'ERROR', label: 'ERROR', cls: 'is-error' },
+    { key: 'WARN', label: 'WARN', cls: 'is-warn' },
+    { key: 'INFO', label: 'INFO', cls: 'is-info' },
+] as const;
 
 export default function LogToolbar({
     levelCounts,
@@ -22,49 +27,66 @@ export default function LogToolbar({
 }: LogToolbarProps) {
     const [searchValue, setSearchValue] = useState('');
 
-    const handleSearch = () => {
+    const handleSearchSubmit = useCallback(() => {
         onSearch(searchValue.trim());
-    };
+    }, [searchValue, onSearch]);
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') handleSearch();
-    };
+    const handleSearchKeyDown = useCallback(
+        (e: React.KeyboardEvent<HTMLInputElement>) => {
+            if (e.key === 'Enter') {
+                handleSearchSubmit();
+            }
+        },
+        [handleSearchSubmit],
+    );
+
+    const handleClearSearch = useCallback(() => {
+        setSearchValue('');
+        onSearch('');
+    }, [onSearch]);
+
+    const anyFilterActive = activeLevels.size > 0;
 
     return (
         <div className="log-toolbar">
             <div className="log-toolbar-levels">
-                {LEVELS.map((level) => {
-                    const count = levelCounts[level] ?? 0;
-                    const active = activeLevels.size === 0 || activeLevels.has(level);
+                {LEVELS.map(({ key, label, cls }) => {
+                    const dimmed = anyFilterActive && !activeLevels.has(key);
                     return (
                         <button
-                            key={level}
+                            key={key}
                             type="button"
-                            className={`log-toolbar-chip is-${level.toLowerCase()}${!active ? ' is-dimmed' : ''}`}
-                            onClick={() => onToggleLevel(level)}
+                            className={`log-toolbar-chip ${cls}${dimmed ? ' is-dimmed' : ''}`}
+                            onClick={() => onToggleLevel(key)}
                         >
-                            {level}:{count}
+                            {label} {levelCounts[key] ?? 0}
                         </button>
                     );
                 })}
             </div>
+
             <div className="log-toolbar-right">
                 <div className="log-toolbar-search">
                     <input
                         type="text"
+                        className="log-toolbar-search-input"
                         placeholder="搜索日志..."
                         value={searchValue}
                         onChange={(e) => setSearchValue(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        className="log-toolbar-search-input"
+                        onKeyDown={handleSearchKeyDown}
                     />
-                    <button type="button" className="log-toolbar-search-btn" onClick={handleSearch}>
-                        <Search size={14} />
+                    {searchValue && (
+                        <button type="button" className="log-toolbar-search-btn" onClick={handleClearSearch}>
+                            <X size={12} />
+                        </button>
+                    )}
+                    <button type="button" className="log-toolbar-search-btn" onClick={handleSearchSubmit}>
+                        <Search size={12} />
                     </button>
                 </div>
                 {!isAtBottom && (
-                    <button type="button" className="log-toolbar-scroll-btn" onClick={onScrollToBottom} title="滚动到最新">
-                        <ArrowDown size={14} />
+                    <button type="button" className="log-toolbar-scroll-btn" onClick={onScrollToBottom}>
+                        <ArrowDownToLine size={12} />
                     </button>
                 )}
             </div>
