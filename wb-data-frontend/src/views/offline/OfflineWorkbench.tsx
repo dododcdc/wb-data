@@ -783,13 +783,19 @@ function ScheduleDialog(props: ScheduleDialogProps) {
                         <button
                             type="button"
                             role="switch"
+                            aria-label="启用调度"
                             aria-checked={schedule?.enabled ?? false}
                             disabled={saving || loading || !schedule}
                             onClick={() => onToggle(!(schedule?.enabled ?? false))}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    onToggle(!(schedule?.enabled ?? false));
+                                }
+                            }}
                             className="offline-switch"
-                            data-enabled={schedule?.enabled ?? false}
                         >
-                            <span className="offline-switch-thumb" />
+                            <span className="offline-switch-thumb" aria-hidden="true" />
                         </button>
                     </div>
                 </DialogHeader>
