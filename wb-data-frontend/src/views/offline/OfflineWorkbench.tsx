@@ -816,7 +816,6 @@ function ScheduleDialog(props: ScheduleDialogProps) {
                         <span>时区</span>
                         <Combobox
                             value={timezone}
-                            inputValue={tzQuery}
                             onInputValueChange={setTzQuery}
                             onValueChange={(value) => {
                                 onTimezoneChange(value);
