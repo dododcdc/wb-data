@@ -16,6 +16,10 @@ import LogToolbar from './LogToolbar';
 import LogViewer, { type LogViewerHandle } from './LogViewer';
 import './ExecutionDetailPage.css';
 
+function getFirstVisibleTaskId(taskRuns: { taskId: string }[]) {
+    return taskRuns.find(t => !t.taskId.startsWith('parallel_') && t.taskId !== 'flow_dag')?.taskId ?? '';
+}
+
 function computeLevelCounts(logs: OfflineExecutionLogEntry[]) {
     const counts = { ERROR: 0, WARN: 0, INFO: 0 };
     for (const entry of logs) {
@@ -42,7 +46,7 @@ export default function ExecutionDetailPage() {
     const [logs, setLogs] = useState<OfflineExecutionLogEntry[]>([]);
     const [logsLoading, setLogsLoading] = useState(false);
     const [logsError, setLogsError] = useState<string | null>(null);
-    const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialTaskId);
+    const [selectedTaskId, setSelectedTaskId] = useState<string>(initialTaskId ?? '');
     const [activeLevels, setActiveLevels] = useState<Set<string>>(new Set());
     const [searchQuery, setSearchQuery] = useState('');
     const [isAtBottom, setIsAtBottom] = useState(true);
@@ -54,10 +58,18 @@ export default function ExecutionDetailPage() {
         setDetailError(null);
         setLogs([]);
         setLogsError(null);
-        setSelectedTaskId(initialTaskId);
+        setSelectedTaskId(initialTaskId ?? '');
         setActiveLevels(new Set());
         setSearchQuery('');
     }, [executionId, groupId, initialTaskId]);
+
+    // Default to first visible node when no initial taskId and detail loads
+    useEffect(() => {
+        if (detail && !selectedTaskId && !initialTaskId) {
+            const firstId = getFirstVisibleTaskId(detail.taskRuns);
+            if (firstId) setSelectedTaskId(firstId);
+        }
+    }, [detail, selectedTaskId, initialTaskId]);
 
     // Fetch execution detail
     useEffect(() => {
@@ -73,12 +85,12 @@ export default function ExecutionDetailPage() {
     }, [executionId, groupId]);
 
     // Fetch logs (refetched on tab change)
-    const fetchLogs = useCallback(async (taskId: string | null) => {
+    const fetchLogs = useCallback(async (taskId: string) => {
         if (!groupId || !executionId) return;
         setLogsLoading(true);
         setLogsError(null);
         try {
-            const nextLogs = await getOfflineExecutionLogs(groupId, executionId, taskId);
+            const nextLogs = await getOfflineExecutionLogs(groupId, executionId, taskId || null);
             setLogs(nextLogs);
         } catch (error) {
             setLogsError(getErrorMessage(error, '暂时无法读取执行日志。'));
@@ -88,7 +100,7 @@ export default function ExecutionDetailPage() {
     }, [executionId, groupId]);
 
     useEffect(() => {
-        void fetchLogs(selectedTaskId);
+        if (selectedTaskId) void fetchLogs(selectedTaskId);
     }, [fetchLogs, selectedTaskId]);
 
     // Auto-refresh for running executions

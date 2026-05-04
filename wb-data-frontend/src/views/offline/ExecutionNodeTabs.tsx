@@ -5,8 +5,8 @@ import type { OfflineExecutionTaskRun } from '../../api/offline';
 
 interface ExecutionNodeTabsProps {
     taskRuns: OfflineExecutionTaskRun[];
-    selectedTaskId: string | null;
-    onSelect: (taskId: string | null) => void;
+    selectedTaskId: string;
+    onSelect: (taskId: string) => void;
 }
 
 /** Filter internal tasks that should not appear as tabs */
@@ -36,13 +36,6 @@ export default function ExecutionNodeTabs({ taskRuns, selectedTaskId, onSelect }
         <div className="execution-nodetabs-wrapper">
             {showLeftFade && <div className="execution-nodetabs-fade is-left" />}
             <div className="execution-nodetabs" ref={scrollRef} onScroll={updateFadeIndicators}>
-                <button
-                    type="button"
-                    className={`execution-nodetab${selectedTaskId === null ? ' is-active' : ''}`}
-                    onClick={() => onSelect(null)}
-                >
-                    <span className="execution-nodetab-label">全部日志</span>
-                </button>
                 {visibleTasks.map((task) => {
                     const StatusIcon = getTaskStatusIcon(task.status);
                     return (

@@ -164,10 +164,6 @@ const router = createBrowserRouter([
                                         index: true,
                                         element: withRouteSuspense(<OfflineWorkbench />),
                                     },
-                                    {
-                                        path: 'executions/:executionId',
-                                        element: withRouteSuspense(<ExecutionDetailPage />),
-                                    },
                                 ],
                             },
                             {
@@ -205,6 +201,21 @@ const router = createBrowserRouter([
                     {
                         path: '*',
                         element: withRouteSuspense(<NotFound />),
+                    },
+                ],
+            },
+            {
+                element: <RequireGroup />,
+                children: [
+                    {
+                        path: 'offline/executions/:executionId',
+                        element: <RequirePermission required="offline.read" />,
+                        children: [
+                            {
+                                index: true,
+                                element: withRouteSuspense(<ExecutionDetailPage />),
+                            },
+                        ],
                     },
                 ],
             },

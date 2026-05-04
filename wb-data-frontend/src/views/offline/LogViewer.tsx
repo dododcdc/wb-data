@@ -14,7 +14,7 @@ interface LogViewerItem {
 
 interface LogViewerProps {
     logs: OfflineExecutionLogEntry[];
-    selectedTaskId: string | null;
+    selectedTaskId: string;
     activeLevels: Set<string>;
     searchQuery: string;
     onAtBottomChange: (atBottom: boolean) => void;
@@ -60,8 +60,6 @@ const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer
             });
     }, [logs, activeLevels, searchQuery]);
 
-    const isSingleNode = selectedTaskId !== null;
-
     const handleAtBottomStateChange = useCallback(
         (atBottom: boolean) => {
             onAtBottomChange(atBottom);
@@ -83,7 +81,6 @@ const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer
                 <div className="log-line">
                     <span className="log-line-time">{formatTime(item.timestamp) || '—'}</span>
                     <span className={`log-line-level is-${item.level.toLowerCase()}`}>{item.level}</span>
-                    {!isSingleNode && <em className="log-line-task">{item.taskId}</em>}
                     <p
                         className="log-line-msg"
                         dangerouslySetInnerHTML={{
@@ -93,7 +90,7 @@ const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer
                 </div>
             );
         },
-        [isSingleNode, searchQuery],
+        [searchQuery],
     );
 
     if (logs.length === 0 && !searchQuery) {
