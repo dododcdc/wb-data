@@ -12,9 +12,26 @@ interface ExecutionTopBarProps {
     onBack: () => void;
 }
 
+/** Extract a human-readable flow name from a path like "_flows/jack/twt/flow.yaml" → "twt" */
+function getFlowDisplayName(flowPath: string) {
+    const segments = flowPath.replace(/\\/g, '/').split('/');
+    // Look for a segment that doesn't start with underscore and isn't flow.yaml
+    for (let i = segments.length - 1; i >= 0; i--) {
+        const seg = segments[i];
+        if (seg && !seg.startsWith('_') && seg !== 'flow.yaml') {
+            return seg;
+        }
+    }
+    // Fallback: parent directory of flow.yaml
+    const flowIndex = segments.indexOf('flow.yaml');
+    if (flowIndex > 0) return segments[flowIndex - 1];
+    return segments[segments.length - 1] || flowPath;
+}
+
 export default function ExecutionTopBar({ flowPath, status, startDate, endDate, onBack }: ExecutionTopBarProps) {
     const presentation = getExecutionPresentation(status);
     const statusLabel = getExecutionStatusLabel(status);
+    const displayName = getFlowDisplayName(flowPath);
     const elapsed = useMemo(() => formatElapsed(startDate, endDate), [startDate, endDate]);
     const dateRange = useMemo(() => {
         const from = formatDateTime(startDate);
@@ -27,7 +44,7 @@ export default function ExecutionTopBar({ flowPath, status, startDate, endDate, 
             <button type="button" className="execution-topbar-back" onClick={onBack}>
                 <ArrowLeft size={14} />
             </button>
-            <span className="execution-topbar-flow-name">{flowPath}</span>
+            <span className="execution-topbar-flow-name">{displayName}</span>
             <div className="execution-topbar-status">
                 <span className={`offline-execution-dot is-${presentation.dotTone}`} />
                 <span className={`execution-topbar-status-text is-${presentation.progressTone}`}>
