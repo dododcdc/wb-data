@@ -1892,12 +1892,35 @@ button.offline-tree-row {
     justify-content: flex-end;
 }
 
+/* Dialog content children need horizontal padding (DialogHeader handles its own) */
 .offline-schedule-dialog > .offline-form-grid,
 .offline-schedule-dialog > .offline-schedule-preview,
 .offline-schedule-dialog > .offline-schedule-hint,
 .offline-schedule-dialog > .offline-dialog-actions {
     padding-left: 24px;
     padding-right: 24px;
+}
+
+/* Gap between form grid and preview card */
+.offline-form-grid {
+    margin-bottom: 12px;
+}
+
+/* Timezone select */
+.offline-select {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--color-input-border);
+    border-radius: 6px;
+    font-size: 13px;
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    outline: none;
+    cursor: pointer;
+}
+.offline-select:focus {
+    border-color: var(--color-focus);
+    box-shadow: 0 0 0 2px var(--color-focus);
 }
 
 .offline-form-grid {
@@ -2328,6 +2351,8 @@ button.offline-tree-row {
     transition: background 0.2s;
     padding: 0;
     flex-shrink: 0;
+    margin-right: 28px;
+    margin-top: 2px;
 }
 .offline-switch[aria-checked="true"] {
     background: #22c55e;

@@ -802,6 +802,19 @@ function ScheduleDialog(props: ScheduleDialogProps) {
 
                 <div className="offline-form-grid">
                     <label className="offline-field">
+                        <span>时区</span>
+                        <select
+                            className="offline-select"
+                            value={timezone}
+                            onChange={(event) => onTimezoneChange(event.target.value)}
+                            disabled={saving}
+                        >
+                            {Intl.supportedValuesOf('timeZone').map((tz) => (
+                                <option key={tz} value={tz}>{tz}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className="offline-field">
                         <span>Cron 表达式</span>
                         <Input
                             value={cron}
@@ -810,15 +823,6 @@ function ScheduleDialog(props: ScheduleDialogProps) {
                             disabled={saving}
                         />
                         <span className="offline-field-hint">分 时 日 月 周</span>
-                    </label>
-                    <label className="offline-field">
-                        <span>时区</span>
-                        <Input
-                            value={timezone}
-                            placeholder="例如：Asia/Shanghai"
-                            onChange={(event) => onTimezoneChange(event.target.value)}
-                            disabled={saving}
-                        />
                     </label>
                 </div>
 
