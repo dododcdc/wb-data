@@ -16,28 +16,8 @@ import {
     getTaskStatusIcon,
     isRunningStatus,
 } from './executionPresentation';
+import { formatDateTime, formatTime, formatDuration, formatElapsed } from './formatUtils';
 import './ExecutionDetailPage.css';
-
-function formatDateTime(value: string | null | undefined) {
-    if (!value) return '—';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-}
-
-function formatDuration(start: string | null, end: string | null) {
-    if (!start || !end) return '—';
-    const durationMs = new Date(end).getTime() - new Date(start).getTime();
-    if (durationMs < 0) return '—';
-    const seconds = durationMs / 1000;
-    return seconds >= 10 ? `${seconds.toFixed(0)}s` : `${seconds.toFixed(1)}s`;
-}
 
 export default function ExecutionDetailPage() {
     const navigate = useNavigate();
