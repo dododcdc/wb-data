@@ -172,6 +172,11 @@ export default function ExecutionDetailPage() {
         [displayedItems, searchQuery],
     );
 
+    const currentMatchPosition = useMemo(
+        () => (matchIndices.length > 0 && currentMatchIndex >= 0 ? matchIndices[currentMatchIndex] : -1),
+        [matchIndices, currentMatchIndex],
+    );
+
     const handleNextMatch = useCallback(() => {
         if (matchIndices.length === 0) return;
         const next = currentMatchIndex + 1 >= matchIndices.length ? 0 : currentMatchIndex + 1;
@@ -257,6 +262,7 @@ export default function ExecutionDetailPage() {
                     ref={logViewerRef}
                     items={displayedItems}
                     searchQuery={searchQuery}
+                    currentMatchPosition={currentMatchPosition}
                     onAtBottomChange={setIsAtBottom}
                 />
             )}
