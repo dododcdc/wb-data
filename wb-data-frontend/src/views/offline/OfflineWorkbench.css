@@ -2402,6 +2402,7 @@ button.offline-tree-row {
 .offline-schedule-preview-text {
     font-size: 12px;
     color: #166534;
+    font-family: var(--font-mono);
 }
 .offline-schedule-preview-text.is-error {
     color: var(--color-danger);

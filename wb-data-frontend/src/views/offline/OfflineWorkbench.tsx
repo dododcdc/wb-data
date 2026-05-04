@@ -721,6 +721,22 @@ function ExecutionDialog(props: ExecutionDialogProps) {
 
 const TIMEZONES: string[] = Intl.supportedValuesOf('timeZone');
 
+function formatPreviewTime(iso: string, timezone: string): string {
+    const d = new Date(iso);
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone || undefined,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).formatToParts(d);
+    const map: Record<string, string> = {};
+    parts.forEach((p) => { if (p.type !== 'literal') map[p.type] = p.value; });
+    return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}`;
+}
+
 interface ScheduleDialogProps {
     open: boolean;
     schedule: OfflineScheduleResponse | null;
@@ -822,7 +838,7 @@ function ScheduleDialog(props: ScheduleDialogProps) {
                                 placeholder="搜索时区..."
                                 disabled={saving}
                             />
-                            <ComboboxContent>
+                            <ComboboxContent className="overscroll-contain">
                                 {filteredTimezones.map((tz) => (
                                     <ComboboxItem key={tz} value={tz}>{tz}</ComboboxItem>
                                 ))}
@@ -854,7 +870,7 @@ function ScheduleDialog(props: ScheduleDialogProps) {
                     )}
                     {preview.type === 'ok' && preview.times.map((t, i) => (
                         <div key={i} className="offline-schedule-preview-text">
-                            {new Date(t).toLocaleString('zh-CN', { timeZone: timezone || undefined, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            {formatPreviewTime(t, timezone)}
                         </div>
                     ))}
                 </div>
