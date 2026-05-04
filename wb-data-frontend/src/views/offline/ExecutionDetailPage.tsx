@@ -51,8 +51,7 @@ function computeMatchIndices(items: LogViewerItem[], query: string): number[] {
     const q = query.toLowerCase();
     const result: number[] = [];
     items.forEach((item, i) => {
-        const haystack = `${item.timestamp} ${item.level} ${item.taskId} ${item.message}`.toLowerCase();
-        if (haystack.includes(q)) {
+        if (item.message.toLowerCase().includes(q)) {
             result.push(i);
         }
     });
