@@ -1,5 +1,6 @@
 // wb-data-frontend/src/views/offline/ExecutionTopBar.tsx
 import { useMemo } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { getExecutionPresentation, getExecutionStatusLabel } from './executionPresentation';
 import { formatDateTime, formatElapsed } from './formatUtils';
 
@@ -39,7 +40,8 @@ export default function ExecutionTopBar({ flowPath, status, startDate, endDate, 
     return (
         <div className="execution-topbar">
             <button type="button" className="execution-topbar-flow-link" onClick={onBack}>
-                {displayName}
+                <ArrowLeft size={12} />
+                <span>{displayName}</span>
             </button>
             <div className="execution-topbar-status">
                 <span className={`offline-execution-dot is-${presentation.dotTone}`} />
