@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AxiosError } from 'axios';
 import { ReactFlowProvider, type Node, type Edge } from '@xyflow/react';
-import { useNavigate, useBlocker } from 'react-router-dom';
+import { useNavigate, useBlocker, useSearchParams } from 'react-router-dom';
 import FlowCanvas from './FlowCanvas';
 import '../core/RouteSkeletons.css';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
@@ -827,6 +827,7 @@ function ScheduleDialog(props: ScheduleDialogProps) {
 
 export default function OfflineWorkbench() {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const currentGroup = useAuthStore((state) => state.currentGroup);
     const currentUser = useAuthStore((state) => state.userInfo);
     const permissions = useAuthStore((state) => state.permissions);
@@ -1204,6 +1205,16 @@ export default function OfflineWorkbench() {
         if (!groupId) return;
         void refreshWorkspace();
     }, [groupId, leaveCurrentFlow, refreshWorkspace]);
+
+    // Restore flow from URL param (e.g. returning from execution log page)
+    const restoreFlowRef = useRef(false);
+    useEffect(() => {
+        if (!groupId || !repoTree || restoreFlowRef.current) return;
+        const flowPath = searchParams.get('flowPath');
+        if (!flowPath) return;
+        restoreFlowRef.current = true;
+        void openFlowDocument(flowPath, { force: true });
+    }, [groupId, repoTree, searchParams, openFlowDocument]);
 
     useEffect(() => {
         if (!groupId || !draftSession) return;
@@ -2768,7 +2779,11 @@ export default function OfflineWorkbench() {
                 onRefresh={() => void refreshExecutions(activeExecutionId)}
                 onSelectExecution={(executionId) => void loadExecutionDetail(executionId)}
                 onStopExecution={(executionId) => void handleStopExecution(executionId)}
-                onOpenExecutionPage={(executionId) => navigate(`/offline/executions/${encodeURIComponent(executionId)}`)}
+                onOpenExecutionPage={(executionId) => {
+                    const params = new URLSearchParams();
+                    if (activeFlowPath) params.set('flowPath', activeFlowPath);
+                    navigate(`/offline/executions/${encodeURIComponent(executionId)}${params.toString() ? `?${params.toString()}` : ''}`);
+                }}
                 onStopAll={() => void handleStopAllExecutions()}
                 onOpenTaskLogs={(executionId, taskId) => window.open(`/offline/executions/${encodeURIComponent(executionId)}?taskId=${encodeURIComponent(taskId)}`, '_blank')}
                 onRequestedByFilterChange={(requestedBy) => {
