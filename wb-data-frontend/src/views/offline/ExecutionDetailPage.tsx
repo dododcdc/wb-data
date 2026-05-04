@@ -1,43 +1,32 @@
-import { useEffect, useState } from 'react';
+// wb-data-frontend/src/views/offline/ExecutionDetailPage.tsx
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, LayoutList, ListFilter } from 'lucide-react';
 import {
     getOfflineExecution,
     getOfflineExecutionLogs,
     type OfflineExecutionDetail,
     type OfflineExecutionLogEntry,
 } from '../../api/offline';
-import { Button } from '../../components/ui/button';
 import { useAuthStore } from '../../utils/auth';
 import { getErrorMessage } from '../../utils/error';
-import { 
-    getExecutionPresentation, 
-    getExecutionStatusLabel, 
-    getTaskStatusIcon,
-    isRunningStatus,
-} from './executionPresentation';
+import { isRunningStatus } from './executionPresentation';
+import ExecutionTopBar from './ExecutionTopBar';
+import ExecutionNodeTabs from './ExecutionNodeTabs';
+import LogToolbar from './LogToolbar';
+import LogViewer from './LogViewer';
 import './ExecutionDetailPage.css';
 
-function formatDateTime(value: string | null | undefined) {
-    if (!value) return '—';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+function computeLevelCounts(logs: OfflineExecutionLogEntry[]) {
+    const counts = { ERROR: 0, WARN: 0, INFO: 0 };
+    for (const entry of logs) {
+        const level = entry.level ?? 'INFO';
+        if (level in counts) {
+            counts[level as keyof typeof counts]++;
+        }
+    }
+    return counts;
 }
 
-function formatDuration(start: string | null, end: string | null) {
-    if (!start || !end) return '—';
-    const durationMs = new Date(end).getTime() - new Date(start).getTime();
-    if (durationMs < 0) return '—';
-    const seconds = durationMs / 1000;
-    return seconds >= 10 ? `${seconds.toFixed(0)}s` : `${seconds.toFixed(1)}s`;
-}
 
 export default function ExecutionDetailPage() {
     const navigate = useNavigate();
@@ -54,188 +43,143 @@ export default function ExecutionDetailPage() {
     const [logsLoading, setLogsLoading] = useState(false);
     const [logsError, setLogsError] = useState<string | null>(null);
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialTaskId);
+    const [activeLevels, setActiveLevels] = useState<Set<string>>(new Set());
+    const [searchQuery, setSearchQuery] = useState('');
+    const [isAtBottom, setIsAtBottom] = useState(true);
 
+    // Reset when execution changes
     useEffect(() => {
         setDetail(null);
         setDetailError(null);
         setLogs([]);
         setLogsError(null);
         setSelectedTaskId(initialTaskId);
+        setActiveLevels(new Set());
+        setSearchQuery('');
     }, [executionId, groupId, initialTaskId]);
 
+    // Fetch execution detail
     useEffect(() => {
-        if (!groupId || !executionId) {
-            return;
-        }
+        if (!groupId || !executionId) return;
         let cancelled = false;
         setDetailLoading(true);
         setDetailError(null);
         void getOfflineExecution(groupId, executionId)
-            .then((nextDetail) => {
-                if (!cancelled) {
-                    setDetail(nextDetail);
-                }
-            })
-            .catch((error) => {
-                if (!cancelled) {
-                    setDetailError(getErrorMessage(error, '暂时无法读取执行详情。'));
-                }
-            })
-            .finally(() => {
-                if (!cancelled) {
-                    setDetailLoading(false);
-                }
-            });
-        return () => {
-            cancelled = true;
-        };
+            .then((nextDetail) => { if (!cancelled) setDetail(nextDetail); })
+            .catch((error) => { if (!cancelled) setDetailError(getErrorMessage(error, '暂时无法读取执行详情。')); })
+            .finally(() => { if (!cancelled) setDetailLoading(false); });
+        return () => { cancelled = true; };
+    }, [executionId, groupId]);
+
+    // Fetch logs (refetched on tab change)
+    const fetchLogs = useCallback(async (taskId: string | null) => {
+        if (!groupId || !executionId) return;
+        setLogsLoading(true);
+        setLogsError(null);
+        try {
+            const nextLogs = await getOfflineExecutionLogs(groupId, executionId, taskId);
+            setLogs(nextLogs);
+        } catch (error) {
+            setLogsError(getErrorMessage(error, '暂时无法读取执行日志。'));
+        } finally {
+            setLogsLoading(false);
+        }
     }, [executionId, groupId]);
 
     useEffect(() => {
-        if (!groupId || !executionId) {
-            return;
-        }
-        let cancelled = false;
-        setLogsLoading(true);
-        setLogsError(null);
-        void getOfflineExecutionLogs(groupId, executionId, selectedTaskId)
-            .then((nextLogs) => {
-                if (!cancelled) {
-                    setLogs(nextLogs);
-                }
-            })
-            .catch((error) => {
-                if (!cancelled) {
-                    setLogsError(getErrorMessage(error, '暂时无法读取执行日志。'));
-                }
-            })
-            .finally(() => {
-                if (!cancelled) {
-                    setLogsLoading(false);
-                }
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [executionId, groupId, selectedTaskId]);
+        void fetchLogs(selectedTaskId);
+    }, [fetchLogs, selectedTaskId]);
 
-    const presentation = getExecutionPresentation(detail?.status);
+    // Auto-refresh for running executions
+    useEffect(() => {
+        if (!detail || !isRunningStatus(detail.status)) return;
+        const timer = setInterval(() => { void fetchLogs(selectedTaskId); }, 3000);
+        return () => clearInterval(timer);
+    }, [detail, fetchLogs, selectedTaskId]);
+
+    const handleToggleLevel = useCallback((level: string) => {
+        setActiveLevels((prev) => {
+            const next = new Set(prev);
+            if (next.has(level)) {
+                next.delete(level);
+            } else {
+                next.add(level);
+                // If all levels are now selected, clear the filter
+                if (next.size === 3) return new Set();
+            }
+            return next;
+        });
+    }, []);
+
+    const handleBack = useCallback(() => {
+        navigate('/offline');
+    }, [navigate]);
+
+    const levelCounts = useMemo(() => computeLevelCounts(logs), [logs]);
+
+    if (!groupId || !executionId) {
+        return <div className="log-page-empty">缺少执行上下文，无法读取详情。</div>;
+    }
+
+    if (detailLoading) {
+        return <div className="log-page-empty">正在读取执行详情...</div>;
+    }
+
+    if (detailError) {
+        return <div className="log-page-empty">{detailError}</div>;
+    }
+
+    if (!detail) {
+        return <div className="log-page-empty">未找到这条执行记录。</div>;
+    }
 
     return (
-        <div className="offline-execution-page">
-            <header className="offline-execution-page-header">
-                <Button type="button" variant="outline" size="sm" onClick={() => navigate('/offline')}>
-                    <ArrowLeft size={14} />
-                    返回离线开发
-                </Button>
-                <div className="offline-execution-page-heading">
-                    <h1>执行详情</h1>
-                    <p>{detail?.flowPath ?? executionId ?? '未指定执行记录'}</p>
-                </div>
-            </header>
-
-            {!groupId || !executionId ? (
-                <div className="offline-execution-page-empty">缺少执行上下文，无法读取详情。</div>
-            ) : detailLoading ? (
-                <div className="offline-execution-page-empty">正在读取执行详情...</div>
-            ) : detailError ? (
-                <div className="offline-execution-page-empty">{detailError}</div>
-            ) : !detail ? (
-                <div className="offline-execution-page-empty">未找到这条执行记录。</div>
-            ) : (
-                <>
-                    <section className="offline-execution-summary-card">
-                        <div className="offline-execution-summary-main">
-                            <div className="offline-execution-status-line">
-                                <strong className={`offline-execution-status-text is-${presentation.progressTone}`}>
-                                    {getExecutionStatusLabel(detail.status)}
-                                </strong>
+        <div className="log-page">
+            <ExecutionTopBar
+                flowPath={detail.flowPath}
+                status={detail.status}
+                startDate={detail.startDate ?? detail.createdAt}
+                endDate={detail.endDate}
+                onBack={handleBack}
+            />
+            <ExecutionNodeTabs
+                taskRuns={detail.taskRuns}
+                selectedTaskId={selectedTaskId}
+                onSelect={setSelectedTaskId}
+            />
+            <LogToolbar
+                levelCounts={levelCounts}
+                activeLevels={activeLevels}
+                onToggleLevel={handleToggleLevel}
+                onSearch={setSearchQuery}
+                onScrollToBottom={() => setIsAtBottom(true)}
+                isAtBottom={isAtBottom}
+            />
+            {logsLoading ? (
+                <div className="log-viewer-loading">
+                    <div className="log-viewer-skeleton">
+                        {Array.from({ length: 12 }).map((_, i) => (
+                            <div key={i} className="log-line-skeleton">
+                                <span className="skeleton-block w-16" />
+                                <span className="skeleton-block w-10" />
+                                <span className="skeleton-block w-full" />
                             </div>
-                            <div className={`offline-execution-progress is-${presentation.progressTone}${presentation.animated ? ' is-animated' : ''}`}>
-                                <span />
-                            </div>
-                        </div>
-                        <div className="offline-execution-summary-grid">
-                            <div>
-                                <span>执行 ID</span>
-                                <strong>{detail.executionId}</strong>
-                            </div>
-                            <div>
-                                <span>所属分支</span>
-                                <strong>{detail.branch ?? '—'}</strong>
-                            </div>
-                            <div>
-                                <span>开始时间</span>
-                                <strong>{formatDateTime(detail.startDate ?? detail.createdAt)}</strong>
-                            </div>
-                            <div>
-                                <span>结束时间</span>
-                                <strong>{formatDateTime(detail.endDate)}</strong>
-                            </div>
-                        </div>
-                    </section>
-
-                    <div className="offline-execution-content-layout">
-                        <aside className="offline-execution-tasks-sidebar">
-                            <div className="offline-tasks-header">
-                                <LayoutList size={14} />
-                                <span>节点状态</span>
-                            </div>
-                            <div className="offline-tasks-list">
-                                <button
-                                    type="button"
-                                    className={`offline-task-item${selectedTaskId === null ? ' is-active' : ''}`}
-                                    onClick={() => setSelectedTaskId(null)}
-                                >
-                                    <ListFilter size={14} />
-                                    <span className="offline-task-name">全部日志</span>
-                                </button>
-                                {detail.taskRuns
-                                    ?.filter(task => !task.taskId.startsWith('parallel_') && task.taskId !== 'flow_dag')
-                                    .map((task) => {
-                                    const StatusIcon = getTaskStatusIcon(task.status);
-                                    const isRunning = isRunningStatus(task.status);
-                                    return (
-                                        <button
-                                            key={task.taskId}
-                                            type="button"
-                                            className={`offline-task-item${selectedTaskId === task.taskId ? ' is-active' : ''}`}
-                                            onClick={() => setSelectedTaskId(task.taskId)}
-                                        >
-                                            <StatusIcon 
-                                                size={14} 
-                                                className={`offline-task-icon is-${task.status.toLowerCase()}${isRunning ? ' is-animated' : ''}`} 
-                                            />
-                                            <span className="offline-task-name">{task.taskId}</span>
-                                            <span className="offline-task-duration">{formatDuration(task.startDate, task.endDate)}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </aside>
-
-                        <section className="offline-execution-detail-card">
-                            {logsLoading ? (
-                                <div className="offline-execution-page-empty">正在读取执行日志...</div>
-                            ) : logsError ? (
-                                <div className="offline-execution-page-empty">{logsError}</div>
-                            ) : logs.length === 0 ? (
-                                <div className="offline-execution-page-empty">当前{selectedTaskId ? '节点' : '执行'}还没有日志。</div>
-                            ) : (
-                                <div className="offline-execution-log-surface">
-                                    {logs.map((entry, index) => (
-                                        <div key={`${entry.timestamp ?? 'log'}-${index}`} className="offline-execution-log-line">
-                                            <span>{formatDateTime(entry.timestamp)}</span>
-                                            <strong>{entry.level ?? 'INFO'}</strong>
-                                            <em>{entry.taskId ?? 'flow'}</em>
-                                            <p>{entry.message ?? ''}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </section>
+                        ))}
                     </div>
-                </>
+                </div>
+            ) : logsError ? (
+                <div className="log-viewer-error">
+                    <p>{logsError}</p>
+                    <button type="button" onClick={() => { void fetchLogs(selectedTaskId); }}>重试</button>
+                </div>
+            ) : (
+                <LogViewer
+                    logs={logs}
+                    selectedTaskId={selectedTaskId}
+                    activeLevels={activeLevels}
+                    searchQuery={searchQuery}
+                    onAtBottomChange={setIsAtBottom}
+                />
             )}
         </div>
     );
