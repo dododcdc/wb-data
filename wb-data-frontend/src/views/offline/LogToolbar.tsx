@@ -1,6 +1,6 @@
 // wb-data-frontend/src/views/offline/LogToolbar.tsx
 import { useState, useCallback } from 'react';
-import { Search, ArrowDownToLine, X } from 'lucide-react';
+import { Search, ArrowDownToLine, X, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface LogToolbarProps {
     levelCounts: { ERROR: number; WARN: number; INFO: number };
@@ -9,6 +9,10 @@ interface LogToolbarProps {
     onSearch: (query: string) => void;
     onScrollToBottom: () => void;
     isAtBottom: boolean;
+    matchCount: number;
+    currentMatchIndex: number;
+    onNextMatch: () => void;
+    onPrevMatch: () => void;
 }
 
 const LEVELS = [
@@ -24,6 +28,10 @@ export default function LogToolbar({
     onSearch,
     onScrollToBottom,
     isAtBottom,
+    matchCount,
+    currentMatchIndex,
+    onNextMatch,
+    onPrevMatch,
 }: LogToolbarProps) {
     const [searchValue, setSearchValue] = useState('');
 
@@ -34,10 +42,16 @@ export default function LogToolbar({
     const handleSearchKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLInputElement>) => {
             if (e.key === 'Enter') {
-                handleSearchSubmit();
+                if (e.shiftKey) {
+                    onPrevMatch();
+                } else {
+                    if (searchValue.trim()) {
+                        onSearch(searchValue.trim());
+                    }
+                }
             }
         },
-        [handleSearchSubmit],
+        [searchValue, onSearch, onPrevMatch],
     );
 
     const handleClearSearch = useCallback(() => {
@@ -46,6 +60,7 @@ export default function LogToolbar({
     }, [onSearch]);
 
     const anyFilterActive = activeLevels.size > 0;
+    const hasMatches = matchCount > 0;
 
     return (
         <div className="log-toolbar">
@@ -80,8 +95,28 @@ export default function LogToolbar({
                             <X size={12} />
                         </button>
                     )}
-                    <button type="button" className="log-toolbar-search-btn" onClick={handleSearchSubmit}>
-                        <Search size={12} />
+                    {hasMatches && (
+                        <span className="log-toolbar-match-info">
+                            {currentMatchIndex + 1}/{matchCount}
+                        </span>
+                    )}
+                    <button
+                        type="button"
+                        className="log-toolbar-search-btn"
+                        disabled={!hasMatches}
+                        onClick={onPrevMatch}
+                        title="上一个匹配 (Shift+Enter)"
+                    >
+                        <ChevronUp size={12} />
+                    </button>
+                    <button
+                        type="button"
+                        className="log-toolbar-search-btn"
+                        disabled={!hasMatches}
+                        onClick={onNextMatch}
+                        title="下一个匹配 (Enter)"
+                    >
+                        <ChevronDown size={12} />
                     </button>
                 </div>
                 {!isAtBottom && (

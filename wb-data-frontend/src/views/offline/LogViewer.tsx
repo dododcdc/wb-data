@@ -1,10 +1,10 @@
 // wb-data-frontend/src/views/offline/LogViewer.tsx
-import { useMemo, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import type { OfflineExecutionLogEntry } from '../../api/offline';
 import { formatTime } from './formatUtils';
 
-interface LogViewerItem {
+export interface LogViewerItem {
     timestamp: string;
     level: string;
     taskId: string;
@@ -13,9 +13,7 @@ interface LogViewerItem {
 }
 
 interface LogViewerProps {
-    logs: OfflineExecutionLogEntry[];
-    selectedTaskId: string;
-    activeLevels: Set<string>;
+    items: LogViewerItem[];
     searchQuery: string;
     onAtBottomChange: (atBottom: boolean) => void;
 }
@@ -32,33 +30,14 @@ function highlightMatches(text: string, query: string) {
 
 export interface LogViewerHandle {
     scrollToBottom: () => void;
+    scrollToIndex: (index: number) => void;
 }
 
 const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer(
-    { logs, selectedTaskId, activeLevels, searchQuery, onAtBottomChange },
+    { items, searchQuery, onAtBottomChange },
     ref,
 ) {
     const virtuosoRef = useRef<VirtuosoHandle>(null);
-
-    const filtered = useMemo(() => {
-        return logs
-            .map((entry, index) => ({
-                timestamp: entry.timestamp ?? '',
-                level: entry.level ?? 'INFO',
-                taskId: entry.taskId ?? 'flow',
-                message: entry.message ?? '',
-                index,
-            }))
-            .filter((item) => {
-                if (activeLevels.size > 0 && !activeLevels.has(item.level)) return false;
-                if (searchQuery) {
-                    const q = searchQuery.toLowerCase();
-                    const haystack = `${item.timestamp} ${item.level} ${item.taskId} ${item.message}`.toLowerCase();
-                    if (!haystack.includes(q)) return false;
-                }
-                return true;
-            });
-    }, [logs, activeLevels, searchQuery]);
 
     const handleAtBottomStateChange = useCallback(
         (atBottom: boolean) => {
@@ -68,12 +47,16 @@ const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer
     );
 
     const scrollToBottom = useCallback(() => {
-        if (filtered.length > 0) {
-            virtuosoRef.current?.scrollToIndex({ index: filtered.length - 1, behavior: 'smooth' });
+        if (items.length > 0) {
+            virtuosoRef.current?.scrollToIndex({ index: items.length - 1, behavior: 'smooth' });
         }
-    }, [filtered.length]);
+    }, [items.length]);
 
-    useImperativeHandle(ref, () => ({ scrollToBottom }), [scrollToBottom]);
+    const scrollToIndex = useCallback((index: number) => {
+        virtuosoRef.current?.scrollToIndex({ index, behavior: 'smooth', align: 'center' });
+    }, []);
+
+    useImperativeHandle(ref, () => ({ scrollToBottom, scrollToIndex }), [scrollToBottom, scrollToIndex]);
 
     const renderItem = useCallback(
         (_index: number, item: LogViewerItem) => {
@@ -93,12 +76,8 @@ const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer
         [searchQuery],
     );
 
-    if (logs.length === 0 && !searchQuery) {
+    if (items.length === 0) {
         return <div className="log-viewer-empty">暂无日志</div>;
-    }
-
-    if (filtered.length === 0 && logs.length > 0) {
-        return <div className="log-viewer-empty">没有匹配当前过滤条件的日志。</div>;
     }
 
     return (
@@ -106,7 +85,7 @@ const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer
             <Virtuoso
                 ref={virtuosoRef}
                 style={{ height: '100%' }}
-                data={filtered}
+                data={items}
                 itemContent={renderItem}
                 followOutput="smooth"
                 atBottomStateChange={handleAtBottomStateChange}
