@@ -1887,14 +1887,17 @@ button.offline-tree-row {
     word-break: break-word;
 }
 
-.offline-schedule-meta {
+.offline-dialog-actions {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-bottom: 16px;
-    color: var(--color-text-secondary);
-    font-size: 0.84rem;
+    justify-content: flex-end;
+}
+
+.offline-schedule-dialog > .offline-form-grid,
+.offline-schedule-dialog > .offline-schedule-preview,
+.offline-schedule-dialog > .offline-schedule-hint,
+.offline-schedule-dialog > .offline-dialog-actions {
+    padding-left: 24px;
+    padding-right: 24px;
 }
 
 .offline-form-grid {
