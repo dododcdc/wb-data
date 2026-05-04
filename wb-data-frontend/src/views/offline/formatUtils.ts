@@ -1,24 +1,34 @@
-export function formatDateTime(value: string | number | null | undefined) {
+// wb-data-frontend/src/views/offline/formatUtils.ts
+
+const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+});
+
+const timeOnlyFormatter = new Intl.DateTimeFormat('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+});
+
+export function formatDateTime(value: string | null | undefined) {
     if (!value) return '—';
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    if (Number.isNaN(date.getTime())) return value;
+    return dateFormatter.format(date).replace(/\//g, '-');
 }
 
-export function formatTime(value: string | number | null | undefined) {
+export function formatTime(value: string | null | undefined) {
     if (!value) return '—';
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value);
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
-    return `${hours}:${minutes}:${seconds}`;
+    if (Number.isNaN(date.getTime())) return value;
+    return timeOnlyFormatter.format(date);
 }
 
 export function formatDuration(start: string | null, end: string | null) {
@@ -26,16 +36,27 @@ export function formatDuration(start: string | null, end: string | null) {
     const durationMs = new Date(end).getTime() - new Date(start).getTime();
     if (durationMs < 0) return '—';
     const seconds = durationMs / 1000;
-    return seconds >= 10 ? `${seconds.toFixed(0)}s` : `${seconds.toFixed(1)}s`;
+    if (seconds < 1) return '< 1s';
+    if (seconds < 60) return `${seconds.toFixed(0)}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    if (minutes < 60) return `${minutes}m ${remainingSeconds.toFixed(0)}s`;
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return `${hours}h ${remainingMinutes}m ${remainingSeconds.toFixed(0)}s`;
 }
 
-/** Live elapsed counter: returns MM:SS string from ms since start */
-export function formatElapsed(startDate: string | null) {
-    if (!startDate) return '00:00';
-    const ms = Date.now() - new Date(startDate).getTime();
-    if (ms < 0) return '00:00';
-    const totalSeconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+export function formatElapsed(start: string | null, end: string | null) {
+    if (!start) return '';
+    const endDate = end ? new Date(end) : new Date();
+    const durationMs = endDate.getTime() - new Date(start).getTime();
+    if (durationMs < 0) return '';
+    const seconds = Math.floor(durationMs / 1000);
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    if (minutes < 60) return `${minutes}m ${remainingSeconds}s`;
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return `${hours}h ${remainingMinutes}m ${remainingSeconds}s`;
 }
