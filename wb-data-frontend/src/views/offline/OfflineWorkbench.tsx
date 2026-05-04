@@ -28,6 +28,7 @@ import {
     X,
     Copy,
 } from 'lucide-react';
+import { Combobox, ComboboxInput, ComboboxContent, ComboboxItem, ComboboxEmpty } from '../../components/ui/combobox';
 import {
     commitOfflineRepo,
     createOfflineFolder,
@@ -718,6 +719,8 @@ function ExecutionDialog(props: ExecutionDialogProps) {
     );
 }
 
+const TIMEZONES: string[] = Intl.supportedValuesOf('timeZone');
+
 function flowNameFromPath(path: string | null): string {
     if (!path) return '尚未选择 Flow';
     const parts = path.split('/');
@@ -755,6 +758,8 @@ function ScheduleDialog(props: ScheduleDialogProps) {
         onToggle,
     } = props;
 
+    const [tzQuery, setTzQuery] = useState('');
+
     const preview = useMemo(() => {
         if (!cron.trim()) return { type: 'empty' as const };
         try {
@@ -768,6 +773,12 @@ function ScheduleDialog(props: ScheduleDialogProps) {
             return { type: 'error' as const };
         }
     }, [cron, timezone]);
+
+    const filteredTimezones = useMemo(() => {
+        if (!tzQuery) return TIMEZONES.slice(0, 50);
+        const q = tzQuery.toLowerCase();
+        return TIMEZONES.filter((tz) => tz.toLowerCase().includes(q)).slice(0, 50);
+    }, [tzQuery]);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -803,16 +814,28 @@ function ScheduleDialog(props: ScheduleDialogProps) {
                 <div className="offline-form-grid">
                     <label className="offline-field">
                         <span>时区</span>
-                        <select
-                            className="offline-select"
+                        <Combobox
                             value={timezone}
-                            onChange={(event) => onTimezoneChange(event.target.value)}
-                            disabled={saving}
+                            inputValue={tzQuery}
+                            onInputValueChange={setTzQuery}
+                            onValueChange={(value) => {
+                                onTimezoneChange(value);
+                                setTzQuery('');
+                            }}
                         >
-                            {Intl.supportedValuesOf('timeZone').map((tz) => (
-                                <option key={tz} value={tz}>{tz}</option>
-                            ))}
-                        </select>
+                            <ComboboxInput
+                                placeholder="搜索时区..."
+                                disabled={saving}
+                            />
+                            <ComboboxContent>
+                                {filteredTimezones.map((tz) => (
+                                    <ComboboxItem key={tz} value={tz}>{tz}</ComboboxItem>
+                                ))}
+                                {filteredTimezones.length === 0 && (
+                                    <ComboboxEmpty>未找到匹配的时区</ComboboxEmpty>
+                                )}
+                            </ComboboxContent>
+                        </Combobox>
                     </label>
                     <label className="offline-field">
                         <span>Cron 表达式</span>
@@ -2284,6 +2307,7 @@ export default function OfflineWorkbench() {
                 fileUpdatedAt: scheduleBase.fileUpdatedAt,
             });
             await openFlowDocument(activeFlowPath);
+            await loadScheduleSnapshot(activeFlowPath);
             showFeedback({
                 tone: 'success',
                 title: '调度已更新',
