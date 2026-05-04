@@ -1,5 +1,5 @@
 // wb-data-frontend/src/views/offline/ExecutionNodeTabs.tsx
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useMemo, useState } from 'react';
 import { getTaskStatusIcon } from './executionPresentation';
 import type { OfflineExecutionTaskRun } from '../../api/offline';
 
@@ -19,7 +19,7 @@ export default function ExecutionNodeTabs({ taskRuns, selectedTaskId, onSelect }
     const [showLeftFade, setShowLeftFade] = useState(false);
     const [showRightFade, setShowRightFade] = useState(false);
 
-    const visibleTasks = taskRuns.filter(isVisibleTask);
+    const visibleTasks = useMemo(() => taskRuns.filter(isVisibleTask), [taskRuns]);
 
     const updateFadeIndicators = () => {
         const el = scrollRef.current;
