@@ -1,7 +1,6 @@
 // wb-data-frontend/src/views/offline/LogViewer.tsx
 import { useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
-import type { OfflineExecutionLogEntry } from '../../api/offline';
 import { formatTime } from './formatUtils';
 
 export interface LogViewerItem {
@@ -15,16 +14,17 @@ export interface LogViewerItem {
 interface LogViewerProps {
     items: LogViewerItem[];
     searchQuery: string;
+    currentMatchPosition: number;
     onAtBottomChange: (atBottom: boolean) => void;
 }
 
-function highlightMatches(text: string, query: string) {
-    if (!query) return text;
+function highlightMatches(text: string, query: string, isCurrent: boolean) {
     const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(`(${escaped})`, 'gi');
     const parts = text.split(regex);
+    const cls = isCurrent ? 'log-highlight-current' : 'log-highlight';
     return parts.map((part, i) =>
-        regex.test(part) ? `<mark class="log-highlight">${part}</mark>` : part
+        regex.test(part) ? `<mark class="${cls}">${part}</mark>` : part
     ).join('');
 }
 
@@ -34,7 +34,7 @@ export interface LogViewerHandle {
 }
 
 const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer(
-    { items, searchQuery, onAtBottomChange },
+    { items, searchQuery, currentMatchPosition, onAtBottomChange },
     ref,
 ) {
     const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -60,6 +60,7 @@ const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer
 
     const renderItem = useCallback(
         (_index: number, item: LogViewerItem) => {
+            const isCurrentMatch = _index === currentMatchPosition;
             return (
                 <div className="log-line">
                     <span className="log-line-time">{formatTime(item.timestamp) || '—'}</span>
@@ -67,13 +68,13 @@ const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer
                     <p
                         className="log-line-msg"
                         dangerouslySetInnerHTML={{
-                            __html: searchQuery ? highlightMatches(item.message, searchQuery) : item.message,
+                            __html: searchQuery ? highlightMatches(item.message, searchQuery, isCurrentMatch) : item.message,
                         }}
                     />
                 </div>
             );
         },
-        [searchQuery],
+        [searchQuery, currentMatchPosition],
     );
 
     if (items.length === 0) {

@@ -358,6 +358,13 @@
     padding: 0 1px;
 }
 
+.log-highlight-current {
+    background: #f59e0b;
+    color: #fff;
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
 /* ── Skeleton ── */
 
 .log-viewer-skeleton {
