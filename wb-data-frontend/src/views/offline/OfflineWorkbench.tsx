@@ -825,6 +825,12 @@ function ScheduleDialog(props: ScheduleDialogProps) {
                             <ComboboxInput
                                 placeholder="搜索时区..."
                                 disabled={saving}
+                                onFocus={(e) => {
+                                    const val = (e.target as HTMLInputElement).value;
+                                    requestAnimationFrame(() => {
+                                        (e.target as HTMLInputElement).setSelectionRange(val.length, val.length);
+                                    });
+                                }}
                             />
                             <ComboboxContent>
                                 {filteredTimezones.map((tz) => (
