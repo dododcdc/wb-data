@@ -54,6 +54,7 @@ Rebuild `ExecutionDetailPage` to make logs the absolute protagonist. Strip all c
 - All-logs view: `HH:mm:ss | LEVEL | taskId | message` (4 columns)
 - Single-node view: `HH:mm:ss | LEVEL | message` (3 columns, wider)
 - Timestamp: `HH:mm:ss` only (date is implied by execution context)
+- **Virtual scrolling** via `react-virtuoso`: only renders rows within the visible viewport (~40 DOM nodes) regardless of total log count. Critical for Hive jobs that can produce thousands of log lines. Also provides built-in auto-scroll-to-bottom and "load more" behavior.
 
 ## Auto-Refresh
 
@@ -86,8 +87,11 @@ Returning to the flow editor must restore canvas state and directory tree state 
 
 Horizontal scroll with left/right fade indicators. Typical flows have 3-10 nodes and won't overflow. For larger flows, the scrollable row handles it.
 
+## Dependencies
+
+- `react-virtuoso` — virtual scrolling for log body. Chosen over `react-window` because it handles dynamic row heights (log messages vary in length and may wrap), has first-class scroll-to-bottom support, and is the standard choice for log/chat UIs.
+
 ## Out of Scope
 
 - Gantt / timeline visualization (future iteration)
 - Log export / download (future iteration)
-- Virtual scrolling for very large logs (future iteration)
