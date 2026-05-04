@@ -721,12 +721,6 @@ function ExecutionDialog(props: ExecutionDialogProps) {
 
 const TIMEZONES: string[] = Intl.supportedValuesOf('timeZone');
 
-function flowNameFromPath(path: string | null): string {
-    if (!path) return '尚未选择 Flow';
-    const filename = path.split('/').pop()!;
-    return filename.replace(/\.ya?ml$/, '');
-}
-
 interface ScheduleDialogProps {
     open: boolean;
     schedule: OfflineScheduleResponse | null;
@@ -734,7 +728,7 @@ interface ScheduleDialogProps {
     timezone: string;
     loading: boolean;
     saving: boolean;
-    path: string | null;
+    flowId: string | null;
     onOpenChange: (open: boolean) => void;
     onCronChange: (value: string) => void;
     onTimezoneChange: (value: string) => void;
@@ -750,7 +744,7 @@ function ScheduleDialog(props: ScheduleDialogProps) {
         timezone,
         loading,
         saving,
-        path,
+        flowId,
         onOpenChange,
         onCronChange,
         onTimezoneChange,
@@ -788,7 +782,7 @@ function ScheduleDialog(props: ScheduleDialogProps) {
                         <div>
                             <DialogTitle>调度配置</DialogTitle>
                             <DialogDescription>
-                                {flowNameFromPath(path)}
+                                {flowId || '尚未选择 Flow'}
                             </DialogDescription>
                         </div>
                         <button
@@ -2856,7 +2850,7 @@ export default function OfflineWorkbench() {
                 timezone={scheduleTimezone}
                 loading={scheduleLoading}
                 saving={scheduleSaving}
-                path={activeFlowPath}
+                flowId={flowDocument?.flowId ?? null}
                 onOpenChange={(open) => {
                     setScheduleDialogOpen(open);
                     if (open && activeFlowPath) {
