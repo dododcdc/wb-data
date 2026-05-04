@@ -239,6 +239,19 @@
     color: var(--color-text-muted);
 }
 
+.log-toolbar-search-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.log-toolbar-match-info {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--color-text-muted);
+    padding: 0 2px;
+    white-space: nowrap;
+}
+
 .log-toolbar-scroll-btn {
     display: grid;
     place-items: center;

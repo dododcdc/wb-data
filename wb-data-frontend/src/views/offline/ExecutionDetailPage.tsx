@@ -13,7 +13,7 @@ import { isRunningStatus } from './executionPresentation';
 import ExecutionTopBar from './ExecutionTopBar';
 import ExecutionNodeTabs from './ExecutionNodeTabs';
 import LogToolbar from './LogToolbar';
-import LogViewer, { type LogViewerHandle } from './LogViewer';
+import LogViewer, { type LogViewerHandle, type LogViewerItem } from './LogViewer';
 import './ExecutionDetailPage.css';
 
 function getFirstVisibleTaskId(taskRuns: { taskId: string }[]) {
@@ -31,6 +31,33 @@ function computeLevelCounts(logs: OfflineExecutionLogEntry[]) {
     return counts;
 }
 
+function toDisplayItems(logs: OfflineExecutionLogEntry[], activeLevels: Set<string>): LogViewerItem[] {
+    return logs
+        .map((entry, index) => ({
+            timestamp: entry.timestamp ?? '',
+            level: entry.level ?? 'INFO',
+            taskId: entry.taskId ?? 'flow',
+            message: entry.message ?? '',
+            index,
+        }))
+        .filter((item) => {
+            if (activeLevels.size > 0 && !activeLevels.has(item.level)) return false;
+            return true;
+        });
+}
+
+function computeMatchIndices(items: LogViewerItem[], query: string): number[] {
+    if (!query) return [];
+    const q = query.toLowerCase();
+    const result: number[] = [];
+    items.forEach((item, i) => {
+        const haystack = `${item.timestamp} ${item.level} ${item.taskId} ${item.message}`.toLowerCase();
+        if (haystack.includes(q)) {
+            result.push(i);
+        }
+    });
+    return result;
+}
 
 export default function ExecutionDetailPage() {
     const navigate = useNavigate();
@@ -50,6 +77,7 @@ export default function ExecutionDetailPage() {
     const [activeLevels, setActiveLevels] = useState<Set<string>>(new Set());
     const [searchQuery, setSearchQuery] = useState('');
     const [isAtBottom, setIsAtBottom] = useState(true);
+    const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
     const logViewerRef = useRef<LogViewerHandle>(null);
 
     // Reset when execution changes
@@ -61,6 +89,7 @@ export default function ExecutionDetailPage() {
         setSelectedTaskId(initialTaskId ?? '');
         setActiveLevels(new Set());
         setSearchQuery('');
+        setCurrentMatchIndex(-1);
     }, [executionId, groupId, initialTaskId]);
 
     // Default to first visible node when no initial taskId and detail loads
@@ -117,7 +146,6 @@ export default function ExecutionDetailPage() {
                 next.delete(level);
             } else {
                 next.add(level);
-                // If all levels are now selected, clear the filter
                 if (next.size === 3) return new Set();
             }
             return next;
@@ -132,6 +160,36 @@ export default function ExecutionDetailPage() {
             navigate('/offline');
         }
     }, [navigate, detail?.flowPath]);
+
+    // Level-filtered items (no search filtering)
+    const displayedItems = useMemo(
+        () => toDisplayItems(logs, activeLevels),
+        [logs, activeLevels],
+    );
+
+    const matchIndices = useMemo(
+        () => computeMatchIndices(displayedItems, searchQuery),
+        [displayedItems, searchQuery],
+    );
+
+    const handleNextMatch = useCallback(() => {
+        if (matchIndices.length === 0) return;
+        const next = currentMatchIndex + 1 >= matchIndices.length ? 0 : currentMatchIndex + 1;
+        setCurrentMatchIndex(next);
+        logViewerRef.current?.scrollToIndex(matchIndices[next]);
+    }, [matchIndices, currentMatchIndex]);
+
+    const handlePrevMatch = useCallback(() => {
+        if (matchIndices.length === 0) return;
+        const prev = currentMatchIndex - 1 < 0 ? matchIndices.length - 1 : currentMatchIndex - 1;
+        setCurrentMatchIndex(prev);
+        logViewerRef.current?.scrollToIndex(matchIndices[prev]);
+    }, [matchIndices, currentMatchIndex]);
+
+    // Reset match index when search query or items change
+    useEffect(() => {
+        setCurrentMatchIndex(matchIndices.length > 0 ? 0 : -1);
+    }, [matchIndices]);
 
     const levelCounts = useMemo(() => computeLevelCounts(logs), [logs]);
 
@@ -172,6 +230,10 @@ export default function ExecutionDetailPage() {
                 onSearch={setSearchQuery}
                 onScrollToBottom={() => logViewerRef.current?.scrollToBottom()}
                 isAtBottom={isAtBottom}
+                matchCount={matchIndices.length}
+                currentMatchIndex={currentMatchIndex}
+                onNextMatch={handleNextMatch}
+                onPrevMatch={handlePrevMatch}
             />
             {logsLoading ? (
                 <div className="log-viewer-loading">
@@ -193,9 +255,7 @@ export default function ExecutionDetailPage() {
             ) : (
                 <LogViewer
                     ref={logViewerRef}
-                    logs={logs}
-                    selectedTaskId={selectedTaskId}
-                    activeLevels={activeLevels}
+                    items={displayedItems}
                     searchQuery={searchQuery}
                     onAtBottomChange={setIsAtBottom}
                 />
