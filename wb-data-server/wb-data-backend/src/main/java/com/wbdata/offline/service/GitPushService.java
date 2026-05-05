@@ -26,16 +26,22 @@ public class GitPushService {
     public record CommitResult(boolean success, String message) {}
 
     /**
-     * 提交本地仓库更改
-     * - 自动执行 git add -A 和 git commit -m
+     * 提交当前 Flow 关联文件的改动
      */
-    public CommitResult commit(Long groupId, String commitMessage) {
+    public CommitResult commitCurrentFlow(Long groupId, String flowPath, String commitMessage) {
+        throw new UnsupportedOperationException("Not yet implemented");
+    }
+
+    /**
+     * 提交仓库所有改动
+     */
+    public CommitResult commitRepo(Long groupId, String commitMessage) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
         ensureRepoExists(repoPath);
 
         String status = runGit(repoPath, "status", "--porcelain").trim();
         if (status.isEmpty()) {
-            return new CommitResult(true, "暂无改动需打版本");
+            return new CommitResult(true, "暂无改动需提交");
         }
 
         runGit(repoPath, "add", "-A");
@@ -45,7 +51,7 @@ public class GitPushService {
                 : commitMessage;
         runGit(repoPath, "commit", "-m", message);
 
-        return new CommitResult(true, "本地版本打标成功");
+        return new CommitResult(true, "仓库版本提交成功");
     }
 
     /**
