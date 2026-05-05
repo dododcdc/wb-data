@@ -11,6 +11,7 @@ import com.wbdata.offline.dto.DeleteFolderRequest;
 import com.wbdata.offline.dto.CommitCurrentFlowRequest;
 import com.wbdata.offline.dto.CommitRequest;
 import com.wbdata.offline.dto.CommitResponse;
+import com.wbdata.offline.dto.OfflineFlowCommitStatusResponse;
 import com.wbdata.offline.dto.OfflineRepoStatusResponse;
 import com.wbdata.offline.dto.OfflineRepoTreeResponse;
 import com.wbdata.offline.dto.PushRequest;
@@ -76,6 +77,16 @@ public class OfflineRepoController {
                 request.message()
         );
         return Result.success(new CommitResponse(result.success(), result.message()));
+    }
+
+    @Operation(summary = "获取当前 Flow 的改动状态")
+    @GetMapping("/repo/commit/flow/status")
+    public Result<OfflineFlowCommitStatusResponse> getFlowCommitStatus(
+            @RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
+            @RequestParam String path
+    ) {
+        boolean dirty = gitPushService.hasFlowChanges(context.currentGroup().id(), path);
+        return Result.success(new OfflineFlowCommitStatusResponse(context.currentGroup().id(), path, dirty));
     }
 
     @Operation(summary = "提交仓库所有改动")

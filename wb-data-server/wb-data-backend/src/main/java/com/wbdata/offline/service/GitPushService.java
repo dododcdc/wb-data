@@ -12,7 +12,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -21,6 +23,7 @@ public class GitPushService {
 
     private final OfflineProperties offlineProperties;
     private final GitConfigService gitConfigService;
+    private final OfflineFlowDocumentService offlineFlowDocumentService;
 
     public record PushResult(boolean success, String message, String remoteUrl, boolean remoteCreated) {}
     public record CommitResult(boolean success, String message) {}
@@ -29,7 +32,50 @@ public class GitPushService {
      * 提交当前 Flow 关联文件的改动
      */
     public CommitResult commitCurrentFlow(Long groupId, String flowPath, String commitMessage) {
-        throw new UnsupportedOperationException("Not yet implemented");
+        Path repoPath = offlineProperties.resolveRepoPath(groupId);
+        ensureRepoExists(repoPath);
+        List<String> trackedFiles = offlineFlowDocumentService.resolveManagedFiles(groupId, flowPath);
+
+        ensureNoOutOfScopeStagedChanges(repoPath, trackedFiles);
+
+        String scopedStatus = runGitWithPaths(repoPath, List.of("status", "--porcelain"), trackedFiles).trim();
+        if (scopedStatus.isEmpty()) {
+            return new CommitResult(true, "当前 Flow 暂无改动需提交");
+        }
+
+        runGitWithPaths(repoPath, List.of("add", "-A"), trackedFiles);
+        runGitWithPaths(repoPath, List.of("commit", "-m", normalizeCommitMessage(commitMessage)), trackedFiles);
+        return new CommitResult(true, "当前 Flow 版本提交成功");
+    }
+
+    public boolean hasFlowChanges(Long groupId, String flowPath) {
+        Path repoPath = offlineProperties.resolveRepoPath(groupId);
+        ensureRepoExists(repoPath);
+        List<String> trackedFiles = offlineFlowDocumentService.resolveManagedFiles(groupId, flowPath);
+        return !runGitWithPaths(repoPath, List.of("status", "--porcelain"), trackedFiles).isBlank();
+    }
+
+    private String normalizeCommitMessage(String commitMessage) {
+        return (commitMessage == null || commitMessage.isBlank())
+                ? "update: sync offline changes"
+                : commitMessage;
+    }
+
+    private void ensureNoOutOfScopeStagedChanges(Path repoPath, List<String> trackedFiles) {
+        Set<String> tracked = new LinkedHashSet<>(trackedFiles);
+        String staged = runGit(repoPath, "diff", "--cached", "--name-only");
+        for (String line : staged.lines().filter(s -> !s.isBlank()).toList()) {
+            if (!tracked.contains(line.trim())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "检测到当前 Flow 之外的文件已暂存，请先完成仓库级提交");
+            }
+        }
+    }
+
+    private String runGitWithPaths(Path repoPath, List<String> args, List<String> trackedFiles) {
+        java.util.ArrayList<String> command = new java.util.ArrayList<>(args);
+        command.add("--");
+        command.addAll(trackedFiles);
+        return runGit(repoPath, command.toArray(String[]::new));
     }
 
     /**
