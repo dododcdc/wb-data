@@ -58,3 +58,6 @@ skills-lock.json
 docs/
 **/CLAUDE.md
 .playwright-mcp/
+
+.superpowers/
+wb-data-frontend/*.png

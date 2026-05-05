@@ -160,7 +160,7 @@ export default function UserList() {
             showFeedback({
                 tone: 'success',
                 title: variables.status === 'ACTIVE' ? '用户已启用' : '用户已禁用',
-                detail: '列表状态已即时更新，并已在后台同步最新数据。',
+                detail: '',
             });
             void queryClient.invalidateQueries({ queryKey: ['users'] });
         },
@@ -171,7 +171,7 @@ export default function UserList() {
             showFeedback({
                 tone: 'error',
                 title: '状态更新失败',
-                detail: (error as { message?: string } | null)?.message ?? '用户状态更新失败，请稍后重试。',
+                detail: '',
             });
         },
         onSettled: () => {
@@ -242,9 +242,7 @@ export default function UserList() {
         showFeedback({
             tone: 'success',
             title: details.action === 'create' ? '用户已创建' : '用户已更新',
-            detail: details.action === 'create'
-                ? `${details.payload.username} 已创建，列表正在同步最新记录。`
-                : `${details.payload.username} 的用户信息已更新。`,
+            detail: '',
         });
 
         void queryClient.invalidateQueries({ queryKey: ['users'] });
@@ -398,7 +396,7 @@ export default function UserList() {
                     showFeedback({
                         tone: 'success',
                         title: '密码已重置',
-                        detail: `用户 ${details.username} 的密码已更新。`,
+                        detail: '',
                     });
                 }}
             />

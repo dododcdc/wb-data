@@ -24,21 +24,13 @@ export function OperationFeedback() {
         >
             <div className="ofb-main">
                 <div className="ofb-icon" aria-hidden="true">
-                    <Icon size={16} />
+                    <Icon size={18} />
                 </div>
                 <div className="ofb-copy">
                     <strong>{current.title}</strong>
-                    <p>{current.detail}</p>
+                    {current.detail && <p>{current.detail}</p>}
                 </div>
             </div>
-            <button
-                className="ofb-close"
-                onClick={dismiss}
-                type="button"
-                aria-label="关闭操作反馈"
-            >
-                <X size={16} />
-            </button>
         </section>
     );
 }

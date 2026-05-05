@@ -35,6 +35,7 @@ function cloneDocument(document: OfflineFlowDocument): OfflineFlowDocument {
         layout: Object.fromEntries(
             Object.entries(document.layout).map(([taskId, position]) => [taskId, { ...position }]),
         ),
+        schedule: document.schedule ? { ...document.schedule } : undefined,
     };
 }
 
@@ -182,4 +183,13 @@ export function rebaseFlowDraftSession(
         selectedTaskIds: [...session.selectedTaskIds],
         conflict: null,
     };
+}
+
+export function updateFlowScheduleDraft(
+    session: FlowDraftSession,
+    schedule: OfflineFlowSchedule,
+): FlowDraftSession {
+    return updateFlowDraftDocument(session, (draft) => {
+        draft.schedule = { ...schedule };
+    });
 }

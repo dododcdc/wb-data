@@ -1,124 +1,91 @@
-@keyframes ofb-slide-in {
-    from {
-        opacity: 0;
-        transform: translateX(40px);
-    }
-    to {
-        opacity: 1;
-        transform: translateX(0);
-    }
-}
+/* Global Operation Feedback - Top-Center Pill Style */
 
 .ofb-toast {
     position: fixed;
-    top: 68px;
-    right: 24px;
-    z-index: var(--z-toast);
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-    min-width: 320px;
+    gap: 10px;
+    padding: 8px 16px;
+    min-width: 200px;
     max-width: 480px;
-    padding: 12px 16px;
-    border: 1px solid var(--color-border);
-    border-radius: 16px;
-    background: var(--color-bg-primary);
-    box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.12));
-    animation: ofb-slide-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
-    pointer-events: auto;
+    
+    background: #1e293b; /* 深色实心背景，高对比度 */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 999px; /* 彻底的胶囊形状 */
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    
+    animation: ofb-pill-drop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.15);
 }
 
-.ofb-toast.is-success {
-    border-color: color-mix(in srgb, var(--color-success) 18%, transparent);
-    background: color-mix(in srgb, var(--color-success-bg) 92%, white);
-}
-
-.ofb-toast.is-error {
-    border-color: color-mix(in srgb, var(--color-error) 18%, transparent);
-    background: color-mix(in srgb, var(--color-error-bg) 92%, white);
-}
-
-.ofb-toast.is-info {
-    border-color: color-mix(in srgb, var(--color-brand) 16%, transparent);
-    background: var(--color-brand-light);
+@keyframes ofb-pill-drop {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1);
+    }
 }
 
 .ofb-main {
     display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    min-width: 0;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
 }
 
 .ofb-icon {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 999px;
     flex-shrink: 0;
-    background: rgba(255, 255, 255, 0.72);
 }
 
+/* Success State */
 .ofb-toast.is-success .ofb-icon {
-    color: var(--color-success);
+    color: #4ade80;
 }
 
+/* Error State */
+.ofb-toast.is-error {
+    background: #450a0a;
+    border-color: rgba(248, 113, 113, 0.2);
+}
 .ofb-toast.is-error .ofb-icon {
-    color: var(--color-error);
+    color: #f87171;
 }
 
+/* Info State */
 .ofb-toast.is-info .ofb-icon {
-    color: var(--color-link);
+    color: #60a5fa;
 }
 
 .ofb-copy {
-    min-width: 0;
-}
-
-.ofb-copy strong,
-.ofb-copy p {
-    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #f8fafc;
+    font-size: 0.88rem;
+    font-weight: 500;
 }
 
 .ofb-copy strong {
-    display: block;
-    color: var(--color-text-primary);
-    font-size: 0.92rem;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .ofb-copy p {
-    margin-top: 2px;
-    color: var(--color-text-secondary);
-    font-size: 0.84rem;
-    line-height: 1.5;
+    margin: 0;
+    opacity: 0.85;
+    font-size: 0.82rem;
 }
 
+/* 隐藏关闭按钮，中上方胶囊通常靠自动消失或点击整体关闭，保持极简 */
 .ofb-close {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    border: 1px solid transparent;
-    border-radius: 10px;
-    background: transparent;
-    color: var(--color-text-muted);
-    cursor: pointer;
-    transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
-}
-
-.ofb-close:hover {
-    border-color: var(--color-border);
-    background: rgba(255, 255, 255, 0.72);
-    color: var(--color-text-primary);
-}
-
-.ofb-close:focus-visible {
-    outline: 2px solid var(--color-brand);
-    outline-offset: 2px;
+    display: none;
 }

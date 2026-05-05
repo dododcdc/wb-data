@@ -53,6 +53,11 @@ export function buildFlowDocumentSignature(document: OfflineFlowDocument | null)
             x: position.x,
             y: position.y,
         })),
+        schedule: document.schedule ? {
+            cron: document.schedule.cron,
+            timezone: document.schedule.timezone,
+            enabled: document.schedule.enabled,
+        } : null,
     });
 }
 

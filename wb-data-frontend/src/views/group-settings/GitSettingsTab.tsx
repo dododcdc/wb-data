@@ -51,7 +51,7 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
             void queryClient.invalidateQueries({ queryKey: ['git-config', groupId] });
         },
         onError: (e) => {
-            showFeedback({ tone: 'error', title: '保存失败', detail: getErrorMessage(e, '保存配置失败，请稍后重试') });
+            showFeedback({ tone: 'error', title: '保存失败', detail: '' });
         },
     });
 
@@ -68,7 +68,7 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
             void queryClient.invalidateQueries({ queryKey: ['git-config', groupId] });
         },
         onError: (e) => {
-            showFeedback({ tone: 'error', title: '删除失败', detail: getErrorMessage(e, '删除配置失败，请稍后重试') });
+            showFeedback({ tone: 'error', title: '删除失败', detail: '' });
         },
     });
 
@@ -97,7 +97,7 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
             const result = await testGitConnection({ provider, username, token, baseUrl });
             showFeedback({ tone: 'success', title: '连接成功', detail: result });
         } catch (e) {
-            showFeedback({ tone: 'error', title: '连接失败', detail: getErrorMessage(e, '连接测试失败，请稍后重试') });
+            showFeedback({ tone: 'error', title: '连接失败', detail: '' });
         } finally {
             setTestLoading(false);
         }

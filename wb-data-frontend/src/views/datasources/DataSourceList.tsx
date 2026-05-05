@@ -178,7 +178,7 @@ export default function DataSourceList() {
             showFeedback({
                 tone: 'success',
                 title: '数据源已删除',
-                detail: `${deletedName} 已从列表移除。`,
+                detail: '',
             });
             void queryClient.invalidateQueries({ queryKey: ['dataSources'] });
         },
@@ -189,7 +189,7 @@ export default function DataSourceList() {
             showFeedback({
                 tone: 'error',
                 title: '删除失败',
-                detail: (error as { message?: string } | null)?.message ?? '数据源删除失败，请稍后重试。',
+                detail: '',
             });
         },
         onSettled: () => {
@@ -219,7 +219,7 @@ export default function DataSourceList() {
             showFeedback({
                 tone: 'success',
                 title: variables.status === 'ENABLED' ? '数据源已启用' : '数据源已停用',
-                detail: '列表状态已即时更新，并已在后台同步最新数据。',
+                detail: '',
             });
             void queryClient.invalidateQueries({ queryKey: ['dataSources'] });
         },
@@ -230,7 +230,7 @@ export default function DataSourceList() {
             showFeedback({
                 tone: 'error',
                 title: '状态更新失败',
-                detail: (error as { message?: string } | null)?.message ?? '数据源状态更新失败，请稍后重试。',
+                detail: '',
             });
         },
         onSettled: () => {
@@ -360,9 +360,7 @@ export default function DataSourceList() {
                     showFeedback({
                         tone: 'success',
                         title: details.action === 'create' ? '数据源已创建' : '数据源已更新',
-                        detail: details.action === 'create'
-                            ? `${details.payload.name} 已保存，列表正在同步最新记录。`
-                            : `${details.payload.name} 的配置已更新。`,
+                        detail: '',
                     });
 
                     void queryClient.invalidateQueries({ queryKey: ['dataSources'] });

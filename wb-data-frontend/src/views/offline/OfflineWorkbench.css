@@ -2088,23 +2088,9 @@ button.offline-tree-row {
         display: none;
     }
 
-    .offline-node-editor-header,
-    .offline-selection-summary {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .offline-node-editor-state {
-        text-align: left;
-    }
-
-    .offline-node-editor-meta {
-        grid-template-columns: 1fr;
-    }
-
     .offline-status-strip {
-        align-items: flex-start;
-    }
+    align-items: flex-start;
+}
 
 }
 
@@ -2352,7 +2338,7 @@ button.offline-tree-row {
     transition: background 0.2s;
     padding: 0;
     flex-shrink: 0;
-    margin-right: 28px;
+    margin-right: 24px;
     margin-top: 2px;
 }
 .offline-switch[aria-checked="true"] {
@@ -2378,46 +2364,7 @@ button.offline-tree-row {
     transform: translateX(18px);
 }
 
-/* Schedule preview */
-.offline-schedule-preview {
-    background: #f0fdf4;
-    border: 1px solid #bbf7d0;
-    border-radius: 8px;
-    padding: 12px;
-    margin-bottom: 12px;
-}
-.offline-schedule-preview.is-error {
-    background: #fef2f2;
-    border-color: var(--color-danger);
-}
-.offline-schedule-preview.is-empty {
-    background: var(--color-surface-secondary);
-    border-color: var(--color-border);
-}
-.offline-schedule-preview-label {
-    font-size: 12px;
-    color: var(--color-text-secondary);
-    margin-bottom: 4px;
-}
-.offline-schedule-preview-text {
-    font-size: 12px;
-    color: #166534;
-    font-family: var(--font-mono);
-}
-.offline-schedule-preview-text.is-error {
-    color: var(--color-danger);
-}
-.offline-schedule-preview.is-empty .offline-schedule-preview-text {
-    color: var(--color-text-muted);
-}
 
-/* Hint text */
-.offline-schedule-hint {
-    font-size: 11px;
-    color: var(--color-text-muted);
-    text-align: center;
-    margin-bottom: 10px;
-}
 
 /* Field hint */
 .offline-field-hint {
@@ -2425,4 +2372,84 @@ button.offline-tree-row {
     color: var(--color-text-muted);
     margin-top: 4px;
     display: block;
+}
+
+/* Combobox input + trigger wrapper */
+.offline-combobox-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.offline-combobox-wrapper [data-slot="combobox-trigger"] {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    padding-right: 8px;
+    pointer-events: none;
+}
+
+.offline-combobox-wrapper input {
+    padding-right: 28px;
+}
+
+/* Timezone dropdown item layout */
+.offline-tz-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.offline-tz-offset {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--color-text-muted);
+    margin-left: 8px;
+}
+
+.offline-segmented-cron {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.offline-segmented-cron-unit {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.offline-segmented-cron-input {
+    width: 44px;
+    height: 40px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 1.15rem;
+    color: #fff;
+    transition: all 0.2s;
+    outline: none;
+}
+
+.offline-segmented-cron-input::placeholder {
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 1.4rem;
+}
+
+.offline-segmented-cron-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.offline-segmented-cron-label {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    font-weight: 500;
 }
