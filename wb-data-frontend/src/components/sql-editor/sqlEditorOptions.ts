@@ -4,7 +4,6 @@ import type * as Monaco from 'monaco-editor';
  * Shared default SQL Monaco editor options
  */
 export const defaultSqlEditorOptions: Monaco.editor.IStandaloneEditorConstructionOptions = {
-    language: 'sql',
     theme: 'warm-parchment',
     minimap: { enabled: false },
     fontSize: 14,

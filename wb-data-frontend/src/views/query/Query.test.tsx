@@ -160,23 +160,8 @@ vi.mock('./queryEditorActions', () => ({
     setupQueryEditorActions: setupQueryEditorActionsMock,
 }));
 
-vi.mock('allotment', () => {
-    const Pane = React.forwardRef<HTMLDivElement, { children?: React.ReactNode }>(({ children }, ref) => (
-        <div ref={ref}>{children}</div>
-    ));
-    const Allotment = Object.assign(
-        React.forwardRef<HTMLDivElement, { children?: React.ReactNode }>(({ children }, ref) => {
-            React.useImperativeHandle(ref, () => ({
-                resize: vi.fn(),
-            }) as unknown as HTMLDivElement, []);
+// Allotment is no longer used, removing its mock.
 
-            return <div>{children}</div>;
-        }),
-        { Pane },
-    );
-
-    return { Allotment };
-});
 
 vi.mock('./components/QuerySidebar', () => ({
     QuerySidebar: () => <div data-testid="query-sidebar" />,

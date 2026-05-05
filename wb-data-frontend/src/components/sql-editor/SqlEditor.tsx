@@ -53,6 +53,7 @@ export function SqlEditor({
     return (
         <Suspense fallback={<div>Loading SQL editor…</div>}>
             <LazyMonacoEditor
+                language="sql"
                 value={value}
                 onChange={onChange}
                 options={{ ...defaultSqlEditorOptions, ...options }}
