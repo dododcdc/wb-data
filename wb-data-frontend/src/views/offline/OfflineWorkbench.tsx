@@ -33,12 +33,14 @@ import {
     Copy,
 } from 'lucide-react';
 import {
+    commitOfflineCurrentFlow,
     commitOfflineRepo,
     createOfflineFolder,
     createOfflineDocumentDebugExecution,
     deleteOfflineFlow,
     deleteOfflineFolder,
     getOfflineExecution,
+    getOfflineFlowCommitStatus,
     getOfflineFlowDocument,
     getOfflineRepoStatus,
     getOfflineRepoTree,
@@ -54,6 +56,7 @@ import {
     updateOfflineScheduleStatus,
     type OfflineExecutionDetail,
     type OfflineExecutionListItem,
+    type OfflineFlowCommitStatus,
     type OfflineFlowDocument,
     type OfflineFlowNodeKind,
     type OfflineFlowNode,
@@ -730,6 +733,7 @@ export default function OfflineWorkbench() {
     const systemAdmin = useAuthStore((state) => state.systemAdmin);
     const groupId = currentGroup?.id ?? null;
     const canWrite = systemAdmin || permissions.includes('offline.write');
+    const isGroupAdmin = systemAdmin || permissions.includes('group.settings') || currentGroup?.role === 'GROUP_ADMIN';
     const defaultTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', []);
     const { showFeedback } = useOperationFeedback();
 
@@ -739,9 +743,11 @@ export default function OfflineWorkbench() {
     const [treeLoading, setTreeLoading] = useState(false);
     const [, setRemoteStatus] = useState<RemoteStatus | null>(null);
     const [pushLoading, setPushLoading] = useState(false);
-    const [commitDialogOpen, setCommitDialogOpen] = useState(false);
+    const [flowCommitDialogOpen, setFlowCommitDialogOpen] = useState(false);
+    const [repoCommitDialogOpen, setRepoCommitDialogOpen] = useState(false);
     const [commitMessage, setCommitMessage] = useState('');
     const [committing, setCommitting] = useState(false);
+    const [flowCommitDirty, setFlowCommitDirty] = useState(false);
     const [expandedTreeIds, setExpandedTreeIds] = useState<string[]>([]);
     const [activeFlowPath, setActiveFlowPath] = useState<string | null>(null);
     const [flowLoading, setFlowLoading] = useState(false);
@@ -953,6 +959,23 @@ export default function OfflineWorkbench() {
         ]);
     }, [refreshRepoStatus, refreshRepoTree, refreshRemoteStatus]);
 
+    const refreshFlowCommitStatus = useCallback(async () => {
+        if (!groupId || !activeFlowPath) {
+            setFlowCommitDirty(false);
+            return;
+        }
+        try {
+            const result = await getOfflineFlowCommitStatus(groupId, activeFlowPath);
+            setFlowCommitDirty(result.dirty);
+        } catch {
+            setFlowCommitDirty(false);
+        }
+    }, [groupId, activeFlowPath]);
+
+    useEffect(() => {
+        void refreshFlowCommitStatus();
+    }, [refreshFlowCommitStatus]);
+
     const loadScheduleSnapshot = useCallback(async (path: string) => {
         if (!groupId) return;
 
@@ -1159,38 +1182,41 @@ export default function OfflineWorkbench() {
         }
     }, [groupId, showFeedback, refreshRemoteStatus, refreshRepoStatus]);
 
-    const handleCommit = useCallback(async () => {
-        if (!groupId) return;
-        const invalidNode = findFirstNodeWithInvalidDataSource(flowDocument);
-        if (invalidNode) {
-            const validation = validateSqlNodeDataSourceRequirement({
-                kind: invalidNode.kind,
-                dataSourceId: invalidNode.dataSourceId,
-                dataSourceType: invalidNode.dataSourceType,
-                strict: true,
-            });
-            if (!validation.allowed && validation.feedback) {
-                showFeedback(validation.feedback);
-                return;
+    const handleFlowCommit = useCallback(async () => {
+        if (!groupId || !activeFlowPath) return;
+        setCommitting(true);
+        try {
+            const result = await commitOfflineCurrentFlow(groupId, activeFlowPath, commitMessage);
+            if (result.success) {
+                setFlowCommitDialogOpen(false);
+                setCommitMessage('');
+                await Promise.all([refreshRepoStatus(), refreshFlowCommitStatus()]);
+                showFeedback({ tone: 'success', title: result.message, detail: '' });
             }
+        } catch {
+            showFeedback({ tone: 'error', title: '当前 Flow 提交失败', detail: '' });
+        } finally {
+            setCommitting(false);
         }
+    }, [groupId, activeFlowPath, commitMessage, refreshRepoStatus, refreshFlowCommitStatus, showFeedback]);
+
+    const handleRepoCommit = useCallback(async () => {
+        if (!groupId) return;
         setCommitting(true);
         try {
             const result = await commitOfflineRepo(groupId, commitMessage);
             if (result.success) {
-                showFeedback({ tone: 'success', title: result.message, detail: '' });
-                setCommitDialogOpen(false);
+                setRepoCommitDialogOpen(false);
                 setCommitMessage('');
-                await refreshRepoStatus();
-            } else {
-                showFeedback({ tone: 'error', title: result.message, detail: '' });
+                await Promise.all([refreshRepoStatus(), refreshFlowCommitStatus()]);
+                showFeedback({ tone: 'success', title: result.message, detail: '' });
             }
-        } catch (error) {
-            showFeedback({ tone: 'error', title: '版本提交失败', detail: '' });
+        } catch {
+            showFeedback({ tone: 'error', title: '仓库提交失败', detail: '' });
         } finally {
             setCommitting(false);
         }
-    }, [groupId, flowDocument, commitMessage, showFeedback, refreshRepoStatus]);
+    }, [groupId, commitMessage, refreshRepoStatus, refreshFlowCommitStatus, showFeedback]);
 
     const handleCreateFlow = useCallback(async () => {
         if (!groupId || !newFlowName.trim()) return;
@@ -2037,38 +2063,23 @@ export default function OfflineWorkbench() {
         setPendingNavigation(null);
     }, [pendingNavigation]);
 
-    const handleOpenCommitDialog = useCallback(async () => {
-        if (!groupId || !activeFlowPath || !flowDocument) return;
-
-        // Auto-save logic if there are unsaved changes
+    const handleOpenFlowCommitDialog = useCallback(async () => {
+        if (!groupId || !activeFlowPath || !flowDocument || !flowCommitDirty) return;
         if (isDirty) {
-            if (!validateDocumentForAction()) {
-                return;
-            }
-            // Silent block while saving
-            setSavingFlow(true);
-            try {
-                const saved = await handleSaveFlow();
-                if (!saved) {
-                    return;
-                }
-                // After successful save, refresh repo status to ensure 'dirty' flag is picked up by backend if needed
-                await refreshRepoStatus();
-            } catch {
-                // handleSaveFlow already shows error feedback
-                return;
-            } finally {
-                setSavingFlow(false);
-            }
-        } else {
-            // Even if not dirty, still run validation to be safe (e.g. content was saved but invalid state existed)
-            if (!validateDocumentForAction()) {
-                return;
-            }
+            const saved = await handleSaveFlow();
+            if (!saved) return;
         }
-        
-        setCommitDialogOpen(true);
-    }, [activeFlowPath, flowDocument, groupId, handleSaveFlow, isDirty, refreshRepoStatus, validateDocumentForAction]);
+        setFlowCommitDialogOpen(true);
+    }, [groupId, activeFlowPath, flowDocument, flowCommitDirty, isDirty, handleSaveFlow]);
+
+    const handleOpenRepoCommitDialog = useCallback(async () => {
+        if (!groupId) return;
+        if (activeFlowPath && isDirty) {
+            const saved = await handleSaveFlow();
+            if (!saved) return;
+        }
+        setRepoCommitDialogOpen(true);
+    }, [groupId, activeFlowPath, isDirty, handleSaveFlow]);
 
     const handleExecute = useCallback(async () => {
         if (!groupId || !activeFlowPath || !flowDocument) return;
@@ -2365,22 +2376,42 @@ export default function OfflineWorkbench() {
                                         </TooltipContent>
                                     </Tooltip>
 
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="offline-rail-toolbar-btn"
-                                                aria-label="推送"
-                                                onClick={() => void handlePush()}
-                                                disabled={!groupId || pushLoading || repoLoading || treeLoading}
-                                            >
-                                                {pushLoading ? <LoaderCircle size={14} className="offline-spin" /> : <GitPushIcon dirty={!isDirty && !repoStatus?.dirty && !!repoStatus?.ahead} />}
-                                            </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">
-                                            推送
-                                        </TooltipContent>
-                                    </Tooltip>
+                                    {isGroupAdmin && (
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="offline-rail-toolbar-btn"
+                                                    aria-label="提交仓库改动"
+                                                    onClick={() => void handleOpenRepoCommitDialog()}
+                                                    disabled={!groupId || committing || repoLoading || treeLoading}
+                                                >
+                                                    <GitCommitHorizontal size={14} />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="tooltip-content" side="bottom">
+                                                提交仓库改动
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    )}
+                                    {isGroupAdmin && (
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="offline-rail-toolbar-btn"
+                                                    aria-label="推送"
+                                                    onClick={() => void handlePush()}
+                                                    disabled={!groupId || pushLoading || repoLoading || treeLoading}
+                                                >
+                                                    {pushLoading ? <LoaderCircle size={14} className="offline-spin" /> : <GitPushIcon dirty={!isDirty && !repoStatus?.dirty && !!repoStatus?.ahead} />}
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="tooltip-content" side="bottom">
+                                                推送
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -2491,18 +2522,17 @@ export default function OfflineWorkbench() {
                                                 <button
                                                     type="button"
                                                     className="offline-canvas-toolbar-btn"
-                                                    disabled={!activeFlowPath || !canWrite || committing}
-                                                    onClick={handleOpenCommitDialog}
-                                                    aria-label="提交"
+                                                    disabled={!activeFlowPath || !canWrite || !flowCommitDirty || committing}
+                                                    onClick={() => void handleOpenFlowCommitDialog()}
+                                                    aria-label="提交当前 Flow"
                                                 >
                                                     <span className="relative flex">
                                                         <GitCommitHorizontal size={16} />
-                                                        {!isDirty && !!repoStatus?.dirty && <span className="offline-toolbar-dot" />}
                                                     </span>
                                                 </button>
                                             </TooltipTrigger>
                                             <TooltipContent className="tooltip-content" side="bottom">
-                                                提交
+                                                提交当前 Flow
                                             </TooltipContent>
                                         </Tooltip>
 
@@ -2735,15 +2765,15 @@ export default function OfflineWorkbench() {
                 onToggle={(enabled) => void handleScheduleToggle(enabled)}
             />
 
-            <Dialog open={commitDialogOpen} onOpenChange={(open) => {
-                setCommitDialogOpen(open);
+            <Dialog open={flowCommitDialogOpen} onOpenChange={(open) => {
+                setFlowCommitDialogOpen(open);
                 if (!open) { setCommitMessage(''); }
             }}>
                 <DialogContent style={{ maxWidth: '460px' }}>
                     <DialogHeader>
-                        <DialogTitle>版本提交 (Commit)</DialogTitle>
+                        <DialogTitle>提交当前 Flow</DialogTitle>
                         <DialogDescription>
-                            将当前修改的内容标记为一个版本
+                            本次只提交当前 Flow 的定义、脚本和布局文件，其它未提交改动不会进入这次提交。
                         </DialogDescription>
                     </DialogHeader>
                     <div className="dialog-body">
@@ -2763,7 +2793,7 @@ export default function OfflineWorkbench() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => { setCommitDialogOpen(false); setCommitMessage(''); }}
+                            onClick={() => { setFlowCommitDialogOpen(false); setCommitMessage(''); }}
                             disabled={committing}
                         >
                             取消
@@ -2772,7 +2802,54 @@ export default function OfflineWorkbench() {
                             type="button"
                             variant="default"
                             size="sm"
-                            onClick={() => void handleCommit()}
+                            onClick={() => void handleFlowCommit()}
+                            disabled={!commitMessage.trim() || committing}
+                        >
+                            {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                            {committing ? '提交中…' : '提交'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={repoCommitDialogOpen} onOpenChange={(open) => {
+                setRepoCommitDialogOpen(open);
+                if (!open) { setCommitMessage(''); }
+            }}>
+                <DialogContent style={{ maxWidth: '460px' }}>
+                    <DialogHeader>
+                        <DialogTitle>提交仓库改动</DialogTitle>
+                        <DialogDescription>
+                            会提交当前项目组离线仓库内所有已落盘改动。
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="dialog-body">
+                                <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
+                                    提交说明
+                                </label>
+                                <Input
+                                    value={commitMessage}
+                                    onChange={(e) => setCommitMessage(e.target.value)}
+                                    placeholder="例如：Update query conditions"
+                                    autoFocus
+                                    style={{ width: '100%' }}
+                                />
+                            </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => { setRepoCommitDialogOpen(false); setCommitMessage(''); }}
+                            disabled={committing}
+                        >
+                            取消
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            onClick={() => void handleRepoCommit()}
                             disabled={!commitMessage.trim() || committing}
                         >
                             {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
