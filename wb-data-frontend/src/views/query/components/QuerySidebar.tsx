@@ -1,5 +1,5 @@
 import { useRef, useCallback } from 'react';
-import { Search, Loader2, Database, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, Loader2, Database, Table, ChevronDown, ChevronRight } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { TableSummary, ColumnMetadata } from '../../../api/query';
 
@@ -156,7 +156,7 @@ export function QuerySidebar({
                                                 ? <ChevronDown size={14} className="metadata-chevron" />
                                                 : <ChevronRight size={14} className="metadata-chevron" />
                                             }
-                                            <Database size={14} className="metadata-icon" />
+                                            <Table size={14} className="metadata-icon" />
                                             <span className="metadata-item-name">{table.name}</span>
                                         </button>
                                         {isExpanded && (

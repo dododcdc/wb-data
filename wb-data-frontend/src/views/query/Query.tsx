@@ -1,12 +1,12 @@
 import { useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react';
 import type * as Monaco from 'monaco-editor';
-import type { AllotmentHandle } from 'allotment';
+import { usePanelRef } from 'react-resizable-panels';
 import { useAuthStore } from '../../utils/auth';
-
-
-
-import { Allotment } from 'allotment';
-import 'allotment/dist/style.css';
+import {
+    ResizableHandle,
+    ResizablePanel,
+    ResizablePanelGroup,
+} from '../../components/ui/resizable';
 import { useQueryEditor } from './hooks/useQueryEditor';
 import { useQueryExecution } from './hooks/useQueryExecution';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -81,6 +81,48 @@ export default function Query() {
     const initialHorizontalSizes = useMemo(() => getHorizontalSizes(sidebarCollapsed, sidebarExpandedWidth), [sidebarCollapsed, sidebarExpandedWidth]);
     const initialVerticalSizes = useMemo(() => getVerticalSizes(resultCollapsed, resultExpandedHeight), [resultCollapsed, resultExpandedHeight]);
 
+    const sidebarPanelRef = usePanelRef();
+    const resultPanelRef = usePanelRef();
+
+    const handleToggleSidebar = useCallback(() => {
+        const panel = sidebarPanelRef.current;
+        if (!panel) return;
+        if (panel.isCollapsed()) {
+            panel.expand();
+        } else {
+            panel.collapse();
+        }
+    }, []);
+
+    const handleToggleResultPanel = useCallback(() => {
+        const panel = resultPanelRef.current;
+        if (!panel) return;
+        if (panel.isCollapsed()) {
+            panel.expand();
+        } else {
+            panel.collapse();
+        }
+    }, []);
+
+    // Sync React state when panel collapses/expands via drag
+    const handleSidebarResize = useCallback((_size: { asPercentage: number; inPixels: number }) => {
+        const isCollapsed = sidebarPanelRef.current?.isCollapsed();
+        if (isCollapsed && !sidebarCollapsed) {
+            toggleSidebar();
+        } else if (!isCollapsed && sidebarCollapsed) {
+            toggleSidebar();
+        }
+    }, [sidebarCollapsed, toggleSidebar]);
+
+    const handleResultResize = useCallback((_size: { asPercentage: number; inPixels: number }) => {
+        const isCollapsed = resultPanelRef.current?.isCollapsed();
+        if (isCollapsed && !resultCollapsed) {
+            setResultPanelState(true);
+        } else if (!isCollapsed && resultCollapsed) {
+            setResultPanelState(false);
+        }
+    }, [resultCollapsed, setResultPanelState]);
+
     // ---- SQL editor state ----
     const {
         sql, result, queryError, loadingQuery,
@@ -116,84 +158,15 @@ export default function Query() {
 
     const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
     const queryEditorActionsDisposeRef = useRef<(() => void) | null>(null);
-    const horizontalSplitterRef = useRef<AllotmentHandle | null>(null);
-    const verticalSplitterRef = useRef<AllotmentHandle | null>(null);
-    const horizontalLayoutSizesRef = useRef<number[] | null>(null);
-    const verticalLayoutSizesRef = useRef<number[] | null>(null);
-    const querySplitterRef = useRef<HTMLDivElement | null>(null);
-    const queryContentRef = useRef<HTMLDivElement | null>(null);
+    // No longer need manual resizing logic for Allotment
 
-    const queryLoadingVisible = useDelayedBusy(loadingQuery, { delayMs: 0, minVisibleMs: 420 });
-    const queryResultLoadingVisible = useDelayedBusy(loadingQuery && !result && !queryError, { delayMs: 120, minVisibleMs: 280 });
-
-
-
-
-
-
-
-
-
-    const getCurrentHorizontalTotalWidth = useCallback(() => {
-        const cachedSizes = horizontalLayoutSizesRef.current;
-        if (cachedSizes && cachedSizes.length === 2) {
-            const total = cachedSizes[0] + cachedSizes[1];
-            if (Number.isFinite(total) && total > 0) {
-                return total;
-            }
-        }
-
-        const measuredWidth = querySplitterRef.current?.clientWidth;
-        if (typeof measuredWidth === 'number' && measuredWidth > 0) {
-            return measuredWidth;
-        }
-
-        return QUERY_MAIN_DEFAULT_WIDTH_PX;
-    }, []);
-
-    const getCurrentVerticalTotalHeight = useCallback(() => {
-        const cachedSizes = verticalLayoutSizesRef.current;
-        if (cachedSizes && cachedSizes.length === 2) {
-            const total = cachedSizes[0] + cachedSizes[1];
-            if (Number.isFinite(total) && total > 0) {
-                return total;
-            }
-        }
-
-        const measuredHeight = queryContentRef.current?.clientHeight;
-        if (typeof measuredHeight === 'number' && measuredHeight > 0) {
-            return measuredHeight;
-        }
-
-        return QUERY_EDITOR_DEFAULT_HEIGHT_PX + RESULT_PANEL_DEFAULT_HEIGHT_PX;
-    }, []);
-
-    useLayoutEffect(() => {
-        const nextSizes = getHorizontalSizes(
-            sidebarCollapsed,
-            sidebarExpandedWidth,
-            getCurrentHorizontalTotalWidth(),
-        );
-        horizontalLayoutSizesRef.current = nextSizes;
-        horizontalSplitterRef.current?.resize(nextSizes);
-    }, [getCurrentHorizontalTotalWidth, sidebarCollapsed, sidebarExpandedWidth]);
-
-    useLayoutEffect(() => {
-        const nextSizes = getVerticalSizes(
-            resultCollapsed,
-            resultExpandedHeight,
-            getCurrentVerticalTotalHeight(),
-        );
-        verticalLayoutSizesRef.current = nextSizes;
-        verticalSplitterRef.current?.resize(nextSizes);
-    }, [getCurrentVerticalTotalHeight, resultCollapsed, resultExpandedHeight]);
 
 
 
 
     useKeyboardShortcuts({
-        onToggleSidebar: toggleSidebar,
-        onToggleResultPanel: toggleResultPanel,
+        onToggleSidebar: handleToggleSidebar,
+        onToggleResultPanel: handleToggleResultPanel,
     });
 
 
@@ -289,41 +262,28 @@ export default function Query() {
         };
     }, []);
 
+    const queryLoadingVisible = useDelayedBusy(loadingQuery, { delayMs: 0, minVisibleMs: 420 });
+    const queryResultLoadingVisible = useDelayedBusy(loadingQuery && !result && !queryError, { delayMs: 120, minVisibleMs: 280 });
+
     return (
-        <div
-            ref={querySplitterRef}
-            className={`query-splitter h-full flex w-full ${sidebarTransitioning ? 'sidebar-transitioning' : ''}`.trim()}
-        >
-            <Allotment
-                ref={horizontalSplitterRef}
-                className="query-splitter-panel"
-                defaultSizes={initialHorizontalSizes}
-                onChange={(sizes) => {
-                    horizontalLayoutSizesRef.current = sizes;
-                }}
-                onDragEnd={(sizes) => {
-                    horizontalLayoutSizesRef.current = sizes;
-                    const sidebarSize = sizes[0];
-                    if (typeof sidebarSize === 'number' && sidebarSize > 0) {
-                        setSidebarWidth(sidebarSize);
-                    }
-                }}
-                onVisibleChange={(index, visible) => {
-                    if (index === 0) {
-                        const nextCollapsed = !visible;
-                        if (nextCollapsed !== sidebarCollapsed) {
-                            toggleSidebar();
-                        }
-                    }
-                }}
+        <div className={`query-page-container h-full w-full flex overflow-hidden ${sidebarTransitioning ? 'sidebar-transitioning' : ''}`}>
+            <ResizablePanelGroup 
+                direction="horizontal" 
+                autoSaveId="query-main-horizontal-layout"
+                className="query-splitter h-full"
             >
                 {/* 左侧元数据面板 */}
-                <Allotment.Pane
-                    preferredSize={SIDEBAR_DEFAULT_WIDTH_PX}
-                    minSize={SIDEBAR_MIN_WIDTH_PX}
-                    maxSize={SIDEBAR_MAX_WIDTH_PX}
-                    visible={!sidebarCollapsed}
-                    className="metadata-panel-wrapper"
+                <ResizablePanel
+                    id="sidebar"
+                    order={1}
+                    defaultSize={20}
+                    maxSize={40}
+                    collapsible
+                    collapsedSize={0}
+                    minSize={0}
+                    panelRef={sidebarPanelRef}
+                    onResize={handleSidebarResize}
+                    className={`metadata-panel-wrapper ${sidebarCollapsed ? 'is-collapsed' : ''}`}
                 >
                     <QuerySidebar
                         sidebarCollapsed={sidebarCollapsed}
@@ -344,14 +304,16 @@ export default function Query() {
                         tableScrollElement={tableScrollElement}
                         handleTableScroll={handleTableScroll}
                     />
-                </Allotment.Pane>
+                </ResizablePanel>
+
+                <ResizableHandle withHandle />
 
                 {/* 右侧主内容区 */}
-                <Allotment.Pane minSize={QUERY_MAIN_MIN_WIDTH_PX} preferredSize="100%" className="query-main-wrapper">
+                <ResizablePanel id="main" order={2} defaultSize={80} className="query-main-wrapper flex flex-col">
                     <QueryToolbar
                         sidebarCollapsed={sidebarCollapsed}
                         hasHiddenMetadataHint={hasHiddenMetadataHint}
-                        toggleSidebar={toggleSidebar}
+                        toggleSidebar={handleToggleSidebar}
                         isMac={isMac}
                         selectedDsId={selectedDsId}
                         defaultDsId={defaultDsId}
@@ -377,74 +339,68 @@ export default function Query() {
                         queryLoadingVisible={queryLoadingVisible}
                     />
 
-                    <div
-                        ref={queryContentRef}
-                        className={`query-content-splitter ${resultTransitioning ? 'result-transitioning' : ''}`.trim()}
-                    >
-                        <Allotment
-                            ref={verticalSplitterRef}
-                            vertical
-                            defaultSizes={initialVerticalSizes}
-                            onChange={(sizes) => {
-                                verticalLayoutSizesRef.current = sizes;
-                            }}
-                            onDragEnd={(sizes) => {
-                                verticalLayoutSizesRef.current = sizes;
-                                const resultPaneSize = sizes[1];
-                                if (typeof resultPaneSize === 'number' && resultPaneSize > RESULT_PANEL_COLLAPSED_HEIGHT_PX) {
-                                    const nextHeight = Math.max(RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX, Math.round(resultPaneSize));
-                                    setResultExpandedHeight(nextHeight);
-                                }
-                            }}
+                    <div className="flex-1 min-height-0">
+                        <ResizablePanelGroup 
+                            direction="vertical" 
+                            autoSaveId="query-main-vertical-layout"
+                            className={`query-content-splitter ${resultTransitioning ? 'result-transitioning' : ''}`}
                         >
-                        <Allotment.Pane preferredSize="60%" className="query-editor-wrapper relative">
-                            <QueryEditor sql={sql} setSql={setSql} handleEditorDidMount={handleEditorDidMount} />
-                        </Allotment.Pane>
+                            <ResizablePanel id="editor" order={1} defaultSize={60} className="query-editor-wrapper relative">
+                                <QueryEditor sql={sql} setSql={setSql} handleEditorDidMount={handleEditorDidMount} />
+                            </ResizablePanel>
 
-                        <Allotment.Pane
-                            minSize={RESULT_PANEL_COLLAPSED_HEIGHT_PX}
-                            preferredSize="40%"
-                            className={`query-result-wrapper ${resultCollapsed ? 'is-collapsed' : ''}`.trim()}
-                        >
-                            <QueryResultsPanel
-                                resultCollapsed={resultCollapsed}
-                                toggleResultPanel={toggleResultPanel}
-                                activeResultTab={activeResultTab}
-                                setActiveResultTab={setActiveResultTab}
-                                savedResults={savedResults}
-                                currentResultTabNumber={currentResultTabNumber}
-                                activeSavedResult={activeSavedResult}
-                                hasCurrentResultTab={hasCurrentResultTab}
-                                displayedResult={displayedResult}
-                                displayedQueryError={displayedQueryError}
-                                currentResultCanPin={currentResultCanPin}
-                                loadingQuery={loadingQuery}
-                                queryResultLoadingVisible={queryResultLoadingVisible}
-                                canExport={canExport}
-                                exportState={exportState}
-                                exportTasks={exportTasks}
-                                loadingExportTasks={loadingExportTasks}
-                                activeExportTaskCount={activeExportTaskCount}
-                                shouldShowExportTasksButton={shouldShowExportTasksButton}
-                                showExportMenu={showExportMenu}
-                                setShowExportMenu={setShowExportMenu}
-                                showExportTasksMenu={showExportTasksMenu}
-                                setShowExportTasksMenu={setShowExportTasksMenu}
-                                exportMenuRef={exportMenuRef}
-                                exportTasksMenuRef={exportTasksMenuRef}
-                                handlePinCurrentResult={handlePinCurrentResult}
-                                handleCloseSavedResult={handleCloseSavedResult}
-                                handleToggleSavedResultPin={handleToggleSavedResultPin}
-                                handleFillSavedSql={handleFillSavedSql}
-                                createAsyncExportTask={createAsyncExportTask}
-                                downloadExportTask={downloadExportTask}
-                                loadExportTasks={loadExportTasks}
-                            />
-                        </Allotment.Pane>
-                    </Allotment>
+                            <ResizableHandle withHandle />
+
+                            <ResizablePanel
+                                id="results"
+                                order={2}
+                                defaultSize={40}
+                                collapsible
+                                collapsedSize={0}
+                                minSize={0}
+                                panelRef={resultPanelRef}
+                                onResize={handleResultResize}
+                                className={`query-result-wrapper ${resultCollapsed ? 'is-collapsed' : ''}`}
+                            >
+                                <QueryResultsPanel
+                                    resultCollapsed={resultCollapsed}
+                                    toggleResultPanel={handleToggleResultPanel}
+                                    activeResultTab={activeResultTab}
+                                    setActiveResultTab={setActiveResultTab}
+                                    savedResults={savedResults}
+                                    currentResultTabNumber={currentResultTabNumber}
+                                    activeSavedResult={activeSavedResult}
+                                    hasCurrentResultTab={hasCurrentResultTab}
+                                    displayedResult={displayedResult}
+                                    displayedQueryError={displayedQueryError}
+                                    currentResultCanPin={currentResultCanPin}
+                                    loadingQuery={loadingQuery}
+                                    queryResultLoadingVisible={queryResultLoadingVisible}
+                                    canExport={canExport}
+                                    exportState={exportState}
+                                    exportTasks={exportTasks}
+                                    loadingExportTasks={loadingExportTasks}
+                                    activeExportTaskCount={activeExportTaskCount}
+                                    shouldShowExportTasksButton={shouldShowExportTasksButton}
+                                    showExportMenu={showExportMenu}
+                                    setShowExportMenu={setShowExportMenu}
+                                    showExportTasksMenu={showExportTasksMenu}
+                                    setShowExportTasksMenu={setShowExportTasksMenu}
+                                    exportMenuRef={exportMenuRef}
+                                    exportTasksMenuRef={exportTasksMenuRef}
+                                    handlePinCurrentResult={handlePinCurrentResult}
+                                    handleCloseSavedResult={handleCloseSavedResult}
+                                    handleToggleSavedResultPin={handleToggleSavedResultPin}
+                                    handleFillSavedSql={handleFillSavedSql}
+                                    createAsyncExportTask={createAsyncExportTask}
+                                    downloadExportTask={downloadExportTask}
+                                    loadExportTasks={loadExportTasks}
+                                />
+                            </ResizablePanel>
+                        </ResizablePanelGroup>
                     </div>
-                </Allotment.Pane>
-            </Allotment>
+                </ResizablePanel>
+            </ResizablePanelGroup>
         </div>
     );
 }

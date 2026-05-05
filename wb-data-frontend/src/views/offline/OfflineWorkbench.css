@@ -4,17 +4,21 @@
     min-height: calc(100vh - 64px);
 }
 
-.offline-workbench-shell {
-    display: grid;
-    grid-template-columns: 280px minmax(0, 1fr);
-    min-height: calc(100vh - 64px);
+.offline-workbench-resizable-shell {
+    flex: 1;
+    min-height: 0;
+    height: calc(100vh - 64px);
+    display: flex !important; /* Ensure it overrides any default flex behaviors */
+}
+
+.offline-rail-panel-container {
+    height: 100%;
 }
 
 .offline-rail,
 .offline-main-panel {
     min-height: 0;
-    border-top: 1px solid var(--color-border);
-    border-bottom: 1px solid var(--color-border);
+    height: 100%;
     background: var(--color-bg-primary);
 }
 .offline-rail {
@@ -22,8 +26,8 @@
     flex-direction: column;
     gap: 0;
     padding: 0;
-    border-right: 1px solid var(--color-border);
-    border-top: none;
+    border-right: none; /* Handled by resizable handle */
+    border-top: 1px solid var(--color-border);
     border-bottom: none;
     border-left: none;
     overflow: visible;
@@ -313,6 +317,7 @@ button.offline-tree-row {
 .offline-main-panel {
     padding-left: 0;
     padding-right: 0;
+    border-top: 1px solid var(--color-border);
 }
 
 .offline-inspector {

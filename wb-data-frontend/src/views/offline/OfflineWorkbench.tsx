@@ -6,6 +6,11 @@ import FlowCanvas from './FlowCanvas';
 import '../core/RouteSkeletons.css';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import {
+    ResizableHandle,
+    ResizablePanel,
+    ResizablePanelGroup,
+} from '../../components/ui/resizable';
+import {
     AlertTriangle,
     ArrowUpRight,
     ChevronRight,
@@ -2283,90 +2288,102 @@ export default function OfflineWorkbench() {
 
     return (
         <section className="offline-page">
-            <div className={`offline-workbench-shell${activeFlowPath && flowDocument ? ' has-inspector' : ''}`}>
-                <aside className="offline-rail animate-enter">
-                    <div className="offline-rail-toolbar">
-                        <span className="offline-branch-badge">{branchLabel}</span>
-                        {canWrite && (
+            <ResizablePanelGroup 
+                direction="horizontal" 
+                className="offline-workbench-resizable-shell"
+                autoSaveId="offline-workbench-layout"
+            >
+                <ResizablePanel
+                    id="sidebar"
+                    order={1}
+                    defaultSize={20}
+                    minSize={15}
+                    maxSize={40}
+                    className="offline-rail-panel-container"
+                >
+                    <aside className="offline-rail h-full">
+                        <div className="offline-rail-toolbar">
+                            <span className="offline-branch-badge">{branchLabel}</span>
+                            {canWrite && (
                                 <div className="offline-rail-toolbar-actions">
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <div className="offline-rail-toolbar-btn-wrapper">
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <div className="offline-rail-toolbar-btn-wrapper">
+                                                <button
+                                                    type="button"
+                                                    className="offline-rail-toolbar-btn"
+                                                    aria-label="新建"
+                                                    onClick={() => setNewItemMenuOpen(!newItemMenuOpen)}
+                                                    disabled={!groupId || repoLoading || treeLoading || flowLoading}
+                                                >
+                                                    <Plus size={14} />
+                                                </button>
+                                                {newItemMenuOpen && (
+                                                    <div
+                                                        className="offline-new-item-menu animate-in fade-in zoom-in-95"
+                                                        onMouseLeave={() => setNewItemMenuOpen(false)}
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            className="offline-new-item-menu-item"
+                                                            onClick={() => { setNewItemMenuOpen(false); setNewFlowDialogOpen(true); }}
+                                                        >
+                                                            <FileCode2 size={13} />
+                                                            新建 Flow
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="offline-new-item-menu-item"
+                                                            onClick={() => { setNewItemMenuOpen(false); setNewFolderParentPath(''); setNewFolderName(''); setNewFolderDialogOpen(true); }}
+                                                        >
+                                                            <FolderPlus size={13} />
+                                                            新建文件夹
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="tooltip-content" side="bottom">
+                                            新建
+                                        </TooltipContent>
+                                    </Tooltip>
+
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
                                             <button
                                                 type="button"
                                                 className="offline-rail-toolbar-btn"
-                                                aria-label="新建"
-                                                onClick={() => setNewItemMenuOpen(!newItemMenuOpen)}
+                                                aria-label="刷新"
+                                                onClick={() => void refreshWorkspace()}
                                                 disabled={!groupId || repoLoading || treeLoading || flowLoading}
                                             >
-                                                <Plus size={14} />
+                                                {repoLoading || treeLoading ? <LoaderCircle size={14} className="offline-spin" /> : <RefreshCcw size={14} />}
                                             </button>
-                                            {newItemMenuOpen && (
-                                                <div
-                                                    className="offline-new-item-menu animate-in fade-in zoom-in-95"
-                                                    onMouseLeave={() => setNewItemMenuOpen(false)}
-                                                >
-                                                    <button
-                                                        type="button"
-                                                        className="offline-new-item-menu-item"
-                                                        onClick={() => { setNewItemMenuOpen(false); setNewFlowDialogOpen(true); }}
-                                                    >
-                                                        <FileCode2 size={13} />
-                                                        新建 Flow
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="offline-new-item-menu-item"
-                                                        onClick={() => { setNewItemMenuOpen(false); setNewFolderParentPath(''); setNewFolderName(''); setNewFolderDialogOpen(true); }}
-                                                    >
-                                                        <FolderPlus size={13} />
-                                                        新建文件夹
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="tooltip-content" side="bottom">
-                                        新建
-                                    </TooltipContent>
-                                </Tooltip>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="tooltip-content" side="bottom">
+                                            刷新
+                                        </TooltipContent>
+                                    </Tooltip>
 
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <button
-                                            type="button"
-                                            className="offline-rail-toolbar-btn"
-                                            aria-label="刷新"
-                                            onClick={() => void refreshWorkspace()}
-                                            disabled={!groupId || repoLoading || treeLoading || flowLoading}
-                                        >
-                                            {repoLoading || treeLoading ? <LoaderCircle size={14} className="offline-spin" /> : <RefreshCcw size={14} />}
-                                        </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="tooltip-content" side="bottom">
-                                        刷新
-                                    </TooltipContent>
-                                </Tooltip>
-
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <button
-                                            type="button"
-                                            className="offline-rail-toolbar-btn"
-                                            aria-label="推送"
-                                            onClick={() => void handlePush()}
-                                            disabled={!groupId || pushLoading || repoLoading || treeLoading}
-                                        >
-                                            {pushLoading ? <LoaderCircle size={14} className="offline-spin" /> : <GitPushIcon dirty={!isDirty && !repoStatus?.dirty && !!repoStatus?.ahead} />}
-                                        </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="tooltip-content" side="bottom">
-                                        推送
-                                    </TooltipContent>
-                                </Tooltip>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className="offline-rail-toolbar-btn"
+                                                aria-label="推送"
+                                                onClick={() => void handlePush()}
+                                                disabled={!groupId || pushLoading || repoLoading || treeLoading}
+                                            >
+                                                {pushLoading ? <LoaderCircle size={14} className="offline-spin" /> : <GitPushIcon dirty={!isDirty && !repoStatus?.dirty && !!repoStatus?.ahead} />}
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="tooltip-content" side="bottom">
+                                            推送
+                                        </TooltipContent>
+                                    </Tooltip>
                                 </div>
-                        )}
-                    </div>
+                            )}
+                        </div>
 
                     <section className="offline-rail-panel offline-rail-panel-grow">
                         {treeLoading ? (
@@ -2419,242 +2436,247 @@ export default function OfflineWorkbench() {
                             </div>
                         )}
                     </section>
-                </aside>
+                    </aside>
+                </ResizablePanel>
 
-                <main className="offline-main-panel animate-enter animate-enter-delay-1">
-                    {!activeFlowPath || !flowDocument ? (
-                        <div className="offline-empty-state">
-                            <p>从左侧项目树选择一个 Flow</p>
-                        </div>
-                    ) : (
-                        <>
-                            <header className="offline-canvas-toolbar">
-                                <label className="offline-canvas-toolbar-selectall">
-                                    <input
-                                        type="checkbox"
-                                        checked={nodeCount > 0 && selectedTaskIds.length === nodeCount}
-                                        onChange={(e) => {
-                                            if (e.target.checked) {
-                                                setDraftSelectedTaskIds(flattenDocumentNodes(flowDocument).map((n) => n.taskId));
-                                            } else {
-                                                setDraftSelectedTaskIds([]);
-                                            }
-                                        }}
-                                        disabled={nodeCount === 0}
-                                    />
-                                    全选
-                                </label>
+                <ResizableHandle withHandle />
 
-                                <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="offline-canvas-toolbar-btn"
-                                                disabled={!activeFlowPath || !canWrite || !isDirty || savingFlow}
-                                                onClick={() => void handleSaveFlow()}
-                                                aria-label="保存"
-                                            >
-                                            <span className="relative flex">
-                                                {savingFlow ? <LoaderCircle size={16} className="offline-spin" /> : <Save size={16} />}
-                                                {isDirty && <span className="offline-toolbar-dot" />}
-                                            </span>
-                                        </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">
-                                            保存
-                                        </TooltipContent>
-                                    </Tooltip>
+                <ResizablePanel id="main" order={2} defaultSize={80}>
+                    <main className="offline-main-panel h-full animate-enter animate-enter-delay-1">
+                        {!activeFlowPath || !flowDocument ? (
+                            <div className="offline-empty-state">
+                                <p>从左侧项目树选择一个 Flow</p>
+                            </div>
+                        ) : (
+                            <>
+                                <header className="offline-canvas-toolbar">
+                                    <label className="offline-canvas-toolbar-selectall">
+                                        <input
+                                            type="checkbox"
+                                            checked={nodeCount > 0 && selectedTaskIds.length === nodeCount}
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    setDraftSelectedTaskIds(flattenDocumentNodes(flowDocument).map((n) => n.taskId));
+                                                } else {
+                                                    setDraftSelectedTaskIds([]);
+                                                }
+                                            }}
+                                            disabled={nodeCount === 0}
+                                        />
+                                        全选
+                                    </label>
 
                                     <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="offline-canvas-toolbar-btn"
-                                                disabled={!activeFlowPath || !canWrite || committing}
-                                                onClick={handleOpenCommitDialog}
-                                                aria-label="提交"
-                                            >
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="offline-canvas-toolbar-btn"
+                                                    disabled={!activeFlowPath || !canWrite || !isDirty || savingFlow}
+                                                    onClick={() => void handleSaveFlow()}
+                                                    aria-label="保存"
+                                                >
                                                 <span className="relative flex">
-                                                    <GitCommitHorizontal size={16} />
-                                                    {!isDirty && !!repoStatus?.dirty && <span className="offline-toolbar-dot" />}
+                                                    {savingFlow ? <LoaderCircle size={16} className="offline-spin" /> : <Save size={16} />}
+                                                    {isDirty && <span className="offline-toolbar-dot" />}
                                                 </span>
                                             </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">
-                                            提交
-                                        </TooltipContent>
-                                    </Tooltip>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="tooltip-content" side="bottom">
+                                                保存
+                                            </TooltipContent>
+                                        </Tooltip>
 
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="offline-canvas-toolbar-btn"
-                                                disabled={!activeFlowPath || !canWrite}
-                                                onClick={() => setScheduleDialogOpen(true)}
-                                                aria-label="调度"
-                                            >
-                                                <Settings2 size={16} />
-                                            </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">
-                                            调度
-                                        </TooltipContent>
-                                    </Tooltip>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="offline-canvas-toolbar-btn"
+                                                    disabled={!activeFlowPath || !canWrite || committing}
+                                                    onClick={handleOpenCommitDialog}
+                                                    aria-label="提交"
+                                                >
+                                                    <span className="relative flex">
+                                                        <GitCommitHorizontal size={16} />
+                                                        {!isDirty && !!repoStatus?.dirty && <span className="offline-toolbar-dot" />}
+                                                    </span>
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="tooltip-content" side="bottom">
+                                                提交
+                                            </TooltipContent>
+                                        </Tooltip>
 
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="offline-canvas-toolbar-btn"
-                                                disabled={isExecuteButtonDisabled({ activeFlowPath, canWrite })}
-                                                onClick={() => void handleExecute()}
-                                                aria-label="执行"
-                                            >
-                                                <Play size={16} />
-                                            </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">
-                                            执行
-                                        </TooltipContent>
-                                    </Tooltip>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="offline-canvas-toolbar-btn"
+                                                    disabled={!activeFlowPath || !canWrite}
+                                                    onClick={() => setScheduleDialogOpen(true)}
+                                                    aria-label="调度"
+                                                >
+                                                    <Settings2 size={16} />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="tooltip-content" side="bottom">
+                                                调度
+                                            </TooltipContent>
+                                        </Tooltip>
 
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="offline-canvas-toolbar-btn"
-                                                disabled={!activeFlowPath}
-                                                onClick={() => setExecutionDialogOpen(true)}
-                                                aria-label="执行结果"
-                                            >
-                                                <History size={16} />
-                                            </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">
-                                            执行结果
-                                        </TooltipContent>
-                                    </Tooltip>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="offline-canvas-toolbar-btn"
+                                                    disabled={isExecuteButtonDisabled({ activeFlowPath, canWrite })}
+                                                    onClick={() => void handleExecute()}
+                                                    aria-label="执行"
+                                                >
+                                                    <Play size={16} />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="tooltip-content" side="bottom">
+                                                执行
+                                            </TooltipContent>
+                                        </Tooltip>
 
-                                    <span className="offline-toolbar-divider" />
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="offline-canvas-toolbar-btn"
+                                                    disabled={!activeFlowPath}
+                                                    onClick={() => setExecutionDialogOpen(true)}
+                                                    aria-label="执行结果"
+                                                >
+                                                    <History size={16} />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="tooltip-content" side="bottom">
+                                                执行结果
+                                            </TooltipContent>
+                                        </Tooltip>
 
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="offline-canvas-toolbar-btn"
-                                                disabled={!activeFlowPath || !canWrite}
-                                                onClick={() => {
-                                                    if (!flowDocument) return;
-                                                    const board = canvasBoardRef.current;
-                                                    const center = board
-                                                        ? { x: board.getBoundingClientRect().width / 2, y: board.getBoundingClientRect().height / 2 }
-                                                        : { x: 300, y: 200 };
-                                                    handleAddCanvasNode('SQL', center);
-                                                }}
-                                                aria-label="添加 SQL 节点"
-                                            >
-                                                <FileCode2 size={16} />
-                                            </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">
-                                            添加 SQL 节点
-                                        </TooltipContent>
-                                    </Tooltip>
+                                        <span className="offline-toolbar-divider" />
 
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="offline-canvas-toolbar-btn"
-                                                disabled={!activeFlowPath || !canWrite}
-                                                onClick={() => {
-                                                    if (!flowDocument) return;
-                                                    const board = canvasBoardRef.current;
-                                                    const center = board
-                                                        ? { x: board.getBoundingClientRect().width / 2, y: board.getBoundingClientRect().height / 2 }
-                                                        : { x: 300, y: 200 };
-                                                    handleAddCanvasNode('HIVE_SQL', center);
-                                                }}
-                                                aria-label="添加 HiveSQL 节点"
-                                            >
-                                                <Database size={16} />
-                                            </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">
-                                            添加 HiveSQL 节点
-                                        </TooltipContent>
-                                    </Tooltip>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="offline-canvas-toolbar-btn"
+                                                    disabled={!activeFlowPath || !canWrite}
+                                                    onClick={() => {
+                                                        if (!flowDocument) return;
+                                                        const board = canvasBoardRef.current;
+                                                        const center = board
+                                                            ? { x: board.getBoundingClientRect().width / 2, y: board.getBoundingClientRect().height / 2 }
+                                                            : { x: 300, y: 200 };
+                                                        handleAddCanvasNode('SQL', center);
+                                                    }}
+                                                    aria-label="添加 SQL 节点"
+                                                >
+                                                    <FileCode2 size={16} />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="tooltip-content" side="bottom">
+                                                添加 SQL 节点
+                                            </TooltipContent>
+                                        </Tooltip>
 
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="offline-canvas-toolbar-btn"
-                                                disabled={!activeFlowPath || !canWrite}
-                                                onClick={() => {
-                                                    if (!flowDocument) return;
-                                                    const board = canvasBoardRef.current;
-                                                    const center = board
-                                                        ? { x: board.getBoundingClientRect().width / 2, y: board.getBoundingClientRect().height / 2 }
-                                                        : { x: 300, y: 200 };
-                                                    handleAddCanvasNode('SHELL', center);
-                                                }}
-                                                aria-label="添加 Shell 节点"
-                                            >
-                                                <TerminalSquare size={16} />
-                                            </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">
-                                            添加 Shell 节点
-                                        </TooltipContent>
-                                    </Tooltip>
-                            </header>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="offline-canvas-toolbar-btn"
+                                                    disabled={!activeFlowPath || !canWrite}
+                                                    onClick={() => {
+                                                        if (!flowDocument) return;
+                                                        const board = canvasBoardRef.current;
+                                                        const center = board
+                                                            ? { x: board.getBoundingClientRect().width / 2, y: board.getBoundingClientRect().height / 2 }
+                                                            : { x: 300, y: 200 };
+                                                        handleAddCanvasNode('HIVE_SQL', center);
+                                                    }}
+                                                    aria-label="添加 HiveSQL 节点"
+                                                >
+                                                    <Database size={16} />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="tooltip-content" side="bottom">
+                                                添加 HiveSQL 节点
+                                            </TooltipContent>
+                                        </Tooltip>
 
-                            {staleDraft ? (
-                                <section className="offline-conflict-banner">
-                                    <div className="offline-conflict-copy">
-                                        <AlertTriangle size={16} />
-                                        <div>
-                                            <strong>发现未保存的本地恢复稿</strong>
-                                            <p>当前文件也有更新。你可以继续恢复稿，或加载仓库最新内容。</p>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="offline-canvas-toolbar-btn"
+                                                    disabled={!activeFlowPath || !canWrite}
+                                                    onClick={() => {
+                                                        if (!flowDocument) return;
+                                                        const board = canvasBoardRef.current;
+                                                        const center = board
+                                                            ? { x: board.getBoundingClientRect().width / 2, y: board.getBoundingClientRect().height / 2 }
+                                                            : { x: 300, y: 200 };
+                                                        handleAddCanvasNode('SHELL', center);
+                                                    }}
+                                                    aria-label="添加 Shell 节点"
+                                                >
+                                                    <TerminalSquare size={16} />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="tooltip-content" side="bottom">
+                                                添加 Shell 节点
+                                            </TooltipContent>
+                                        </Tooltip>
+                                </header>
+
+                                {staleDraft ? (
+                                    <section className="offline-conflict-banner">
+                                        <div className="offline-conflict-copy">
+                                            <AlertTriangle size={16} />
+                                            <div>
+                                                <strong>发现未保存的本地恢复稿</strong>
+                                                <p>当前文件也有更新。你可以继续恢复稿，或加载仓库最新内容。</p>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="offline-conflict-actions">
-                                        <Button type="button" variant="outline" size="sm" onClick={handleDiscardStaleDraft}>
-                                            加载最新内容
-                                        </Button>
-                                        <Button type="button" size="sm" onClick={handleRestoreStaleDraft}>
-                                            继续恢复稿
-                                        </Button>
-                                    </div>
-                                </section>
-                            ) : null}
+                                        <div className="offline-conflict-actions">
+                                            <Button type="button" variant="outline" size="sm" onClick={handleDiscardStaleDraft}>
+                                                加载最新内容
+                                            </Button>
+                                            <Button type="button" size="sm" onClick={handleRestoreStaleDraft}>
+                                                继续恢复稿
+                                            </Button>
+                                        </div>
+                                    </section>
+                                ) : null}
 
-                            <section className="offline-canvas-board" ref={canvasBoardRef}>
-                                <ReactFlowProvider key={activeFlowPath}>
-                                    <FlowCanvas
-                                        flowDocument={flowDocument}
-                                        selectedTaskIds={selectedTaskIds}
-                                        activeNodeId={activeNodeId}
-                                        nodeIssues={nodeIssues}
-                                        nodeStatuses={nodeStatuses}
-                                        onNodesChange={handleCanvasNodesChange}
-                                        onEdgesChange={handleCanvasEdgesChange}
-                                        onNodeLayoutCommit={handleCanvasNodeLayoutCommit}
-                                        onSelectNode={setDraftSelectedNodeId}
-                                        onToggleTaskSelection={handleToggleTaskSelection}
-                                        onReplaceTaskSelection={handleReplaceTaskSelection}
-                                        onDoubleClickNode={handleOpenNodeEditor}
-                                        onAddNode={handleAddCanvasNode}
-                                        onRenameNode={handleRenameNode}
-                                    />
-                                </ReactFlowProvider>
-                            </section>
-                        </>
-                    )}
-                </main>
-            </div>
+                                <section className="offline-canvas-board" ref={canvasBoardRef}>
+                                    <ReactFlowProvider key={activeFlowPath}>
+                                        <FlowCanvas
+                                            flowDocument={flowDocument}
+                                            selectedTaskIds={selectedTaskIds}
+                                            activeNodeId={activeNodeId}
+                                            nodeIssues={nodeIssues}
+                                            nodeStatuses={nodeStatuses}
+                                            onNodesChange={handleCanvasNodesChange}
+                                            onEdgesChange={handleCanvasEdgesChange}
+                                            onNodeLayoutCommit={handleCanvasNodeLayoutCommit}
+                                            onSelectNode={setDraftSelectedNodeId}
+                                            onToggleTaskSelection={handleToggleTaskSelection}
+                                            onReplaceTaskSelection={handleReplaceTaskSelection}
+                                            onDoubleClickNode={handleOpenNodeEditor}
+                                            onAddNode={handleAddCanvasNode}
+                                            onRenameNode={handleRenameNode}
+                                        />
+                                    </ReactFlowProvider>
+                                </section>
+                            </>
+                        )}
+                    </main>
+                </ResizablePanel>
+            </ResizablePanelGroup>
 
             <SaveConflictDialog
                 open={saveConflictState !== null}
