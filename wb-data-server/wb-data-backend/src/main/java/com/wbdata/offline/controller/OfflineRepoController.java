@@ -8,6 +8,7 @@ import com.wbdata.auth.service.AuthSession;
 import com.wbdata.common.Result;
 import com.wbdata.offline.dto.CreateFolderRequest;
 import com.wbdata.offline.dto.DeleteFolderRequest;
+import com.wbdata.offline.dto.CommitCurrentFlowRequest;
 import com.wbdata.offline.dto.CommitRequest;
 import com.wbdata.offline.dto.CommitResponse;
 import com.wbdata.offline.dto.OfflineRepoStatusResponse;
@@ -63,18 +64,39 @@ public class OfflineRepoController {
         return Result.success(new RemoteStatusResponse(hasRemote, remoteUrl));
     }
 
-    @Operation(summary = "提交本地更改打标版本")
+    @Operation(summary = "提交当前 Flow 的改动打标版本")
+    @PostMapping("/repo/commit/flow")
+    public Result<CommitResponse> commitCurrentFlow(
+            @RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
+            @Valid @RequestBody CommitCurrentFlowRequest request
+    ) {
+        GitPushService.CommitResult result = gitPushService.commitCurrentFlow(
+                context.currentGroup().id(),
+                request.flowPath(),
+                request.message()
+        );
+        return Result.success(new CommitResponse(result.success(), result.message()));
+    }
+
+    @Operation(summary = "提交仓库所有改动")
     @PostMapping("/repo/commit")
-    public Result<CommitResponse> commit(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
-                                         @Valid @RequestBody CommitRequest request) {
-        GitPushService.CommitResult result = gitPushService.commit(context.currentGroup().id(), request.message());
+    public Result<CommitResponse> commitRepo(
+            @RequireGroupAuth(Permission.GROUP_SETTINGS) AuthContextResponse context,
+            @Valid @RequestBody CommitRequest request
+    ) {
+        GitPushService.CommitResult result = gitPushService.commitRepo(
+                context.currentGroup().id(),
+                request.message()
+        );
         return Result.success(new CommitResponse(result.success(), result.message()));
     }
 
     @Operation(summary = "推送本地仓库到 GitHub")
     @PostMapping("/repo/push")
-    public Result<PushResponse> push(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
-                                     @Valid @RequestBody PushRequest request) {
+    public Result<PushResponse> push(
+            @RequireGroupAuth(Permission.GROUP_SETTINGS) AuthContextResponse context,
+            @Valid @RequestBody PushRequest request
+    ) {
         GitPushService.PushResult result = gitPushService.push(context.currentGroup().id());
         return Result.success(new PushResponse(result.success(), result.message(), result.remoteUrl(), result.remoteCreated()));
     }
