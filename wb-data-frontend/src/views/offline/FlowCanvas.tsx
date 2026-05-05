@@ -26,6 +26,20 @@ import { wouldCreateCycle, autoLayout } from './dagUtils';
 import type { OfflineFlowDocument, OfflineFlowNode, OfflineFlowNodeKind } from '../../api/offline';
 import { isOfflineFlowNodeKind } from './offlineNodeKinds';
 
+/**
+ * 根据节点数量动态计算 fitView 的 padding 值
+ * 节点越少，padding 越大，留白越多
+ */
+function calculateFitPadding(nodeCount: number): number {
+    if (nodeCount <= 1) return 0.7;
+    if (nodeCount <= 2) return 0.5;
+    if (nodeCount <= 4) return 0.4;
+    if (nodeCount <= 8) return 0.3;
+    if (nodeCount <= 15) return 0.2;
+    return 0.15;
+}
+
+
 const nodeTypes: NodeTypes = {
     flowNode: FlowCanvasNode,
 };
@@ -471,6 +485,18 @@ export default function FlowCanvas(props: FlowCanvasProps) {
         [],
     );
 
+    const fitViewOptions = useMemo(
+        () => ({
+            padding: calculateFitPadding(nodes.length),
+            duration: 400,
+            maxZoom: 1.0,
+            minZoom: 0.3,
+        }),
+        [nodes.length],
+    );
+
+
+
     const handleAutoLayout = useCallback(() => {
         const nextNodes = autoLayout(nodes, edges, 'TB');
         setNodes(nextNodes);
@@ -574,10 +600,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                 nodeTypes={nodeTypes}
                 defaultEdgeOptions={defaultEdgeOptions}
                 fitView
-                fitViewOptions={{ padding: 0.3 }}
-                minZoom={0.2}
-                maxZoom={2}
-                snapToGrid
+                fitViewOptions={fitViewOptions}
                 snapGrid={[20, 20]}
                 deleteKeyCode={null}
                 elementsSelectable
@@ -596,6 +619,8 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                 />
                 <Controls
                     showInteractive={false}
+
+                    fitViewOptions={fitViewOptions}
                     className="flow-canvas-controls"
                 >
                     <ControlButton onClick={handleAutoLayout} title="自动排版 (一键整理)" aria-label="自动排版">
