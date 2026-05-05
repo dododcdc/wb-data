@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CronExpressionParser } from 'cron-parser';
-import { AxiosError } from 'axios';
+import { getErrorMessage } from '../../utils/error';
 import { ReactFlowProvider, type Node, type Edge } from '@xyflow/react';
 import { useNavigate, useBlocker, useSearchParams } from 'react-router-dom';
 import FlowCanvas from './FlowCanvas';
@@ -28,7 +27,6 @@ import {
     X,
     Copy,
 } from 'lucide-react';
-import { Combobox, ComboboxInput, ComboboxTrigger, ComboboxContent, ComboboxItem, ComboboxEmpty } from '../../components/ui/combobox';
 import {
     commitOfflineRepo,
     createOfflineFolder,
@@ -36,7 +34,6 @@ import {
     deleteOfflineFlow,
     deleteOfflineFolder,
     getOfflineExecution,
-    getOfflineFlowContent,
     getOfflineFlowDocument,
     getOfflineRepoStatus,
     getOfflineRepoTree,
@@ -49,7 +46,6 @@ import {
     saveOfflineFlowDocument,
     stopAllOfflineExecutions,
     stopOfflineExecution,
-    updateOfflineSchedule,
     updateOfflineScheduleStatus,
     type OfflineExecutionDetail,
     type OfflineExecutionListItem,
@@ -75,7 +71,6 @@ import {
 } from '../../components/ui/dialog';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
-import { getErrorMessage } from '../../utils/error';
 import { useAuthStore } from '../../utils/auth';
 import { NodeEditorDialog } from './NodeEditorDialog';
 import { ScheduleDialog } from './ScheduleDialog';
@@ -99,7 +94,6 @@ import {
     type FlowDraftSession,
     type PendingNodeEditorDraft,
 } from './flowDraftController';
-import { SegmentedCronInput } from './SegmentedCronInput';
 import { createNodeEditorDraftScheduler } from './nodeEditorDraftScheduler';
 import { isExecuteButtonDisabled } from './executionToolbarState';
 import { buildDraftExecutionRequest } from './draftExecution';
@@ -1214,7 +1208,7 @@ export default function OfflineWorkbench() {
             setNewFlowDialogOpen(false);
             setNewFlowName('');
             setNewFlowParentPath('');
-            showFeedback({ tone: 'success', title: 'Flow 创建成功', detail: name });
+            showFeedback({ tone: 'success', title: 'Flow 创建成功', detail: '' });
             await refreshRepoTree();
             await openFlowDocument(path);
         } catch (error) {
@@ -1239,7 +1233,7 @@ export default function OfflineWorkbench() {
             setNewFolderDialogOpen(false);
             setNewFolderName('');
             setNewFolderParentPath('');
-            showFeedback({ tone: 'success', title: '文件夹创建成功', detail: name });
+            showFeedback({ tone: 'success', title: '文件夹创建成功', detail: '' });
             await refreshRepoTree();
         } catch (error) {
             showFeedback({
@@ -1263,7 +1257,7 @@ export default function OfflineWorkbench() {
                 setActiveFlowPath(null);
                 setDraftSession(null);
             }
-            showFeedback({ tone: 'success', title: 'Flow 已删除', detail: deleteFlowName });
+            showFeedback({ tone: 'success', title: 'Flow 已删除', detail: '' });
             await refreshRepoTree();
         } catch (error) {
             showFeedback({
@@ -1274,7 +1268,7 @@ export default function OfflineWorkbench() {
         } finally {
             setDeleteFlowLoading(false);
         }
-    }, [groupId, deleteFlowPath, deleteFlowName, activeFlowPath, showFeedback, refreshRepoTree]);
+    }, [groupId, deleteFlowPath, activeFlowPath, showFeedback, refreshRepoTree]);
 
     const handleRenameFlow = useCallback(async () => {
         if (!groupId || !renameFlowPath || !renameFlowName.trim()) return;
@@ -1325,7 +1319,7 @@ export default function OfflineWorkbench() {
             });
             setActiveFlowPath(nextState.activeFlowPath);
             setDraftSession(nextState.draftSession);
-            showFeedback({ tone: 'success', title: '文件夹已删除', detail: deleteFolderName });
+            showFeedback({ tone: 'success', title: '文件夹已删除', detail: '' });
             await refreshRepoTree();
         } catch (error) {
             showFeedback({
@@ -1336,7 +1330,7 @@ export default function OfflineWorkbench() {
         } finally {
             setDeleteFolderLoading(false);
         }
-    }, [groupId, deleteFolderPath, deleteFolderName, activeFlowPath, draftSession, showFeedback, refreshRepoTree]);
+    }, [groupId, deleteFolderPath, activeFlowPath, draftSession, showFeedback, refreshRepoTree]);
 
     const handleRenameFolder = useCallback(async () => {
         if (!groupId || !renameFolderPath || !renameFolderName.trim()) return;
@@ -1720,6 +1714,12 @@ export default function OfflineWorkbench() {
     const handleAddCanvasNode = useCallback((kind: OfflineFlowNodeKind, position: { x: number; y: number }) => {
         if (!flowDocument) return;
 
+        const currentNodeCount = flattenDocumentNodes(flowDocument).length;
+        if (currentNodeCount >= 20) {
+            showFeedback({ tone: 'info', title: '节点数量已达上限', detail: '离线 Flow 最多支持 20 个节点，请精简流程设计。' });
+            return;
+        }
+
         const existingIds = new Set(flattenDocumentNodes(flowDocument).map((n) => n.taskId));
         let index = 1;
         let newTaskId = `${kind.toLowerCase()}_node_${index}`;
@@ -1971,7 +1971,7 @@ export default function OfflineWorkbench() {
             showFeedback({
                 tone: 'success',
                 title: 'Flow 已保存',
-                detail: '节点内容、依赖关系和布局已写回本地仓库。',
+                detail: '',
             });
             return true;
         } catch (error) {
@@ -2262,7 +2262,7 @@ export default function OfflineWorkbench() {
             showFeedback({
                 tone: 'success',
                 title: 'Flow 已保存',
-                detail: '节点内容、依赖关系和布局已写回本地仓库。',
+                detail: '',
             });
         } catch (error) {
             if (!isCurrentGroupAction()) return;
@@ -2291,17 +2291,19 @@ export default function OfflineWorkbench() {
                                 <div className="offline-rail-toolbar-actions">
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <button
-                                            type="button"
-                                            className="offline-rail-toolbar-btn"
-                                            aria-label="新建"
-                                            onClick={() => setNewItemMenuOpen(!newItemMenuOpen)}
-                                            disabled={!groupId || repoLoading || treeLoading || flowLoading}
-                                        >
-                                            <Plus size={14} />
+                                        <div className="offline-rail-toolbar-btn-wrapper">
+                                            <button
+                                                type="button"
+                                                className="offline-rail-toolbar-btn"
+                                                aria-label="新建"
+                                                onClick={() => setNewItemMenuOpen(!newItemMenuOpen)}
+                                                disabled={!groupId || repoLoading || treeLoading || flowLoading}
+                                            >
+                                                <Plus size={14} />
+                                            </button>
                                             {newItemMenuOpen && (
                                                 <div
-                                                    className="offline-new-item-menu"
+                                                    className="offline-new-item-menu animate-in fade-in zoom-in-95"
                                                     onMouseLeave={() => setNewItemMenuOpen(false)}
                                                 >
                                                     <button
@@ -2322,7 +2324,7 @@ export default function OfflineWorkbench() {
                                                     </button>
                                                 </div>
                                             )}
-                                        </button>
+                                        </div>
                                     </TooltipTrigger>
                                     <TooltipContent className="tooltip-content" side="bottom">
                                         新建
@@ -2695,8 +2697,8 @@ export default function OfflineWorkbench() {
             <ScheduleDialog
                 open={scheduleDialogOpen}
                 schedule={schedule}
-                cron={scheduleCron}
-                timezone={scheduleTimezone}
+                cron={scheduleCron || ''}
+                timezone={scheduleTimezone || ''}
                 saving={scheduleSaving}
                 flowId={flowDocument?.flowId ?? null}
                 onOpenChange={(open) => {

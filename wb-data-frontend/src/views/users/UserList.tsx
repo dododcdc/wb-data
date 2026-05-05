@@ -164,7 +164,7 @@ export default function UserList() {
             });
             void queryClient.invalidateQueries({ queryKey: ['users'] });
         },
-        onError: (error, _variables, context) => {
+        onError: (_error, _variables, context) => {
             context?.previousPages.forEach(([queryKey, page]) => {
                 queryClient.setQueryData(queryKey, page);
             });

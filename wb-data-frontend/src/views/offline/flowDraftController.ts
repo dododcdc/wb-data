@@ -1,4 +1,4 @@
-import type { OfflineFlowDocument } from '../../api/offline';
+import type { OfflineFlowDocument, OfflineFlowSchedule } from '../../api/offline';
 
 import { buildFlowDocumentSignature } from './flowCanvasState';
 import type { RecoverySnapshot } from './recoverySnapshotStore';

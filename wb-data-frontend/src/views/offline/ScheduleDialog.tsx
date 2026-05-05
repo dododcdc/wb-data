@@ -12,7 +12,7 @@ import {
 import { Button } from '../../components/ui/button';
 import { Combobox, ComboboxInput, ComboboxTrigger, ComboboxContent, ComboboxItem, ComboboxEmpty } from '../../components/ui/combobox';
 import { SegmentedCronInput } from './SegmentedCronInput';
-import { type OfflineFlowSchedule, type OfflineScheduleResponse } from '../../api/offline';
+import { type OfflineScheduleResponse } from '../../api/offline';
 import { TIMEZONES, POPULAR_TIMEZONES, getTimezoneOffset, formatPreviewTime } from './ScheduleUtils';
 import './ScheduleDialog.css';
 
