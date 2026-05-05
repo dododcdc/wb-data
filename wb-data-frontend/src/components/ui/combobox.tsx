@@ -48,7 +48,35 @@ const ComboboxContent = React.forwardRef<HTMLDivElement, ComboboxPrimitive.Popup
     sideOffset = 4,
     align = "start",
     ...props
-  }, ref) => {
+  }, forwardedRef) => {
+    const innerRef = React.useRef<HTMLDivElement>(null);
+    const wheelHandlerRef = React.useRef<(e: WheelEvent) => void>(null);
+
+    if (!wheelHandlerRef.current) {
+      wheelHandlerRef.current = (e: WheelEvent) => {
+        e.stopPropagation();
+      };
+    }
+
+    const mergedRef = React.useCallback(
+      (node: HTMLDivElement | null) => {
+        const prev = innerRef.current;
+        if (prev && wheelHandlerRef.current) {
+          prev.removeEventListener('wheel', wheelHandlerRef.current);
+        }
+        innerRef.current = node;
+        if (node && wheelHandlerRef.current) {
+          node.addEventListener('wheel', wheelHandlerRef.current);
+        }
+        if (typeof forwardedRef === 'function') {
+          forwardedRef(node);
+        } else if (forwardedRef) {
+          (forwardedRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+        }
+      },
+      [forwardedRef],
+    );
+
     return (
       <ComboboxPrimitive.Portal>
         <ComboboxPrimitive.Positioner
@@ -58,7 +86,7 @@ const ComboboxContent = React.forwardRef<HTMLDivElement, ComboboxPrimitive.Popup
           className="pointer-events-auto isolate z-[1105]"
         >
           <ComboboxPrimitive.Popup
-            ref={ref}
+            ref={mergedRef}
             data-slot="combobox-content"
             className={cn(
               "pointer-events-auto relative isolate z-[1105] max-h-72 w-[var(--anchor-width)] min-w-36 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",

@@ -84,6 +84,12 @@ export interface OfflineFlowStage {
     nodes: OfflineFlowNode[];
 }
 
+export interface OfflineFlowSchedule {
+    cron: string;
+    timezone: string;
+    enabled: boolean;
+}
+
 export interface OfflineFlowDocument {
     groupId: number;
     path: string;
@@ -94,6 +100,7 @@ export interface OfflineFlowDocument {
     stages: OfflineFlowStage[];
     edges: OfflineFlowEdge[];
     layout: Record<string, NodePosition>;
+    schedule?: OfflineFlowSchedule;
 }
 
 export interface SaveOfflineFlowRequest {
@@ -126,6 +133,7 @@ export interface SaveOfflineFlowDocumentRequest {
     stages: SaveOfflineFlowStageRequest[];
     edges?: SaveOfflineFlowEdgeRequest[];
     layout?: Record<string, NodePosition>;
+    schedule?: OfflineFlowSchedule;
 }
 
 export interface SaveOfflineFlowEdgeRequest {

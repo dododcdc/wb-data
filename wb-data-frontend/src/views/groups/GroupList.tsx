@@ -84,7 +84,7 @@ export default function GroupList() {
             void queryClient.invalidateQueries({ queryKey: ['groups'] });
         },
         onError: (e) => {
-            showFeedback({ tone: 'error', title: '禁用失败', detail: getErrorMessage(e, '请稍后重试') });
+            showFeedback({ tone: 'error', title: '禁用失败', detail: '' });
         },
         onSettled: () => setPendingId(null),
     });
@@ -97,7 +97,7 @@ export default function GroupList() {
             void queryClient.invalidateQueries({ queryKey: ['groups'] });
         },
         onError: (e) => {
-            showFeedback({ tone: 'error', title: '启用失败', detail: getErrorMessage(e, '请稍后重试') });
+            showFeedback({ tone: 'error', title: '启用失败', detail: '' });
         },
         onSettled: () => setPendingId(null),
     });
@@ -123,17 +123,9 @@ export default function GroupList() {
         setEditingGroup(null);
 
         if (editingGroup) {
-            showFeedback({
-                tone: 'success',
-                title: '项目组已更新',
-                detail: `${name} 的信息已保存。`,
-            });
+            showFeedback({ tone: 'success', title: '项目组已更新', detail: '' });
         } else {
-            showFeedback({
-                tone: 'success',
-                title: '项目组已创建',
-                detail: `${name} 已创建，列表正在同步最新记录。`,
-            });
+            showFeedback({ tone: 'success', title: '项目组已创建', detail: '' });
             setPage(1);
         }
 

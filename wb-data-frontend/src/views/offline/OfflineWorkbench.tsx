@@ -28,7 +28,7 @@ import {
     X,
     Copy,
 } from 'lucide-react';
-import { Combobox, ComboboxInput, ComboboxContent, ComboboxItem, ComboboxEmpty } from '../../components/ui/combobox';
+import { Combobox, ComboboxInput, ComboboxTrigger, ComboboxContent, ComboboxItem, ComboboxEmpty } from '../../components/ui/combobox';
 import {
     commitOfflineRepo,
     createOfflineFolder,
@@ -78,6 +78,7 @@ import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { getErrorMessage } from '../../utils/error';
 import { useAuthStore } from '../../utils/auth';
 import { NodeEditorDialog } from './NodeEditorDialog';
+import { ScheduleDialog } from './ScheduleDialog';
 import { UnsavedChangesDialog } from '../../components/ui/unsaved-changes-dialog';
 import {
     applyCanvasStateToDocument,
@@ -94,9 +95,11 @@ import {
     rebaseFlowDraftSession,
     replaceFlowDraftWorkingDocument,
     resolveDraftConflict,
+    updateFlowScheduleDraft,
     type FlowDraftSession,
     type PendingNodeEditorDraft,
 } from './flowDraftController';
+import { SegmentedCronInput } from './SegmentedCronInput';
 import { createNodeEditorDraftScheduler } from './nodeEditorDraftScheduler';
 import { isExecuteButtonDisabled } from './executionToolbarState';
 import { buildDraftExecutionRequest } from './draftExecution';
@@ -719,179 +722,6 @@ function ExecutionDialog(props: ExecutionDialogProps) {
     );
 }
 
-const TIMEZONES: string[] = Intl.supportedValuesOf('timeZone');
-
-function formatPreviewTime(iso: string, timezone: string): string {
-    const d = new Date(iso);
-    const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: timezone || undefined,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-    }).formatToParts(d);
-    const map: Record<string, string> = {};
-    parts.forEach((p) => { if (p.type !== 'literal') map[p.type] = p.value; });
-    return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}`;
-}
-
-interface ScheduleDialogProps {
-    open: boolean;
-    schedule: OfflineScheduleResponse | null;
-    cron: string;
-    timezone: string;
-    loading: boolean;
-    saving: boolean;
-    flowId: string | null;
-    onOpenChange: (open: boolean) => void;
-    onCronChange: (value: string) => void;
-    onTimezoneChange: (value: string) => void;
-    onSave: () => void;
-    onToggle: (enabled: boolean) => void;
-}
-
-function ScheduleDialog(props: ScheduleDialogProps) {
-    const {
-        open,
-        schedule,
-        cron,
-        timezone,
-        loading,
-        saving,
-        flowId,
-        onOpenChange,
-        onCronChange,
-        onTimezoneChange,
-        onSave,
-        onToggle,
-    } = props;
-
-    const [tzQuery, setTzQuery] = useState('');
-
-    const preview = useMemo(() => {
-        if (!cron.trim()) return { type: 'empty' as const };
-        try {
-            const interval = CronExpressionParser.parse(cron, { tz: timezone || undefined });
-            const times: string[] = [];
-            for (let i = 0; i < 3; i++) {
-                times.push(interval.next().toISOString());
-            }
-            return { type: 'ok' as const, times };
-        } catch {
-            return { type: 'error' as const };
-        }
-    }, [cron, timezone]);
-
-    const filteredTimezones = useMemo(() => {
-        if (!tzQuery) return TIMEZONES.slice(0, 50);
-        const q = tzQuery.toLowerCase();
-        return TIMEZONES.filter((tz) => tz.toLowerCase().includes(q)).slice(0, 50);
-    }, [tzQuery]);
-
-    return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="offline-schedule-dialog">
-                <DialogHeader>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div>
-                            <DialogTitle>调度配置</DialogTitle>
-                            <DialogDescription>
-                                {flowId || '尚未选择 Flow'}
-                            </DialogDescription>
-                        </div>
-                        {schedule && (
-                            <button
-                                type="button"
-                                role="switch"
-                                aria-label="启用调度"
-                                aria-checked={schedule.enabled}
-                                disabled={saving || loading}
-                                onClick={() => onToggle(!schedule.enabled)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' || e.key === ' ') {
-                                        e.preventDefault();
-                                        onToggle(!schedule.enabled);
-                                    }
-                                }}
-                                className="offline-switch"
-                            >
-                                <span className="offline-switch-thumb" aria-hidden="true" />
-                            </button>
-                        )}
-                    </div>
-                </DialogHeader>
-
-                <div className="offline-form-grid">
-                    <label className="offline-field">
-                        <span>时区</span>
-                        <Combobox
-                            value={timezone}
-                            onInputValueChange={setTzQuery}
-                            onValueChange={(value) => {
-                                onTimezoneChange(value);
-                                setTzQuery('');
-                            }}
-                        >
-                            <ComboboxInput
-                                placeholder="搜索时区..."
-                                disabled={saving}
-                            />
-                            <ComboboxContent className="overscroll-contain">
-                                {filteredTimezones.map((tz) => (
-                                    <ComboboxItem key={tz} value={tz}>{tz}</ComboboxItem>
-                                ))}
-                                {filteredTimezones.length === 0 && (
-                                    <ComboboxEmpty>未找到匹配的时区</ComboboxEmpty>
-                                )}
-                            </ComboboxContent>
-                        </Combobox>
-                    </label>
-                    <label className="offline-field">
-                        <span>Cron 表达式</span>
-                        <Input
-                            value={cron}
-                            placeholder="例如：0 10 * * *"
-                            onChange={(event) => onCronChange(event.target.value)}
-                            disabled={saving}
-                        />
-                        <span className="offline-field-hint">分 时 日 月 周</span>
-                    </label>
-                </div>
-
-                <div className={`offline-schedule-preview ${preview.type === 'error' ? 'is-error' : preview.type === 'empty' ? 'is-empty' : ''}`}>
-                    <div className="offline-schedule-preview-label">未来 3 次执行时间</div>
-                    {preview.type === 'empty' && (
-                        <div className="offline-schedule-preview-text">请先配置调度时间</div>
-                    )}
-                    {preview.type === 'error' && (
-                        <div className="offline-schedule-preview-text is-error">无效的 cron 表达式</div>
-                    )}
-                    {preview.type === 'ok' && preview.times.map((t, i) => (
-                        <div key={i} className="offline-schedule-preview-text">
-                            {formatPreviewTime(t, timezone)}
-                        </div>
-                    ))}
-                </div>
-
-                <div className="offline-dialog-actions">
-                    <Button
-                        type="button"
-                        onClick={onSave}
-                        disabled={saving || loading || cron.trim().length === 0 || preview.type === 'error'}
-                    >
-                        {saving ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                        暂存调度
-                    </Button>
-                </div>
-
-                <p className="offline-schedule-hint">设置将在 Commit + Push 后由 Kestra 同步生效</p>
-            </DialogContent>
-        </Dialog>
-    );
-}
-
 export default function OfflineWorkbench() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -1126,6 +956,25 @@ export default function OfflineWorkbench() {
 
     const loadScheduleSnapshot = useCallback(async (path: string) => {
         if (!groupId) return;
+
+        // If we have a draft with schedule, use it directly to avoid overwriting un-saved changes
+        if (draftSession?.workingDraft.schedule) {
+            const s = draftSession.workingDraft.schedule;
+            setScheduleCron(s.cron);
+            setScheduleTimezone(s.timezone || defaultTimezone);
+            setSchedule({
+                groupId,
+                path,
+                triggerId: 'schedule',
+                cron: s.cron,
+                timezone: s.timezone,
+                enabled: s.enabled,
+                contentHash: '',
+                fileUpdatedAt: 0
+            });
+            return;
+        }
+
         const isCurrentGroupAction = captureGroupActionGuard(groupId);
         setScheduleLoading(true);
         try {
@@ -1138,21 +987,21 @@ export default function OfflineWorkbench() {
             if (!isCurrentGroupAction()) return;
             if (error instanceof AxiosError && error.response?.status === 404) {
                 setSchedule(null);
-                setScheduleCron('');
+                setScheduleCron('0 2 * * *'); // 默认值：每日凌晨 2 点
                 setScheduleTimezone(defaultTimezone);
                 return;
             }
             showFeedback({
                 tone: 'error',
                 title: '调度配置读取失败',
-                detail: getErrorMessage(error, '暂时无法读取当前 Flow 的调度配置。'),
+                detail: '',
             });
         } finally {
             if (isCurrentGroupAction()) {
                 setScheduleLoading(false);
             }
         }
-    }, [captureGroupActionGuard, defaultTimezone, groupId, showFeedback]);
+    }, [captureGroupActionGuard, defaultTimezone, draftSession?.workingDraft.schedule, groupId, showFeedback]);
 
     const setDraftSelectedNodeId = useCallback((nextSelectedNodeId: string | null) => {
         setDraftSession((current) => current ? { ...current, selectedNodeId: nextSelectedNodeId } : current);
@@ -1298,14 +1147,14 @@ export default function OfflineWorkbench() {
         try {
             const result = await pushOfflineRepo(groupId);
             if (result.success) {
-                showFeedback({ tone: 'success', title: result.message, detail: '' });
+                showFeedback({ tone: 'success', title: '推送成功', detail: '' });
                 await refreshRemoteStatus();
                 await refreshRepoStatus();
             } else {
                 showFeedback({ tone: 'error', title: result.message, detail: '' });
             }
         } catch (error) {
-            showFeedback({ tone: 'error', title: '推送失败', detail: getErrorMessage(error, '推送失败，请稍后重试') });
+            showFeedback({ tone: 'error', title: '推送失败', detail: '' });
         } finally {
             setPushLoading(false);
         }
@@ -1338,7 +1187,7 @@ export default function OfflineWorkbench() {
                 showFeedback({ tone: 'error', title: result.message, detail: '' });
             }
         } catch (error) {
-            showFeedback({ tone: 'error', title: '版本提交失败', detail: getErrorMessage(error, '提交失败，请稍后重试') });
+            showFeedback({ tone: 'error', title: '版本提交失败', detail: '' });
         } finally {
             setCommitting(false);
         }
@@ -2043,6 +1892,7 @@ export default function OfflineWorkbench() {
             })),
             edges: draftDocument.edges,
             layout: draftDocument.layout,
+            schedule: draftDocument.schedule,
         });
     }, [groupId]);
 
@@ -2078,7 +1928,7 @@ export default function OfflineWorkbench() {
             draftDocument.stages.flatMap(s => s.nodes.map(n => ({ id: n.taskId } as Node))),
             draftDocument.edges as Edge[],
         )) {
-            showFeedback({ tone: 'error', title: '保存失败', detail: '画布中存在循环依赖，请检查连线。' });
+            showFeedback({ tone: 'error', title: '保存失败', detail: '' });
             return false;
         }
 
@@ -2304,65 +2154,46 @@ export default function OfflineWorkbench() {
     }, [activeExecutionId, activeFlowPath, groupId, refreshExecutions, showFeedback]);
 
     const handleScheduleSave = useCallback(async () => {
-        if (!groupId || !activeFlowPath) return;
-        setScheduleSaving(true);
-        try {
-            const scheduleBase: { contentHash: string; fileUpdatedAt: number } =
-                schedule ?? await getOfflineFlowContent(groupId, activeFlowPath);
-            await updateOfflineSchedule({
-                groupId,
-                path: activeFlowPath,
-                cron: scheduleCron,
-                timezone: scheduleTimezone,
-                contentHash: scheduleBase.contentHash,
-                fileUpdatedAt: scheduleBase.fileUpdatedAt,
-            });
-            await openFlowDocument(activeFlowPath);
-            await loadScheduleSnapshot(activeFlowPath);
-            showFeedback({
-                tone: 'success',
-                title: '调度已更新',
-                detail: 'Schedule trigger 已写回本地 Flow 文件。',
-            });
-        } catch (error) {
-            showFeedback({
-                tone: 'error',
-                title: '调度更新失败',
-                detail: getErrorMessage(error, '暂时无法更新当前 Flow 的调度配置。'),
-            });
-        } finally {
-            setScheduleSaving(false);
-        }
-    }, [activeFlowPath, groupId, loadScheduleSnapshot, openFlowDocument, schedule, scheduleCron, scheduleTimezone, showFeedback]);
+        if (!draftSession) return;
+        const nextSession = updateFlowScheduleDraft(draftSession, {
+            cron: scheduleCron,
+            timezone: scheduleTimezone,
+            enabled: schedule?.enabled ?? false,
+        });
+        setDraftSession(nextSession);
+        setScheduleDialogOpen(false);
+        showFeedback({
+            tone: 'success',
+            title: '调度配置已暂存',
+            detail: '',
+        });
+    }, [draftSession, schedule?.enabled, scheduleCron, scheduleTimezone, showFeedback]);
 
     const handleScheduleToggle = useCallback(async (enabled: boolean) => {
-        if (!groupId || !activeFlowPath || !schedule) return;
-        setScheduleSaving(true);
-        try {
-            await updateOfflineScheduleStatus({
-                groupId,
-                path: activeFlowPath,
-                enabled,
-                contentHash: schedule.contentHash,
-                fileUpdatedAt: schedule.fileUpdatedAt,
-            });
-            await openFlowDocument(activeFlowPath);
-            await loadScheduleSnapshot(activeFlowPath);
-            showFeedback({
-                tone: 'success',
-                title: enabled ? '调度已启用' : '调度已停用',
-                detail: '最新调度状态已写回本地 Flow 文件。',
-            });
-        } catch (error) {
-            showFeedback({
-                tone: 'error',
-                title: '调度状态更新失败',
-                detail: getErrorMessage(error, '暂时无法切换当前 Flow 的调度状态。'),
-            });
-        } finally {
-            setScheduleSaving(false);
-        }
-    }, [activeFlowPath, groupId, loadScheduleSnapshot, openFlowDocument, schedule, showFeedback]);
+        if (!draftSession) return;
+        const nextSession = updateFlowScheduleDraft(draftSession, {
+            cron: scheduleCron,
+            timezone: scheduleTimezone,
+            enabled,
+        });
+        setDraftSession(nextSession);
+        // Also update local component state so the dialog stays in sync if it's open
+        setSchedule((prev) => prev ? { ...prev, enabled } : { 
+            groupId: groupId!, 
+            path: activeFlowPath!, 
+            triggerId: 'schedule', 
+            cron: scheduleCron, 
+            timezone: scheduleTimezone, 
+            enabled, 
+            contentHash: '', 
+            fileUpdatedAt: 0 
+        });
+        showFeedback({
+            tone: 'success',
+            title: enabled ? '调度已开启' : '调度已关闭',
+            detail: '',
+        });
+    }, [activeFlowPath, draftSession, groupId, scheduleCron, scheduleTimezone, showFeedback]);
 
     const handleRestoreStaleDraft = useCallback(() => {
         if (!staleDraft) return;
@@ -2370,7 +2201,7 @@ export default function OfflineWorkbench() {
         showFeedback({
             tone: 'info',
             title: '已恢复旧草稿',
-            detail: '你当前看到的是本地草稿内容；保存时会覆盖当前仓库版本的脚本内容。',
+            detail: '',
         });
     }, [showFeedback, staleDraft]);
 
@@ -2381,7 +2212,7 @@ export default function OfflineWorkbench() {
         showFeedback({
             tone: 'info',
             title: '已丢弃本地草稿',
-            detail: '工作台将继续使用当前本地文件版本。',
+            detail: '',
         });
     }, [activeFlowPath, groupId, showFeedback]);
 
@@ -2657,7 +2488,7 @@ export default function OfflineWorkbench() {
                                             <button
                                                 type="button"
                                                 className="offline-canvas-toolbar-btn"
-                                                disabled={!activeFlowPath || !canWrite || isDirty}
+                                                disabled={!activeFlowPath || !canWrite}
                                                 onClick={() => setScheduleDialogOpen(true)}
                                                 aria-label="调度"
                                             >
@@ -2866,7 +2697,6 @@ export default function OfflineWorkbench() {
                 schedule={schedule}
                 cron={scheduleCron}
                 timezone={scheduleTimezone}
-                loading={scheduleLoading}
                 saving={scheduleSaving}
                 flowId={flowDocument?.flowId ?? null}
                 onOpenChange={(open) => {
