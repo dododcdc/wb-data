@@ -17,7 +17,6 @@
     border-bottom: 1px solid var(--color-border);
     background: var(--color-bg-primary);
 }
-
 .offline-rail {
     display: flex;
     flex-direction: column;
@@ -27,6 +26,7 @@
     border-top: none;
     border-bottom: none;
     border-left: none;
+    overflow: visible;
 }
 
 .offline-rail-toolbar-btn {
@@ -54,6 +54,10 @@
     cursor: not-allowed;
 }
 
+.offline-rail-toolbar-btn-wrapper {
+    position: relative;
+    display: inline-flex;
+}
 .offline-rail-toolbar {
     display: flex;
     align-items: center;
@@ -62,6 +66,7 @@
     padding: 12px 16px;
     border-bottom: 1px solid var(--color-border);
     flex-shrink: 0;
+    overflow: visible;
 }
 
 .offline-rail-toolbar-actions {
@@ -555,11 +560,6 @@ button.offline-tree-row {
     box-shadow: var(--shadow-md) !important;
 }
 
-.flow-canvas-minimap {
-    border-radius: var(--radius-lg) !important;
-    overflow: hidden !important;
-    box-shadow: var(--shadow-md) !important;
-}
 
 /* ReactFlow edge styling */
 .react-flow__edge-path {

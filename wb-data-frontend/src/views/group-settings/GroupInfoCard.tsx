@@ -72,7 +72,7 @@ export default function GroupInfoCard(props: GroupInfoCardProps) {
                 ),
             }));
             setEditing(false);
-            showFeedback({ tone: 'success', title: '项目组信息已更新', detail: '项目组名称和描述已保存。' });
+            showFeedback({ tone: 'success', title: '项目组信息已更新', detail: '' });
             onSaveSuccess();
         } catch (err) {
             const apiError = err as { status?: number; message?: string } | null;

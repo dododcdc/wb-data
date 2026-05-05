@@ -83,7 +83,7 @@ export default function GroupList() {
             showFeedback({ tone: 'success', title: '项目组已禁用', detail: '' });
             void queryClient.invalidateQueries({ queryKey: ['groups'] });
         },
-        onError: (e) => {
+        onError: () => {
             showFeedback({ tone: 'error', title: '禁用失败', detail: '' });
         },
         onSettled: () => setPendingId(null),
@@ -96,7 +96,7 @@ export default function GroupList() {
             showFeedback({ tone: 'success', title: '项目组已启用', detail: '' });
             void queryClient.invalidateQueries({ queryKey: ['groups'] });
         },
-        onError: (e) => {
+        onError: () => {
             showFeedback({ tone: 'error', title: '启用失败', detail: '' });
         },
         onSettled: () => setPendingId(null),

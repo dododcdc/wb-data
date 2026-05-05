@@ -172,8 +172,7 @@ export default function DataSourceList() {
                 previousPages: queryClient.getQueriesData<PageResult<DataSource>>({ queryKey: ['dataSources'] }),
             };
         },
-        onSuccess: (_response, id) => {
-            const deletedName = pendingDeleteTarget?.name ?? `#${id}`;
+        onSuccess: () => {
             setPendingDeleteTarget(null);
             showFeedback({
                 tone: 'success',
@@ -182,7 +181,7 @@ export default function DataSourceList() {
             });
             void queryClient.invalidateQueries({ queryKey: ['dataSources'] });
         },
-        onError: (error, _id, context) => {
+        onError: (_error, _id, context) => {
             context?.previousPages.forEach(([queryKey, page]) => {
                 queryClient.setQueryData(queryKey, page);
             });

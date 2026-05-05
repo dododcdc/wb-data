@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ReactFlow,
     Background,
     Controls,
     ControlButton,
-    MiniMap,
     useNodesState,
     useEdgesState,
     addEdge,
@@ -627,13 +626,6 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                         <Network size={16} />
                     </ControlButton>
                 </Controls>
-                <MiniMap
-                    nodeStrokeColor="rgba(166, 106, 71, 0.5)"
-                    nodeColor="rgba(255, 253, 248, 0.94)"
-                    nodeBorderRadius={8}
-                    maskColor="rgba(246, 242, 235, 0.7)"
-                    className="flow-canvas-minimap"
-                />
             </ReactFlow>
 
             {contextMenu && (
