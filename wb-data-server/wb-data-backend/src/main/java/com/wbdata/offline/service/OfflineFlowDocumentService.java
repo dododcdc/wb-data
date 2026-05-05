@@ -115,6 +115,27 @@ public class OfflineFlowDocumentService {
         }
     }
 
+    public List<String> resolveManagedFiles(Long groupId, String path) {
+        try {
+            DocumentSnapshot snapshot = readSnapshot(groupId, path);
+            Path repoPath = offlineProperties.resolveRepoPath(groupId);
+            LinkedHashSet<String> files = new LinkedHashSet<>();
+            files.add(path);
+
+            Path layoutFile = resolveLayoutFile(repoPath, path);
+            if (Files.exists(layoutFile)) {
+                files.add(repoPath.relativize(layoutFile).toString().replace('\\', '/'));
+            }
+
+            for (Path taskFile : snapshot.taskFiles().values()) {
+                files.add(repoPath.relativize(taskFile).toString().replace('\\', '/'));
+            }
+            return List.copyOf(files);
+        } catch (IOException ex) {
+            throw new IllegalStateException("解析 Flow 关联文件失败", ex);
+        }
+    }
+
     public CompiledFlowDraft compileFlowDraft(DebugDocumentExecutionRequest request) {
         try {
             DocumentSnapshot current = readSnapshot(request.groupId(), request.flowPath());
