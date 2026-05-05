@@ -23,6 +23,12 @@ export interface CommitResult {
     message: string;
 }
 
+export interface OfflineFlowCommitStatus {
+    groupId: number;
+    flowPath: string;
+    dirty: boolean;
+}
+
 export interface OfflineRepoStatus {
     groupId: number;
     repoPath: string;
@@ -265,6 +271,20 @@ export const getOfflineRepoTree = (groupId: number) => {
 
 export const getOfflineRepoRemote = (groupId: number) => {
     return request.get<unknown, RemoteStatus>(`/api/v1/offline/repo/remote?groupId=${groupId}`);
+};
+
+export const commitOfflineCurrentFlow = (groupId: number, flowPath: string, message: string) => {
+    return request.post<unknown, CommitResult>(
+        buildGroupScopedPath('/api/v1/offline/repo/commit/flow', groupId),
+        { groupId, flowPath, message },
+        { headers: { 'Content-Type': 'application/json' } }
+    );
+};
+
+export const getOfflineFlowCommitStatus = (groupId: number, flowPath: string) => {
+    return request.get<unknown, OfflineFlowCommitStatus>(
+        `/api/v1/offline/repo/commit/flow/status?groupId=${groupId}&path=${encodeURIComponent(flowPath)}`
+    );
 };
 
 export const commitOfflineRepo = (groupId: number, message: string) => {
