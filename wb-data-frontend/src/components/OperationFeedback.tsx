@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, LoaderCircle, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, LoaderCircle } from 'lucide-react';
 import { useFeedbackStore } from '../hooks/useOperationFeedback';
 import './OperationFeedback.css';
 
@@ -10,7 +10,6 @@ const toneIcon = {
 
 export function OperationFeedback() {
     const current = useFeedbackStore((s) => s.current);
-    const dismiss = useFeedbackStore((s) => s.dismiss);
 
     if (!current) return null;
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import type * as Monaco from 'monaco-editor';
 import { usePanelRef } from 'react-resizable-panels';
 import { useAuthStore } from '../../utils/auth';
@@ -18,17 +18,6 @@ import { MonacoEditorInstance } from './types';
 import { QueryResultsPanel } from './components/QueryResultsPanel';
 import {
     useLayoutPersistence,
-    getHorizontalSizes,
-    getVerticalSizes,
-    SIDEBAR_DEFAULT_WIDTH_PX,
-    SIDEBAR_MIN_WIDTH_PX,
-    SIDEBAR_MAX_WIDTH_PX,
-    QUERY_MAIN_MIN_WIDTH_PX,
-    QUERY_MAIN_DEFAULT_WIDTH_PX,
-    RESULT_PANEL_COLLAPSED_HEIGHT_PX,
-    RESULT_PANEL_MIN_EXPANDED_HEIGHT_PX,
-    RESULT_PANEL_DEFAULT_HEIGHT_PX,
-    QUERY_EDITOR_DEFAULT_HEIGHT_PX,
 } from './hooks/useLayoutPersistence';
 import { useSqlCompletion } from './hooks/useSqlCompletion';
 import { useMetadata } from './hooks/useMetadata';
@@ -73,13 +62,10 @@ export default function Query() {
     // ---- Layout state ----
     const layout = useLayoutPersistence();
     const {
-        sidebarCollapsed, sidebarExpandedWidth, sidebarTransitioning,
-        resultCollapsed, resultExpandedHeight, resultAutoOpen, resultTransitioning,
-        toggleSidebar, setSidebarWidth, toggleResultPanel, setResultPanelState,
-        setResultExpandedHeight,
+        sidebarCollapsed, sidebarTransitioning,
+        resultCollapsed, resultAutoOpen, resultTransitioning,
+        toggleSidebar, setResultPanelState,
     } = layout;
-    const initialHorizontalSizes = useMemo(() => getHorizontalSizes(sidebarCollapsed, sidebarExpandedWidth), [sidebarCollapsed, sidebarExpandedWidth]);
-    const initialVerticalSizes = useMemo(() => getVerticalSizes(resultCollapsed, resultExpandedHeight), [resultCollapsed, resultExpandedHeight]);
 
     const sidebarPanelRef = usePanelRef();
     const resultPanelRef = usePanelRef();

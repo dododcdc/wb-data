@@ -9,7 +9,6 @@ import {
     FolderPlus,
 } from 'lucide-react';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
-import { getErrorMessage } from '../../utils/error';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import { getAuthContext } from '../../api/auth';
@@ -118,7 +117,7 @@ export default function GroupList() {
     const pageCount = records.length;
     const pageSizeOptions = PAGE_SIZE_OPTIONS.map((value) => ({ label: `${value} 条`, value: String(value) }));
 
-    const handleFormSuccess = async (name: string) => {
+    const handleFormSuccess = async (_name: string) => {
         setIsFormOpen(false);
         setEditingGroup(null);
 

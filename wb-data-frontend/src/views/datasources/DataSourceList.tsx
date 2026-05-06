@@ -222,7 +222,7 @@ export default function DataSourceList() {
             });
             void queryClient.invalidateQueries({ queryKey: ['dataSources'] });
         },
-        onError: (error, _variables, context) => {
+        onError: (_error, _variables, context) => {
             context?.previousPages.forEach(([queryKey, page]) => {
                 queryClient.setQueryData(queryKey, page);
             });

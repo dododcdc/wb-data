@@ -1,6 +1,6 @@
 // wb-data-frontend/src/views/offline/LogToolbar.tsx
 import { useState, useCallback } from 'react';
-import { Search, ArrowDownToLine, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { ArrowDownToLine, X, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface LogToolbarProps {
     levelCounts: { ERROR: number; WARN: number; INFO: number };
@@ -34,10 +34,6 @@ export default function LogToolbar({
     onPrevMatch,
 }: LogToolbarProps) {
     const [searchValue, setSearchValue] = useState('');
-
-    const handleSearchSubmit = useCallback(() => {
-        onSearch(searchValue.trim());
-    }, [searchValue, onSearch]);
 
     const handleSearchKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLInputElement>) => {
