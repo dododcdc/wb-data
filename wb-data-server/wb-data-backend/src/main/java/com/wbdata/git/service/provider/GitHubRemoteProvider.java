@@ -44,10 +44,12 @@ public class GitHubRemoteProvider implements GitRemoteProvider {
     public void validateToken() {
         try {
             String url = "https://api.github.com/user";
-            restTemplate.getForObject(url, String.class);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+            restTemplate.exchange(url, org.springframework.http.HttpMethod.GET, new org.springframework.http.HttpEntity<>(headers), String.class);
         } catch (HttpClientErrorException ex) {
             if (ex.getStatusCode() == HttpStatus.UNAUTHORIZED) {
-                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token 无效");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token 无效");
             }
             throw ex;
         }

@@ -12,7 +12,6 @@ import com.wbdata.group.entity.WbProjectGroup;
 import com.wbdata.group.entity.WbProjectGroupMember;
 import com.wbdata.group.mapper.WbProjectGroupMapper;
 import com.wbdata.group.mapper.WbProjectGroupMemberMapper;
-import com.wbdata.git.service.GitConfigService;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.user.dto.GroupSimpleResponse;
 import lombok.RequiredArgsConstructor;
@@ -37,7 +36,6 @@ public class GroupService {
     private final WbProjectGroupMapper groupMapper;
     private final WbProjectGroupMemberMapper groupMemberMapper;
     private final OfflineProperties offlineProperties;
-    private final GitConfigService gitConfigService;
 
     public List<GroupSimpleResponse> listAll() {
         LambdaQueryWrapper<WbProjectGroup> wrapper = new LambdaQueryWrapper<>();
@@ -88,21 +86,6 @@ public class GroupService {
         groupMapper.insert(group);
 
         initLocalRepo(group.getId());
-
-        // 可选：初始化 Git 远程仓库配置
-        CreateGroupRequest.GitConfigSetup git = req.getGitConfig();
-        if (git != null && git.getProvider() != null && !git.getProvider().isBlank()
-                && git.getUsername() != null && !git.getUsername().isBlank()
-                && git.getToken() != null && !git.getToken().isBlank()) {
-            gitConfigService.saveConfig(
-                    group.getId(),
-                    git.getProvider(),
-                    git.getUsername(),
-                    git.getToken(),
-                    git.getBaseUrl(),
-                    operatorId
-            );
-        }
 
         return GroupDetailResponse.from(groupMapper.selectById(group.getId()), 0L);
     }

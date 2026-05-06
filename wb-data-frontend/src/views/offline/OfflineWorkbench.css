@@ -1939,10 +1939,6 @@ button.offline-tree-row {
     gap: 8px;
 }
 
-.offline-spin {
-    animation: offlineSpin 0.8s linear infinite;
-}
-
 @keyframes offlineSpin {
     to {
         transform: rotate(360deg);
@@ -2298,7 +2294,7 @@ button.offline-tree-row {
     animation: offline-spin 2s linear infinite;
 }
 
-@keyframes offline-spin {
+@keyframes offlineSpin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import {
     Dialog,
     DialogContent,
@@ -8,7 +8,6 @@ import {
     DialogTitle,
     DialogFooter,
 } from '../../components/ui/dialog';
-import { SimpleSelect } from '../../components/SimpleSelect';
 import { createGroup, updateGroup } from '../../api/group';
 import { getErrorMessage } from '../../utils/error';
 import type { CreateGroupPayload, GroupDetail, UpdateGroupPayload } from '../../api/group';
@@ -36,18 +35,6 @@ const EMPTY_FORM_STATE: FormState = {
     description: '',
 };
 
-const GIT_PROVIDERS = [
-    { value: 'github', label: 'GitHub' },
-    { value: 'gitlab', label: 'GitLab' },
-    { value: 'gitea', label: 'Gitea' },
-];
-
-const DEFAULT_BASE_URL: Record<string, string> = {
-    github: 'https://github.com',
-    gitlab: 'https://gitlab.com',
-    gitea: '',
-};
-
 export default function GroupForm(props: GroupFormProps) {
     const { open, onOpenChange, onSuccess, initialData } = props;
 
@@ -59,23 +46,11 @@ export default function GroupForm(props: GroupFormProps) {
     const [saveError, setSaveError] = useState('');
     const [saving, setSaving] = useState(false);
 
-    // Git config fields
-    const [gitEnabled, setGitEnabled] = useState(false);
-    const [gitProvider, setGitProvider] = useState('github');
-    const [gitUsername, setGitUsername] = useState('');
-    const [gitToken, setGitToken] = useState('');
-    const [gitBaseUrl, setGitBaseUrl] = useState('https://github.com');
-
     useEffect(() => {
         if (!open) {
             setFieldErrors({});
             setSaveError('');
             setFormData(EMPTY_FORM_STATE);
-            setGitEnabled(false);
-            setGitProvider('github');
-            setGitUsername('');
-            setGitToken('');
-            setGitBaseUrl('https://github.com');
         } else if (initialData) {
             setFormData({ name: initialData.name, description: initialData.description || '' });
         }
@@ -96,11 +71,6 @@ export default function GroupForm(props: GroupFormProps) {
             ...previousState,
             [field]: value,
         }));
-    };
-
-    const handleGitProviderChange = (v: string) => {
-        setGitProvider(v);
-        setGitBaseUrl(DEFAULT_BASE_URL[v] || '');
     };
 
     const validate = () => {
@@ -139,21 +109,10 @@ export default function GroupForm(props: GroupFormProps) {
                 await updateGroup(editId, payload);
                 onSuccess(formData.name.trim());
             } else {
-                const payload: CreateGroupPayload = {
+                await createGroup({
                     name: formData.name.trim(),
                     description: formData.description.trim() || undefined,
-                };
-
-                if (gitEnabled && gitProvider && gitUsername && gitToken) {
-                    payload.gitConfig = {
-                        provider: gitProvider,
-                        username: gitUsername,
-                        token: gitToken,
-                        baseUrl: gitBaseUrl,
-                    };
-                }
-
-                await createGroup(payload);
+                });
                 onSuccess(formData.name.trim());
             }
         } catch (error) {
@@ -167,8 +126,6 @@ export default function GroupForm(props: GroupFormProps) {
             setSaving(false);
         }
     };
-
-    const isGitLabOrGitea = gitProvider === 'gitlab' || gitProvider === 'gitea';
 
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => onOpenChange({ open: nextOpen })}>
@@ -217,69 +174,6 @@ export default function GroupForm(props: GroupFormProps) {
                             </div>
                         ) : null}
                     </div>
-
-                    {/* 高级配置：Git 远程仓库 */}
-                    {!isEditMode && (
-                    <div className="group-form-section">
-                        <button
-                            type="button"
-                            className="group-form-collapse-toggle"
-                            onClick={() => setGitEnabled(v => !v)}
-                        >
-                            {gitEnabled ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            <span>高级配置：远程仓库（可选）</span>
-                        </button>
-
-                        {gitEnabled ? (
-                            <div className="group-form-git-fields">
-                                <div className="group-form-git-row">
-                                    <label htmlFor="group-form-git-provider">提供商</label>
-                                    <SimpleSelect
-                                        id="group-form-git-provider"
-                                        value={gitProvider}
-                                        options={GIT_PROVIDERS}
-                                        onChange={handleGitProviderChange}
-                                    />
-                                </div>
-
-                                {isGitLabOrGitea && (
-                                    <div className="group-form-git-row">
-                                        <label htmlFor="group-form-git-baseurl">实例地址</label>
-                                        <input
-                                            id="group-form-git-baseurl"
-                                            type="text"
-                                            value={gitBaseUrl}
-                                            placeholder={gitProvider === 'gitlab' ? 'https://gitlab.example.com' : 'https://gitea.example.com'}
-                                            onChange={(e) => setGitBaseUrl(e.target.value)}
-                                        />
-                                    </div>
-                                )}
-
-                                <div className="group-form-git-row">
-                                    <label htmlFor="group-form-git-username">用户名</label>
-                                    <input
-                                        id="group-form-git-username"
-                                        type="text"
-                                        value={gitUsername}
-                                        placeholder="GitHub / GitLab 用户名"
-                                        onChange={(e) => setGitUsername(e.target.value)}
-                                    />
-                                </div>
-
-                                <div className="group-form-git-row">
-                                    <label htmlFor="group-form-git-token">Access Token</label>
-                                    <input
-                                        id="group-form-git-token"
-                                        type="password"
-                                        value={gitToken}
-                                        placeholder="Personal Access Token"
-                                        onChange={(e) => setGitToken(e.target.value)}
-                                    />
-                                </div>
-                            </div>
-                        ) : null}
-                    </div>
-                    )}
                 </div>
 
                 <DialogFooter>

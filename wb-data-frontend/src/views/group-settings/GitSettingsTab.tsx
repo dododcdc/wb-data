@@ -12,13 +12,11 @@ import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 const PROVIDERS = [
     { value: 'github', label: 'GitHub' },
     { value: 'gitlab', label: 'GitLab' },
-    { value: 'gitea', label: 'Gitea' },
 ];
 
 const DEFAULT_BASE_URL: Record<string, string> = {
     github: 'https://github.com',
     gitlab: 'https://gitlab.com',
-    gitea: '',
 };
 
 interface GitSettingsTabProps {
@@ -93,8 +91,8 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
         }
         setTestLoading(true);
         try {
-            const result = await testGitConnection({ provider, username, token, baseUrl });
-            showFeedback({ tone: 'success', title: '连接成功', detail: result });
+            await testGitConnection({ provider, username, token, baseUrl });
+            showFeedback({ tone: 'success', title: '连接成功', detail: '' });
         } catch (e) {
             showFeedback({ tone: 'error', title: '连接失败', detail: '' });
         } finally {
@@ -115,7 +113,7 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
         saveMutation.mutate(payload);
     }, [provider, username, token, baseUrl, config, saveMutation, showFeedback]);
 
-    const isGitLabOrGitea = provider === 'gitlab' || provider === 'gitea';
+    const isGitLab = provider === 'gitlab';
 
     if (isLoading) {
         return (
@@ -129,48 +127,6 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
         <div className="git-settings-page">
             <div className="git-settings-header">
                 <h2 className="git-settings-title">远程仓库配置</h2>
-                {config && (
-                    <>
-                        <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => setConfirmOpen(true)}
-                            disabled={deleteMutation.isPending}
-                        >
-                            {deleteMutation.isPending ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                            删除配置
-                        </Button>
-
-                        <ConfirmDialog
-                            open={confirmOpen}
-                            onOpenChange={(open) => {
-                                // Prevent closing while delete is pending
-                                if (!open && deleteMutation.isPending) return;
-                                setConfirmOpen(open);
-                            }}
-                            title="删除 Git 配置"
-                            description={
-                                <>
-                                    删除后如需再次使用需重新填写凭证。
-                                    {config ? (
-                                        <>
-                                            <br />
-                                            <span>
-                                                配置: {config.provider}
-                                                {config.username ? `，用户 ${config.username}` : ''}
-                                            </span>
-                                        </>
-                                    ) : null}
-                                </>
-                            }
-                            variant="destructive"
-                            onConfirm={() => {
-                                deleteMutation.mutate();
-                            }}
-                            isLoading={deleteMutation.isPending}
-                        />
-                    </>
-                )}
             </div>
 
             <div className="git-settings-form">
@@ -183,13 +139,13 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
                     />
                 </div>
 
-                {isGitLabOrGitea && (
+                {isGitLab && (
                     <div className="git-settings-row">
                         <label className="git-settings-label">实例地址</label>
                         <Input
                             value={baseUrl}
                             onChange={e => setBaseUrl(e.target.value)}
-                            placeholder={provider === 'gitlab' ? 'https://gitlab.example.com' : 'https://gitea.example.com'}
+                            placeholder="https://gitlab.example.com"
                             className="git-settings-input"
                         />
                     </div>
@@ -236,8 +192,47 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
                         {saveMutation.isPending ? <LoaderCircle size={14} className="offline-spin" /> : null}
                         保存配置
                     </Button>
+                    {config && (
+                        <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => setConfirmOpen(true)}
+                            disabled={deleteMutation.isPending}
+                        >
+                            {deleteMutation.isPending ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                            删除配置
+                        </Button>
+                    )}
                 </div>
             </div>
+
+            <ConfirmDialog
+                open={confirmOpen}
+                onOpenChange={(open) => {
+                    if (!open && deleteMutation.isPending) return;
+                    setConfirmOpen(open);
+                }}
+                title="删除 Git 配置"
+                description={
+                    <>
+                        删除后如需再次使用需重新填写凭证。
+                        {config ? (
+                            <>
+                                <br />
+                                <span>
+                                    配置: {config.provider}
+                                    {config.username ? `，用户 ${config.username}` : ''}
+                                </span>
+                            </>
+                        ) : null}
+                    </>
+                }
+                variant="destructive"
+                onConfirm={() => {
+                    deleteMutation.mutate();
+                }}
+                isLoading={deleteMutation.isPending}
+            />
         </div>
     );
 }
