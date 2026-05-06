@@ -6,7 +6,6 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
-import { getErrorMessage } from '../../utils/error';
 import { LoaderCircle } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 
@@ -50,7 +49,7 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
             setToken('');
             void queryClient.invalidateQueries({ queryKey: ['git-config', groupId] });
         },
-        onError: (e) => {
+        onError: (_e) => {
             showFeedback({ tone: 'error', title: '保存失败', detail: '' });
         },
     });
@@ -67,7 +66,7 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
             setBaseUrl('https://github.com');
             void queryClient.invalidateQueries({ queryKey: ['git-config', groupId] });
         },
-        onError: (e) => {
+        onError: (_e) => {
             showFeedback({ tone: 'error', title: '删除失败', detail: '' });
         },
     });

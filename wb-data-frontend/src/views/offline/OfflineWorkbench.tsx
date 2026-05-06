@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AxiosError } from 'axios';
 import { getErrorMessage } from '../../utils/error';
 import { ReactFlowProvider, type Node, type Edge } from '@xyflow/react';
 import { useNavigate, useBlocker, useSearchParams } from 'react-router-dom';
@@ -53,10 +54,8 @@ import {
     saveOfflineFlowDocument,
     stopAllOfflineExecutions,
     stopOfflineExecution,
-    updateOfflineScheduleStatus,
     type OfflineExecutionDetail,
     type OfflineExecutionListItem,
-    type OfflineFlowCommitStatus,
     type OfflineFlowDocument,
     type OfflineFlowNodeKind,
     type OfflineFlowNode,
@@ -765,8 +764,8 @@ export default function OfflineWorkbench() {
     const [executionRequestedByFilter, setExecutionRequestedByFilter] = useState<number | null>(null);
     const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
     const [schedule, setSchedule] = useState<OfflineScheduleResponse | null>(null);
-    const [scheduleLoading, setScheduleLoading] = useState(false);
-    const [scheduleSaving, setScheduleSaving] = useState(false);
+    const [, setScheduleLoading] = useState(false);
+    const [scheduleSaving] = useState(false);
     const [scheduleCron, setScheduleCron] = useState('');
     const [scheduleTimezone, setScheduleTimezone] = useState(defaultTimezone);
     const [newFlowDialogOpen, setNewFlowDialogOpen] = useState(false);
@@ -809,6 +808,7 @@ export default function OfflineWorkbench() {
     const canvasBoardRef = useRef<HTMLDivElement>(null);
     const previousGroupIdRef = useRef<number | null>(groupId);
     const currentGroupIdRef = useRef<number | null>(groupId);
+    const activeFlowPathRef = useRef<string | null>(activeFlowPath);
     const groupActionVersionRef = useRef(0);
     const pendingNodeEditorDraftRef = useRef<PendingNodeEditorDraft | null>(null);
     const draftSessionRef = useRef<FlowDraftSession | null>(null);
@@ -964,17 +964,27 @@ export default function OfflineWorkbench() {
             setFlowCommitDirty(false);
             return;
         }
+        const requestedGroupId = groupId;
+        const requestedFlowPath = activeFlowPath;
         try {
-            const result = await getOfflineFlowCommitStatus(groupId, activeFlowPath);
-            setFlowCommitDirty(result.dirty);
+            const result = await getOfflineFlowCommitStatus(requestedGroupId, requestedFlowPath);
+            if (result.groupId === requestedGroupId && result.flowPath === activeFlowPathRef.current) {
+                setFlowCommitDirty(result.dirty);
+            }
         } catch {
-            setFlowCommitDirty(false);
+            if (requestedGroupId === currentGroupIdRef.current && requestedFlowPath === activeFlowPathRef.current) {
+                setFlowCommitDirty(false);
+            }
         }
     }, [groupId, activeFlowPath]);
 
     useEffect(() => {
         void refreshFlowCommitStatus();
     }, [refreshFlowCommitStatus]);
+
+    useEffect(() => {
+        activeFlowPathRef.current = activeFlowPath;
+    }, [activeFlowPath]);
 
     const loadScheduleSnapshot = useCallback(async (path: string) => {
         if (!groupId) return;
@@ -1998,7 +2008,7 @@ export default function OfflineWorkbench() {
             const nextSession = rebaseFlowDraftSession(sessionForSave, response);
             setDraftSession(nextSession);
             removeRecoverySnapshot(groupId, sessionForSave.path);
-            await refreshRepoStatus();
+            await Promise.all([refreshRepoStatus(), refreshFlowCommitStatus()]);
             showFeedback({
                 tone: 'success',
                 title: 'Flow 已保存',

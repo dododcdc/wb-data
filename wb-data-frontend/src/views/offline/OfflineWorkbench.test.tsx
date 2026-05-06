@@ -1,10 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { AxiosError, AxiosHeaders } from 'axios';
+import { AxiosHeaders } from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 import OfflineWorkbench from './OfflineWorkbench';
-import { readRecoverySnapshot, removeRecoverySnapshot, writeRecoverySnapshot } from './recoverySnapshotStore';
+import { removeRecoverySnapshot } from './recoverySnapshotStore';
 
 const { authState, feedbackSpy } = vi.hoisted(() => ({
     authState: {

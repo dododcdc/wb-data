@@ -23,7 +23,7 @@ function highlightMatches(text: string, query: string, isCurrent: boolean) {
     const regex = new RegExp(`(${escaped})`, 'gi');
     const parts = text.split(regex);
     const cls = isCurrent ? 'log-highlight-current' : 'log-highlight';
-    return parts.map((part, i) =>
+    return parts.map((part) =>
         regex.test(part) ? `<mark class="${cls}">${part}</mark>` : part
     ).join('');
 }
