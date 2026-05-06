@@ -39,7 +39,7 @@ public class GitConfigController {
 
     @Operation(summary = "保存 Git 配置")
     @PostMapping
-    public Result<Void> saveConfig(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
+    public Result<Void> saveConfig(@RequireGroupAuth(Permission.GROUP_SETTINGS) AuthContextResponse context,
                                    @Valid @RequestBody SaveGitConfigRequest request) {
         gitConfigService.saveConfig(
                 context.currentGroup().id(),
@@ -53,7 +53,7 @@ public class GitConfigController {
     }
 
     @DeleteMapping
-    public Result<Void> deleteConfig(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context) {
+    public Result<Void> deleteConfig(@RequireGroupAuth(Permission.GROUP_SETTINGS) AuthContextResponse context) {
         gitConfigService.deleteConfig(context.currentGroup().id());
         return Result.success(null);
     }

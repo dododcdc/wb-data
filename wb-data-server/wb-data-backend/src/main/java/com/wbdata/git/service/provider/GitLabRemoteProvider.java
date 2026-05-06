@@ -55,10 +55,10 @@ public class GitLabRemoteProvider implements GitRemoteProvider {
     public void validateToken() {
         try {
             String url = apiBase() + "/user";
-            restTemplate.getForEntity(url, String.class);
+            restTemplate.exchange(url, org.springframework.http.HttpMethod.GET, new org.springframework.http.HttpEntity<>(authHeaders()), String.class);
         } catch (HttpClientErrorException ex) {
             if (ex.getStatusCode() == HttpStatus.UNAUTHORIZED) {
-                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token 无效");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token 无效");
             }
             throw ex;
         }

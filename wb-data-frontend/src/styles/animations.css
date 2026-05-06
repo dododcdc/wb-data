@@ -23,3 +23,12 @@
     0% { background-position: 180% 0; }
     100% { background-position: -180% 0; }
 }
+
+@keyframes offlineSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.offline-spin {
+    animation: offlineSpin 0.8s linear infinite;
+}

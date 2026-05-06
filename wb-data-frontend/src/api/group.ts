@@ -10,17 +10,9 @@ export interface GroupDetail {
     createdAt: string;
 }
 
-export interface GitConfigSetup {
-    provider: string;
-    username: string;
-    token: string;
-    baseUrl: string;
-}
-
 export interface CreateGroupPayload {
     name: string;
     description?: string;
-    gitConfig?: GitConfigSetup;
 }
 
 export interface UpdateGroupPayload {

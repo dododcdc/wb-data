@@ -20,7 +20,7 @@ describe('GroupForm', () => {
         vi.clearAllMocks();
     });
 
-    it('renders the optional remote repository section in create mode', async () => {
+    it('renders the create group dialog', async () => {
         const { default: GroupForm } = await import('./GroupForm');
 
         render(
@@ -32,6 +32,5 @@ describe('GroupForm', () => {
         );
 
         expect(screen.getByRole('heading', { name: '新建项目组' })).toBeTruthy();
-        expect(screen.getByRole('button', { name: '高级配置：远程仓库（可选）' })).toBeTruthy();
     });
 });

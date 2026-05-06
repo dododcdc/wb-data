@@ -134,7 +134,7 @@ public class GitConfigService {
     public String testConnection(String provider, String username, String token, String baseUrl) {
         GitRemoteProvider p = createProviderInstance(provider, username, token, normalizeBaseUrl(provider, baseUrl));
         p.validateToken();
-        return "连接成功，当前账号: " + p.getUsername();
+        return "连接成功";
     }
 
     private WbGitConfig loadConfig(Long groupId) {
