@@ -23,7 +23,7 @@ public class GitConfigController {
     private final GitConfigService gitConfigService;
 
     @GetMapping
-    public Result<GitConfigResponse> getConfig(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context) {
+    public Result<GitConfigResponse> getConfig(@RequireGroupAuth(Permission.GROUP_SETTINGS) AuthContextResponse context) {
         WbGitConfig config = gitConfigService.getConfig(context.currentGroup().id());
         if (config == null) {
             return Result.success(null);
@@ -59,7 +59,8 @@ public class GitConfigController {
     }
 
     @PostMapping("/test")
-    public Result<String> testConnection(@Valid @RequestBody SaveGitConfigRequest request) {
+    public Result<String> testConnection(@RequireGroupAuth(Permission.GROUP_SETTINGS) AuthContextResponse context,
+                                         @Valid @RequestBody SaveGitConfigRequest request) {
         String result = gitConfigService.testConnection(
                 request.provider(),
                 request.username(),

@@ -29,8 +29,8 @@ export const deleteGitConfig = (groupId: number) => {
     return request.delete<unknown, void>(`/api/v1/git/config?groupId=${groupId}`);
 };
 
-export const testGitConnection = (payload: SaveGitConfigPayload) => {
-    return request.post<unknown, string>('/api/v1/git/config/test', payload, {
+export const testGitConnection = (groupId: number, payload: SaveGitConfigPayload) => {
+    return request.post<unknown, string>(`/api/v1/git/config/test?groupId=${groupId}`, payload, {
         headers: { 'Content-Type': 'application/json' },
     });
 };

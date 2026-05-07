@@ -21,9 +21,10 @@ const DEFAULT_BASE_URL: Record<string, string> = {
 
 interface GitSettingsTabProps {
     groupId: number;
+    canEdit: boolean;
 }
 
-export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
+export default function GitSettingsTab({ groupId, canEdit }: GitSettingsTabProps) {
     const { showFeedback } = useOperationFeedback();
     const [provider, setProvider] = useState('github');
     const [username, setUsername] = useState('');
@@ -37,7 +38,7 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
     const { data: config, isLoading } = useQuery({
         queryKey: ['git-config', groupId],
         queryFn: () => getGitConfig(groupId),
-        enabled: groupId != null,
+        enabled: groupId != null && canEdit,
     });
 
     const saveMutation = useMutation({
@@ -91,14 +92,14 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
         }
         setTestLoading(true);
         try {
-            await testGitConnection({ provider, username, token, baseUrl });
+            await testGitConnection(groupId, { provider, username, token, baseUrl });
             showFeedback({ tone: 'success', title: '连接成功', detail: '' });
         } catch (e) {
             showFeedback({ tone: 'error', title: '连接失败', detail: '' });
         } finally {
             setTestLoading(false);
         }
-    }, [provider, username, token, baseUrl, showFeedback]);
+    }, [provider, username, token, baseUrl, showFeedback, groupId]);
 
     const handleSave = useCallback(async () => {
         if (!username) {
@@ -114,6 +115,17 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
     }, [provider, username, token, baseUrl, config, saveMutation, showFeedback]);
 
     const isGitLab = provider === 'gitlab';
+
+    if (!canEdit) {
+        return (
+            <div className="git-settings-page">
+                <div className="git-settings-header">
+                    <h2 className="git-settings-title">远程仓库配置</h2>
+                </div>
+                <p className="git-settings-permission-hint">您没有权限管理远程仓库配置，请联系项目组管理员。</p>
+            </div>
+        );
+    }
 
     if (isLoading) {
         return (
@@ -136,6 +148,7 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
                         value={provider}
                         options={PROVIDERS}
                         onChange={handleProviderChange}
+                        disabled={!canEdit}
                     />
                 </div>
 
@@ -147,6 +160,7 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
                             onChange={e => setBaseUrl(e.target.value)}
                             placeholder="https://gitlab.example.com"
                             className="git-settings-input"
+                            disabled={!canEdit}
                         />
                     </div>
                 )}
@@ -158,6 +172,7 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
                         onChange={e => setUsername(e.target.value)}
                         placeholder="GitHub / GitLab 用户名"
                         className="git-settings-input"
+                        disabled={!canEdit}
                     />
                 </div>
 
@@ -169,6 +184,7 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
                         onChange={e => setToken(e.target.value)}
                         placeholder={config?.tokenMasked ? `已保存（填新值可更新）` : '填入新的 Token'}
                         className="git-settings-input"
+                        disabled={!canEdit}
                     />
                 </div>
 
@@ -178,7 +194,7 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
                         variant="outline"
                         size="sm"
                         onClick={handleTest}
-                        disabled={testLoading}
+                        disabled={testLoading || !canEdit}
                     >
                         {testLoading ? <LoaderCircle size={14} className="offline-spin" /> : null}
                         测试连接
@@ -187,7 +203,7 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
                         type="button"
                         size="sm"
                         onClick={handleSave}
-                        disabled={saveMutation.isPending}
+                        disabled={saveMutation.isPending || !canEdit}
                     >
                         {saveMutation.isPending ? <LoaderCircle size={14} className="offline-spin" /> : null}
                         保存配置
@@ -197,7 +213,7 @@ export default function GitSettingsTab({ groupId }: GitSettingsTabProps) {
                             variant="destructive"
                             size="sm"
                             onClick={() => setConfirmOpen(true)}
-                            disabled={deleteMutation.isPending}
+                            disabled={deleteMutation.isPending || !canEdit}
                         >
                             {deleteMutation.isPending ? <LoaderCircle size={14} className="offline-spin" /> : null}
                             删除配置

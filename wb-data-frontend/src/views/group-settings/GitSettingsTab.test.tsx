@@ -5,17 +5,20 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import GitSettingsTab from './GitSettingsTab';
 
-const { getGitConfig, deleteGitConfig } = vi.hoisted(() => ({
+const { getGitConfig, saveGitConfig, deleteGitConfig, testGitConnection } = vi.hoisted(() => ({
   getGitConfig: vi.fn(),
+  saveGitConfig: vi.fn(),
   deleteGitConfig: vi.fn(),
+  testGitConnection: vi.fn(),
 }));
 
 vi.mock('./gitSettingsApi', () => ({
   getGitConfig,
+  saveGitConfig,
   deleteGitConfig,
+  testGitConnection,
 }));
 
-// Default resolved value so react-query doesn't error if the query fires before a test's mockResolvedValueOnce
 getGitConfig.mockResolvedValue({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
 
 function createDeferred<T>() {
@@ -39,11 +42,110 @@ function renderWithQuery(ui: React.ReactElement) {
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
-describe('GitSettingsTab - confirm dialog behavior (spec tests)', () => {
+describe('GitSettingsTab - permission control', () => {
+  it('shows permission denied when canEdit is false', async () => {
+    renderWithQuery(<GitSettingsTab groupId={1} canEdit={false} />);
+
+    expect(screen.getByText('您没有权限管理远程仓库配置，请联系项目组管理员。')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /测试连接/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /保存配置/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /删除配置/ })).toBeNull();
+  });
+
+  it('shows action buttons when canEdit is true', async () => {
+    getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
+
+    renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
+
+    expect(await screen.findByRole('button', { name: /测试连接/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /保存配置/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /删除配置/ })).toBeTruthy();
+  });
+
+  it('does not fetch git config when canEdit is false', () => {
+    renderWithQuery(<GitSettingsTab groupId={1} canEdit={false} />);
+    expect(getGitConfig).not.toHaveBeenCalled();
+  });
+});
+
+describe('GitSettingsTab - test connection', () => {
+  it('calls testGitConnection with groupId when test button is clicked', async () => {
+    getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
+    testGitConnection.mockResolvedValueOnce('连接成功');
+
+    renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
+
+    const testBtn = await screen.findByRole('button', { name: /测试连接/ });
+
+    // Fill token field (required by validation in handleTest)
+    const tokenInput = screen.getByPlaceholderText(/已保存|填入新的 Token/);
+    fireEvent.change(tokenInput, { target: { value: 'test-token' } });
+
+    fireEvent.click(testBtn);
+
+    await waitFor(() => {
+      expect(testGitConnection).toHaveBeenCalledWith(1, {
+        provider: 'github',
+        username: 'alice',
+        token: 'test-token',
+        baseUrl: 'https://github.com',
+      });
+    });
+  });
+
+  it('shows connection failure feedback without login redirect', async () => {
+    getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
+    testGitConnection.mockRejectedValueOnce(new Error('Token 无效'));
+
+    renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
+
+    const testBtn = await screen.findByRole('button', { name: /测试连接/ });
+    fireEvent.click(testBtn);
+
+    // Button should become enabled again after failure (not stuck loading)
+    await waitFor(() => {
+      expect(testBtn.hasAttribute('disabled')).toBeFalsy();
+    });
+
+    // No dialog or redirect should have occurred - the error is shown as feedback
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('shows success feedback on successful connection test', async () => {
+    getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
+    testGitConnection.mockResolvedValueOnce('连接成功');
+
+    renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
+
+    const testBtn = await screen.findByRole('button', { name: /测试连接/ });
+    fireEvent.click(testBtn);
+
+    await waitFor(() => {
+      expect(testBtn.hasAttribute('disabled')).toBeFalsy();
+    });
+  });
+});
+
+describe('GitSettingsTab - provider options', () => {
+  it('only shows GitHub and GitLab in provider dropdown', async () => {
+    getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
+
+    renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
+
+    // Initial provider display should show GitHub
+    await screen.findByText('GitHub');
+
+    // Gitea should not appear anywhere in the rendered output
+    expect(screen.queryByText('Gitea')).toBeNull();
+    expect(screen.queryByText('Gitee')).toBeNull();
+  });
+});
+
+describe('GitSettingsTab - confirm dialog behavior', () => {
   it('opens a confirm dialog when delete is triggered', async () => {
     getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
 
-    renderWithQuery(<GitSettingsTab groupId={1} />);
+    renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
 
     const deleteBtn = await screen.findByRole('button', { name: /删除配置/ });
     fireEvent.click(deleteBtn);
@@ -57,7 +159,7 @@ describe('GitSettingsTab - confirm dialog behavior (spec tests)', () => {
     const deferred = createDeferred<void>();
     deleteGitConfig.mockReturnValueOnce(deferred.promise);
 
-    renderWithQuery(<GitSettingsTab groupId={1} />);
+    renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
 
     const deleteBtn = await screen.findByRole('button', { name: /删除配置/ });
     fireEvent.click(deleteBtn);
@@ -66,20 +168,15 @@ describe('GitSettingsTab - confirm dialog behavior (spec tests)', () => {
     const confirmBtn = within(dialog).getByRole('button', { name: /确认/ });
     const cancelBtn = within(dialog).getByRole('button', { name: /取消/ });
 
-    // Click confirm to start delete
     fireEvent.click(confirmBtn);
 
-    // While delete is pending both buttons should be disabled and the dialog should remain open
     await waitFor(() => expect(confirmBtn.hasAttribute('disabled')).toBeTruthy());
     expect(cancelBtn.hasAttribute('disabled')).toBeTruthy();
     expect(screen.getByRole('dialog')).toBeTruthy();
 
-    // Attempt to dismiss the dialog while delete is pending (Escape key)
     fireEvent.keyDown(document, { key: 'Escape', code: 'Escape', keyCode: 27 });
-    // dialog should remain open while delete is pending
     expect(screen.getByRole('dialog')).toBeTruthy();
 
-    // If there is a backdrop element (parent of dialog), attempt a backdrop click
     const backdrop = dialog.parentElement;
     if (backdrop && backdrop !== document.body) {
       fireEvent.mouseDown(backdrop);
@@ -87,16 +184,14 @@ describe('GitSettingsTab - confirm dialog behavior (spec tests)', () => {
       expect(screen.getByRole('dialog')).toBeTruthy();
     }
 
-    // cleanup: resolve to avoid hanging promises
     act(() => {
       deferred.resolve();
     });
 
-    // After success, dialog should be closed
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
-  it('retries delete via the dialog confirm button (not by re-clicking outer trigger)', async () => {
+  it('retries delete via the dialog confirm button after failure', async () => {
     getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
 
     const first = createDeferred<void>();
@@ -105,7 +200,7 @@ describe('GitSettingsTab - confirm dialog behavior (spec tests)', () => {
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);
 
-    renderWithQuery(<GitSettingsTab groupId={1} />);
+    renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
 
     const deleteBtn = await screen.findByRole('button', { name: /删除配置/ });
     fireEvent.click(deleteBtn);
@@ -113,30 +208,52 @@ describe('GitSettingsTab - confirm dialog behavior (spec tests)', () => {
     const dialog = await screen.findByRole('dialog');
     const confirmBtn = within(dialog).getByRole('button', { name: /确认/ });
 
-    // First attempt
     fireEvent.click(confirmBtn);
     await waitFor(() => expect(confirmBtn.hasAttribute('disabled')).toBeTruthy());
 
-    // Simulate failure
     act(() => {
       first.reject(new Error('delete failed'));
     });
 
-    // After failure, dialog should still be visible and allow retry via the confirm button
     await waitFor(() => expect(confirmBtn.hasAttribute('disabled')).toBeFalsy());
-    // dialog remains open after failure
     expect(screen.getByRole('dialog')).toBeTruthy();
 
-    // Retry via dialog confirm button
     fireEvent.click(confirmBtn);
     await waitFor(() => expect(confirmBtn.hasAttribute('disabled')).toBeTruthy());
 
-    // cleanup: resolve second
     act(() => {
       second.resolve();
     });
 
-    // After success, dialog should be closed
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('shows delete config button only when config exists and canEdit is true', async () => {
+    getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
+
+    renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
+
+    expect(await screen.findByRole('button', { name: /删除配置/ })).toBeTruthy();
+  });
+});
+
+describe('GitSettingsTab - save config', () => {
+  it('calls saveGitConfig with groupId when save button is clicked', async () => {
+    getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
+    saveGitConfig.mockResolvedValueOnce(undefined);
+
+    renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
+
+    const saveBtn = await screen.findByRole('button', { name: /保存配置/ });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(saveGitConfig).toHaveBeenCalledWith(1, {
+        provider: 'github',
+        username: 'alice',
+        token: '',
+        baseUrl: 'https://github.com',
+      });
+    });
   });
 });
