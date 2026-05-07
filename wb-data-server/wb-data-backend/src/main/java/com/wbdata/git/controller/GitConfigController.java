@@ -23,7 +23,7 @@ public class GitConfigController {
     private final GitConfigService gitConfigService;
 
     @GetMapping
-    public Result<GitConfigResponse> getConfig(@RequireGroupAuth(Permission.GROUP_SETTINGS) AuthContextResponse context) {
+    public Result<GitConfigResponse> getConfig(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context) {
         WbGitConfig config = gitConfigService.getConfig(context.currentGroup().id());
         if (config == null) {
             return Result.success(null);

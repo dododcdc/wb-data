@@ -56,10 +56,34 @@
     color: var(--muted-foreground);
 }
 
-.git-settings-permission-hint {
+.git-settings-ro-empty {
     margin: 0;
     padding: 40px 0;
     color: var(--muted-foreground);
     font-size: 14px;
     text-align: center;
+}
+
+.git-settings-ro-table {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.git-settings-ro-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+}
+
+.git-settings-ro-label {
+    min-width: 80px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted-foreground);
+}
+
+.git-settings-ro-value {
+    font-size: 14px;
+    color: var(--foreground);
 }
