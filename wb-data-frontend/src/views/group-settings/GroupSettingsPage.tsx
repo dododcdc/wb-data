@@ -236,7 +236,7 @@ export default function GroupSettingsPage() {
                 </div>
 
                 {activeTab === 'git' ? (
-                    <GitSettingsTab groupId={groupId!} />
+                    <GitSettingsTab groupId={groupId!} canEdit={canEdit} />
                 ) : (
                     <div className="gs-members-content">
                         <div className="gs-members-search-row">

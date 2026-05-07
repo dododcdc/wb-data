@@ -40,7 +40,6 @@ public class AuthFilter extends OncePerRequestFilter {
     private final List<String> excludedPaths = Arrays.asList(
             "/api/v1/auth/login",
             "/api/v1/datasources/plugins",
-            "/api/v1/git/config/test",
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/swagger-ui.html"

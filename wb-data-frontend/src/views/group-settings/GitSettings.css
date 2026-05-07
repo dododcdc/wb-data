@@ -55,3 +55,11 @@
     padding: 40px;
     color: var(--muted-foreground);
 }
+
+.git-settings-permission-hint {
+    margin: 0;
+    padding: 40px 0;
+    color: var(--muted-foreground);
+    font-size: 14px;
+    text-align: center;
+}

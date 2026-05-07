@@ -1937,7 +1937,7 @@ export default function OfflineWorkbench() {
         });
     }, [groupId]);
 
-    const handleSaveFlow = useCallback(async (nodeOverride?: { taskId: string; content: string; dataSourceId?: number; dataSourceType?: string }) => {
+    const handleSaveFlow = useCallback(async (nodeOverride?: { taskId: string; content: string; dataSourceId?: number; dataSourceType?: string }, silent = false) => {
         if (!groupId || !activeFlowPath || !draftSession) return false;
         nodeEditorDraftSchedulerRef.current?.cancel();
         const pendingNodeOverride = pendingNodeEditorDraftRef.current
@@ -2009,11 +2009,13 @@ export default function OfflineWorkbench() {
             setDraftSession(nextSession);
             removeRecoverySnapshot(groupId, sessionForSave.path);
             await Promise.all([refreshRepoStatus(), refreshFlowCommitStatus()]);
-            showFeedback({
-                tone: 'success',
-                title: 'Flow 已保存',
-                detail: '',
-            });
+            if (!silent) {
+                showFeedback({
+                    tone: 'success',
+                    title: 'Flow 已保存',
+                    detail: '',
+                });
+            }
             return true;
         } catch (error) {
             if (error instanceof AxiosError && error.response?.status === 409) {
@@ -2074,18 +2076,18 @@ export default function OfflineWorkbench() {
     }, [pendingNavigation]);
 
     const handleOpenFlowCommitDialog = useCallback(async () => {
-        if (!groupId || !activeFlowPath || !flowDocument || !flowCommitDirty) return;
+        if (!groupId || !activeFlowPath || !flowDocument) return;
         if (isDirty) {
-            const saved = await handleSaveFlow();
+            const saved = await handleSaveFlow(undefined, true);
             if (!saved) return;
         }
         setFlowCommitDialogOpen(true);
-    }, [groupId, activeFlowPath, flowDocument, flowCommitDirty, isDirty, handleSaveFlow]);
+    }, [groupId, activeFlowPath, flowDocument, isDirty, handleSaveFlow]);
 
     const handleOpenRepoCommitDialog = useCallback(async () => {
         if (!groupId) return;
         if (activeFlowPath && isDirty) {
-            const saved = await handleSaveFlow();
+            const saved = await handleSaveFlow(undefined, true);
             if (!saved) return;
         }
         setRepoCommitDialogOpen(true);
@@ -2532,12 +2534,13 @@ export default function OfflineWorkbench() {
                                                 <button
                                                     type="button"
                                                     className="offline-canvas-toolbar-btn"
-                                                    disabled={!activeFlowPath || !canWrite || !flowCommitDirty || committing}
+                                                    disabled={!activeFlowPath || !canWrite || !(isDirty || flowCommitDirty) || committing}
                                                     onClick={() => void handleOpenFlowCommitDialog()}
                                                     aria-label="提交当前 Flow"
                                                 >
                                                     <span className="relative flex">
                                                         <GitCommitHorizontal size={16} />
+                                                        {(isDirty || flowCommitDirty) && <span className="offline-toolbar-dot" />}
                                                     </span>
                                                 </button>
                                             </TooltipTrigger>
