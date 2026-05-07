@@ -43,13 +43,27 @@ function renderWithQuery(ui: React.ReactElement) {
 }
 
 describe('GitSettingsTab - permission control', () => {
-  it('shows permission denied when canEdit is false', async () => {
+  it('shows read-only view without action buttons when canEdit is false', async () => {
+    getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
+
     renderWithQuery(<GitSettingsTab groupId={1} canEdit={false} />);
 
-    expect(screen.getByText('您没有权限管理远程仓库配置，请联系项目组管理员。')).toBeTruthy();
+    // Should show config data as text
+    expect(await screen.findByText('GitHub')).toBeTruthy();
+    expect(screen.getByText('alice')).toBeTruthy();
+
+    // No action buttons
     expect(screen.queryByRole('button', { name: /测试连接/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /保存配置/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /删除配置/ })).toBeNull();
+  });
+
+  it('shows empty state when canEdit is false and no config', async () => {
+    getGitConfig.mockResolvedValueOnce(null);
+
+    renderWithQuery(<GitSettingsTab groupId={1} canEdit={false} />);
+
+    expect(await screen.findByText('尚未配置远程仓库')).toBeTruthy();
   });
 
   it('shows action buttons when canEdit is true', async () => {
@@ -62,9 +76,10 @@ describe('GitSettingsTab - permission control', () => {
     expect(screen.getByRole('button', { name: /删除配置/ })).toBeTruthy();
   });
 
-  it('does not fetch git config when canEdit is false', () => {
+  it('fetches git config when canEdit is false', () => {
+    getGitConfig.mockResolvedValueOnce(null);
     renderWithQuery(<GitSettingsTab groupId={1} canEdit={false} />);
-    expect(getGitConfig).not.toHaveBeenCalled();
+    expect(getGitConfig).toHaveBeenCalledWith(1);
   });
 });
 
