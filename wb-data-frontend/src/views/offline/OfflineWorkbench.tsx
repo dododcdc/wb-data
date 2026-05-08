@@ -1196,6 +1196,10 @@ export default function OfflineWorkbench() {
         if (!groupId || !activeFlowPath) return;
         setCommitting(true);
         try {
+            if (isDirty) {
+                const saved = await handleSaveFlow(undefined, true);
+                if (!saved) return;
+            }
             const result = await commitOfflineCurrentFlow(groupId, activeFlowPath, commitMessage);
             if (result.success) {
                 setFlowCommitDialogOpen(false);
@@ -1208,12 +1212,16 @@ export default function OfflineWorkbench() {
         } finally {
             setCommitting(false);
         }
-    }, [groupId, activeFlowPath, commitMessage, refreshRepoStatus, refreshFlowCommitStatus, showFeedback]);
+    }, [groupId, activeFlowPath, commitMessage, isDirty, handleSaveFlow, refreshRepoStatus, refreshFlowCommitStatus, showFeedback]);
 
     const handleRepoCommit = useCallback(async () => {
         if (!groupId) return;
         setCommitting(true);
         try {
+            if (activeFlowPath && isDirty) {
+                const saved = await handleSaveFlow(undefined, true);
+                if (!saved) return;
+            }
             const result = await commitOfflineRepo(groupId, commitMessage);
             if (result.success) {
                 setRepoCommitDialogOpen(false);
@@ -1226,7 +1234,7 @@ export default function OfflineWorkbench() {
         } finally {
             setCommitting(false);
         }
-    }, [groupId, commitMessage, refreshRepoStatus, refreshFlowCommitStatus, showFeedback]);
+    }, [groupId, activeFlowPath, commitMessage, isDirty, handleSaveFlow, refreshRepoStatus, refreshFlowCommitStatus, showFeedback]);
 
     const handleCreateFlow = useCallback(async () => {
         if (!groupId || !newFlowName.trim()) return;
@@ -2075,23 +2083,15 @@ export default function OfflineWorkbench() {
         setPendingNavigation(null);
     }, [pendingNavigation]);
 
-    const handleOpenFlowCommitDialog = useCallback(async () => {
+    const handleOpenFlowCommitDialog = useCallback(() => {
         if (!groupId || !activeFlowPath || !flowDocument) return;
-        if (isDirty) {
-            const saved = await handleSaveFlow(undefined, true);
-            if (!saved) return;
-        }
         setFlowCommitDialogOpen(true);
-    }, [groupId, activeFlowPath, flowDocument, isDirty, handleSaveFlow]);
+    }, [groupId, activeFlowPath, flowDocument]);
 
-    const handleOpenRepoCommitDialog = useCallback(async () => {
+    const handleOpenRepoCommitDialog = useCallback(() => {
         if (!groupId) return;
-        if (activeFlowPath && isDirty) {
-            const saved = await handleSaveFlow(undefined, true);
-            if (!saved) return;
-        }
         setRepoCommitDialogOpen(true);
-    }, [groupId, activeFlowPath, isDirty, handleSaveFlow]);
+    }, [groupId]);
 
     const handleExecute = useCallback(async () => {
         if (!groupId || !activeFlowPath || !flowDocument) return;
