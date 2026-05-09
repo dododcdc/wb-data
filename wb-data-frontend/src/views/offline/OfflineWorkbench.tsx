@@ -49,6 +49,7 @@ import {
     getOfflineSchedule,
     listOfflineExecutions,
     pushOfflineRepo,
+    rebuildOfflineRepo,
     renameOfflineFlow,
     renameOfflineFolder,
     saveOfflineFlowDocument,
@@ -746,6 +747,8 @@ export default function OfflineWorkbench() {
     const [, setRemoteStatus] = useState<RemoteStatus | null>(null);
     const [pushLoading, setPushLoading] = useState(false);
     const [pushDialogOpen, setPushDialogOpen] = useState(false);
+    const [rebuildLoading, setRebuildLoading] = useState(false);
+    const [rebuildDialogOpen, setRebuildDialogOpen] = useState(false);
     const [flowCommitDialogOpen, setFlowCommitDialogOpen] = useState(false);
     const [repoCommitDialogOpen, setRepoCommitDialogOpen] = useState(false);
     const [commitMessage, setCommitMessage] = useState('');
@@ -1189,6 +1192,9 @@ export default function OfflineWorkbench() {
                 showFeedback({ tone: 'success', title: '推送成功', detail: '' });
                 await refreshRemoteStatus();
                 await refreshRepoStatus();
+            } else if (result.remoteDeleted) {
+                setPushDialogOpen(false);
+                setRebuildDialogOpen(true);
             } else {
                 showFeedback({ tone: 'error', title: result.message, detail: '' });
             }
@@ -1196,6 +1202,26 @@ export default function OfflineWorkbench() {
             showFeedback({ tone: 'error', title: '推送失败', detail: '' });
         } finally {
             setPushLoading(false);
+        }
+    }, [groupId, showFeedback, refreshRemoteStatus, refreshRepoStatus]);
+
+    const handleRebuild = useCallback(async () => {
+        if (!groupId) return;
+        setRebuildLoading(true);
+        try {
+            const result = await rebuildOfflineRepo(groupId);
+            if (result.success) {
+                setRebuildDialogOpen(false);
+                showFeedback({ tone: 'success', title: '推送成功', detail: '' });
+                await refreshRemoteStatus();
+                await refreshRepoStatus();
+            } else {
+                showFeedback({ tone: 'error', title: result.message, detail: '' });
+            }
+        } catch (error) {
+            showFeedback({ tone: 'error', title: '推送失败', detail: '' });
+        } finally {
+            setRebuildLoading(false);
         }
     }, [groupId, showFeedback, refreshRemoteStatus, refreshRepoStatus]);
 
@@ -2423,7 +2449,7 @@ export default function OfflineWorkbench() {
                                                     className="offline-rail-toolbar-btn"
                                                     aria-label="推送"
                                                     onClick={() => setPushDialogOpen(true)}
-                                                    disabled={!groupId || !repoStatus?.gitInitialized || !repoStatus?.ahead || pushLoading || repoLoading || treeLoading}
+                                                    disabled={!groupId || !repoStatus?.gitInitialized || !repoStatus?.headCommitId || (repoStatus?.hasRemote && !repoStatus?.ahead) || pushLoading || repoLoading || treeLoading}
                                                 >
                                                     {pushLoading ? <LoaderCircle size={14} className="offline-spin" /> : <GitPushIcon dirty={!!repoStatus?.ahead} />}
                                                 </button>
@@ -2921,6 +2947,31 @@ export default function OfflineWorkbench() {
                         <Button variant="default" onClick={() => void handlePush()} disabled={pushLoading}>
                             {pushLoading ? <LoaderCircle size={14} className="offline-spin" style={{ marginRight: 8 }} /> : null}
                             {pushLoading ? '推送中…' : '推送'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={rebuildDialogOpen} onOpenChange={setRebuildDialogOpen}>
+                <DialogContent style={{ maxWidth: '420px' }}>
+                    <DialogHeader>
+                        <DialogTitle>远程仓库已不存在</DialogTitle>
+                        <DialogDescription className="sr-only">
+                            远程仓库已被删除，是否重建并推送
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="dialog-body">
+                        <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem', margin: 0 }}>
+                            远程仓库已被删除，是否重建仓库并推送本地内容？
+                        </p>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setRebuildDialogOpen(false)} disabled={rebuildLoading}>
+                            取消
+                        </Button>
+                        <Button variant="default" onClick={() => void handleRebuild()} disabled={rebuildLoading}>
+                            {rebuildLoading ? <LoaderCircle size={14} className="offline-spin" style={{ marginRight: 8 }} /> : null}
+                            {rebuildLoading ? '推送中…' : '重建并推送'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

@@ -9,6 +9,7 @@ public record OfflineRepoStatusResponse(
         boolean gitInitialized,
         boolean dirty,
         boolean ahead,
+        boolean hasRemote,
         String branch,
         String headCommitId,
         String headCommitMessage,

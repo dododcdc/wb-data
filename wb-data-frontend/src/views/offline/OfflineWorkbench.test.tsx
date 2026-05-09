@@ -120,6 +120,7 @@ function makeRepoStatus() {
         gitInitialized: true,
         dirty: false,
         ahead: false,
+        hasRemote: false,
         branch: 'main',
         headCommitId: 'abc',
         headCommitMessage: 'init',

@@ -4,5 +4,6 @@ public record PushResponse(
     boolean success,
     String message,
     String remoteUrl,
-    boolean remoteCreated
+    boolean remoteCreated,
+    boolean remoteDeleted
 ) {}

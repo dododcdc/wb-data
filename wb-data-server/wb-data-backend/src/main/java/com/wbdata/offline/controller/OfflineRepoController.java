@@ -109,7 +109,16 @@ public class OfflineRepoController {
             @Valid @RequestBody PushRequest request
     ) {
         GitPushService.PushResult result = gitPushService.push(context.currentGroup().id());
-        return Result.success(new PushResponse(result.success(), result.message(), result.remoteUrl(), result.remoteCreated()));
+        return Result.success(new PushResponse(result.success(), result.message(), result.remoteUrl(), result.remoteCreated(), result.remoteDeleted()));
+    }
+
+    @Operation(summary = "重建远程仓库并推送")
+    @PostMapping("/repo/push/rebuild")
+    public Result<PushResponse> rebuild(
+            @RequireGroupAuth(Permission.GROUP_SETTINGS) AuthContextResponse context
+    ) {
+        GitPushService.PushResult result = gitPushService.rebuild(context.currentGroup().id());
+        return Result.success(new PushResponse(result.success(), result.message(), result.remoteUrl(), result.remoteCreated(), result.remoteDeleted()));
     }
 
     @Operation(summary = "在离线仓库中创建文件夹")
