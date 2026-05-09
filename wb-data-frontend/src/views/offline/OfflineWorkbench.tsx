@@ -816,6 +816,7 @@ export default function OfflineWorkbench() {
     const leaveCurrentFlowRef = useRef<((session: FlowDraftSession | null, groupIdValue?: number | null) => void) | null>(null);
     const nodeEditorDraftSchedulerRef = useRef<ReturnType<typeof createNodeEditorDraftScheduler> | null>(null);
     const [pendingNavigation, setPendingNavigation] = useState<PendingNavigationState | null>(null);
+    const didDiscardLeaveRef = useRef(false);
 
     if (!nodeEditorDraftSchedulerRef.current) {
         nodeEditorDraftSchedulerRef.current = createNodeEditorDraftScheduler({
@@ -1097,13 +1098,14 @@ export default function OfflineWorkbench() {
             return false;
         }
 
-        if (draftSession && draftSession.path !== normalizedPath) {
+        if (!didDiscardLeaveRef.current && draftSession && draftSession.path !== normalizedPath) {
             if (!options?.force && isDirty) {
                 setPendingNavigation({ type: 'flow', flowPath: normalizedPath });
                 return false;
             }
             leaveCurrentFlow(draftSession);
         }
+        didDiscardLeaveRef.current = false;
 
         setFlowLoading(true);
         try {
@@ -1191,50 +1193,6 @@ export default function OfflineWorkbench() {
             setPushLoading(false);
         }
     }, [groupId, showFeedback, refreshRemoteStatus, refreshRepoStatus]);
-
-    const handleFlowCommit = useCallback(async () => {
-        if (!groupId || !activeFlowPath) return;
-        setCommitting(true);
-        try {
-            if (isDirty) {
-                const saved = await handleSaveFlow(undefined, true);
-                if (!saved) return;
-            }
-            const result = await commitOfflineCurrentFlow(groupId, activeFlowPath, commitMessage);
-            if (result.success) {
-                setFlowCommitDialogOpen(false);
-                setCommitMessage('');
-                await Promise.all([refreshRepoStatus(), refreshFlowCommitStatus()]);
-                showFeedback({ tone: 'success', title: result.message, detail: '' });
-            }
-        } catch {
-            showFeedback({ tone: 'error', title: '当前 Flow 提交失败', detail: '' });
-        } finally {
-            setCommitting(false);
-        }
-    }, [groupId, activeFlowPath, commitMessage, isDirty, handleSaveFlow, refreshRepoStatus, refreshFlowCommitStatus, showFeedback]);
-
-    const handleRepoCommit = useCallback(async () => {
-        if (!groupId) return;
-        setCommitting(true);
-        try {
-            if (activeFlowPath && isDirty) {
-                const saved = await handleSaveFlow(undefined, true);
-                if (!saved) return;
-            }
-            const result = await commitOfflineRepo(groupId, commitMessage);
-            if (result.success) {
-                setRepoCommitDialogOpen(false);
-                setCommitMessage('');
-                await Promise.all([refreshRepoStatus(), refreshFlowCommitStatus()]);
-                showFeedback({ tone: 'success', title: result.message, detail: '' });
-            }
-        } catch {
-            showFeedback({ tone: 'error', title: '仓库提交失败', detail: '' });
-        } finally {
-            setCommitting(false);
-        }
-    }, [groupId, activeFlowPath, commitMessage, isDirty, handleSaveFlow, refreshRepoStatus, refreshFlowCommitStatus, showFeedback]);
 
     const handleCreateFlow = useCallback(async () => {
         if (!groupId || !newFlowName.trim()) return;
@@ -1908,10 +1866,7 @@ export default function OfflineWorkbench() {
                 strict: true,
             });
             if (!validation.allowed && validation.feedback) {
-                showFeedback({
-                    ...validation.feedback,
-                    detail: `校验失败。请检查画布上标记为警告的节点（共 ${Object.keys(nodeIssues).length} 个）。`
-                });
+                showFeedback(validation.feedback);
                 return false;
             }
         }
@@ -2053,6 +2008,50 @@ export default function OfflineWorkbench() {
         validateDocumentForAction,
     ]);
 
+    const handleFlowCommit = useCallback(async (mode: 'save-and-commit' | 'saved-only') => {
+        if (!groupId || !activeFlowPath) return;
+        setCommitting(true);
+        try {
+            if (mode === 'save-and-commit' && isDirty) {
+                const saved = await handleSaveFlow(undefined, false);
+                if (!saved) return;
+            }
+            const result = await commitOfflineCurrentFlow(groupId, activeFlowPath, commitMessage);
+            if (result.success) {
+                setFlowCommitDialogOpen(false);
+                setCommitMessage('');
+                await Promise.all([refreshRepoStatus(), refreshFlowCommitStatus()]);
+                showFeedback({ tone: 'success', title: result.message, detail: '' });
+            }
+        } catch {
+            showFeedback({ tone: 'error', title: '当前 Flow 提交失败', detail: '' });
+        } finally {
+            setCommitting(false);
+        }
+    }, [groupId, activeFlowPath, commitMessage, isDirty, handleSaveFlow, refreshRepoStatus, refreshFlowCommitStatus, showFeedback]);
+
+    const handleRepoCommit = useCallback(async (mode: 'save-and-commit' | 'saved-only') => {
+        if (!groupId) return;
+        setCommitting(true);
+        try {
+            if (mode === 'save-and-commit' && activeFlowPath && isDirty) {
+                const saved = await handleSaveFlow(undefined, false);
+                if (!saved) return;
+            }
+            const result = await commitOfflineRepo(groupId, commitMessage);
+            if (result.success) {
+                setRepoCommitDialogOpen(false);
+                setCommitMessage('');
+                await Promise.all([refreshRepoStatus(), refreshFlowCommitStatus()]);
+                showFeedback({ tone: 'success', title: result.message, detail: '' });
+            }
+        } catch {
+            showFeedback({ tone: 'error', title: '仓库提交失败', detail: '' });
+        } finally {
+            setCommitting(false);
+        }
+    }, [groupId, activeFlowPath, commitMessage, isDirty, handleSaveFlow, refreshRepoStatus, refreshFlowCommitStatus, showFeedback]);
+
     const handleConfirmLeave = useCallback(async (action: 'save' | 'discard') => {
         if (!pendingNavigation) return;
 
@@ -2060,8 +2059,10 @@ export default function OfflineWorkbench() {
             const saved = await handleSaveFlow();
             if (!saved) return;
         } else {
-            if (draftSession) {
+            if (draftSession && groupId) {
+                didDiscardLeaveRef.current = true;
                 leaveCurrentFlow(draftSession);
+                removeRecoverySnapshot(groupId, draftSession.path);
             }
         }
 
@@ -2073,7 +2074,7 @@ export default function OfflineWorkbench() {
         } else if (target.type === 'flow' && target.flowPath) {
             void openFlowDocument(target.flowPath, { force: true });
         }
-    }, [pendingNavigation, handleSaveFlow, draftSession, leaveCurrentFlow, openFlowDocument]);
+    }, [pendingNavigation, handleSaveFlow, draftSession, groupId, leaveCurrentFlow, openFlowDocument]);
 
     const handleCancelLeave = useCallback(() => {
         if (!pendingNavigation) return;
@@ -2782,25 +2783,23 @@ export default function OfflineWorkbench() {
                 setFlowCommitDialogOpen(open);
                 if (!open) { setCommitMessage(''); }
             }}>
-                <DialogContent style={{ maxWidth: '460px' }}>
+                <DialogContent style={{ maxWidth: '500px' }}>
                     <DialogHeader>
-                        <DialogTitle>提交当前 Flow</DialogTitle>
-                        <DialogDescription>
-                            本次只提交当前 Flow 的定义、脚本和布局文件，其它未提交改动不会进入这次提交。
-                        </DialogDescription>
+                        <DialogTitle>提交改动</DialogTitle>
                     </DialogHeader>
                     <div className="dialog-body">
-                                <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
-                                    提交说明
-                                </label>
-                                <Input
-                                    value={commitMessage}
-                                    onChange={(e) => setCommitMessage(e.target.value)}
-                                    placeholder="例如：Update query conditions"
-                                    autoFocus
-                                    style={{ width: '100%' }}
-                                />
-                            </div>
+                        <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
+                            提交说明
+                        </label>
+                        <textarea
+                            value={commitMessage}
+                            onChange={(e) => setCommitMessage(e.target.value)}
+                            placeholder={'简要描述本次修改\n\n详细说明修改原因和影响（可选）'}
+                            autoFocus
+                            rows={4}
+                            className="offline-commit-textarea"
+                        />
+                    </div>
                     <DialogFooter>
                         <Button
                             type="button"
@@ -2811,15 +2810,27 @@ export default function OfflineWorkbench() {
                         >
                             取消
                         </Button>
+                        {isDirty && flowCommitDirty && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void handleFlowCommit('saved-only')}
+                                disabled={!commitMessage.trim() || committing}
+                            >
+                                {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                                仅提交已保存内容
+                            </Button>
+                        )}
                         <Button
                             type="button"
                             variant="default"
                             size="sm"
-                            onClick={() => void handleFlowCommit()}
+                            onClick={() => void handleFlowCommit(isDirty ? 'save-and-commit' : 'saved-only')}
                             disabled={!commitMessage.trim() || committing}
                         >
                             {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                            {committing ? '提交中…' : '提交'}
+                            {committing ? '提交中…' : isDirty ? '保存并提交' : '提交'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -2829,25 +2840,23 @@ export default function OfflineWorkbench() {
                 setRepoCommitDialogOpen(open);
                 if (!open) { setCommitMessage(''); }
             }}>
-                <DialogContent style={{ maxWidth: '460px' }}>
+                <DialogContent style={{ maxWidth: '500px' }}>
                     <DialogHeader>
-                        <DialogTitle>提交仓库改动</DialogTitle>
-                        <DialogDescription>
-                            会提交当前项目组离线仓库内所有已落盘改动。
-                        </DialogDescription>
+                        <DialogTitle>提交改动</DialogTitle>
                     </DialogHeader>
                     <div className="dialog-body">
-                                <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
-                                    提交说明
-                                </label>
-                                <Input
-                                    value={commitMessage}
-                                    onChange={(e) => setCommitMessage(e.target.value)}
-                                    placeholder="例如：Update query conditions"
-                                    autoFocus
-                                    style={{ width: '100%' }}
-                                />
-                            </div>
+                        <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
+                            提交说明
+                        </label>
+                        <textarea
+                            value={commitMessage}
+                            onChange={(e) => setCommitMessage(e.target.value)}
+                            placeholder={'简要描述本次修改\n\n详细说明修改原因和影响（可选）'}
+                            autoFocus
+                            rows={4}
+                            className="offline-commit-textarea"
+                        />
+                    </div>
                     <DialogFooter>
                         <Button
                             type="button"
@@ -2858,15 +2867,27 @@ export default function OfflineWorkbench() {
                         >
                             取消
                         </Button>
+                        {isDirty && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void handleRepoCommit('saved-only')}
+                                disabled={!commitMessage.trim() || committing}
+                            >
+                                {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                                仅提交已保存内容
+                            </Button>
+                        )}
                         <Button
                             type="button"
                             variant="default"
                             size="sm"
-                            onClick={() => void handleRepoCommit()}
+                            onClick={() => void handleRepoCommit(isDirty ? 'save-and-commit' : 'saved-only')}
                             disabled={!commitMessage.trim() || committing}
                         >
                             {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                            {committing ? '提交中…' : '提交'}
+                            {committing ? '提交中…' : isDirty ? '保存并提交' : '提交'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

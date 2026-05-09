@@ -928,6 +928,33 @@ button.offline-tree-row {
     outline-offset: 2px;
 }
 
+/* --- commit message textarea --- */
+.offline-commit-textarea {
+    width: 100%;
+    min-height: 80px;
+    padding: 8px 10px;
+    resize: vertical;
+    border: 1px solid var(--color-input-border);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: none;
+}
+
+.offline-commit-textarea::placeholder {
+    color: var(--color-text-muted);
+    opacity: 0.7;
+}
+
+.offline-commit-textarea:focus-visible {
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 1px var(--color-brand);
+}
+
 .offline-inline-meta {
     display: flex;
     align-items: center;
