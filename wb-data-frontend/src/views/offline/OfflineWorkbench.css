@@ -55,7 +55,7 @@
 
 .offline-rail-toolbar-btn:disabled {
     opacity: 0.4;
-    cursor: not-allowed;
+    cursor: default;
 }
 
 .offline-rail-toolbar-btn-wrapper {
@@ -392,7 +392,7 @@ button.offline-tree-row {
 
 .offline-canvas-toolbar-btn:disabled {
     opacity: 0.4;
-    cursor: not-allowed;
+    cursor: default;
 }
 
 .offline-toolbar-divider {
@@ -414,10 +414,6 @@ button.offline-tree-row {
     box-shadow: 0 0 0 1.5px var(--color-bg-primary);
     pointer-events: none;
     z-index: 1;
-}
-
-.offline-toolbar-dot.is-brand {
-    background-color: var(--color-brand);
 }
 
 .offline-canvas-board {
@@ -2374,7 +2370,7 @@ button.offline-tree-row {
 }
 .offline-switch:disabled {
     opacity: 0.5;
-    cursor: not-allowed;
+    cursor: default;
 }
 .offline-switch-thumb {
     position: absolute;

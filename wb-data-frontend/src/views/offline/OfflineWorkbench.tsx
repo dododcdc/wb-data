@@ -389,7 +389,7 @@ function GitPushIcon({ dirty }: { dirty: boolean }) {
     return (
         <span style={{ position: 'relative', display: 'inline-flex' }}>
             <ArrowUpRight size={16} />
-            {dirty && <span className="offline-toolbar-dot is-brand" />}
+            {dirty && <span className="offline-toolbar-dot" />}
         </span>
     );
 }
@@ -745,6 +745,7 @@ export default function OfflineWorkbench() {
     const [treeLoading, setTreeLoading] = useState(false);
     const [, setRemoteStatus] = useState<RemoteStatus | null>(null);
     const [pushLoading, setPushLoading] = useState(false);
+    const [pushDialogOpen, setPushDialogOpen] = useState(false);
     const [flowCommitDialogOpen, setFlowCommitDialogOpen] = useState(false);
     const [repoCommitDialogOpen, setRepoCommitDialogOpen] = useState(false);
     const [commitMessage, setCommitMessage] = useState('');
@@ -1184,6 +1185,7 @@ export default function OfflineWorkbench() {
         try {
             const result = await pushOfflineRepo(groupId);
             if (result.success) {
+                setPushDialogOpen(false);
                 showFeedback({ tone: 'success', title: '推送成功', detail: '' });
                 await refreshRemoteStatus();
                 await refreshRepoStatus();
@@ -2400,11 +2402,11 @@ export default function OfflineWorkbench() {
                                                     className="offline-rail-toolbar-btn"
                                                     aria-label="提交仓库改动"
                                                     onClick={() => void handleOpenRepoCommitDialog()}
-                                                    disabled={!groupId || !repoStatus?.gitInitialized || committing || repoLoading || treeLoading}
+                                                    disabled={!groupId || !repoStatus?.gitInitialized || !(isDirty || repoStatus?.dirty) || committing || repoLoading || treeLoading}
                                                 >
                                                     <span className="relative flex">
                                                         <GitCommitHorizontal size={14} />
-                                                        {repoStatus?.dirty && <span className="offline-toolbar-dot" />}
+                                                        {(isDirty || repoStatus?.dirty) && <span className="offline-toolbar-dot" />}
                                                     </span>
                                                 </button>
                                             </TooltipTrigger>
@@ -2420,10 +2422,10 @@ export default function OfflineWorkbench() {
                                                     type="button"
                                                     className="offline-rail-toolbar-btn"
                                                     aria-label="推送"
-                                                    onClick={() => void handlePush()}
-                                                    disabled={!groupId || pushLoading || repoLoading || treeLoading}
+                                                    onClick={() => setPushDialogOpen(true)}
+                                                    disabled={!groupId || !repoStatus?.gitInitialized || !repoStatus?.ahead || pushLoading || repoLoading || treeLoading}
                                                 >
-                                                    {pushLoading ? <LoaderCircle size={14} className="offline-spin" /> : <GitPushIcon dirty={!isDirty && !repoStatus?.dirty && !!repoStatus?.ahead} />}
+                                                    {pushLoading ? <LoaderCircle size={14} className="offline-spin" /> : <GitPushIcon dirty={!!repoStatus?.ahead} />}
                                                 </button>
                                             </TooltipTrigger>
                                             <TooltipContent className="tooltip-content" side="bottom">
@@ -2873,7 +2875,7 @@ export default function OfflineWorkbench() {
                         >
                             取消
                         </Button>
-                        {isDirty && (
+                        {isDirty && repoStatus?.dirty && (
                             <Button
                                 type="button"
                                 variant="outline"
@@ -2882,7 +2884,7 @@ export default function OfflineWorkbench() {
                                 disabled={!commitMessage.trim() || committing}
                             >
                                 {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                                仅提交已落盘文件
+                                仅提交已保存内容
                             </Button>
                         )}
                         <Button
@@ -2894,6 +2896,31 @@ export default function OfflineWorkbench() {
                         >
                             {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
                             {committing ? '提交中…' : isDirty ? '保存并提交' : '提交'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={pushDialogOpen} onOpenChange={setPushDialogOpen}>
+                <DialogContent style={{ maxWidth: '420px' }}>
+                    <DialogHeader>
+                        <DialogTitle>推送</DialogTitle>
+                        <DialogDescription className="sr-only">
+                            确认将本地提交推送到远端仓库
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="dialog-body">
+                        <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem', margin: 0 }}>
+                            将本地提交推送到远端仓库，推送后其他成员可以拉取最新内容。
+                        </p>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setPushDialogOpen(false)} disabled={pushLoading}>
+                            取消
+                        </Button>
+                        <Button variant="default" onClick={() => void handlePush()} disabled={pushLoading}>
+                            {pushLoading ? <LoaderCircle size={14} className="offline-spin" style={{ marginRight: 8 }} /> : null}
+                            {pushLoading ? '推送中…' : '推送'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
