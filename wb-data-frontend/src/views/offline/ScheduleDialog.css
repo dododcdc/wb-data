@@ -27,20 +27,20 @@
     border-radius: 2px;
 }
 
-.offline-schedule-dialog-standard .input-group {
+.offline-schedule-dialog-standard .form-input-group {
     display: flex;
     flex-direction: column;
     gap: 6px;
     margin-bottom: 20px;
 }
 
-.offline-schedule-dialog-standard .input-group:first-of-type {
+.offline-schedule-dialog-standard .form-input-group:first-of-type {
     max-width: 260px;
 }
 
 
 
-.offline-schedule-dialog-standard .input-group label {
+.offline-schedule-dialog-standard .form-input-group label {
     font-size: 0.85rem;
     font-weight: 600;
     color: var(--color-text-secondary);
@@ -140,50 +140,6 @@
     font-size: 0.82rem;
 }
 
-
-.submit-btn {
-    height: 40px;
-    padding: 0 24px;
-    background: var(--color-text-primary);
-    color: var(--color-bg-primary);
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.submit-btn:hover:not(:disabled) {
-    background: var(--color-text-secondary);
-    transform: translateY(-1px);
-}
-
-.submit-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.cancel-btn {
-    height: 40px;
-    padding: 0 24px;
-    background: var(--color-bg-primary);
-    border: 1px solid var(--color-input-border);
-    border-radius: 8px;
-    color: var(--color-text-secondary);
-    font-weight: 500;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.2s;
-}
-
-.cancel-btn:hover:not(:disabled) {
-    border-color: var(--color-error);
-    color: var(--color-error);
-    background: rgba(var(--color-error-rgb), 0.04);
-}
 
 
 /* Segmented Cron Input Styles */

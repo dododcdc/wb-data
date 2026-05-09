@@ -19,6 +19,8 @@ import {
     updateDataSource,
 } from '../../api/datasource';
 import { CheckCircle, AlertCircle } from 'lucide-react';
+import { Button } from '../../components/ui/button';
+import '../../components/ui/form-input-group.css';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { getErrorMessage } from '../../utils/error';
 import './DataSourceForm.css';
@@ -141,14 +143,14 @@ function applyPluginDefaults(
 
 function getFieldLayoutClass(field: PluginFieldDescriptor) {
     if (field.key === 'host') {
-        return 'input-group span-2';
+        return 'form-input-group span-2';
     }
 
     if (field.key === 'databaseName') {
-        return 'input-group span-2';
+        return 'form-input-group span-2';
     }
 
-    return 'input-group';
+    return 'form-input-group';
 }
 
 function getFieldPlaceholder(field: PluginFieldDescriptor, isEdit: boolean) {
@@ -162,6 +164,8 @@ function getFieldPlaceholder(field: PluginFieldDescriptor, isEdit: boolean) {
 export default function DataSourceForm({ open, onOpenChange, dataSourceId, groupId, onSuccess }: DataSourceFormProps) {
     const isEdit = Boolean(dataSourceId);
     const detailRequestIdRef = useRef(0);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
 
     const [formData, setFormData] = useState<FormState>(createEmptyFormState);
     const [fieldErrors, setFieldErrors] = useState<Partial<Record<FormField, string | true>>>({});
@@ -475,7 +479,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
 
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => onOpenChange({ open: nextOpen })}>
-            <DialogContent style={{ maxWidth: '960px' }}>
+            <DialogContent ref={(el) => { dialogRef.current = el; setDialogEl(el); }} style={{ maxWidth: '960px' }}>
                 <DialogHeader>
                     <DialogTitle>
                         {isEdit ? '编辑数据源' : '新建数据源'}
@@ -497,12 +501,12 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                             <div className="form-side-panel">
                                 <div className="side-panel-section">
                                     <h3 className="sub-section-title">标识与类型</h3>
-                                    <div className={`input-group ${fieldErrors.name ? 'has-error' : ''}`}>
+                                    <div className={`form-input-group ${fieldErrors.name ? 'has-error' : ''}`}>
                                         <label htmlFor="ds-name">数据源名称 <span className="required">*</span></label>
                                         <input id="ds-name" type="text" value={formData.name} onChange={e => handleChange('name', e.target.value)} placeholder="如：生产环境主库" />
-                                        {typeof fieldErrors.name === 'string' ? <span className="input-error">{fieldErrors.name}</span> : null}
+                                        {typeof fieldErrors.name === 'string' ? <span className="form-input-error">{fieldErrors.name}</span> : null}
                                     </div>
-                                    <div className={`input-group ${fieldErrors.type ? 'has-error' : ''}`}>
+                                    <div className={`form-input-group ${fieldErrors.type ? 'has-error' : ''}`}>
                                         <label htmlFor="datasource-form-type-select">数据库类型 <span className="required">*</span></label>
                                         <SimpleSelect
                                             id="datasource-form-type-select"
@@ -511,8 +515,9 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                             disabled={pluginQuery.isLoading || typeOptions.length === 0}
                                             options={typeOptions}
                                             placeholder="选择数据库类型"
+                                            menuContainer={dialogEl}
                                         />
-                                        {typeof fieldErrors.type === 'string' ? <span className="input-error">{fieldErrors.type}</span> : null}
+                                        {typeof fieldErrors.type === 'string' ? <span className="form-input-error">{fieldErrors.type}</span> : null}
                                     </div>
                                     {pluginError ? (
                                         <p className="config-section-tip">
@@ -525,11 +530,11 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                             <span>{loadError}</span>
                                         </div>
                                     ) : null}
-                                    <div className="input-group">
+                                    <div className="form-input-group">
                                         <label htmlFor="ds-owner">负责人</label>
                                         <input id="ds-owner" type="text" value={formData.owner} onChange={e => handleChange('owner', e.target.value)} placeholder="项目负责人姓名" />
                                     </div>
-                                    <div className="input-group">
+                                    <div className="form-input-group">
                                         <label htmlFor="ds-description">备注描述</label>
                                         <textarea
                                             id="ds-description"
@@ -569,7 +574,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                                         onChange={(event) => handlePluginFieldChange(fieldKey, event.target.value)}
                                                         placeholder={getFieldPlaceholder(field, isEdit)}
                                                     />
-                                                    {typeof fieldErrors[fieldKey] === 'string' ? <span className="input-error">{fieldErrors[fieldKey]}</span> : null}
+                                                    {typeof fieldErrors[fieldKey] === 'string' ? <span className="form-input-error">{fieldErrors[fieldKey]}</span> : null}
                                                 </div>
                                             );
                                         })}
@@ -601,9 +606,9 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                                         onChange={(event) => handlePluginFieldChange(fieldKey, event.target.value)}
                                                         placeholder={getFieldPlaceholder(field, isEdit)}
                                                     />
-                                                    {typeof fieldErrors[fieldKey] === 'string' ? <span className="input-error">{fieldErrors[fieldKey]}</span> : null}
+                                                    {typeof fieldErrors[fieldKey] === 'string' ? <span className="form-input-error">{fieldErrors[fieldKey]}</span> : null}
                                                     {isEdit && fieldKey === 'password' ? (
-                                                        <span className="input-help">留空则保持当前密码不变</span>
+                                                        <span className="form-input-help">留空则保持当前密码不变</span>
                                                     ) : null}
                                                 </div>
                                             );
@@ -646,10 +651,12 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                         ) : null}
                     </div>
                     <div className="footer-right" style={{ display: 'flex', gap: 12 }}>
-                        <button className="cancel-btn" onClick={() => onOpenChange({ open: false })} type="button">取消</button>
-                        <button className="submit-btn" onClick={onSave} disabled={saving || isLoadingDetails || !selectedPlugin} type="button">
+                        <Button variant="outline" onClick={() => onOpenChange({ open: false })} disabled={saving}>
+                            取消
+                        </Button>
+                        <Button variant="default" onClick={onSave} disabled={saving || isLoadingDetails || !selectedPlugin}>
                             {saving ? '保存中...' : '确认保存'}
-                        </button>
+                        </Button>
                     </div>
                 </DialogFooter>
             </DialogContent>

@@ -112,7 +112,7 @@ export default function ResetPasswordDialog(props: ResetPasswordDialogProps) {
 
                 <div className="dialog-body user-form-content">
                     <div className="user-form-section">
-                        <div className={`user-form-input-group ${fieldErrors.newPassword ? 'has-error' : ''}`}>
+                        <div className={`form-input-group ${fieldErrors.newPassword ? 'has-error' : ''}`}>
                             <label htmlFor="reset-user-new-password">
                                 新密码 <span className="required">*</span>
                             </label>
@@ -133,10 +133,10 @@ export default function ResetPasswordDialog(props: ResetPasswordDialogProps) {
                                     {newPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                                 </button>
                             </div>
-                            {fieldErrors.newPassword ? <span className="input-error">{fieldErrors.newPassword}</span> : null}
+                            {fieldErrors.newPassword ? <span className="form-input-error">{fieldErrors.newPassword}</span> : null}
                         </div>
 
-                        <div className={`user-form-input-group ${fieldErrors.confirmPassword ? 'has-error' : ''}`}>
+                        <div className={`form-input-group ${fieldErrors.confirmPassword ? 'has-error' : ''}`}>
                             <label htmlFor="reset-user-confirm-password">
                                 确认密码 <span className="required">*</span>
                             </label>
@@ -157,7 +157,7 @@ export default function ResetPasswordDialog(props: ResetPasswordDialogProps) {
                                     {confirmPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                                 </button>
                             </div>
-                            {fieldErrors.confirmPassword ? <span className="input-error">{fieldErrors.confirmPassword}</span> : null}
+                            {fieldErrors.confirmPassword ? <span className="form-input-error">{fieldErrors.confirmPassword}</span> : null}
                         </div>
 
                         {saveError ? (

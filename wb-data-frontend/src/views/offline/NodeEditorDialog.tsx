@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type * as Monaco from 'monaco-editor';
 import { Database, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
@@ -52,6 +52,8 @@ export function NodeEditorDialog({
 }: NodeEditorDialogProps) {
     const latestContentRef = useRef(content);
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
     const {
         currentDataSourceId,
         selectedDataSource,
@@ -120,7 +122,8 @@ export function NodeEditorDialog({
 
     return (
         <Dialog open={open} onOpenChange={(next) => { if (!next) handleAttemptClose(); }}>
-            <DialogContent 
+            <DialogContent
+                ref={(el) => { dialogRef.current = el; setDialogEl(el); }}
                 onOpenAutoFocus={(e) => e.preventDefault()}
                 hideClose
                 fullScreen
@@ -159,6 +162,7 @@ export function NodeEditorDialog({
                                 <div className="min-w-[260px]">
                                     <DataSourceSelect
                                         options={dataSourceSelectOptions}
+                                        menuContainer={dialogEl}
                                         selectedOption={currentDS ? {
                                             label: currentDS.name,
                                             value: String(currentDS.id),

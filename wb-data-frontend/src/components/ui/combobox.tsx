@@ -40,13 +40,14 @@ function ComboboxTrigger({
   )
 }
 
-const ComboboxContent = React.forwardRef<HTMLDivElement, ComboboxPrimitive.Popup.Props & Pick<ComboboxPrimitive.Positioner.Props, "align" | "side" | "sideOffset">>(
+const ComboboxContent = React.forwardRef<HTMLDivElement, ComboboxPrimitive.Popup.Props & Pick<ComboboxPrimitive.Positioner.Props, "align" | "side" | "sideOffset"> & { container?: HTMLElement | null }>(
   ({
     className,
     children,
     side = "bottom",
     sideOffset = 4,
     align = "start",
+    container,
     ...props
   }, forwardedRef) => {
     const innerRef = React.useRef<HTMLDivElement>(null);
@@ -78,7 +79,7 @@ const ComboboxContent = React.forwardRef<HTMLDivElement, ComboboxPrimitive.Popup
     );
 
     return (
-      <ComboboxPrimitive.Portal>
+      <ComboboxPrimitive.Portal container={container}>
         <ComboboxPrimitive.Positioner
           side={side}
           sideOffset={sideOffset}

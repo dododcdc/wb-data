@@ -71,7 +71,7 @@ export const resetUserPassword = (id: number, data: ResetPasswordPayload) => {
 };
 
 export const getAllGroups = () => {
-    return request.get<unknown, GroupSimple[]>('/api/v1/groups');
+    return request.get<unknown, PageResult<GroupSimple>>('/api/v1/groups', { params: { size: 1000 } });
 };
 
 export const getUserGroups = (id: number) => {

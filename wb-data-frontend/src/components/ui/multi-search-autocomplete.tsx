@@ -24,6 +24,7 @@ export interface MultiSearchAutocompleteProps<T extends SearchAutocompleteOption
     loadingText?: string;
     className?: string;
     triggerClassName?: string;
+    menuContainer?: HTMLElement | null;
     onChange?: (values: string[], options: T[]) => void;
     onInputChange?: (value: string) => void;
     loadingMore?: boolean;
@@ -56,6 +57,7 @@ export function MultiSearchAutocomplete<T extends SearchAutocompleteOption>(prop
         onLoadMore,
         virtualize = false,
         virtualItemSize = 36,
+        menuContainer,
     } = props;
 
     const isComposingRef = useRef(false);
@@ -205,12 +207,13 @@ export function MultiSearchAutocomplete<T extends SearchAutocompleteOption>(prop
                     />
                 </div>
 
-                <ComboboxContent 
-                    sideOffset={4} 
-                    align="start" 
+                <ComboboxContent
+                    sideOffset={4}
+                    align="start"
                     className="w-[var(--anchor-width)] max-h-[300px]"
                     onScroll={handleScroll}
                     ref={setScrollElement}
+                    container={menuContainer}
                 >
                     {loading ? (
                         <div className="flex items-center justify-center gap-2 p-4 text-center text-sm text-muted-foreground">

@@ -44,18 +44,17 @@ export function UnsavedChangesDialog({
                         </div>
 
                         <div className="uc-footer">
-                            <Button 
-                                variant="ghost" 
+                            <Button
+                                variant="outline"
                                 type="button"
                                 className="btn-cancel"
                                 onClick={() => onOpenChange(false)}
                             >
                                 取消
                             </Button>
-                            <Button 
-                                variant="outline" 
+                            <Button
+                                variant="destructive"
                                 type="button"
-                                className="btn-discard"
                                 onClick={onDiscard}
                             >
                                 放弃修改

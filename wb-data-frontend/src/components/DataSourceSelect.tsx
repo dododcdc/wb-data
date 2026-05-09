@@ -9,6 +9,7 @@ type DataSourceSelectProps = {
     placeholder?: string;
     disabled?: boolean;
     ariaLabel?: string;
+    menuContainer?: HTMLElement | null;
     disableClientFilter?: boolean;
     onChange?: (value: string, option: DataSourceOption | null) => void;
     onInputChange?: (value: string) => void;
@@ -29,6 +30,7 @@ export function DataSourceSelect(props: DataSourceSelectProps) {
     return (
         <SearchAutocomplete<DataSourceOption>
             {...props}
+            menuContainer={props.menuContainer}
             renderItem={(item) => (
                 <div className="flex items-center gap-2 overflow-hidden">
                     {item.type && (

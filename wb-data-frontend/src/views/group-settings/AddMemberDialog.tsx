@@ -40,6 +40,8 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
     const [hasMore, setHasMore] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
     const searchRequestIdRef = useRef(0);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
 
     useEffect(() => {
         if (!open) {
@@ -147,7 +149,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
 
     return (
         <Dialog modal={false} open={open} onOpenChange={(nextOpen) => { if (!submitting) onOpenChange({ open: nextOpen }); }}>
-            <DialogContent style={{ maxWidth: '520px' }}>
+            <DialogContent ref={(el) => { dialogRef.current = el; setDialogEl(el); }} style={{ maxWidth: '520px' }}>
                 <DialogHeader>
                     <DialogTitle>添加成员</DialogTitle>
                     <DialogDescription>向项目组添加新成员</DialogDescription>
@@ -156,7 +158,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                 <div className="dialog-body gs-dialog-content">
                     <div className="gs-dialog-section">
                         <div className="gs-dialog-field-grid">
-                            <div className="gs-dialog-input-group">
+                            <div className="form-input-group">
                                 <label>用户<span className="gs-required">*</span></label>
                                 <MultiSearchAutocomplete
                                     options={userOptions}
@@ -164,6 +166,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                                     selectedOptions={selectedUserOptions}
                                     placeholder="搜索用户名"
                                     disabled={submitting}
+                                    menuContainer={dialogEl}
                                     loading={loading}
                                     emptyText={searchKeyword.trim() ? (searchError || undefined) : undefined}
                                     onInputChange={setSearchKeyword}
@@ -177,12 +180,13 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                                 />
                             </div>
 
-                            <div className="gs-dialog-input-group">
+                            <div className="form-input-group">
                                 <label>角色</label>
                                 <SimpleSelect
                                     value={role}
                                     options={ROLE_OPTIONS}
                                     disabled={submitting}
+                                    menuContainer={dialogEl}
                                     onChange={setRole}
                                 />
                             </div>

@@ -3,6 +3,7 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/source-serif-4";
+@import "./components/ui/form-input-group.css";
 @import "./styles/animations.css";
 
 @custom-variant dark (&:is(.dark *));

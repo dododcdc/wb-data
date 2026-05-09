@@ -7,20 +7,12 @@
     overflow: hidden;
 }
 
-.group-toolbar,
-.group-table-panel {
-    border: 1px solid var(--color-border);
-    border-radius: 18px;
-    background: var(--color-bg-primary);
-    box-shadow: var(--shadow-lg);
-}
-
 .group-toolbar {
     display: flex;
     align-items: center;
     justify-content: flex-start;
     gap: 12px;
-    padding: 14px 18px;
+    padding: 0 0 14px;
 }
 
 .group-search-shell {
@@ -76,7 +68,6 @@
 .group-table-panel {
     display: flex;
     flex-direction: column;
-    padding: 0 18px 16px;
     overflow: hidden;
 }
 
@@ -90,7 +81,7 @@
     position: sticky;
     top: 0;
     z-index: 1;
-    background: var(--color-bg-primary);
+    background: var(--color-bg-secondary);
     padding: 10px 12px;
     border-bottom: 1px solid var(--color-border);
     color: var(--color-text-secondary);
@@ -313,82 +304,10 @@
     gap: 16px 18px;
 }
 
-.group-form-input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.group-form-input-group label {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--color-text-secondary);
-}
-
-.required {
-    color: var(--color-error);
-    margin-left: 2px;
-}
-
-.group-form-input-group input,
-.group-form-input-group textarea,
-.group-form-input-group .simple-select-trigger {
-    height: 38px;
-    padding: 0 12px;
-    border: 1px solid var(--color-input-border);
-    border-radius: 8px;
-    font-size: 0.92rem;
-    color: var(--color-text-primary);
-    background-color: var(--color-bg-primary);
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.group-form-input-group input:focus,
-.group-form-input-group textarea:focus {
-    border-color: var(--color-focus);
-    outline: none;
-    box-shadow: 0 0 0 3px var(--color-focus-glow);
-}
-
-.group-form-input-group .simple-select-trigger:focus,
-.group-form-input-group .simple-select-trigger:focus-visible,
-.group-form-input-group .simple-select.is-open .simple-select-trigger {
-    border-color: var(--color-focus);
-    outline: none;
-    box-shadow: 0 0 0 3px var(--color-focus-glow);
-}
-
-.group-form-input-group.has-error input,
-.group-form-input-group.has-error .simple-select-trigger {
-    border-color: var(--color-error);
-}
-
-.group-form-input-group.has-error input:focus,
-.group-form-input-group.has-error textarea:focus,
-.group-form-input-group.has-error .simple-select-trigger:focus,
-.group-form-input-group.has-error .simple-select-trigger:focus-visible,
-.group-form-input-group.has-error .simple-select.is-open .simple-select-trigger {
-    border-color: var(--color-error);
-    box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.12);
-}
-
 .group-form-readonly {
     background: var(--color-bg-secondary) !important;
     color: var(--color-text-muted) !important;
     cursor: not-allowed;
-}
-
-.input-error {
-    color: var(--color-error);
-    font-size: 0.78rem;
-    line-height: 1.4;
-}
-
-.input-help {
-    color: var(--color-text-muted);
-    font-size: 0.78rem;
-    line-height: 1.5;
 }
 
 .group-form-divider {
@@ -427,11 +346,6 @@
 
     .group-toolbar {
         flex-wrap: wrap;
-        padding: 14px 16px;
-    }
-
-    .group-table-panel {
-        padding: 0 14px 14px;
     }
 
     .group-table-scroll {
@@ -528,11 +442,3 @@
     }
 }
 
-.group-form-input-group textarea {
-    height: auto;
-    min-height: 80px;
-    padding: 10px 12px;
-    resize: vertical;
-    font-family: var(--font-sans);
-    line-height: 1.5;
-}

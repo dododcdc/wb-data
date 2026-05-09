@@ -1,0 +1,112 @@
+/* Shared form input group — used across dialogs and forms */
+
+.form-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 18px;
+}
+
+.form-input-group:last-child {
+    margin-bottom: 0;
+}
+
+.form-input-group label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+}
+
+.form-input-group input,
+.form-input-group textarea,
+.form-input-group select,
+.form-input-group .simple-select-trigger {
+    height: 38px;
+    padding: 0 12px;
+    border: 1px solid var(--color-input-border);
+    border-radius: 8px;
+    font-size: 0.92rem;
+    color: var(--color-text-primary);
+    background-color: var(--color-bg-primary);
+    width: 100%;
+    box-sizing: border-box;
+    transition: border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.form-input-group textarea {
+    height: auto;
+    min-height: 72px;
+    padding: 10px 12px;
+    resize: vertical;
+    font-family: var(--font-sans);
+    line-height: 1.5;
+}
+
+.form-input-group input:hover,
+.form-input-group textarea:hover {
+    border-color: var(--color-focus);
+}
+
+.form-input-group input:focus,
+.form-input-group textarea:focus,
+.form-input-group select:focus {
+    border-color: var(--color-focus);
+    outline: none;
+    box-shadow: 0 0 0 3px var(--color-focus-glow);
+}
+
+.form-input-group .simple-select-trigger:focus,
+.form-input-group .simple-select-trigger:focus-visible,
+.form-input-group .simple-select.is-open .simple-select-trigger {
+    border-color: var(--color-focus);
+    outline: none;
+    box-shadow: 0 0 0 3px var(--color-focus-glow);
+}
+
+.form-input-group input::placeholder,
+.form-input-group textarea::placeholder {
+    color: var(--color-input-placeholder);
+    font-size: 0.85rem;
+}
+
+/* Error state */
+.form-input-group.has-error input,
+.form-input-group.has-error textarea,
+.form-input-group.has-error .simple-select-trigger {
+    border-color: var(--color-error);
+}
+
+.form-input-group.has-error input:focus,
+.form-input-group.has-error textarea:focus,
+.form-input-group.has-error .simple-select-trigger:focus,
+.form-input-group.has-error .simple-select-trigger:focus-visible,
+.form-input-group.has-error .simple-select.is-open .simple-select-trigger {
+    border-color: var(--color-error);
+    box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.12);
+}
+
+/* Helpers */
+.form-input-help {
+    color: var(--color-text-muted);
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.form-input-help code {
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--color-brand-light);
+    color: var(--color-link);
+    font-size: 0.92em;
+}
+
+.form-input-error {
+    color: var(--color-error);
+    font-size: 0.78rem;
+    line-height: 1.4;
+}
+
+.form-required {
+    color: var(--color-error);
+    margin-left: 2px;
+}

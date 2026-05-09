@@ -12,9 +12,7 @@
     border-width: 0;
 }
 
-.test-action-btn:focus-visible,
-.cancel-btn:focus-visible,
-.submit-btn:focus-visible {
+.test-action-btn:focus-visible {
     outline: 2px solid var(--color-brand);
     outline-offset: 2px;
 }
@@ -69,7 +67,7 @@
 /* Side Panel */
 .form-side-panel {
     flex: 0 0 320px;
-    background-color: var(--color-bg-secondary);
+    background-color: var(--color-bg-primary);
     border-right: 1px solid var(--color-border);
     padding: 32px;
 }
@@ -129,93 +127,7 @@
     margin: 32px 0;
 }
 
-/* Common Inputs */
-.input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-bottom: 18px;
-}
-
-.input-group:last-child {
-    margin-bottom: 0;
-}
-
-.input-group label {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--color-text-secondary);
-}
-
-.input-help {
-    color: var(--color-text-muted);
-    font-size: 0.78rem;
-    line-height: 1.5;
-}
-
-.input-help code {
-    padding: 1px 6px;
-    border-radius: 999px;
-    background: var(--color-brand-light);
-    color: var(--color-link);
-    font-size: 0.92em;
-}
-
-.input-error {
-    color: var(--color-error);
-    font-size: 0.78rem;
-    line-height: 1.4;
-}
-
-.required {
-    color: var(--color-error);
-    margin-left: 2px;
-}
-
-.input-group input,
-.input-group textarea,
-.input-group select {
-    height: 38px;
-    padding: 0 12px;
-    border: 1px solid var(--color-input-border);
-    border-radius: 8px;
-    font-size: 0.92rem;
-    color: var(--color-text-primary);
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    background-color: var(--color-bg-primary);
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.input-group textarea {
-    height: auto;
-    padding: 10px 12px;
-}
-
-.input-group input:hover,
-.input-group textarea:hover {
-    border-color: var(--color-focus);
-}
-
-.input-group input:focus,
-.input-group textarea:focus {
-    border-color: var(--color-focus);
-    outline: none;
-    box-shadow: 0 0 0 3px var(--color-focus-glow);
-}
-
-.input-group.has-error input,
-.input-group.has-error textarea,
-.input-group.has-error .simple-select-trigger {
-    border-color: var(--color-error);
-}
-
-.input-group.has-error input:focus,
-.input-group.has-error textarea:focus,
-.input-group.has-error .simple-select-trigger:focus-visible {
-    box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.12);
-}
-
+/* Grid layout helpers */
 .span-2 {
     grid-column: span 2;
 }
@@ -226,12 +138,6 @@
 
 .spacer-2 {
     grid-column: span 2;
-}
-
-.input-group input::placeholder,
-.input-group textarea::placeholder {
-    color: var(--color-input-placeholder);
-    font-size: 0.85rem;
 }
 
 /* Footer */
@@ -252,14 +158,14 @@
 }
 
 .test-action-btn {
-    height: 44px;
-    padding: 0 16px;
+    height: 32px;
+    padding: 0 12px;
     background: var(--color-bg-tertiary);
     border: 1px solid var(--color-input-border);
     border-radius: 6px;
     color: var(--color-text-secondary);
     font-weight: 500;
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     cursor: pointer;
     transition: all 0.2s;
 }
@@ -364,53 +270,6 @@
     flex-shrink: 0;
 }
 
-.cancel-btn {
-    height: 40px;
-    padding: 0 24px;
-    background: var(--color-bg-primary);
-    border: 1px solid var(--color-input-border);
-    border-radius: 8px;
-    color: var(--color-text-secondary);
-    font-weight: 500;
-    cursor: pointer;
-    white-space: nowrap;
-}
-
-.cancel-btn:hover {
-    border-color: var(--color-error);
-    color: var(--color-error);
-}
-
-.submit-btn {
-    height: 40px;
-    padding: 0 28px;
-    background: var(--color-text-primary);
-    color: var(--color-bg-primary);
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
-}
-
-.submit-btn:hover {
-    background: var(--color-text-secondary);
-    transform: translateY(-1px);
-}
-
-.submit-btn:active {
-    background: var(--color-text-primary);
-    transform: translateY(0);
-}
-
-.submit-btn:disabled {
-    background: var(--color-input-border);
-    box-shadow: none;
-    transform: none;
-    cursor: not-allowed;
-}
-
 @media (max-width: 1100px) {
 
     .form-side-panel {
@@ -499,8 +358,7 @@
     }
 
     .test-action-btn,
-    .cancel-btn,
-    .submit-btn {
+    .footer-right > button {
         width: 100%;
     }
 }

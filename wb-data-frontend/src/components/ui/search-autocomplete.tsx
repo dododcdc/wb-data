@@ -39,6 +39,7 @@ export interface SearchAutocompleteProps<T extends SearchAutocompleteOption> {
     theme?: 'light' | 'dark';
     className?: string;
     triggerClassName?: string;
+    menuContainer?: HTMLElement | null;
     ariaLabel?: string;
     disableClientFilter?: boolean;
     onChange?: (value: string, option: T | null) => void;
@@ -75,6 +76,7 @@ export function SearchAutocomplete<T extends SearchAutocompleteOption>(props: Se
         onOpenChange,
         renderItem,
         hideChevron,
+        menuContainer,
     } = props;
 
     const isComposingRef = useRef(false);
@@ -181,6 +183,7 @@ export function SearchAutocomplete<T extends SearchAutocompleteOption>(props: Se
                 className="w-[var(--anchor-width)] max-h-[300px]"
                 onScroll={handleScroll}
                 ref={setScrollElement}
+                container={menuContainer}
             >
                 {loading ? (
                     <div className="p-4 text-sm text-muted-foreground text-center flex items-center justify-center gap-2">

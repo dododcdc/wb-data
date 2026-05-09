@@ -93,64 +93,6 @@
     gap: 16px;
 }
 
-.gs-form-input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.gs-form-input-group label {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--color-text-secondary);
-}
-
-.gs-form-input-group input,
-.gs-form-input-group textarea {
-    height: 38px;
-    padding: 0 12px;
-    border: 1px solid var(--color-input-border);
-    border-radius: 8px;
-    font-size: 0.92rem;
-    color: var(--color-text-primary);
-    background-color: var(--color-bg-primary);
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.gs-form-input-group textarea {
-    height: auto;
-    min-height: 72px;
-    padding: 10px 12px;
-    resize: vertical;
-    font-family: var(--font-sans);
-    line-height: 1.5;
-}
-
-.gs-form-input-group input:focus,
-.gs-form-input-group textarea:focus {
-    border-color: var(--color-focus);
-    outline: none;
-    box-shadow: 0 0 0 3px var(--color-focus-glow);
-}
-
-.gs-form-input-group.has-error input,
-.gs-form-input-group.has-error textarea {
-    border-color: var(--color-error);
-}
-
-.gs-form-input-group.has-error input:focus,
-.gs-form-input-group.has-error textarea:focus {
-    border-color: var(--color-error);
-    box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.12);
-}
-
-.gs-input-error {
-    color: var(--color-error);
-    font-size: 0.78rem;
-    line-height: 1.4;
-}
-
 .gs-form-error {
     display: inline-flex;
     align-items: center;
@@ -466,59 +408,6 @@
     grid-template-columns: minmax(0, 1fr);
     gap: 16px 18px;
 }
-
-.gs-dialog-input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.gs-dialog-input-group label {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--color-text-secondary);
-}
-
-.gs-dialog-input-group > input,
-.gs-dialog-input-group .simple-select-trigger {
-    height: 38px;
-    padding: 0 12px;
-    border: 1px solid var(--color-input-border);
-    border-radius: 8px;
-    font-size: 0.92rem;
-    color: var(--color-text-primary);
-    background-color: var(--color-bg-primary);
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.gs-dialog-input-group > input:focus {
-    border-color: var(--color-focus);
-    outline: none;
-    box-shadow: 0 0 0 3px var(--color-focus-glow);
-}
-
-.gs-dialog-input-group .simple-select-trigger:focus,
-.gs-dialog-input-group .simple-select-trigger:focus-visible,
-.gs-dialog-input-group .simple-select.is-open .simple-select-trigger {
-    border-color: var(--color-focus);
-    outline: none;
-    box-shadow: 0 0 0 3px var(--color-focus-glow);
-}
-
-.gs-dialog-input-group.has-error > input,
-.gs-dialog-input-group.has-error .simple-select-trigger {
-    border-color: var(--color-error);
-}
-
-.gs-dialog-input-group.has-error > input:focus,
-.gs-dialog-input-group.has-error .simple-select-trigger:focus,
-.gs-dialog-input-group.has-error .simple-select-trigger:focus-visible,
-.gs-dialog-input-group.has-error .simple-select.is-open .simple-select-trigger {
-    border-color: var(--color-error);
-    box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.12);
-}
-
 
 .gs-dialog-subtitle {
     margin: 0;
