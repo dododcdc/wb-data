@@ -405,8 +405,8 @@ button.offline-tree-row {
 
 .offline-toolbar-dot {
     position: absolute;
-    top: -1px;
-    right: -1px;
+    top: -3px;
+    right: -3px;
     width: 7px;
     height: 7px;
     border-radius: 50%;

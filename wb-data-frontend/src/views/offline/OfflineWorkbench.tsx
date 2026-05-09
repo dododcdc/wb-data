@@ -2397,9 +2397,12 @@ export default function OfflineWorkbench() {
                                                     className="offline-rail-toolbar-btn"
                                                     aria-label="提交仓库改动"
                                                     onClick={() => void handleOpenRepoCommitDialog()}
-                                                    disabled={!groupId || committing || repoLoading || treeLoading}
+                                                    disabled={!groupId || !repoStatus?.gitInitialized || committing || repoLoading || treeLoading}
                                                 >
-                                                    <GitCommitHorizontal size={14} />
+                                                    <span className="relative flex">
+                                                        <GitCommitHorizontal size={14} />
+                                                        {repoStatus?.dirty && <span className="offline-toolbar-dot" />}
+                                                    </span>
                                                 </button>
                                             </TooltipTrigger>
                                             <TooltipContent className="tooltip-content" side="bottom">
@@ -2842,7 +2845,7 @@ export default function OfflineWorkbench() {
             }}>
                 <DialogContent style={{ maxWidth: '500px' }}>
                     <DialogHeader>
-                        <DialogTitle>提交改动</DialogTitle>
+                        <DialogTitle>提交仓库</DialogTitle>
                     </DialogHeader>
                     <div className="dialog-body">
                         <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
@@ -2876,7 +2879,7 @@ export default function OfflineWorkbench() {
                                 disabled={!commitMessage.trim() || committing}
                             >
                                 {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                                仅提交已保存内容
+                                仅提交已落盘文件
                             </Button>
                         )}
                         <Button
