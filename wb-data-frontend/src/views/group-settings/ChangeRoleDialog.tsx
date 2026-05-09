@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     Dialog,
     DialogContent,
@@ -28,6 +28,8 @@ export default function ChangeRoleDialog(props: ChangeRoleDialogProps) {
     const { open, member, onOpenChange, onConfirm, submitting } = props;
 
     const [role, setRole] = useState('');
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
 
     useEffect(() => {
         if (open && member) {
@@ -39,7 +41,7 @@ export default function ChangeRoleDialog(props: ChangeRoleDialogProps) {
 
     return (
         <Dialog modal={false} open={open} onOpenChange={(nextOpen) => { if (!submitting) onOpenChange({ open: nextOpen }); }}>
-            <DialogContent style={{ maxWidth: '440px' }}>
+            <DialogContent ref={(el) => { dialogRef.current = el; setDialogEl(el); }} style={{ maxWidth: '440px' }}>
                 <DialogHeader>
                     <DialogTitle>修改角色</DialogTitle>
                     <DialogDescription>
@@ -50,12 +52,13 @@ export default function ChangeRoleDialog(props: ChangeRoleDialogProps) {
                 <div className="dialog-body gs-dialog-content">
                     <div className="gs-dialog-section">
                         <div className="gs-dialog-field-grid">
-                            <div className="gs-dialog-input-group">
+                            <div className="form-input-group">
                                 <label>角色</label>
                                 <SimpleSelect
                                     value={role}
                                     options={ROLE_OPTIONS}
                                     disabled={submitting}
+                                    menuContainer={dialogEl}
                                     onChange={setRole}
                                 />
                             </div>

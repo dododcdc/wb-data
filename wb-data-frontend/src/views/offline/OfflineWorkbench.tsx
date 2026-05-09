@@ -503,10 +503,12 @@ function ExecutionDialog(props: ExecutionDialogProps) {
             { label: '全部用户', value: 'ALL' },
             { label: '仅我', value: 'ME' },
         ];
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="offline-execution-dialog" hideClose>
+            <DialogContent ref={(el) => { dialogRef.current = el; setDialogEl(el); }} className="offline-execution-dialog" hideClose>
                 <DialogTitle className="sr-only">执行结果</DialogTitle>
                 <div className="dialog-toolbar offline-dialog-toolbar">
                     <div className="offline-execution-toolbar-left">
@@ -517,6 +519,7 @@ function ExecutionDialog(props: ExecutionDialogProps) {
                                     options={requestedByOptions}
                                     value={requestedByFilter == null ? 'ALL' : 'ME'}
                                     menuPlacement="down"
+                                    menuContainer={dialogEl}
                                     onChange={(value) => onRequestedByFilterChange(value === 'ME' ? currentUserId : null)}
                                 />
                             </div>

@@ -48,7 +48,6 @@
 
 .uc-footer {
     padding: 16px 24px;
-    background-color: var(--color-bg-secondary);
     display: flex;
     justify-content: flex-end;
     align-items: center;
@@ -63,16 +62,6 @@
 .btn-cancel:hover {
     background-color: rgba(0, 0, 0, 0.06) !important;
     color: var(--color-text-primary) !important;
-}
-
-.btn-discard {
-    color: var(--color-error) !important;
-    border-color: transparent !important;
-}
-
-.btn-discard:hover {
-    background-color: var(--color-error-bg) !important;
-    border-color: var(--color-error-border) !important;
 }
 
 .uc-close-btn {

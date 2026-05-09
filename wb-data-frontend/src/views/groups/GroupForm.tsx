@@ -138,7 +138,7 @@ export default function GroupForm(props: GroupFormProps) {
                 <div className="dialog-body group-form-content">
                     <div className="group-form-section">
                         <div className="group-form-field-grid">
-                            <div className={`group-form-input-group ${fieldErrors.name ? 'has-error' : ''}`}>
+                            <div className={`form-input-group ${fieldErrors.name ? 'has-error' : ''}`}>
                                 <label htmlFor="group-form-name">
                                     项目组名称 <span className="required">*</span>
                                 </label>
@@ -149,10 +149,10 @@ export default function GroupForm(props: GroupFormProps) {
                                     placeholder="请输入项目组名称"
                                     onChange={(event) => handleChange('name', event.target.value)}
                                 />
-                                {typeof fieldErrors.name === 'string' ? <span className="input-error">{fieldErrors.name}</span> : null}
+                                {typeof fieldErrors.name === 'string' ? <span className="form-input-error">{fieldErrors.name}</span> : null}
                             </div>
 
-                            <div className={`group-form-input-group ${fieldErrors.description ? 'has-error' : ''}`}>
+                            <div className={`form-input-group ${fieldErrors.description ? 'has-error' : ''}`}>
                                 <label htmlFor="group-form-description">
                                     描述
                                 </label>
@@ -163,7 +163,7 @@ export default function GroupForm(props: GroupFormProps) {
                                     placeholder="请输入描述（可选）"
                                     onChange={(event) => handleChange('description', event.target.value)}
                                 />
-                                {typeof fieldErrors.description === 'string' ? <span className="input-error">{fieldErrors.description}</span> : null}
+                                {typeof fieldErrors.description === 'string' ? <span className="form-input-error">{fieldErrors.description}</span> : null}
                             </div>
                         </div>
 

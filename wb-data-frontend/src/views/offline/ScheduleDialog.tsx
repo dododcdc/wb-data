@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { CronExpressionParser } from 'cron-parser';
 import { LoaderCircle } from 'lucide-react';
 import {
@@ -14,6 +14,7 @@ import { Combobox, ComboboxInput, ComboboxTrigger, ComboboxContent, ComboboxItem
 import { SegmentedCronInput } from './SegmentedCronInput';
 import { type OfflineScheduleResponse } from '../../api/offline';
 import { TIMEZONES, POPULAR_TIMEZONES, getTimezoneOffset, formatPreviewTime } from './ScheduleUtils';
+import '../../components/ui/form-input-group.css';
 import './ScheduleDialog.css';
 
 interface ScheduleDialogProps {
@@ -46,6 +47,8 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
     } = props;
 
     const [tzQuery, setTzQuery] = useState('');
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
 
     const preview = useMemo(() => {
         const currentCron = cron || '0 2 * * *';
@@ -76,8 +79,9 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent 
-                style={{ maxWidth: '640px' }} 
+            <DialogContent
+                ref={(el) => { dialogRef.current = el; setDialogEl(el); }}
+                style={{ maxWidth: '640px' }}
                 className="offline-schedule-dialog-standard"
                 onOpenAutoFocus={(e) => e.preventDefault()}
             >
@@ -93,7 +97,7 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                         <div className="config-section">
                             <h3 className="sub-section-title">核心设置</h3>
                             
-                            <div className="input-group">
+                            <div className="form-input-group">
                                 <label>运行时区</label>
                                 <Combobox
                                     value={timezone}
@@ -111,7 +115,7 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                                         />
                                         <ComboboxTrigger />
                                     </div>
-                                    <ComboboxContent>
+                                    <ComboboxContent container={dialogEl}>
                                         {filteredTimezones.popular.map((tz) => (
                                             <ComboboxItem key={tz} value={tz}>
                                                 <span className="offline-tz-name">{tz}</span>
@@ -134,7 +138,7 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                                 </Combobox>
                             </div>
 
-                            <div className="input-group">
+                            <div className="form-input-group">
                                 <label style={{ marginBottom: 12 }}>Cron 表达式</label>
                                 <div className={saving ? 'opacity-50 pointer-events-none' : ''}>
                                     <SegmentedCronInput
@@ -196,13 +200,13 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                         <p className="test-note" style={{ margin: 0 }}>配置仅在“保存”并“推送”后生效</p>
                     </div>
                     <div className="footer-right">
-                        <Button variant="ghost" className="cancel-btn" onClick={() => onOpenChange(false)} disabled={saving}>
+                        <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
                             取消
                         </Button>
-                        <button className="submit-btn" onClick={onSave} disabled={saving || preview.type === 'error'}>
+                        <Button variant="default" onClick={onSave} disabled={saving || preview.type === 'error'}>
                             {saving ? <LoaderCircle size={14} className="offline-spin" style={{ marginRight: 8 }} /> : null}
                             {saving ? '正在暂存...' : '暂存配置'}
-                        </button>
+                        </Button>
                     </div>
                 </DialogFooter>
             </DialogContent>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Eye, EyeOff, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -82,6 +82,8 @@ export default function UserForm(props: UserFormProps) {
     const [saveError, setSaveError] = useState('');
     const [saving, setSaving] = useState(false);
     const [passwordVisible, setPasswordVisible] = useState(false);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
 
     const groupQuery = useQuery({
         queryKey: ['groups', 'simple'],
@@ -97,7 +99,7 @@ export default function UserForm(props: UserFormProps) {
     });
 
     const groupOptions = useMemo(
-        () => (groupQuery.data ?? []).map((group: GroupSimple) => ({
+        () => (groupQuery.data?.records ?? []).map((group: GroupSimple) => ({
             label: group.name,
             value: String(group.id),
         })),
@@ -287,7 +289,7 @@ export default function UserForm(props: UserFormProps) {
 
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => onOpenChange({ open: nextOpen })}>
-            <DialogContent style={{ maxWidth: '720px' }}>
+            <DialogContent ref={(el) => { dialogRef.current = el; setDialogEl(el); }} style={{ maxWidth: '720px' }}>
                 <DialogHeader>
                     <DialogTitle>{isEdit ? '编辑用户' : '新建用户'}</DialogTitle>
                     <DialogDescription className="sr-only">用户创建或编辑表单</DialogDescription>
@@ -296,7 +298,7 @@ export default function UserForm(props: UserFormProps) {
                 <div className="dialog-body user-form-content">
                     <div className="user-form-section">
                         <div className="user-form-field-grid">
-                            <div className={`user-form-input-group ${fieldErrors.username ? 'has-error' : ''}`}>
+                            <div className={`form-input-group ${fieldErrors.username ? 'has-error' : ''}`}>
                                 <label htmlFor="user-form-username">
                                     用户名 {!isEdit ? <span className="required">*</span> : null}
                                 </label>
@@ -309,11 +311,11 @@ export default function UserForm(props: UserFormProps) {
                                     className={isEdit ? 'user-form-readonly' : ''}
                                     onChange={(event) => handleChange('username', event.target.value)}
                                 />
-                                {typeof fieldErrors.username === 'string' ? <span className="input-error">{fieldErrors.username}</span> : null}
+                                {typeof fieldErrors.username === 'string' ? <span className="form-input-error">{fieldErrors.username}</span> : null}
 
                             </div>
 
-                            <div className={`user-form-input-group ${fieldErrors.displayName ? 'has-error' : ''}`}>
+                            <div className={`form-input-group ${fieldErrors.displayName ? 'has-error' : ''}`}>
                                 <label htmlFor="user-form-display-name">
                                     展示名 <span className="required">*</span>
                                 </label>
@@ -324,11 +326,11 @@ export default function UserForm(props: UserFormProps) {
                                     placeholder="请输入展示名"
                                     onChange={(event) => handleChange('displayName', event.target.value)}
                                 />
-                                {typeof fieldErrors.displayName === 'string' ? <span className="input-error">{fieldErrors.displayName}</span> : null}
+                                {typeof fieldErrors.displayName === 'string' ? <span className="form-input-error">{fieldErrors.displayName}</span> : null}
                             </div>
 
                             {!isEdit ? (
-                                <div className={`user-form-input-group ${fieldErrors.password ? 'has-error' : ''}`}>
+                                <div className={`form-input-group ${fieldErrors.password ? 'has-error' : ''}`}>
                                     <label htmlFor="user-form-password">
                                         初始密码 <span className="required">*</span>
                                     </label>
@@ -349,20 +351,21 @@ export default function UserForm(props: UserFormProps) {
                                             {passwordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                                         </button>
                                     </div>
-                                    {typeof fieldErrors.password === 'string' ? <span className="input-error">{fieldErrors.password}</span> : null}
+                                    {typeof fieldErrors.password === 'string' ? <span className="form-input-error">{fieldErrors.password}</span> : null}
                                 </div>
                             ) : null}
 
-                            <div className={`user-form-input-group ${fieldErrors.systemRole ? 'has-error' : ''}`}>
+                            <div className={`form-input-group ${fieldErrors.systemRole ? 'has-error' : ''}`}>
                                 <label htmlFor="user-form-system-role">系统角色</label>
                                 <SimpleSelect
                                     id="user-form-system-role"
                                     value={formData.systemRole}
                                     options={SYSTEM_ROLE_OPTIONS}
                                     disabled={editingSelf}
+                                    menuContainer={dialogEl}
                                     onChange={(value) => handleChange('systemRole', value)}
                                 />
-                                {editingSelf ? <span className="input-help">不可修改自己的角色</span> : null}
+                                {editingSelf ? <span className="form-input-help">不可修改自己的角色</span> : null}
                             </div>
                         </div>
 
@@ -380,6 +383,7 @@ export default function UserForm(props: UserFormProps) {
                                             value={row.groupId}
                                             options={row.groupId ? [...availableOptions, ...groupOptions.filter(o => o.value === row.groupId)] : availableOptions}
                                             placeholder="请选择项目组"
+                                            menuContainer={dialogEl}
                                             onChange={(value) => updateGroupRow(row.key, 'groupId', value)}
                                         />
                                     </div>
@@ -387,6 +391,7 @@ export default function UserForm(props: UserFormProps) {
                                         <SimpleSelect
                                             value={row.groupRole}
                                             options={GROUP_ROLE_OPTIONS}
+                                            menuContainer={dialogEl}
                                             onChange={(value) => updateGroupRow(row.key, 'groupRole', value)}
                                         />
                                     </div>

@@ -92,7 +92,7 @@ export default function GroupInfoCard(props: GroupInfoCardProps) {
         return (
             <section className="gs-info-card animate-enter">
                 <div className="gs-info-edit-form">
-                    <div className={`gs-form-input-group ${nameError ? 'has-error' : ''}`}>
+                    <div className={`form-input-group ${nameError ? 'has-error' : ''}`}>
                         <label htmlFor="gs-name">
                             项目组名称<span className="gs-required">*</span>
                         </label>
@@ -108,10 +108,10 @@ export default function GroupInfoCard(props: GroupInfoCardProps) {
                                 if (nameError) setNameError('');
                             }}
                         />
-                        {nameError ? <span className="gs-input-error">{nameError}</span> : null}
+                        {nameError ? <span className="form-input-error">{nameError}</span> : null}
                     </div>
 
-                    <div className="gs-form-input-group">
+                    <div className="form-input-group">
                         <label htmlFor="gs-desc">描述</label>
                         <textarea
                             id="gs-desc"

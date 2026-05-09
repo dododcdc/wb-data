@@ -18,6 +18,7 @@ type SimpleSelectProps = {
     disabled?: boolean;
     id?: string;
     menuPlacement?: 'auto' | 'up' | 'down';
+    menuContainer?: HTMLElement | null;
     onChange: (value: string) => void;
     className?: string;
 };
@@ -30,6 +31,7 @@ export function SimpleSelect(props: SimpleSelectProps) {
         disabled = false,
         id,
         menuPlacement = 'auto',
+        menuContainer,
         onChange,
         className,
     } = props;
@@ -59,7 +61,7 @@ export function SimpleSelect(props: SimpleSelectProps) {
                     {selectedOption ? selectedOption.label : <span className="text-muted-foreground">{placeholder}</span>}
                 </span>
             </SelectTrigger>
-            <SelectContent side={side} align="start">
+            <SelectContent side={side} align="start" container={menuContainer}>
                 {options.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                         {option.label}
