@@ -25,7 +25,7 @@ public class GitPushService {
     private final GitConfigService gitConfigService;
     private final OfflineFlowDocumentService offlineFlowDocumentService;
 
-    public record PushResult(boolean success, String message, String remoteUrl, boolean remoteCreated) {}
+    public record PushResult(boolean success, String message, String remoteUrl, boolean remoteCreated, boolean remoteDeleted) {}
     public record CommitResult(boolean success, String message) {}
 
     /**
@@ -125,9 +125,12 @@ public class GitPushService {
             runGit(repoPath, "remote", "add", "origin", pushUrl);
             currentRemote = pushUrl;
             remoteCreated = true;
+        } else {
+            // 已有 remote，检查远程仓库是否仍然存在
+            if (!provider.repositoryExists(repoName)) {
+                return new PushResult(false, "远程仓库已不存在", null, false, true);
+            }
         }
-
-
 
         // git push
         try {
@@ -144,7 +147,35 @@ public class GitPushService {
         }
 
         String displayUrl = provider.buildDisplayUrl(repoName);
-        return new PushResult(true, "推送成功", displayUrl, remoteCreated);
+        return new PushResult(true, "推送成功", displayUrl, remoteCreated, false);
+    }
+
+    /**
+     * 重建远程仓库（远程仓库已被删除）并推送
+     */
+    public PushResult rebuild(Long groupId) {
+        GitRemoteProvider provider = gitConfigService.getProvider(groupId);
+        Path repoPath = offlineProperties.resolveRepoPath(groupId);
+        ensureRepoExists(repoPath);
+
+        String repoName = "wb-data-" + groupId;
+
+        // 清理旧 remote
+        String currentRemote = getCurrentRemote(repoPath);
+        if (currentRemote != null) {
+            runGit(repoPath, "remote", "remove", "origin");
+        }
+
+        // 重建远程仓库
+        provider.createRepository(repoName, true);
+        String pushUrl = provider.buildPushUrl(repoName);
+        runGit(repoPath, "remote", "add", "origin", pushUrl);
+
+        // git push
+        runGit(repoPath, "push", "-u", "origin", "main", "--force");
+
+        String displayUrl = provider.buildDisplayUrl(repoName);
+        return new PushResult(true, "推送成功", displayUrl, true, false);
     }
 
     /** 获取当前 remote URL（不含 token） */

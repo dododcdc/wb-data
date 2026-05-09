@@ -16,6 +16,7 @@ export interface PushResult {
     message: string;
     remoteUrl: string | null;
     remoteCreated: boolean;
+    remoteDeleted: boolean;
 }
 
 export interface CommitResult {
@@ -36,6 +37,7 @@ export interface OfflineRepoStatus {
     gitInitialized: boolean;
     dirty: boolean;
     ahead: boolean;
+    hasRemote: boolean;
     branch: string | null;
     headCommitId: string | null;
     headCommitMessage: string | null;
@@ -295,6 +297,12 @@ export const commitOfflineRepo = (groupId: number, message: string) => {
 
 export const pushOfflineRepo = (groupId: number) => {
     return request.post<unknown, PushResult>(buildGroupScopedPath('/api/v1/offline/repo/push', groupId), { groupId }, {
+        headers: { 'Content-Type': 'application/json' },
+    });
+};
+
+export const rebuildOfflineRepo = (groupId: number) => {
+    return request.post<unknown, PushResult>(buildGroupScopedPath('/api/v1/offline/repo/push/rebuild', groupId), { groupId }, {
         headers: { 'Content-Type': 'application/json' },
     });
 };

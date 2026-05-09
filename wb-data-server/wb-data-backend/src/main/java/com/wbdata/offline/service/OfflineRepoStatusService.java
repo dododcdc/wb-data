@@ -29,6 +29,7 @@ public class OfflineRepoStatusService {
                     false,
                     false,
                     false,
+                    false,
                     null,
                     null,
                     null,
@@ -42,6 +43,7 @@ public class OfflineRepoStatusService {
                     groupId,
                     repoPath.toString(),
                     true,
+                    false,
                     false,
                     false,
                     false,
@@ -63,6 +65,8 @@ public class OfflineRepoStatusService {
         String statusOutput = runGitCommand(repoPath, "status", "--short", "--branch");
         boolean dirty = !runGitCommand(repoPath, "status", "--porcelain").isBlank();
         boolean ahead = statusOutput.lines().findFirst().map(line -> line.contains("[ahead ")).orElse(false);
+        String remoteOutput = tryRunGitCommand(repoPath, "remote");
+        boolean hasRemote = remoteOutput != null && !remoteOutput.isBlank();
 
         return new OfflineRepoStatusResponse(
                 groupId,
@@ -71,6 +75,7 @@ public class OfflineRepoStatusService {
                 true,
                 dirty,
                 ahead,
+                hasRemote,
                 readBranchFromStatus(statusOutput),
                 headCommitId,
                 headCommitMessage,

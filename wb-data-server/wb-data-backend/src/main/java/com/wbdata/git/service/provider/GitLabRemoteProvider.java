@@ -83,13 +83,20 @@ public class GitLabRemoteProvider implements GitRemoteProvider {
         try {
             String encodedUsername = URLEncoder.encode(username, StandardCharsets.UTF_8);
             String url = apiBase() + "/projects/" + encodedUsername + "%2F" + repoName;
-            restTemplate.getForObject(url, String.class);
+            restTemplate.exchange(url, org.springframework.http.HttpMethod.GET,
+                    new org.springframework.http.HttpEntity<>(authHeaders()), String.class);
             return true;
         } catch (HttpClientErrorException ex) {
             if (ex.getStatusCode() == HttpStatus.NOT_FOUND) {
                 return false;
             }
-            return false;
+            if (ex.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "GitLab Token 无效或已过期");
+            }
+            if (ex.getStatusCode() == HttpStatus.FORBIDDEN) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "GitLab Token 权限不足");
+            }
+            throw ex;
         }
     }
 

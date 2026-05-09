@@ -74,13 +74,22 @@ public class GitHubRemoteProvider implements GitRemoteProvider {
     public boolean repositoryExists(String repoName) {
         try {
             String url = "https://api.github.com/repos/" + username + "/" + repoName;
-            restTemplate.getForObject(url, String.class);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+            restTemplate.exchange(url, org.springframework.http.HttpMethod.GET,
+                    new org.springframework.http.HttpEntity<>(headers), String.class);
             return true;
         } catch (HttpClientErrorException ex) {
             if (ex.getStatusCode() == HttpStatus.NOT_FOUND) {
                 return false;
             }
-            return false;
+            if (ex.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "GitHub Token 无效或已过期");
+            }
+            if (ex.getStatusCode() == HttpStatus.FORBIDDEN) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "GitHub Token 权限不足");
+            }
+            throw ex;
         }
     }
 
