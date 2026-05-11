@@ -23,6 +23,8 @@ server:
   port: 8080
 
 wbdata:
+  cors:
+    allowed-origins: ${WB_DATA_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,https://dododcdc.tail84596d.ts.net}
   plugins:
     dir: ${WB_DATA_PLUGIN_DIR:/Users/wenbin/Projects/wb-data/plugins}
   offline:
