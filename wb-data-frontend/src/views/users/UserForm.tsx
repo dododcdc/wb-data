@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Eye, EyeOff, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -82,7 +82,6 @@ export default function UserForm(props: UserFormProps) {
     const [saveError, setSaveError] = useState('');
     const [saving, setSaving] = useState(false);
     const [passwordVisible, setPasswordVisible] = useState(false);
-    const dialogRef = useRef<HTMLDivElement>(null);
     const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
 
     const groupQuery = useQuery({
@@ -289,7 +288,7 @@ export default function UserForm(props: UserFormProps) {
 
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => onOpenChange({ open: nextOpen })}>
-            <DialogContent ref={(el) => { dialogRef.current = el; setDialogEl(el); }} style={{ maxWidth: '720px' }}>
+            <DialogContent ref={(el) => { setDialogEl(el); }} style={{ maxWidth: '720px' }}>
                 <DialogHeader>
                     <DialogTitle>{isEdit ? '编辑用户' : '新建用户'}</DialogTitle>
                     <DialogDescription className="sr-only">用户创建或编辑表单</DialogDescription>

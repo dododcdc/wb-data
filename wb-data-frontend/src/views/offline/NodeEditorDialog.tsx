@@ -52,7 +52,6 @@ export function NodeEditorDialog({
 }: NodeEditorDialogProps) {
     const latestContentRef = useRef(content);
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
-    const dialogRef = useRef<HTMLDivElement>(null);
     const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
     const {
         currentDataSourceId,
@@ -123,7 +122,7 @@ export function NodeEditorDialog({
     return (
         <Dialog open={open} onOpenChange={(next) => { if (!next) handleAttemptClose(); }}>
             <DialogContent
-                ref={(el) => { dialogRef.current = el; setDialogEl(el); }}
+                ref={(el) => { setDialogEl(el); }}
                 onOpenAutoFocus={(e) => e.preventDefault()}
                 hideClose
                 fullScreen

@@ -7,7 +7,6 @@ import {
     ChevronsRight,
     Search,
     UserPlus,
-    GitBranch,
 } from 'lucide-react';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
@@ -229,7 +228,6 @@ export default function GroupSettingsPage() {
                             className={`gs-tab-btn ${activeTab === 'git' ? 'is-active' : ''}`}
                             onClick={() => setActiveTab('git')}
                         >
-                            <GitBranch size={14} />
                             远程仓库
                         </button>
                     </div>

@@ -70,7 +70,7 @@ vi.mock('./ChangeRoleDialog', () => ({
 }));
 
 vi.mock('./GitSettingsTab', () => ({
-    default: () => null,
+    default: () => <div>git-settings-tab</div>,
 }));
 
 vi.mock('../../components/ui/confirm-dialog', () => ({
@@ -118,6 +118,15 @@ afterEach(() => {
 });
 
 describe('GroupSettingsPage', () => {
+    it('keeps project settings focused on members and remote repository connection', async () => {
+        renderWithProviders();
+
+        expect(screen.queryByRole('button', { name: '工作分支' })).toBeNull();
+
+        fireEvent.click(await screen.findByRole('button', { name: '远程仓库' }));
+        expect(screen.getByText('git-settings-tab')).toBeTruthy();
+    });
+
     it('submits batch member payloads and shows quantity-based success feedback', async () => {
         addMembers.mockResolvedValueOnce(undefined);
 

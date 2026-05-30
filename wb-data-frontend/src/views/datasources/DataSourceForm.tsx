@@ -164,7 +164,6 @@ function getFieldPlaceholder(field: PluginFieldDescriptor, isEdit: boolean) {
 export default function DataSourceForm({ open, onOpenChange, dataSourceId, groupId, onSuccess }: DataSourceFormProps) {
     const isEdit = Boolean(dataSourceId);
     const detailRequestIdRef = useRef(0);
-    const dialogRef = useRef<HTMLDivElement>(null);
     const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
 
     const [formData, setFormData] = useState<FormState>(createEmptyFormState);
@@ -479,7 +478,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
 
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => onOpenChange({ open: nextOpen })}>
-            <DialogContent ref={(el) => { dialogRef.current = el; setDialogEl(el); }} style={{ maxWidth: '960px' }}>
+            <DialogContent ref={(el) => { setDialogEl(el); }} style={{ maxWidth: '960px' }}>
                 <DialogHeader>
                     <DialogTitle>
                         {isEdit ? '编辑数据源' : '新建数据源'}

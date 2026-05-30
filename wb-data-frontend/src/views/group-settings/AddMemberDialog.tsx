@@ -40,7 +40,6 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
     const [hasMore, setHasMore] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
     const searchRequestIdRef = useRef(0);
-    const dialogRef = useRef<HTMLDivElement>(null);
     const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -149,7 +148,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
 
     return (
         <Dialog modal={false} open={open} onOpenChange={(nextOpen) => { if (!submitting) onOpenChange({ open: nextOpen }); }}>
-            <DialogContent ref={(el) => { dialogRef.current = el; setDialogEl(el); }} style={{ maxWidth: '520px' }}>
+            <DialogContent ref={(el) => { setDialogEl(el); }} style={{ maxWidth: '520px' }}>
                 <DialogHeader>
                     <DialogTitle>添加成员</DialogTitle>
                     <DialogDescription>向项目组添加新成员</DialogDescription>

@@ -26,10 +26,12 @@ class OfflineFlowDocumentServiceTest {
         OfflineProperties properties = new OfflineProperties();
         properties.setRepoBaseDir(tempDir.toString());
         properties.setRepoDirPrefix("wb-data-");
+        RepoLockManager repoLockManager = new RepoLockManager();
         OfflineFlowDocumentService service = new OfflineFlowDocumentService(
                 properties,
-                new OfflineFlowContentService(properties),
-                mock(DataSourceService.class)
+                new OfflineFlowContentService(properties, repoLockManager),
+                mock(DataSourceService.class),
+                repoLockManager
         );
 
         service.saveFlowDocument(new SaveOfflineFlowDocumentRequest(

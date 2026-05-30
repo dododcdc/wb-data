@@ -49,6 +49,7 @@ final class OfflineFlowYamlSupport {
                           String flowPath,
                           Long groupId,
                           Long requestedBy,
+                          String branch,
                           String sourceRevision,
                           String mode,
                           List<String> selectedTaskIds) {
@@ -62,6 +63,8 @@ final class OfflineFlowYamlSupport {
         labels.put("wbdataFlowPath", flowPath);
         labels.put("wbdataGroupId", String.valueOf(groupId));
         labels.put("wbdataRequestedBy", String.valueOf(requestedBy));
+        labels.put("wbdataBranch", branch);
+        labels.put("wbdataDebugNamespace", debugNamespace);
         labels.put("wbdataSourceRevision", sourceRevision);
         labels.put("wbdataSelectedTaskIds", String.join("---", new LinkedHashSet<>(selectedTaskIds)));
         root.put("labels", labels);

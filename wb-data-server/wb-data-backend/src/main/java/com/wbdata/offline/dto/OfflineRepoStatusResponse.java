@@ -10,6 +10,7 @@ public record OfflineRepoStatusResponse(
         boolean dirty,
         boolean ahead,
         boolean hasRemote,
+        boolean hasUpstream,
         String branch,
         String headCommitId,
         String headCommitMessage,

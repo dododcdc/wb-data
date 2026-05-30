@@ -75,6 +75,8 @@ public class RepoLockManager {
 
 All write methods in the four services acquire this lock via `repoLockManager.withLock(groupId, () -> { ... })`.
 
+Read methods that traverse or parse working-tree files should also use the same lock when they can race with branch switching or merging, especially `getRepoTree`, `getFlowContent`, and `getFlowDocument`. This keeps a request from reading a half-switched tree while `git checkout` is replacing files. After branch switch or merge succeeds, the frontend must refetch repo status, repo tree, and any open flow document.
+
 ---
 
 ## Flow Storage: File System (Not DB)
@@ -147,21 +149,35 @@ Names are always the short form (`main`, `feature/x`), never including `origin/`
 ### Create Branch
 
 ```
-1. git checkout <baseBranch>
-   → if baseBranch absent locally: git fetch origin <baseBranch> && git checkout <baseBranch>
-2. git checkout -b <newBranch>
+1. Check dirty: git status --porcelain
+   If dirty → return HTTP 409 + list of changed file paths
+2. Resolve baseBranch
+   - If baseBranch exists locally: git switch <baseBranch>
+   - If baseBranch is remote-only: fetch it and create a local tracking branch
+3. git switch -c <newBranch>
+4. Return the new current branch
 ```
+
+Creating a branch intentionally switches the group working directory to the new branch. The frontend must refresh repo status, branch list, repo tree, and any open flow document after success.
 
 ### Switch Branch
 
 ```
 1. Check dirty: git status --porcelain
 2. If dirty → return HTTP 409 + list of changed file paths
-3. git checkout <branch>
-   → if branch absent locally: git fetch origin <branch> && git checkout <branch>
+3. Resolve branch
+   - If branch exists locally: git switch <branch>
+   - If branch is remote-only: fetch it and create a local tracking branch
 ```
 
 The frontend shows the dirty file list and lets the admin commit or discard before retrying.
+
+Remote-only branch checkout must create a local tracking branch explicitly:
+
+```bash
+git fetch origin <branch>:refs/remotes/origin/<branch>
+git switch --track -c <branch> origin/<branch>
+```
 
 ### Merge Branch
 
@@ -259,6 +275,102 @@ Branch switching (`git checkout`) replaces all working tree files, so flow conte
 
 ---
 
+## Debug Execution Semantics
+
+Debug execution must also be branch-aware. The debug run triggered from the offline canvas executes the current draft document, but the Kestra runtime artifacts must not be shared across branches.
+
+### Branch-Aware Debug Namespace
+
+Current debug namespace shape is user-scoped only:
+
+```text
+wb-debug-g{groupId}-u{userId}
+```
+
+This is insufficient for multi-branch work because two branches can contain the same `flowId` and the same script paths. Kestra `upsertFlow` and namespace file upload would overwrite the debug Flow and scripts from another branch.
+
+New debug namespace shape:
+
+```text
+wb-debug-g{groupId}-b{branchKey}-u{userId}
+```
+
+Example:
+
+```text
+main                         -> wb-debug-g1-bmain-0d6e4079-u7
+feature/branch-smoke         -> wb-debug-g1-bfeature-branch-smoke-8a91cf2d-u7
+```
+
+### Namespace Length and Branch Key
+
+Local Kestra verification on `http://localhost:8090` showed namespace length validation:
+
+```text
+149 chars -> accepted
+150 chars -> accepted
+151 chars -> rejected: "namespace: size must be between 1 and 150"
+```
+
+Therefore debug namespace generation must keep the final namespace at or below 150 characters.
+
+`branchKey` is derived from the Git branch name:
+
+```text
+branchKey = slug(branchName).slice(0, 48) + "-" + sha256(branchName).slice(0, 8)
+```
+
+Rules:
+
+- Lowercase branch names before slugging.
+- Replace any character outside `[a-z0-9]` with `-`.
+- Collapse repeated `-`.
+- Trim leading/trailing `-`.
+- Use `branch` as the slug fallback if the normalized result is empty.
+- Always append the 8-character hash suffix so truncated or similarly named branches remain distinct.
+
+Worst-case length budget with 64-bit numeric IDs:
+
+```text
+wb-debug-g = 10
+groupId    = 19
+-b         = 2
+branchKey  = 57
+-u         = 2
+userId     = 19
+total      = 109
+```
+
+This leaves safe headroom under Kestra's 150-character limit.
+
+### Execution Labels
+
+Every debug Flow must include the branch at creation time:
+
+```text
+wbdataBranch = current checked-out branch
+wbdataDebugNamespace = generated debug namespace
+```
+
+Execution detail must read `branch` from `wbdataBranch`, not from the current repository status. Reading the current branch at detail time is incorrect because the repository may have switched branches after the execution was created.
+
+### Execution List and Stop-All Filtering
+
+The offline workbench's current Flow execution list should default to the current branch:
+
+```text
+filters:
+  wbdataMode = DEBUG
+  wbdataFlowPath = current flow path
+  wbdataBranch = current checked-out branch
+```
+
+`stopAllExecutions(groupId, flowPath)` should apply the same branch filter so stopping all executions on `feature/a` does not stop executions for the same flow path on `main`.
+
+No backward compatibility is required for existing debug executions or old debug namespaces because the product has not been released and existing data is test data.
+
+---
+
 ## Frontend Changes
 
 | Location | Change |
@@ -281,7 +393,7 @@ Admin clicks "Merge" on the branch panel
 
 - No new database tables or migrations
 - No new dependencies (git CLI already in use)
-- No change to Kestra integration
+- Kestra debug execution namespace generation must include the checked-out branch
 - Blocked by: nothing
 - Unblocks: `kestra-git-sync-plan.md` (branch-to-environment mapping)
 
@@ -291,20 +403,23 @@ Admin clicks "Merge" on the branch panel
 
 | Risk | Mitigation |
 |------|------------|
-| Concurrent git operations race | Per-group `ReentrantLock` serializes all git commands |
+| Concurrent working-tree mutations race | Shared per-group `ReentrantLock` serializes Git commands and direct file writes/reads that can race with checkout |
 | New branch has no upstream, push/status confusion | Push uses `git push -u origin HEAD`; status endpoint clarified |
 | Destructive branch delete | Default `-d` (safe); `-D` only on explicit force request |
 | Merge leaves repo in wrong branch on failure | Try/finally pattern restores original branch after abort |
 | Dirty working tree blocks branch switch | Return dirty file list to UI, let admin resolve |
+| Unsaved in-memory canvas draft is lost during branch operations | Frontend blocks branch-changing actions when the active draft is dirty, using the existing unsaved-changes flow |
+| Debug Flow/script artifacts overwrite across branches | Debug namespace includes branch key, and execution list/detail labels include `wbdataBranch` |
 | Relying on filesystem state instead of DB for Flow storage | This is the existing architecture. Switching branches naturally switches flows. No change in behavior. |
 
 ## Implementation Order
 
-1. Rename `GitPushService` → `GitCommandService`, extract shared `runGit`, add per-group `ReentrantLock`
+1. Add shared `RepoLockManager`; rename `GitPushService` → `GitCommandService`; extract shared `runGit`
 2. Implement `listBranches`, `getCurrentBranch`
 3. Implement `createBranch`, `switchBranch` (with dirty check)
 4. Implement `mergeBranch` (with dirty check + restore on failure), `deleteBranch` (`-d` safe default)
 5. Replace `main` hard-coding in push/pull with `HEAD`; use `-u` flag
 6. Add 5 controller endpoints with DTO branch name validation
-7. Frontend: branch switcher capsule + branch management panel
-8. End-to-end smoke test: create branch → switch → edit flow → commit → push → merge to main
+7. Make debug execution branch-aware: namespace branch key, `wbdataBranch` label, branch-filtered execution list and stop-all
+8. Frontend: branch switcher capsule + branch management panel
+9. End-to-end smoke test: create branch → switch → edit flow → debug run → commit → push → merge to main

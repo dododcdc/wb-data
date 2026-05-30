@@ -26,4 +26,10 @@ public class Result<T> {
         result.setMessage(message);
         return result;
     }
+
+    public static <T> Result<T> error(int code, String message, T data) {
+        Result<T> result = error(code, message);
+        result.setData(data);
+        return result;
+    }
 }

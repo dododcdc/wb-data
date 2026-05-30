@@ -13,6 +13,7 @@
 
 .offline-rail-panel-container {
     height: 100%;
+    overflow: visible !important;
 }
 
 .offline-rail,
@@ -66,8 +67,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 12px 16px;
+    gap: 8px;
+    padding: 10px 14px;
     border-bottom: 1px solid var(--color-border);
     flex-shrink: 0;
     overflow: visible;
@@ -76,7 +77,9 @@
 .offline-rail-toolbar-actions {
     display: flex;
     align-items: center;
+    flex: 0 0 auto;
     gap: 2px;
+    margin-left: auto;
 }
 
 .offline-inspector-header {
@@ -277,7 +280,7 @@ button.offline-tree-row {
 
 .offline-tree-row-caret {
     color: var(--color-text-muted);
-    transition: transform var(--transition-fast);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .offline-tree-row-caret.is-expanded {
@@ -1700,16 +1703,270 @@ button.offline-tree-row {
     cursor: pointer;
 }
 
-.offline-branch-badge {
+.offline-branch-switcher {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 176px;
+}
+
+.offline-branch-selector {
     display: inline-flex;
     align-items: center;
-    padding: 2px 10px;
-    background: rgba(148, 163, 184, 0.12);
+    width: fit-content;
+    max-width: 100%;
+    min-width: 0;
+    height: 30px;
+    gap: 6px;
+    padding: 0 9px;
+    border: 1px solid color-mix(in srgb, var(--color-success) 22%, transparent);
+    background: color-mix(in srgb, var(--color-success-bg) 76%, var(--color-bg-primary) 24%);
     border-radius: 999px;
-    font-size: 0.74rem;
-    font-weight: 700;
-    color: var(--color-text-primary);
+    color: color-mix(in srgb, var(--color-success) 64%, var(--color-text-primary) 36%);
     font-family: var(--font-mono);
+    font-size: 0.76rem;
+    font-weight: 650;
+}
+
+.offline-branch-selector svg {
+    flex: 0 0 auto;
+    color: color-mix(in srgb, var(--color-success) 72%, var(--color-text-muted) 28%);
+}
+
+.offline-branch-selector-value {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.offline-branch-selector-button {
+    cursor: pointer;
+    transition:
+        border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+        background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+        color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.offline-branch-selector-button:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--color-success) 38%, transparent);
+    background: color-mix(in srgb, var(--color-success-bg) 68%, var(--color-success) 32%);
+}
+
+.offline-branch-selector-button[aria-expanded="true"] {
+    border-color: color-mix(in srgb, var(--color-success) 44%, transparent);
+    background: color-mix(in srgb, var(--color-success-bg) 62%, var(--color-success) 38%);
+}
+
+.offline-branch-selector-button:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.offline-branch-selector-readonly {
+    color: var(--color-text-secondary);
+}
+
+.offline-branch-badge-caret {
+    flex: 0 0 auto;
+    color: var(--color-text-muted);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.offline-branch-badge-caret.is-open {
+    transform: rotate(90deg);
+}
+
+.offline-branch-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: var(--z-context-menu);
+    display: grid;
+    grid-template-rows: 0fr;
+    width: max-content;
+    min-width: 160px;
+    max-width: 260px;
+    max-height: 336px;
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+    pointer-events: none;
+    visibility: hidden;
+    transition:
+        grid-template-rows 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+        opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+        visibility 0s 0.25s;
+}
+
+.offline-branch-menu.open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+    visibility: visible;
+    transition:
+        grid-template-rows 0.55s cubic-bezier(0.16, 1, 0.3, 1),
+        opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+        visibility 0s;
+}
+
+.offline-branch-menu-inner {
+    min-height: 0;
+    overflow: hidden;
+}
+
+.offline-branch-menu-surface {
+    display: flex;
+    max-height: 336px;
+    flex-direction: column;
+    gap: 2px;
+    overflow: auto;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-bg-primary);
+    box-shadow: 0 12px 30px rgba(51, 43, 36, 0.12);
+    padding: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .offline-branch-menu {
+        transition: none;
+    }
+}
+
+.offline-branch-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.offline-branch-row {
+    display: flex;
+    width: 100%;
+    min-height: 34px;
+    min-width: 0;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    padding: 7px 10px;
+    color: var(--color-text-primary);
+    text-align: left;
+}
+
+button.offline-branch-row {
+    cursor: pointer;
+}
+
+button.offline-branch-row:hover:not(:disabled) {
+    border-color: var(--color-border);
+    background: var(--color-bg-hover);
+}
+
+button.offline-branch-row:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.offline-branch-row.is-current {
+    border-color: color-mix(in srgb, var(--color-success) 26%, transparent);
+    background: color-mix(in srgb, var(--color-success-bg) 72%, var(--color-bg-primary) 28%);
+}
+
+.offline-branch-row > div {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+}
+
+.offline-branch-row strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.offline-branch-row span {
+    color: var(--color-text-muted);
+    font-size: 0.72rem;
+}
+
+.offline-branch-menu-empty {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 2px 0 0;
+    border-radius: 7px;
+    padding: 7px 8px;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 0.78rem;
+}
+
+.offline-branch-dirty-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    border: 1px solid rgba(217, 119, 87, 0.28);
+    border-radius: 10px;
+    background: rgba(217, 119, 87, 0.08);
+    padding: 10px;
+    color: var(--color-text-primary);
+}
+
+.offline-branch-dirty-warning > div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.offline-branch-dirty-warning strong {
+    font-size: 0.78rem;
+}
+
+.offline-branch-dirty-warning ul {
+    margin: 0;
+    padding-left: 16px;
+    color: var(--color-text-secondary);
+    font-size: 0.76rem;
+}
+
+.offline-branch-dirty-warning p {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: 0.76rem;
+}
+
+.offline-branch-dirty-warning li span {
+    margin-left: 6px;
+    color: var(--color-error);
+    font-size: 0.72rem;
+}
+
+.offline-branch-dirty-action {
+    width: fit-content;
+    border: 1px solid var(--color-border);
+    border-radius: 7px;
+    background: var(--color-bg-primary);
+    padding: 4px 8px;
+    color: var(--color-text-primary);
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.offline-branch-dirty-action:hover {
+    border-color: rgba(217, 119, 87, 0.28);
+    background: rgba(217, 119, 87, 0.08);
 }
 
 .offline-detail-meta-bar {

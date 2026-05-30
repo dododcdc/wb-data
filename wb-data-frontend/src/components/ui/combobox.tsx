@@ -50,7 +50,7 @@ const ComboboxContent = React.forwardRef<HTMLDivElement, ComboboxPrimitive.Popup
     container,
     ...props
   }, forwardedRef) => {
-    const innerRef = React.useRef<HTMLDivElement>(null);
+    const innerRef = React.useRef<HTMLDivElement | null>(null);
     const wheelHandlerRef = React.useRef<((e: WheelEvent) => void) | null>(null);
 
     if (!wheelHandlerRef.current) {

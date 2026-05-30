@@ -45,7 +45,8 @@ public class OfflineExecutionService {
         Set<String> actualSelectedTaskIds = getActualSelectedTaskIds(request);
         validateSelectedTaskTypes(request, actualSelectedTaskIds);
         String sourceRevision = yamlSupport.sha256Hex(request.content());
-        String debugNamespace = offlineKestraProperties.buildDebugNamespace(request.groupId(), requestedBy);
+        String branch = readCurrentBranch(request.groupId());
+        String debugNamespace = offlineKestraProperties.buildDebugNamespace(request.groupId(), requestedBy, branch);
         syncNamespaceFiles(request.groupId(), request.content(), debugNamespace, namespaceFileOverrides);
         OfflineFlowYamlSupport.FlowIdentity identity = yamlSupport.parseIdentity(request.content());
         String debugFlow = yamlSupport.buildDebugFlow(
@@ -54,6 +55,7 @@ public class OfflineExecutionService {
                 request.flowPath(),
                 request.groupId(),
                 requestedBy,
+                branch,
                 sourceRevision,
                 request.mode(),
                 new java.util.ArrayList<>(actualSelectedTaskIds)
@@ -112,8 +114,10 @@ public class OfflineExecutionService {
     }
 
     public List<OfflineExecutionListItem> listExecutions(Long groupId, String flowPath, Long requestedBy) {
-        return kestraClient.searchExecutions(buildExecutionSearchFilters(groupId, flowPath, requestedBy)).stream()
+        String branch = readCurrentBranch(groupId);
+        return kestraClient.searchExecutions(buildExecutionSearchFilters(groupId, flowPath, requestedBy, branch)).stream()
                 .filter(execution -> matchesRequestedBy(execution, requestedBy))
+                .filter(execution -> matchesBranch(execution, branch))
                 .sorted(Comparator.comparing(KestraExecutionSnapshot::createdAt).reversed())
                 .map(this::toListItem)
                 .toList();
@@ -138,8 +142,8 @@ public class OfflineExecutionService {
             }
         }
         
-        System.out.println("DEBUG KESTRA LABELS: " + execution.labels());
-        String targetNodesStr = execution.labels() != null ? execution.labels().get("wbdataSelectedTaskIds") : null;
+        Map<String, String> labels = labels(execution);
+        String targetNodesStr = labels.get("wbdataSelectedTaskIds");
         if (targetNodesStr != null && !targetNodesStr.isBlank()) {
             for (String targetNode : targetNodesStr.split("---")) {
                 String taskId = targetNode.trim();
@@ -156,11 +160,11 @@ public class OfflineExecutionService {
 
         return new OfflineExecutionDetailResponse(
                 execution.id(),
-                execution.labels().getOrDefault("wbdataMode", "DEBUG"),
-                execution.labels().get("wbdataFlowPath"),
+                labels.getOrDefault("wbdataMode", "DEBUG"),
+                labels.get("wbdataFlowPath"),
                 parseRequestedBy(execution),
-                readCurrentBranch(groupId),
-                execution.labels().get("wbdataSourceRevision"),
+                labels.get("wbdataBranch"),
+                labels.get("wbdataSourceRevision"),
                 execution.status(),
                 execution.createdAt(),
                 execution.startDate(),
@@ -174,7 +178,7 @@ public class OfflineExecutionService {
         ensureExecutionAccessible(execution, groupId);
         return new OfflineExecutionScriptResponse(
                 execution.id(),
-                execution.labels().get("wbdataFlowPath"),
+                labels(execution).get("wbdataFlowPath"),
                 kestraClient.getFlowSource(execution.namespace(), execution.flowId())
         );
     }
@@ -193,8 +197,9 @@ public class OfflineExecutionService {
 
     public int stopAllExecutions(Long groupId, String flowPath) {
         int stoppedCount = 0;
-        for (KestraExecutionSnapshot execution : kestraClient.searchExecutions(buildExecutionSearchFilters(groupId, flowPath, null))) {
-            if (isRunning(execution.status())) {
+        String branch = readCurrentBranch(groupId);
+        for (KestraExecutionSnapshot execution : kestraClient.searchExecutions(buildExecutionSearchFilters(groupId, flowPath, null, branch))) {
+            if (isRunning(execution.status()) && matchesBranch(execution, branch)) {
                 kestraClient.killExecution(execution.id());
                 stoppedCount++;
             }
@@ -258,16 +263,16 @@ public class OfflineExecutionService {
         }
         return new OfflineExecutionListItem(
                 execution.id(),
-                execution.labels().get("wbdataFlowPath"),
+                labels(execution).get("wbdataFlowPath"),
                 readExecutionDisplayName(execution),
                 parseRequestedBy(execution),
-                execution.labels().getOrDefault("wbdataMode", "DEBUG"),
+                labels(execution).getOrDefault("wbdataMode", "DEBUG"),
                 execution.status(),
                 "MANUAL",
                 execution.startDate(),
                 execution.endDate(),
                 durationMs,
-                execution.labels().get("wbdataSourceRevision")
+                labels(execution).get("wbdataSourceRevision")
         );
     }
 
@@ -282,15 +287,16 @@ public class OfflineExecutionService {
                 || "PAUSED".equals(status);
     }
 
-    private Map<String, String> buildExecutionSearchFilters(Long groupId, String flowPath, Long requestedBy) {
+    private Map<String, String> buildExecutionSearchFilters(Long groupId, String flowPath, Long requestedBy, String branch) {
         Map<String, String> filters = new java.util.LinkedHashMap<>();
         if (requestedBy != null) {
-            filters.put("filters[namespace][EQUALS]", offlineKestraProperties.buildDebugNamespace(groupId, requestedBy));
+            filters.put("filters[namespace][EQUALS]", offlineKestraProperties.buildDebugNamespace(groupId, requestedBy, branch));
         } else {
             filters.put("filters[namespace][CONTAINS]", offlineKestraProperties.buildDebugNamespacePrefix(groupId));
         }
         filters.put("filters[labels][EQUALS][wbdataMode]", "DEBUG");
         filters.put("filters[labels][EQUALS][wbdataFlowPath]", flowPath);
+        filters.put("filters[labels][EQUALS][wbdataBranch]", branch);
         return filters;
     }
 
@@ -301,12 +307,12 @@ public class OfflineExecutionService {
     }
 
     private boolean belongsToGroup(KestraExecutionSnapshot execution, Long groupId) {
-        String labeledGroupId = execution.labels().get("wbdataGroupId");
+        String labeledGroupId = labels(execution).get("wbdataGroupId");
         if (labeledGroupId != null && labeledGroupId.equals(String.valueOf(groupId))) {
             return true;
         }
         return execution.namespace() != null
-                && execution.namespace().startsWith(offlineKestraProperties.getDebugNamespacePrefix() + groupId + "-u");
+                && execution.namespace().startsWith(offlineKestraProperties.buildDebugNamespacePrefix(groupId));
     }
 
     private boolean matchesRequestedBy(KestraExecutionSnapshot execution, Long requestedBy) {
@@ -318,7 +324,7 @@ public class OfflineExecutionService {
     }
 
     private Long parseRequestedBy(KestraExecutionSnapshot execution) {
-        String labeledRequestedBy = execution.labels().get("wbdataRequestedBy");
+        String labeledRequestedBy = labels(execution).get("wbdataRequestedBy");
         if (labeledRequestedBy != null && !labeledRequestedBy.isBlank()) {
             try {
                 return Long.parseLong(labeledRequestedBy);
@@ -342,6 +348,16 @@ public class OfflineExecutionService {
     }
 
     private String readCurrentBranch(Long groupId) {
-        return offlineRepoStatusService.getRepoStatus(groupId).branch();
+        String branch = offlineRepoStatusService.getRepoStatus(groupId).branch();
+        return branch == null || branch.isBlank() ? "main" : branch;
+    }
+
+    private boolean matchesBranch(KestraExecutionSnapshot execution, String branch) {
+        String labeledBranch = labels(execution).get("wbdataBranch");
+        return labeledBranch == null || labeledBranch.equals(branch);
+    }
+
+    private Map<String, String> labels(KestraExecutionSnapshot execution) {
+        return execution.labels() == null ? Map.of() : execution.labels();
     }
 }

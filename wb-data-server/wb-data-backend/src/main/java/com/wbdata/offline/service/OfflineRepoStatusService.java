@@ -30,6 +30,7 @@ public class OfflineRepoStatusService {
                     false,
                     false,
                     false,
+                    false,
                     null,
                     null,
                     null,
@@ -43,6 +44,7 @@ public class OfflineRepoStatusService {
                     groupId,
                     repoPath.toString(),
                     true,
+                    false,
                     false,
                     false,
                     false,
@@ -67,6 +69,7 @@ public class OfflineRepoStatusService {
         boolean ahead = statusOutput.lines().findFirst().map(line -> line.contains("[ahead ")).orElse(false);
         String remoteOutput = tryRunGitCommand(repoPath, "remote");
         boolean hasRemote = remoteOutput != null && !remoteOutput.isBlank();
+        boolean hasUpstream = readHasUpstream(repoPath);
 
         return new OfflineRepoStatusResponse(
                 groupId,
@@ -76,6 +79,7 @@ public class OfflineRepoStatusService {
                 dirty,
                 ahead,
                 hasRemote,
+                hasUpstream,
                 readBranchFromStatus(statusOutput),
                 headCommitId,
                 headCommitMessage,
@@ -127,6 +131,24 @@ public class OfflineRepoStatusService {
         return output.contains("unknown revision or path not in the working tree")
                 || output.contains("ambiguous argument 'HEAD'")
                 || output.contains("Needed a single revision");
+    }
+
+    private boolean readHasUpstream(Path repoPath) {
+        try {
+            String upstream = runGitCommand(repoPath, "rev-parse", "--abbrev-ref", "@{upstream}");
+            return upstream != null && !upstream.isBlank();
+        } catch (GitCommandException ex) {
+            if (isMissingUpstream(ex.output())) {
+                return false;
+            }
+            throw ex;
+        }
+    }
+
+    private boolean isMissingUpstream(String output) {
+        return output.contains("no upstream configured")
+                || output.contains("no such branch")
+                || output.contains("ambiguous argument '@{upstream}'");
     }
 
     private String readBranchFromStatus(String status) {

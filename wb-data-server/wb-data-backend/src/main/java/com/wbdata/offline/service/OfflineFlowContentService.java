@@ -21,8 +21,13 @@ import java.util.HexFormat;
 public class OfflineFlowContentService {
 
     private final OfflineProperties offlineProperties;
+    private final RepoLockManager repoLockManager;
 
     public OfflineFlowContentResponse getFlowContent(Long groupId, String path) {
+        return repoLockManager.withLock(groupId, () -> getFlowContentUnlocked(groupId, path));
+    }
+
+    private OfflineFlowContentResponse getFlowContentUnlocked(Long groupId, String path) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
         Path flowPath = resolveFlowPath(repoPath, path);
         try {
@@ -33,6 +38,10 @@ public class OfflineFlowContentService {
     }
 
     public OfflineFlowContentResponse saveFlowContent(SaveOfflineFlowRequest request) {
+        return repoLockManager.withLock(request.groupId(), () -> saveFlowContentUnlocked(request));
+    }
+
+    private OfflineFlowContentResponse saveFlowContentUnlocked(SaveOfflineFlowRequest request) {
         Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
         Path flowPath = resolveFlowPath(repoPath, request.path());
         try {
@@ -87,6 +96,10 @@ public class OfflineFlowContentService {
     }
 
     public void deleteFlow(Long groupId, String path) {
+        repoLockManager.withLock(groupId, () -> deleteFlowUnlocked(groupId, path));
+    }
+
+    private void deleteFlowUnlocked(Long groupId, String path) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
         Path flowPath = resolveFlowPath(repoPath, path);
         Path flowDir = flowPath.getParent();
@@ -114,6 +127,10 @@ public class OfflineFlowContentService {
     }
 
     public void renameFlow(Long groupId, String path, String newName) {
+        repoLockManager.withLock(groupId, () -> renameFlowUnlocked(groupId, path, newName));
+    }
+
+    private void renameFlowUnlocked(Long groupId, String path, String newName) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
         Path flowPath = resolveFlowPath(repoPath, path);
         Path flowDir = flowPath.getParent();

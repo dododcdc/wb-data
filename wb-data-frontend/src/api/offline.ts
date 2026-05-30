@@ -38,6 +38,7 @@ export interface OfflineRepoStatus {
     dirty: boolean;
     ahead: boolean;
     hasRemote: boolean;
+    hasUpstream: boolean;
     branch: string | null;
     headCommitId: string | null;
     headCommitMessage: string | null;
@@ -455,6 +456,62 @@ export const renameOfflineFlow = (groupId: number, path: string, newName: string
 export const deleteOfflineFolder = (groupId: number, path: string) => {
     return request.delete(buildGroupScopedPath('/api/v1/offline/repo/folder', groupId), {
         data: { groupId, path },
+        headers: { 'Content-Type': 'application/json' },
+    });
+};
+
+// --- Branch management ---
+
+export interface BranchItem {
+    name: string;
+    current: boolean;
+    local: boolean;
+    remote: boolean;
+    remoteName: string | null;
+    trackingBranch: string | null;
+}
+
+export interface BranchListResponse {
+    branches: BranchItem[];
+}
+
+export interface DirtyWorkingTreeResponse {
+    changedFlows: string[];
+    changedFiles: string[];
+    otherFileCount: number;
+    changedFlowDetails?: DirtyFlowChange[];
+}
+
+export interface DirtyFlowChange {
+    path: string;
+    status: 'ADDED' | 'MODIFIED' | 'DELETED';
+}
+
+export const listBranches = (groupId: number) => {
+    return request.get<unknown, BranchListResponse>(`/api/v1/offline/repo/branches?groupId=${groupId}`);
+};
+
+export const createBranch = (groupId: number, name: string, baseBranch: string) => {
+    return request.post<unknown, null>(buildGroupScopedPath('/api/v1/offline/repo/branch', groupId), { groupId, name, baseBranch }, {
+        headers: { 'Content-Type': 'application/json' },
+    });
+};
+
+export const switchBranch = (groupId: number, branch: string) => {
+    return request.put<unknown, null>(buildGroupScopedPath('/api/v1/offline/repo/branch/switch', groupId), { groupId, branch }, {
+        headers: { 'Content-Type': 'application/json' },
+    });
+};
+
+export const mergeBranch = (groupId: number, source: string, target: string) => {
+    return request.post<unknown, null>(buildGroupScopedPath('/api/v1/offline/repo/branch/merge', groupId), { groupId, source, target }, {
+        headers: { 'Content-Type': 'application/json' },
+    });
+};
+
+export const deleteBranch = (groupId: number, name: string, force: boolean = false) => {
+    return request.delete(buildGroupScopedPath('/api/v1/offline/repo/branch', groupId), {
+        data: { groupId, name, force },
         headers: { 'Content-Type': 'application/json' },
     });
 };

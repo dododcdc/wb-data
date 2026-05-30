@@ -53,10 +53,15 @@ public class OfflineFlowDocumentService {
     private final OfflineProperties offlineProperties;
     private final OfflineFlowContentService offlineFlowContentService;
     private final DataSourceService dataSourceService;
+    private final RepoLockManager repoLockManager;
     private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public OfflineFlowDocumentResponse getFlowDocument(Long groupId, String path) {
+        return repoLockManager.withLock(groupId, () -> getFlowDocumentUnlocked(groupId, path));
+    }
+
+    private OfflineFlowDocumentResponse getFlowDocumentUnlocked(Long groupId, String path) {
         try {
             return readSnapshot(groupId, path).response();
         } catch (IOException ex) {
@@ -65,6 +70,10 @@ public class OfflineFlowDocumentService {
     }
 
     public OfflineFlowDocumentResponse saveFlowDocument(SaveOfflineFlowDocumentRequest request) {
+        return repoLockManager.withLock(request.groupId(), () -> saveFlowDocumentUnlocked(request));
+    }
+
+    private OfflineFlowDocumentResponse saveFlowDocumentUnlocked(SaveOfflineFlowDocumentRequest request) {
         try {
             Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
             Path flowFile = resolveRepoFile(repoPath, request.path());
@@ -116,6 +125,10 @@ public class OfflineFlowDocumentService {
     }
 
     public List<String> resolveManagedFiles(Long groupId, String path) {
+        return repoLockManager.withLock(groupId, () -> resolveManagedFilesUnlocked(groupId, path));
+    }
+
+    private List<String> resolveManagedFilesUnlocked(Long groupId, String path) {
         try {
             DocumentSnapshot snapshot = readSnapshot(groupId, path);
             Path repoPath = offlineProperties.resolveRepoPath(groupId);
@@ -137,6 +150,10 @@ public class OfflineFlowDocumentService {
     }
 
     public CompiledFlowDraft compileFlowDraft(DebugDocumentExecutionRequest request) {
+        return repoLockManager.withLock(request.groupId(), () -> compileFlowDraftUnlocked(request));
+    }
+
+    private CompiledFlowDraft compileFlowDraftUnlocked(DebugDocumentExecutionRequest request) {
         try {
             DocumentSnapshot current = readSnapshot(request.groupId(), request.flowPath());
             if (request.documentHash() != null
