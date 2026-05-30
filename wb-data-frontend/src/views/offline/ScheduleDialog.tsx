@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { CronExpressionParser } from 'cron-parser';
 import { LoaderCircle } from 'lucide-react';
 import {
@@ -47,7 +47,6 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
     } = props;
 
     const [tzQuery, setTzQuery] = useState('');
-    const dialogRef = useRef<HTMLDivElement>(null);
     const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
 
     const preview = useMemo(() => {
@@ -56,7 +55,11 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
             const interval = CronExpressionParser.parse(currentCron, { tz: timezone || undefined });
             const times: string[] = [];
             for (let i = 0; i < 5; i++) {
-                times.push(interval.next().toISOString());
+                const nextRun = interval.next().toISOString();
+                if (!nextRun) {
+                    throw new Error('Invalid next run time');
+                }
+                times.push(nextRun);
             }
             return { type: 'ok' as const, times };
         } catch {
@@ -80,7 +83,7 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent
-                ref={(el) => { dialogRef.current = el; setDialogEl(el); }}
+                ref={(el) => { setDialogEl(el); }}
                 style={{ maxWidth: '640px' }}
                 className="offline-schedule-dialog-standard"
                 onOpenAutoFocus={(e) => e.preventDefault()}
@@ -103,6 +106,9 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                                     value={timezone}
                                     onInputValueChange={setTzQuery}
                                     onValueChange={(value) => {
+                                        if (!value) {
+                                            return;
+                                        }
                                         onTimezoneChange(value);
                                         setTzQuery('');
                                     }}

@@ -55,9 +55,10 @@ memory/
 output/
 .impeccable.md
 skills-lock.json
-docs/
+docs/credentials.md
 **/CLAUDE.md
 .playwright-mcp/
 
 .superpowers/
+.sisyphus/
 wb-data-frontend/*.png

@@ -1,6 +1,8 @@
 package com.wbdata.common;
 
 import com.wbdata.plugin.api.DataSourceException;
+import com.wbdata.offline.dto.DirtyWorkingTreeResponse;
+import com.wbdata.offline.exception.DirtyWorkingTreeException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -53,6 +55,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(ex.getStatusCode())
                 .body(Result.error(ex.getStatusCode().value(), message));
+    }
+
+    @ExceptionHandler(DirtyWorkingTreeException.class)
+    public ResponseEntity<Result<DirtyWorkingTreeResponse>> handleDirtyWorkingTreeException(DirtyWorkingTreeException ex) {
+        return ResponseEntity
+                .status(ex.getStatusCode())
+                .body(Result.error(ex.getStatusCode().value(), ex.getReason(), ex.details()));
     }
 
     @ExceptionHandler(Exception.class)

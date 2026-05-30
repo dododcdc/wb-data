@@ -5,7 +5,11 @@ import com.wbdata.auth.dto.AuthContextResponse;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.offline.dto.CommitCurrentFlowRequest;
 import com.wbdata.offline.dto.CommitRequest;
+import com.wbdata.offline.dto.CreateBranchRequest;
+import com.wbdata.offline.dto.DeleteBranchRequest;
+import com.wbdata.offline.dto.MergeBranchRequest;
 import com.wbdata.offline.dto.PushRequest;
+import com.wbdata.offline.dto.SwitchBranchRequest;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -44,5 +48,39 @@ class OfflineRepoControllerPermissionTest {
 
         assertThat(repoCommitAuth.value()).isEqualTo(Permission.GROUP_SETTINGS);
         assertThat(pushAuth.value()).isEqualTo(Permission.GROUP_SETTINGS);
+    }
+
+    @Test
+    void branchList_requiresOfflineRead_andMutationsRequireGroupSettings() throws Exception {
+        Method list = OfflineRepoController.class.getMethod(
+                "listBranches",
+                AuthContextResponse.class
+        );
+        Method create = OfflineRepoController.class.getMethod(
+                "createBranch",
+                AuthContextResponse.class,
+                CreateBranchRequest.class
+        );
+        Method switchBranch = OfflineRepoController.class.getMethod(
+                "switchBranch",
+                AuthContextResponse.class,
+                SwitchBranchRequest.class
+        );
+        Method merge = OfflineRepoController.class.getMethod(
+                "mergeBranch",
+                AuthContextResponse.class,
+                MergeBranchRequest.class
+        );
+        Method delete = OfflineRepoController.class.getMethod(
+                "deleteBranch",
+                AuthContextResponse.class,
+                DeleteBranchRequest.class
+        );
+
+        assertThat(((RequireGroupAuth) list.getParameters()[0].getAnnotations()[0]).value()).isEqualTo(Permission.OFFLINE_READ);
+        assertThat(((RequireGroupAuth) create.getParameters()[0].getAnnotations()[0]).value()).isEqualTo(Permission.GROUP_SETTINGS);
+        assertThat(((RequireGroupAuth) switchBranch.getParameters()[0].getAnnotations()[0]).value()).isEqualTo(Permission.GROUP_SETTINGS);
+        assertThat(((RequireGroupAuth) merge.getParameters()[0].getAnnotations()[0]).value()).isEqualTo(Permission.GROUP_SETTINGS);
+        assertThat(((RequireGroupAuth) delete.getParameters()[0].getAnnotations()[0]).value()).isEqualTo(Permission.GROUP_SETTINGS);
     }
 }

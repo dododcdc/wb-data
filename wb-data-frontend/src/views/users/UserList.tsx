@@ -391,7 +391,7 @@ export default function UserList() {
                         setResetPasswordUser(null);
                     }
                 }}
-                onSuccess={(_details) => {
+                onSuccess={() => {
                     setResetPasswordUser(null);
                     showFeedback({
                         tone: 'success',

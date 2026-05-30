@@ -1,52 +1,78 @@
 .git-settings-page {
+    display: flex;
+    width: min(100%, 460px);
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
     padding: 24px;
-    max-width: 560px;
+    overflow-y: auto;
 }
 
-.git-settings-header {
+.git-settings-section {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.git-settings-section-header {
+    display: flex;
+    align-items: flex-start;
     justify-content: space-between;
-    margin-bottom: 20px;
+    gap: 16px;
 }
 
 .git-settings-title {
-    font-size: 16px;
-    font-weight: 600;
     margin: 0;
     color: var(--foreground);
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.git-settings-description {
+    margin: 6px 0 0;
+    color: var(--muted-foreground);
+    font-size: 13px;
+    line-height: 1.5;
 }
 
 .git-settings-form {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 16px;
+}
+
+.git-settings-fields {
+    display: grid;
+    max-width: 420px;
+    grid-template-columns: 1fr;
+    gap: 20px;
 }
 
 .git-settings-row {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
 }
 
 .git-settings-label {
+    color: var(--foreground);
     font-size: 13px;
     font-weight: 500;
-    color: var(--foreground);
-}
-
-.git-settings-input {
-    max-width: 400px;
-}
-
-.git-settings-select {
-    max-width: 200px;
 }
 
 .git-settings-actions {
     display: flex;
+    max-width: 420px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.git-settings-primary-actions {
+    display: flex;
+    flex-wrap: wrap;
     gap: 8px;
-    margin-top: 8px;
 }
 
 .git-settings-loading {
@@ -64,26 +90,62 @@
     text-align: center;
 }
 
-.git-settings-ro-table {
+.git-settings-config-summary {
     display: flex;
+    max-width: 420px;
     flex-direction: column;
-    gap: 12px;
+    align-items: flex-start;
+    gap: 18px;
+}
+
+.git-settings-ro-table {
+    display: grid;
+    max-width: 420px;
+    grid-template-columns: 1fr;
+    gap: 14px;
 }
 
 .git-settings-ro-row {
     display: flex;
-    align-items: baseline;
-    gap: 12px;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .git-settings-ro-label {
-    min-width: 80px;
+    color: var(--muted-foreground);
     font-size: 13px;
     font-weight: 500;
-    color: var(--muted-foreground);
 }
 
 .git-settings-ro-value {
-    font-size: 14px;
     color: var(--foreground);
+    font-size: 14px;
+}
+
+.git-settings-token-badge {
+    width: fit-content;
+    border-radius: 999px;
+    background: color-mix(in srgb, #16a34a 12%, transparent);
+    padding: 2px 8px;
+    color: #166534;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.git-settings-token-badge-empty {
+    background: var(--muted);
+    color: var(--muted-foreground);
+}
+
+@media (max-width: 640px) {
+    .git-settings-page {
+        width: 100%;
+        padding: 18px;
+    }
+
+    .git-settings-fields,
+    .git-settings-ro-table {
+        grid-template-columns: 1fr;
+    }
 }

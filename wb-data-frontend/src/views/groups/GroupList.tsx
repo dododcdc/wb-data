@@ -117,7 +117,7 @@ export default function GroupList() {
     const pageCount = records.length;
     const pageSizeOptions = PAGE_SIZE_OPTIONS.map((value) => ({ label: `${value} 条`, value: String(value) }));
 
-    const handleFormSuccess = async (_name: string) => {
+    const handleFormSuccess = async () => {
         setIsFormOpen(false);
         setEditingGroup(null);
 

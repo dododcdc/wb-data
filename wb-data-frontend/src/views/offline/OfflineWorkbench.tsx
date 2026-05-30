@@ -19,6 +19,7 @@ import {
     FileCode2,
     FolderOpen,
     FolderPlus,
+    GitBranch,
     GitCommitHorizontal,
     History,
     LoaderCircle,
@@ -47,6 +48,7 @@ import {
     getOfflineRepoTree,
     getOfflineRepoRemote,
     getOfflineSchedule,
+    listBranches,
     listOfflineExecutions,
     pushOfflineRepo,
     rebuildOfflineRepo,
@@ -55,6 +57,10 @@ import {
     saveOfflineFlowDocument,
     stopAllOfflineExecutions,
     stopOfflineExecution,
+    switchBranch,
+    type BranchItem,
+    type DirtyFlowChange,
+    type DirtyWorkingTreeResponse,
     type OfflineExecutionDetail,
     type OfflineExecutionListItem,
     type OfflineFlowDocument,
@@ -152,8 +158,63 @@ type PendingNavigationState =
     | { type: 'flow'; flowPath: string }
     | { type: 'router'; blocker: NavigationBlocker };
 
+interface BranchDirtyState {
+    changedFlows: string[];
+    changedFlowDetails: DirtyFlowChange[];
+    otherFileCount: number;
+}
+
 function flattenDocumentNodes(document: OfflineFlowDocument | null) {
     return document?.stages.flatMap((stage) => stage.nodes) ?? [];
+}
+
+function formatFlowPathDisplayName(flowPath: string) {
+    const normalized = flowPath.replace(/\\/g, '/');
+    const segments = normalized.split('/').filter(Boolean);
+    const flowYamlIndex = segments.lastIndexOf('flow.yaml');
+    if (flowYamlIndex > 0) {
+        return segments[flowYamlIndex - 1];
+    }
+    return segments[segments.length - 1] ?? flowPath;
+}
+
+function readDirtyFlowChanges(details: Record<string, unknown>, changedFlows: string[]): DirtyFlowChange[] {
+    if (Array.isArray(details.changedFlowDetails)) {
+        return details.changedFlowDetails.flatMap((item): DirtyFlowChange[] => {
+            if (!item || typeof item !== 'object') {
+                return [];
+            }
+            const candidate = item as Record<string, unknown>;
+            if (typeof candidate.path !== 'string') {
+                return [];
+            }
+            const status = candidate.status === 'ADDED' || candidate.status === 'DELETED' ? candidate.status : 'MODIFIED';
+            return [{ path: candidate.path, status }];
+        });
+    }
+    return changedFlows.map((path) => ({ path, status: 'MODIFIED' }));
+}
+
+function readDirtyWorkingTreeDetails(error: unknown): DirtyWorkingTreeResponse | null {
+    if (!(error instanceof AxiosError) || error.response?.status !== 409) {
+        return null;
+    }
+    const details = error.response.data?.data;
+    if (!details || typeof details !== 'object') {
+        return null;
+    }
+    const detailRecord = details as Record<string, unknown>;
+    const changedFlows = Array.isArray(detailRecord.changedFlows)
+        ? detailRecord.changedFlows.filter((item: unknown): item is string => typeof item === 'string')
+        : [];
+    return {
+        changedFlows,
+        changedFiles: Array.isArray(details.changedFiles)
+            ? details.changedFiles.filter((item: unknown): item is string => typeof item === 'string')
+            : [],
+        otherFileCount: typeof details.otherFileCount === 'number' ? details.otherFileCount : 0,
+        changedFlowDetails: readDirtyFlowChanges(detailRecord, changedFlows),
+    };
 }
 
 function resolveSelectedNodeId(document: OfflineFlowDocument | null, candidate: string | null) {
@@ -504,12 +565,11 @@ function ExecutionDialog(props: ExecutionDialogProps) {
             { label: '全部用户', value: 'ALL' },
             { label: '仅我', value: 'ME' },
         ];
-    const dialogRef = useRef<HTMLDivElement>(null);
     const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent ref={(el) => { dialogRef.current = el; setDialogEl(el); }} className="offline-execution-dialog" hideClose>
+            <DialogContent ref={(el) => { setDialogEl(el); }} className="offline-execution-dialog" hideClose>
                 <DialogTitle className="sr-only">执行结果</DialogTitle>
                 <div className="dialog-toolbar offline-dialog-toolbar">
                     <div className="offline-execution-toolbar-left">
@@ -754,6 +814,14 @@ export default function OfflineWorkbench() {
     const [commitMessage, setCommitMessage] = useState('');
     const [committing, setCommitting] = useState(false);
     const [flowCommitDirty, setFlowCommitDirty] = useState(false);
+    const [branchMenuOpen, setBranchMenuOpen] = useState(false);
+    const [branchTooltipOpen, setBranchTooltipOpen] = useState(false);
+    const [branchLoading, setBranchLoading] = useState(false);
+    const [branchSwitching, setBranchSwitching] = useState(false);
+    const [branches, setBranches] = useState<BranchItem[]>([]);
+    const [branchDirtyState, setBranchDirtyState] = useState<BranchDirtyState | null>(null);
+    const [pendingBranchSwitch, setPendingBranchSwitch] = useState<string | null>(null);
+    const [discardBranchSwitchOpen, setDiscardBranchSwitchOpen] = useState(false);
     const [expandedTreeIds, setExpandedTreeIds] = useState<string[]>([]);
     const [activeFlowPath, setActiveFlowPath] = useState<string | null>(null);
     const [flowLoading, setFlowLoading] = useState(false);
@@ -813,6 +881,7 @@ export default function OfflineWorkbench() {
     const canvasNodesRef = useRef<Node[]>([]);
     const canvasEdgesRef = useRef<Edge[]>([]);
     const canvasBoardRef = useRef<HTMLDivElement>(null);
+    const branchSwitcherRef = useRef<HTMLDivElement>(null);
     const previousGroupIdRef = useRef<number | null>(groupId);
     const currentGroupIdRef = useRef<number | null>(groupId);
     const activeFlowPathRef = useRef<string | null>(activeFlowPath);
@@ -883,6 +952,15 @@ export default function OfflineWorkbench() {
         return statuses;
     }, [executionDetail]);
     const branchLabel = repoStatus?.gitInitialized ? repoStatus.branch ?? 'main' : '未初始化';
+    const canSwitchBranch = isGroupAdmin && !!groupId && !!repoStatus?.gitInitialized;
+    const currentBranchFromList = useMemo(
+        () => branches.find((branch) => branch.current) ?? branches.find((branch) => branch.name === branchLabel) ?? null,
+        [branches, branchLabel],
+    );
+    const switchableBranches = useMemo(
+        () => branches.filter((branch) => !branch.current && branch.name !== branchLabel),
+        [branches, branchLabel],
+    );
 
     useEffect(() => {
         draftSessionRef.current = draftSession;
@@ -1145,6 +1223,168 @@ export default function OfflineWorkbench() {
         openFlowDocumentRef.current = openFlowDocument;
     }, [openFlowDocument]);
 
+    const resetActiveFlowAfterBranchSwitch = useCallback(() => {
+        nodeEditorDraftSchedulerRef.current?.cancel();
+        pendingNodeEditorDraftRef.current = null;
+        setActiveFlowPath(null);
+        setDraftSession(null);
+        setSaveConflictState(null);
+        setSaveConflictPending(false);
+        setFlowCommitDirty(false);
+        setSchedule(null);
+        setExecutionDialogOpen(false);
+        setExecutions([]);
+        setActiveExecutionId(null);
+        setExecutionDetail(null);
+    }, []);
+
+    const loadBranchList = useCallback(async () => {
+        if (!groupId || !canSwitchBranch) return;
+        setBranchLoading(true);
+        try {
+            const response = await listBranches(groupId);
+            setBranches(response.branches);
+        } catch (error) {
+            showFeedback({
+                tone: 'error',
+                title: '分支列表读取失败',
+                detail: getErrorMessage(error, '暂时无法读取本地分支。'),
+            });
+        } finally {
+            setBranchLoading(false);
+        }
+    }, [canSwitchBranch, groupId, showFeedback]);
+
+    const handleBranchMenuToggle = useCallback(() => {
+        if (!canSwitchBranch) return;
+        setBranchMenuOpen((open) => {
+            const nextOpen = !open;
+            if (nextOpen) {
+                void loadBranchList();
+            }
+            return nextOpen;
+        });
+    }, [canSwitchBranch, loadBranchList]);
+
+    const executeBranchSwitch = useCallback(async (branchName: string, options?: { discardDraft?: boolean }) => {
+        if (!groupId || !canSwitchBranch || branchName === branchLabel) return;
+        const isCurrentGroupAction = captureGroupActionGuard(groupId);
+
+        setBranchSwitching(true);
+        try {
+            if (options?.discardDraft && draftSession) {
+                didDiscardLeaveRef.current = true;
+                leaveCurrentFlow(draftSession);
+                removeRecoverySnapshot(groupId, draftSession.path);
+                resetActiveFlowAfterBranchSwitch();
+            }
+
+            await switchBranch(groupId, branchName);
+            if (!isCurrentGroupAction()) return;
+
+            setBranchDirtyState(null);
+            setBranchMenuOpen(false);
+            setPendingBranchSwitch(null);
+            setDiscardBranchSwitchOpen(false);
+            resetActiveFlowAfterBranchSwitch();
+            window.dispatchEvent(new CustomEvent('wbdata:offline-branch-changed', {
+                detail: { groupId, branch: branchName, source: 'workbench' },
+            }));
+            await refreshWorkspace();
+            if (!isCurrentGroupAction()) return;
+            showFeedback({ tone: 'success', title: '分支已切换', detail: branchName });
+        } catch (error) {
+            if (!isCurrentGroupAction()) return;
+            const dirtyDetails = readDirtyWorkingTreeDetails(error);
+            if (dirtyDetails) {
+                setBranchDirtyState({
+                    changedFlows: dirtyDetails.changedFlows,
+                    changedFlowDetails: dirtyDetails.changedFlowDetails ?? dirtyDetails.changedFlows.map((path) => ({ path, status: 'MODIFIED' })),
+                    otherFileCount: dirtyDetails.otherFileCount,
+                });
+                setBranchMenuOpen(true);
+                showFeedback({
+                    tone: 'error',
+                    title: '工作区有未提交改动',
+                    detail: dirtyDetails.changedFlows.length > 0
+                        ? `还有 ${dirtyDetails.changedFlows.length} 个已保存但未提交的 Flow，请提交仓库改动后再切换分支。`
+                        : '请提交仓库改动后再切换分支。',
+                });
+                return;
+            }
+            setBranchDirtyState(null);
+            showFeedback({
+                tone: 'error',
+                title: '切换分支失败',
+                detail: getErrorMessage(error, ''),
+            });
+        } finally {
+            if (isCurrentGroupAction()) {
+                setBranchSwitching(false);
+            }
+        }
+    }, [
+        branchLabel,
+        canSwitchBranch,
+        captureGroupActionGuard,
+        draftSession,
+        groupId,
+        leaveCurrentFlow,
+        refreshWorkspace,
+        resetActiveFlowAfterBranchSwitch,
+        showFeedback,
+    ]);
+
+    const requestBranchSwitch = useCallback((branchName: string) => {
+        if (!canSwitchBranch || branchName === branchLabel) return;
+        if (isDirty) {
+            setPendingBranchSwitch(branchName);
+            setDiscardBranchSwitchOpen(true);
+            return;
+        }
+        void executeBranchSwitch(branchName);
+    }, [branchLabel, canSwitchBranch, executeBranchSwitch, isDirty]);
+
+    const confirmDiscardDraftAndSwitchBranch = useCallback(() => {
+        if (!pendingBranchSwitch) {
+            setDiscardBranchSwitchOpen(false);
+            return;
+        }
+        void executeBranchSwitch(pendingBranchSwitch, { discardDraft: true });
+    }, [executeBranchSwitch, pendingBranchSwitch]);
+
+    useEffect(() => {
+        if (!repoStatus?.dirty) {
+            setBranchDirtyState(null);
+        }
+    }, [repoStatus?.dirty]);
+
+    useEffect(() => {
+        if (!branchMenuOpen) return;
+
+        const handleMouseDown = (event: MouseEvent) => {
+            const target = event.target;
+            if (target instanceof Node && branchSwitcherRef.current?.contains(target)) {
+                return;
+            }
+            setBranchMenuOpen(false);
+        };
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                setBranchMenuOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleMouseDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handleMouseDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [branchMenuOpen]);
+
     useEffect(() => {
         const previousGroupId = previousGroupIdRef.current;
         if (previousGroupId !== null && previousGroupId !== groupId && draftSessionRef.current) {
@@ -1157,11 +1397,35 @@ export default function OfflineWorkbench() {
         setDraftSession(null);
         setSaveConflictState(null);
         setSaveConflictPending(false);
+        setBranchMenuOpen(false);
+        setBranches([]);
+        setBranchDirtyState(null);
+        setPendingBranchSwitch(null);
+        setDiscardBranchSwitchOpen(false);
         pendingNodeEditorDraftRef.current = null;
 
         if (!groupId) return;
         void refreshWorkspace();
     }, [groupId, leaveCurrentFlow, refreshWorkspace]);
+
+    useEffect(() => {
+        const handleBranchChanged = (event: Event) => {
+            const detail = (event as CustomEvent<{ groupId?: number; source?: string }>).detail;
+            if (!groupId || detail?.groupId !== groupId) return;
+            if (detail?.source === 'workbench') return;
+
+            setBranchMenuOpen(false);
+            setBranches([]);
+            setBranchDirtyState(null);
+            setPendingBranchSwitch(null);
+            setDiscardBranchSwitchOpen(false);
+            resetActiveFlowAfterBranchSwitch();
+            void refreshWorkspace();
+        };
+
+        window.addEventListener('wbdata:offline-branch-changed', handleBranchChanged);
+        return () => window.removeEventListener('wbdata:offline-branch-changed', handleBranchChanged);
+    }, [groupId, refreshWorkspace, resetActiveFlowAfterBranchSwitch]);
 
     // Restore flow from URL param (e.g. returning from execution log page)
     const restoreFlowRef = useRef(false);
@@ -1198,7 +1462,7 @@ export default function OfflineWorkbench() {
             } else {
                 showFeedback({ tone: 'error', title: result.message, detail: '' });
             }
-        } catch (error) {
+        } catch {
             showFeedback({ tone: 'error', title: '推送失败', detail: '' });
         } finally {
             setPushLoading(false);
@@ -1218,7 +1482,7 @@ export default function OfflineWorkbench() {
             } else {
                 showFeedback({ tone: 'error', title: result.message, detail: '' });
             }
-        } catch (error) {
+        } catch {
             showFeedback({ tone: 'error', title: '推送失败', detail: '' });
         } finally {
             setRebuildLoading(false);
@@ -2358,7 +2622,122 @@ export default function OfflineWorkbench() {
                 >
                     <aside className="offline-rail h-full">
                         <div className="offline-rail-toolbar">
-                            <span className="offline-branch-badge">{branchLabel}</span>
+                            <div className="offline-branch-switcher" ref={branchSwitcherRef}>
+                                {canSwitchBranch ? (
+                                    <Tooltip open={branchMenuOpen ? false : branchTooltipOpen} onOpenChange={setBranchTooltipOpen}>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className="offline-branch-selector offline-branch-selector-button"
+                                                aria-label={`切换分支，当前 ${branchLabel}`}
+                                                aria-expanded={branchMenuOpen}
+                                                onClick={handleBranchMenuToggle}
+                                                disabled={repoLoading || treeLoading || branchSwitching}
+                                            >
+                                                <GitBranch size={14} />
+                                                <span className="offline-branch-selector-value">{branchLabel}</span>
+                                                <ChevronRight size={12} className={`offline-branch-badge-caret ${branchMenuOpen ? 'is-open' : ''}`} />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="tooltip-content" side="bottom">
+                                            当前分支：{branchLabel}
+                                        </TooltipContent>
+                                    </Tooltip>
+                                ) : (
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <span className="offline-branch-selector offline-branch-selector-readonly">
+                                                <GitBranch size={14} />
+                                                <span className="offline-branch-selector-value">{branchLabel}</span>
+                                            </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="tooltip-content" side="bottom">
+                                            当前分支：{branchLabel}。只有项目组管理员可以切换分支
+                                        </TooltipContent>
+                                    </Tooltip>
+                                )}
+
+                                {canSwitchBranch ? (
+                                    <div className={`offline-branch-menu ${branchMenuOpen ? 'open' : ''}`} role="dialog" aria-label="切换分支" aria-hidden={!branchMenuOpen}>
+                                        <div className="offline-branch-menu-inner">
+                                            <div className="offline-branch-menu-surface">
+                                                {branchDirtyState ? (
+                                                    <div className="offline-branch-dirty-warning">
+                                                        <AlertTriangle size={14} />
+                                                        <div>
+                                                            <strong>还有已保存但未提交的 Flow</strong>
+                                                            {branchDirtyState.changedFlowDetails.length > 0 ? (
+                                                                <ul>
+                                                                    {branchDirtyState.changedFlowDetails.slice(0, 5).map((flow) => (
+                                                                        <li key={flow.path}>
+                                                                            {formatFlowPathDisplayName(flow.path)}
+                                                                            {flow.status === 'DELETED' ? <span>已删除</span> : null}
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            ) : (
+                                                                <p>当前仓库有已保存但未提交的改动。</p>
+                                                            )}
+                                                            {branchDirtyState.otherFileCount > 0 ? (
+                                                                <p>还有 {branchDirtyState.otherFileCount} 个仓库文件未提交。</p>
+                                                            ) : null}
+                                                            <button
+                                                                type="button"
+                                                                className="offline-branch-dirty-action"
+                                                                aria-label="打开提交仓库改动"
+                                                                onClick={() => {
+                                                                    setBranchMenuOpen(false);
+                                                                    setRepoCommitDialogOpen(true);
+                                                                }}
+                                                            >
+                                                                提交仓库改动
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : null}
+
+                                                {branchLoading ? (
+                                                    <div className="offline-branch-menu-empty">
+                                                        <LoaderCircle size={14} className="offline-spin" />
+                                                        正在加载分支...
+                                                    </div>
+                                                ) : (
+                                                    <div className="offline-branch-list" aria-label="可切换分支">
+                                                        {currentBranchFromList ? (
+                                                            <div className="offline-branch-row is-current" title={currentBranchFromList.name}>
+                                                                <div>
+                                                                    <strong>{currentBranchFromList.name}</strong>
+                                                                </div>
+                                                            </div>
+                                                        ) : null}
+                                                        {switchableBranches.map((branch) => (
+                                                            <button
+                                                                key={branch.name}
+                                                                type="button"
+                                                                className="offline-branch-row"
+                                                                aria-label={`切换到 ${branch.name}`}
+                                                                title={branch.name}
+                                                                onClick={() => requestBranchSwitch(branch.name)}
+                                                                disabled={branchSwitching}
+                                                            >
+                                                                <div>
+                                                                    <strong>{branch.name}</strong>
+                                                                </div>
+                                                            </button>
+                                                        ))}
+                                                        {!currentBranchFromList && switchableBranches.length === 0 ? (
+                                                            <div className="offline-branch-menu-empty" role="note" aria-label="暂无其他可切换分支">暂无其他可切换分支</div>
+                                                        ) : null}
+                                                        {currentBranchFromList && switchableBranches.length === 0 ? (
+                                                            <div className="offline-branch-menu-empty" role="note" aria-label="暂无其他可切换分支">暂无其他可切换分支</div>
+                                                        ) : null}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : null}
+                            </div>
                             {canWrite && (
                                 <div className="offline-rail-toolbar-actions">
                                     <Tooltip>
@@ -2449,7 +2828,7 @@ export default function OfflineWorkbench() {
                                                     className="offline-rail-toolbar-btn"
                                                     aria-label="推送"
                                                     onClick={() => setPushDialogOpen(true)}
-                                                    disabled={!groupId || !repoStatus?.gitInitialized || !repoStatus?.headCommitId || (repoStatus?.hasRemote && !repoStatus?.ahead) || pushLoading || repoLoading || treeLoading}
+                                                    disabled={!groupId || !repoStatus?.gitInitialized || !repoStatus?.headCommitId || (repoStatus?.hasRemote && !repoStatus?.ahead && repoStatus?.hasUpstream) || pushLoading || repoLoading || treeLoading}
                                                 >
                                                     {pushLoading ? <LoaderCircle size={14} className="offline-spin" /> : <GitPushIcon dirty={!!repoStatus?.ahead} />}
                                                 </button>
@@ -2951,6 +3330,28 @@ export default function OfflineWorkbench() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <ConfirmDialog
+                open={discardBranchSwitchOpen}
+                onOpenChange={(open) => {
+                    if (!open && branchSwitching) return;
+                    setDiscardBranchSwitchOpen(open);
+                    if (!open) {
+                        setPendingBranchSwitch(null);
+                    }
+                }}
+                title="放弃画布草稿并切换分支"
+                description={
+                    pendingBranchSwitch
+                        ? `当前 Flow 有未保存的画布草稿。切换到 ${pendingBranchSwitch} 前需要放弃这些草稿。`
+                        : '当前 Flow 有未保存的画布草稿，切换分支前需要放弃这些草稿。'
+                }
+                confirmText="放弃草稿并切换"
+                variant="destructive"
+                icon="warning"
+                onConfirm={confirmDiscardDraftAndSwitchBranch}
+                isLoading={branchSwitching}
+            />
 
             <Dialog open={rebuildDialogOpen} onOpenChange={setRebuildDialogOpen}>
                 <DialogContent style={{ maxWidth: '420px' }}>

@@ -10,7 +10,7 @@ import {
 } from '../../components/ui/dialog';
 import { createGroup, updateGroup } from '../../api/group';
 import { getErrorMessage } from '../../utils/error';
-import type { CreateGroupPayload, GroupDetail, UpdateGroupPayload } from '../../api/group';
+import type { GroupDetail, UpdateGroupPayload } from '../../api/group';
 import { Button } from '../../components/ui/button';
 
 interface GroupFormProps {

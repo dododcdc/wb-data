@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     Dialog,
     DialogContent,
@@ -28,7 +28,6 @@ export default function ChangeRoleDialog(props: ChangeRoleDialogProps) {
     const { open, member, onOpenChange, onConfirm, submitting } = props;
 
     const [role, setRole] = useState('');
-    const dialogRef = useRef<HTMLDivElement>(null);
     const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -41,7 +40,7 @@ export default function ChangeRoleDialog(props: ChangeRoleDialogProps) {
 
     return (
         <Dialog modal={false} open={open} onOpenChange={(nextOpen) => { if (!submitting) onOpenChange({ open: nextOpen }); }}>
-            <DialogContent ref={(el) => { dialogRef.current = el; setDialogEl(el); }} style={{ maxWidth: '440px' }}>
+            <DialogContent ref={(el) => { setDialogEl(el); }} style={{ maxWidth: '440px' }}>
                 <DialogHeader>
                     <DialogTitle>修改角色</DialogTitle>
                     <DialogDescription>

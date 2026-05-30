@@ -20,8 +20,13 @@ import java.util.List;
 public class OfflineRepoTreeService {
 
     private final OfflineProperties offlineProperties;
+    private final RepoLockManager repoLockManager;
 
     public OfflineRepoTreeResponse getRepoTree(Long groupId, String rootName) {
+        return repoLockManager.withLock(groupId, () -> getRepoTreeUnlocked(groupId, rootName));
+    }
+
+    private OfflineRepoTreeResponse getRepoTreeUnlocked(Long groupId, String rootName) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
         return new OfflineRepoTreeResponse(
                 groupId,
@@ -157,6 +162,10 @@ public class OfflineRepoTreeService {
     }
 
     public void createFolder(CreateFolderRequest request) {
+        repoLockManager.withLock(request.groupId(), () -> createFolderUnlocked(request));
+    }
+
+    private void createFolderUnlocked(CreateFolderRequest request) {
         Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
         Path folderPath = repoPath.resolve(request.path()).normalize();
         if (!folderPath.startsWith(repoPath)) {
@@ -175,6 +184,10 @@ public class OfflineRepoTreeService {
     }
 
     public void deleteFolder(Long groupId, String path) {
+        repoLockManager.withLock(groupId, () -> deleteFolderUnlocked(groupId, path));
+    }
+
+    private void deleteFolderUnlocked(Long groupId, String path) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
         Path targetPath = resolveSafePath(repoPath, path);
 
@@ -206,6 +219,10 @@ public class OfflineRepoTreeService {
     }
 
     public void renameFolder(Long groupId, String path, String newName) {
+        repoLockManager.withLock(groupId, () -> renameFolderUnlocked(groupId, path, newName));
+    }
+
+    private void renameFolderUnlocked(Long groupId, String path, String newName) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
         Path oldPath = resolveSafePath(repoPath, path);
 

@@ -91,7 +91,7 @@ export default function Query() {
     }, []);
 
     // Sync React state when panel collapses/expands via drag
-    const handleSidebarResize = useCallback((_size: { asPercentage: number; inPixels: number }) => {
+    const handleSidebarResize = useCallback(() => {
         const isCollapsed = sidebarPanelRef.current?.isCollapsed();
         if (isCollapsed && !sidebarCollapsed) {
             toggleSidebar();
@@ -100,7 +100,7 @@ export default function Query() {
         }
     }, [sidebarCollapsed, toggleSidebar]);
 
-    const handleResultResize = useCallback((_size: { asPercentage: number; inPixels: number }) => {
+    const handleResultResize = useCallback(() => {
         const isCollapsed = resultPanelRef.current?.isCollapsed();
         if (isCollapsed && !resultCollapsed) {
             setResultPanelState(true);

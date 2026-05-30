@@ -1,5 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { AxiosHeaders } from 'axios';
+import { AxiosError, AxiosHeaders } from 'axios';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
@@ -41,8 +43,23 @@ vi.mock('../../components/ui/tooltip', () => ({
 }));
 
 vi.mock('./FlowCanvas', () => ({
-    default: ({ flowDocument }: { flowDocument: { path: string } }) => (
-        <div data-testid="flow-canvas">{flowDocument.path}</div>
+    default: ({
+        flowDocument,
+        onNodeLayoutCommit,
+    }: {
+        flowDocument: { path: string };
+        onNodeLayoutCommit: (nodes: Array<{ id: string; position: { x: number; y: number } }>) => void;
+    }) => (
+        <div data-testid="flow-canvas">
+            {flowDocument.path}
+            <button
+                type="button"
+                aria-label="模拟画布修改"
+                onClick={() => onNodeLayoutCommit([{ id: 'node_1', position: { x: 32, y: 48 } }])}
+            >
+                mutate
+            </button>
+        </div>
     ),
 }));
 
@@ -109,6 +126,8 @@ vi.mock('../../api/offline', async () => {
         commitOfflineCurrentFlow: vi.fn(),
         commitOfflineRepo: vi.fn(),
         pushOfflineRepo: vi.fn(),
+        listBranches: vi.fn(),
+        switchBranch: vi.fn(),
     };
 });
 
@@ -121,6 +140,7 @@ function makeRepoStatus() {
         dirty: false,
         ahead: false,
         hasRemote: false,
+        hasUpstream: false,
         branch: 'main',
         headCommitId: 'abc',
         headCommitMessage: 'init',
@@ -228,6 +248,44 @@ function makeDeleteResponse() {
     };
 }
 
+function makeBranchList() {
+    return {
+        branches: [
+            { name: 'main', current: true, local: true, remote: true, remoteName: 'origin/main', trackingBranch: 'origin/main' },
+            { name: 'dev', current: false, local: true, remote: true, remoteName: 'origin/dev', trackingBranch: 'origin/dev' },
+        ],
+    };
+}
+
+function makeDirtyWorkingTreeError() {
+    return new AxiosError(
+        'Conflict',
+        undefined,
+        undefined,
+        undefined,
+        {
+            data: {
+                code: 409,
+                message: '工作区有未提交改动',
+                data: {
+                    changedFlows: ['_flows/example/flow.yaml'],
+                    changedFlowDetails: [
+                        { path: '_flows/example/flow.yaml', status: 'MODIFIED' },
+                    ],
+                    changedFiles: ['_flows/example/flow.yaml'],
+                    otherFileCount: 0,
+                },
+            },
+            status: 409,
+            statusText: 'Conflict',
+            headers: AxiosHeaders.from({}),
+            config: {
+                headers: AxiosHeaders.from({}),
+            },
+        },
+    );
+}
+
 function renderOfflineWorkbench() {
     const router = createMemoryRouter(
         [
@@ -286,6 +344,7 @@ describe('OfflineWorkbench commit UI', () => {
             fileUpdatedAt: 100,
         });
         vi.mocked(offlineApi.getOfflineFlowCommitStatus).mockResolvedValue({ groupId: 1, flowPath: '_flows/example/flow.yaml', dirty: true });
+        vi.mocked(offlineApi.listBranches).mockResolvedValue(makeBranchList());
     });
 
     it('hides repo commit and push from developers', async () => {
@@ -311,6 +370,161 @@ describe('OfflineWorkbench commit UI', () => {
         expect(screen.getByRole('button', { name: '推送' })).toBeTruthy();
     });
 
+    it('allows first push when the current branch has no upstream yet', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write', 'group.settings'];
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({
+            ...makeRepoStatus(),
+            hasRemote: true,
+            hasUpstream: false,
+            ahead: false,
+        });
+
+        renderOfflineWorkbench();
+
+        await waitFor(() => {
+            expect((screen.getByRole('button', { name: '推送' }) as HTMLButtonElement).disabled).toBe(false);
+        });
+    });
+
+    it('shows current branch as read-only status for developers', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write'];
+
+        renderOfflineWorkbench();
+
+        expect(await screen.findByText('main')).toBeTruthy();
+        expect(screen.queryByRole('button', { name: /切换分支/ })).toBeNull();
+        expect(offlineApi.listBranches).not.toHaveBeenCalled();
+    });
+
+    it('lets group admins switch branch from the left rail branch selector', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write', 'group.settings'];
+        vi.mocked(offlineApi.switchBranch).mockResolvedValueOnce(null);
+        const branchChangedListener = vi.fn();
+        window.addEventListener('wbdata:offline-branch-changed', branchChangedListener);
+
+        renderOfflineWorkbench();
+
+        expect(screen.queryByText('工作分支')).toBeNull();
+        const branchSelector = await screen.findByRole('button', { name: /切换分支，当前 main/ });
+        expect(branchSelector.getAttribute('title')).toBeNull();
+        fireEvent.mouseEnter(branchSelector);
+        expect(branchSelector.getAttribute('aria-expanded')).toBe('false');
+        expect(offlineApi.listBranches).not.toHaveBeenCalled();
+        fireEvent.click(branchSelector);
+
+        await screen.findByRole('dialog', { name: '切换分支' });
+        expect(screen.queryByText('切换分支')).toBeNull();
+        expect(screen.queryByText('本地分支')).toBeNull();
+        expect(screen.queryByText('远程分支')).toBeNull();
+        expect(screen.queryByText('origin/main')).toBeNull();
+        expect(screen.queryByLabelText('当前分支')).toBeNull();
+        fireEvent.click(await screen.findByRole('button', { name: /切换到 dev/ }));
+
+        await waitFor(() => {
+            expect(offlineApi.switchBranch).toHaveBeenCalledWith(1, 'dev');
+        });
+        await waitFor(() => {
+            expect(offlineApi.getOfflineRepoStatus).toHaveBeenCalledTimes(2);
+            expect(offlineApi.getOfflineRepoTree).toHaveBeenCalledTimes(2);
+        });
+        expect(branchChangedListener).toHaveBeenCalledWith(expect.objectContaining({
+            detail: expect.objectContaining({ groupId: 1, branch: 'dev' }),
+        }));
+        window.removeEventListener('wbdata:offline-branch-changed', branchChangedListener);
+    });
+
+    it('closes the branch menu when clicking outside or pressing Escape', async () => {
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write', 'group.settings'];
+
+        renderOfflineWorkbench();
+
+        const branchSelector = await screen.findByRole('button', { name: /切换分支，当前 main/ });
+        fireEvent.click(branchSelector);
+        expect(await screen.findByRole('dialog', { name: '切换分支' })).toBeTruthy();
+        expect(branchSelector.getAttribute('aria-expanded')).toBe('true');
+
+        fireEvent.mouseDown(document.body);
+
+        await waitFor(() => {
+            expect(branchSelector.getAttribute('aria-expanded')).toBe('false');
+        });
+        expect(screen.queryByRole('dialog', { name: '切换分支' })).toBeNull();
+
+        fireEvent.click(branchSelector);
+        expect(await screen.findByRole('dialog', { name: '切换分支' })).toBeTruthy();
+        expect(branchSelector.getAttribute('aria-expanded')).toBe('true');
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+
+        await waitFor(() => {
+            expect(branchSelector.getAttribute('aria-expanded')).toBe('false');
+        });
+        expect(screen.queryByRole('dialog', { name: '切换分支' })).toBeNull();
+    });
+
+    it('renders the no-switchable-branches message as a passive branch menu note', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write', 'group.settings'];
+        vi.mocked(offlineApi.listBranches).mockResolvedValueOnce({
+            branches: [
+                { name: 'main', current: true, local: true, remote: true, remoteName: 'origin/main', trackingBranch: 'origin/main' },
+            ],
+        });
+
+        renderOfflineWorkbench();
+
+        fireEvent.click(await screen.findByRole('button', { name: /切换分支，当前 main/ }));
+
+        expect(await screen.findByRole('note', { name: '暂无其他可切换分支' })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: /暂无其他可切换分支/ })).toBeNull();
+    });
+
+    it('blocks branch switching when saved Flow changes are not committed', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write', 'group.settings'];
+        vi.mocked(offlineApi.switchBranch).mockRejectedValueOnce(makeDirtyWorkingTreeError());
+
+        renderOfflineWorkbench();
+
+        fireEvent.click(await screen.findByRole('button', { name: /切换分支，当前 main/ }));
+        fireEvent.click(await screen.findByRole('button', { name: /切换到 dev/ }));
+
+        expect(await screen.findByText('还有已保存但未提交的 Flow')).toBeTruthy();
+        expect(screen.getByText('example')).toBeTruthy();
+        expect(screen.getByRole('button', { name: '打开提交仓库改动' })).toBeTruthy();
+    });
+
+    it('asks group admins to discard unsaved canvas draft before switching branch', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write', 'group.settings'];
+        vi.mocked(offlineApi.switchBranch).mockResolvedValueOnce(null);
+
+        renderOfflineWorkbench();
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+        fireEvent.click(screen.getByRole('button', { name: '模拟画布修改' }));
+
+        fireEvent.click(screen.getByRole('button', { name: /切换分支，当前 main/ }));
+        fireEvent.click(await screen.findByRole('button', { name: /切换到 dev/ }));
+
+        expect(await screen.findByRole('dialog', { name: '放弃画布草稿并切换分支' })).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: '放弃草稿并切换' }));
+
+        await waitFor(() => {
+            expect(offlineApi.switchBranch).toHaveBeenCalledWith(1, 'dev');
+        });
+    });
+
     it('routes current-flow commit through the Flow-scoped API', async () => {
         const offlineApi = await import('../../api/offline');
         authState.currentGroup = { id: 1, name: 'Team' };
@@ -323,7 +537,7 @@ describe('OfflineWorkbench commit UI', () => {
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: '提交当前 Flow' }));
-        fireEvent.change(await screen.findByPlaceholderText('例如：Update query conditions'), { target: { value: 'flow commit' } });
+        fireEvent.change(await screen.findByPlaceholderText(/简要描述本次修改/), { target: { value: 'flow commit' } });
         fireEvent.click(screen.getByRole('button', { name: '提交' }));
 
         await waitFor(() => {
@@ -335,6 +549,10 @@ describe('OfflineWorkbench commit UI', () => {
         const offlineApi = await import('../../api/offline');
         authState.currentGroup = { id: 1, name: 'Team' };
         authState.permissions = ['offline.write', 'group.settings'];
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({
+            ...makeRepoStatus(),
+            dirty: true,
+        });
         vi.mocked(offlineApi.commitOfflineRepo).mockResolvedValue({ success: true, message: 'ok' });
 
         renderOfflineWorkbench();
@@ -345,13 +563,77 @@ describe('OfflineWorkbench commit UI', () => {
 
         // Now click repo commit
         fireEvent.click(screen.getByRole('button', { name: '提交仓库改动' }));
-        const input = await screen.findByPlaceholderText('例如：Update query conditions');
+        const input = await screen.findByPlaceholderText(/简要描述本次修改/);
         fireEvent.change(input, { target: { value: 'repo commit' } });
         fireEvent.click(screen.getByRole('button', { name: '提交' }));
 
         await waitFor(() => {
             expect(offlineApi.commitOfflineRepo).toHaveBeenCalledWith(1, 'repo commit');
         });
+    });
+});
+
+describe('OfflineWorkbench branch menu motion', () => {
+    function cssBlock(css: string, selector: string) {
+        const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return css.match(new RegExp(`${escapedSelector}\\s*\\{[^}]*\\}`))?.[0] ?? '';
+    }
+
+    it('matches the navbar dropdown expansion pattern with a reduced-motion override', () => {
+        const css = readFileSync(join(process.cwd(), 'src/views/offline/OfflineWorkbench.css'), 'utf8');
+
+        expect(css).toMatch(/\.offline-branch-menu\s*\{[\s\S]*grid-template-rows:\s*0fr/);
+        expect(css).toMatch(/\.offline-branch-menu\.open\s*\{[\s\S]*grid-template-rows:\s*1fr/);
+        expect(css).toMatch(/\.offline-branch-menu-inner\s*\{[\s\S]*overflow:\s*hidden/);
+        expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.offline-branch-menu\s*\{[\s\S]*transition:\s*none/);
+    });
+
+    it('keeps the branch menu compact and free of redundant labels', () => {
+        const css = readFileSync(join(process.cwd(), 'src/views/offline/OfflineWorkbench.css'), 'utf8');
+        const menuBlock = cssBlock(css, '.offline-branch-menu');
+        const surfaceBlock = cssBlock(css, '.offline-branch-menu-surface');
+        const rowBlock = cssBlock(css, '.offline-branch-row');
+
+        expect(css).not.toContain('.offline-branch-menu-header');
+        expect(css).not.toContain('.offline-branch-current-mark');
+        expect(menuBlock).toContain('width: max-content');
+        expect(menuBlock).toContain('min-width: 160px');
+        expect(menuBlock).toContain('max-width: 260px');
+        expect(surfaceBlock).not.toContain('min-height');
+        expect(surfaceBlock).toContain('padding: 6px');
+        expect(rowBlock).toContain('min-height: 34px');
+        expect(rowBlock).toContain('justify-content: flex-start');
+    });
+
+    it('keeps the branch switcher as a compact toolbar control', () => {
+        const css = readFileSync(join(process.cwd(), 'src/views/offline/OfflineWorkbench.css'), 'utf8');
+        const toolbarBlock = cssBlock(css, '.offline-rail-toolbar');
+        const switcherBlock = cssBlock(css, '.offline-branch-switcher');
+        const selectorBlock = cssBlock(css, '.offline-branch-selector');
+
+        expect(css).not.toContain('.offline-branch-strip');
+        expect(css).not.toContain('.offline-branch-strip-label');
+        expect(toolbarBlock).toContain('justify-content: space-between');
+        expect(switcherBlock).toContain('display: flex');
+        expect(switcherBlock).toContain('flex: 1 1 auto');
+        expect(switcherBlock).not.toContain('display: none');
+        expect(selectorBlock).toContain('height: 30px');
+        expect(selectorBlock).toContain('border-radius: 999px');
+        expect(selectorBlock).toContain('var(--color-success)');
+    });
+
+    it('does not move the branch selector on hover', () => {
+        const css = readFileSync(join(process.cwd(), 'src/views/offline/OfflineWorkbench.css'), 'utf8');
+
+        expect(css).not.toMatch(/\.offline-branch-selector-button:hover[^{]*\{[^}]*transform:/);
+        expect(css).not.toMatch(/\.offline-branch-selector-button\s*\{[^}]*transition:[^}]*transform/);
+    });
+
+    it('does not mark the current branch with a side stripe', () => {
+        const css = readFileSync(join(process.cwd(), 'src/views/offline/OfflineWorkbench.css'), 'utf8');
+
+        expect(css).not.toContain('.offline-branch-row.is-current::before');
+        expect(css).not.toContain('#166534');
     });
 });
 

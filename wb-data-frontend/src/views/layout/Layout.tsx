@@ -28,7 +28,7 @@ import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import { OperationFeedback } from '../../components/OperationFeedback';
 import { loadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import './Layout.css';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
+import { TooltipProvider } from '../../components/ui/tooltip';
 
 interface NavItem {
     kind: 'link';
@@ -100,6 +100,8 @@ export default function Layout() {
 
     const [openDropdown, setOpenDropdown] = useState<string | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const userMenuRef = useRef<HTMLDivElement>(null);
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
     const navigate = useNavigate();
 
     const handleGroupChange = useCallback(async (groupId: number) => {
@@ -145,6 +147,17 @@ export default function Layout() {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [openDropdown]);
+
+    useEffect(() => {
+        if (!userMenuOpen) return;
+        const handleClickOutside = (e: MouseEvent) => {
+            if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+                setUserMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [userMenuOpen]);
 
     useEffect(() => {
         setOpenDropdown(null);
@@ -384,47 +397,71 @@ export default function Layout() {
                     </nav>
                 </div>
                 <div className="navbar-right">
-                    {accessibleGroups.length > 1 && currentGroup && (
-                        <Select
-                            value={currentGroup.id}
-                            onValueChange={(val: number | null) => { if (val != null) handleGroupChange(val); }}
-                            disabled={switchingGroup}
-                            items={accessibleGroups.map((g) => ({ value: g.id, label: g.name }))}
-                        >
-                            <SelectTrigger
-                                size="sm"
-                                className="group-switcher-trigger"
-                            >
-                                <FolderOpen className="size-3.5 text-muted-foreground" />
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent align="end">
-                                {accessibleGroups.map((g) => (
-                                    <SelectItem key={g.id} value={g.id}>
-                                        {g.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
-                    {accessibleGroups.length === 1 && currentGroup && (
-                        <div className="group-switcher-static">
-                            <FolderOpen size={14} className="text-muted-foreground" />
-                            <span>{currentGroup.name}</span>
+                    {currentGroup && (
+                        <div className="workspace-context">
+                            {accessibleGroups.length > 1 ? (
+                                <Select
+                                    value={currentGroup.id}
+                                    onValueChange={(val: number | null) => { if (val != null) handleGroupChange(val); }}
+                                    disabled={switchingGroup}
+                                    items={accessibleGroups.map((g) => ({ value: g.id, label: g.name }))}
+                                >
+                                    <SelectTrigger
+                                        size="sm"
+                                        className="group-switcher-trigger workspace-context-project"
+                                    >
+                                        <FolderOpen className="size-3.5 text-muted-foreground" />
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent align="end">
+                                        {accessibleGroups.map((g) => (
+                                            <SelectItem key={g.id} value={g.id}>
+                                                {g.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            ) : (
+                                <div className="group-switcher-static workspace-context-project-static">
+                                    <FolderOpen size={14} className="text-muted-foreground" />
+                                    <span>{currentGroup.name}</span>
+                                </div>
+                            )}
                         </div>
                     )}
-                    <div className="user-profile">
-                        <span className="user-avater">{userInfo?.displayName?.charAt(0).toUpperCase() || '?'}</span>
-                        <span>{userInfo?.displayName || userInfo?.username || '未知用户'}</span>
+                    <div className="user-menu-wrapper" ref={userMenuRef}>
+                        <button
+                            className="user-menu-trigger"
+                            onClick={() => setUserMenuOpen((v) => !v)}
+                            aria-expanded={userMenuOpen}
+                            aria-haspopup="true"
+                            aria-label={userMenuOpen ? '关闭账户菜单' : '打开账户菜单'}
+                        >
+                            <span className="user-avatar">{userInfo?.displayName?.charAt(0).toUpperCase() || '?'}</span>
+                            <span className="user-name">{userInfo?.displayName || userInfo?.username || '未知用户'}</span>
+                            <ChevronDown size={14} className={`user-menu-chevron${userMenuOpen ? ' open' : ''}`} />
+                        </button>
+                        <div className={`user-menu-dropdown${userMenuOpen ? ' open' : ''}`} role="menu">
+                            <div className="user-menu-dropdown-inner">
+                                <div className="user-menu-header">
+                                    <span className="user-avatar-lg">{userInfo?.displayName?.charAt(0).toUpperCase() || '?'}</span>
+                                    <div className="user-menu-info">
+                                        <span className="user-menu-name">{userInfo?.displayName || userInfo?.username}</span>
+                                        <span className="user-menu-role">{systemAdmin ? '系统管理员' : currentGroup?.role === 'GROUP_ADMIN' ? '组管理员' : '开发者'}</span>
+                                    </div>
+                                </div>
+                                <div className="user-menu-divider" />
+                                <button
+                                    className="user-menu-item"
+                                    role="menuitem"
+                                    onClick={() => { handleLogout(); setUserMenuOpen(false); }}
+                                >
+                                    <LogOut size={15} />
+                                    <span>退出登录</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <button className="logout-btn" onClick={handleLogout}>
-                                <LogOut size={16} />
-                            </button>
-                        </TooltipTrigger>
-                        <TooltipContent>退出登录</TooltipContent>
-                    </Tooltip>
                 </div>
             </header>
             <OperationFeedback />

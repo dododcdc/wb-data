@@ -10,7 +10,7 @@ export const POPULAR_TIMEZONES = [
     'UTC',
 ];
 
-export const TIMEZONES = (Intl as any).supportedValuesOf?.('timeZone') as string[] || [
+export const TIMEZONES = ((Intl as unknown) as { supportedValuesOf?: (key: 'timeZone') => string[] }).supportedValuesOf?.('timeZone') || [
     'UTC',
     'Asia/Shanghai',
     'Asia/Hong_Kong',

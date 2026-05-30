@@ -2,14 +2,17 @@ import { act, fireEvent, render, screen, waitFor, within, cleanup } from '@testi
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 
 import GitSettingsTab from './GitSettingsTab';
 
-const { getGitConfig, saveGitConfig, deleteGitConfig, testGitConnection } = vi.hoisted(() => ({
+const { getGitConfig, saveGitConfig, deleteGitConfig, testGitConnection, listBranches, switchBranch } = vi.hoisted(() => ({
   getGitConfig: vi.fn(),
   saveGitConfig: vi.fn(),
   deleteGitConfig: vi.fn(),
   testGitConnection: vi.fn(),
+  listBranches: vi.fn(),
+  switchBranch: vi.fn(),
 }));
 
 vi.mock('./gitSettingsApi', () => ({
@@ -19,7 +22,14 @@ vi.mock('./gitSettingsApi', () => ({
   testGitConnection,
 }));
 
+vi.mock('../../api/offline', () => ({
+  listBranches,
+  switchBranch,
+  deleteBranch: vi.fn(),
+}));
+
 getGitConfig.mockResolvedValue({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
+listBranches.mockResolvedValue({ branches: [] });
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -39,7 +49,17 @@ afterEach(() => {
 
 function renderWithQuery(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        {ui}
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
+async function enterConfigEdit() {
+  fireEvent.click(await screen.findByRole('button', { name: /编辑配置/ }));
 }
 
 describe('GitSettingsTab - permission control', () => {
@@ -66,13 +86,27 @@ describe('GitSettingsTab - permission control', () => {
     expect(await screen.findByText('尚未配置远程仓库')).toBeTruthy();
   });
 
-  it('shows action buttons when canEdit is true', async () => {
+  it('shows read-only config summary first when canEdit is true and config exists', async () => {
     getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
 
     renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
 
-    expect(await screen.findByRole('button', { name: /测试连接/ })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /编辑配置/ })).toBeTruthy();
+    expect(screen.getByText('已配置')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /保存配置/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /删除配置/ })).toBeNull();
+  });
+
+  it('enters edit mode from the config summary', async () => {
+    getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
+
+    renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
+
+    await enterConfigEdit();
+
+    expect(screen.getByRole('button', { name: /测试连接/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /保存配置/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /取消/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /删除配置/ })).toBeTruthy();
   });
 
@@ -90,6 +124,7 @@ describe('GitSettingsTab - test connection', () => {
 
     renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
 
+    await enterConfigEdit();
     const testBtn = await screen.findByRole('button', { name: /测试连接/ });
 
     // Fill token field (required by validation in handleTest)
@@ -114,6 +149,7 @@ describe('GitSettingsTab - test connection', () => {
 
     renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
 
+    await enterConfigEdit();
     const testBtn = await screen.findByRole('button', { name: /测试连接/ });
     fireEvent.click(testBtn);
 
@@ -132,6 +168,7 @@ describe('GitSettingsTab - test connection', () => {
 
     renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
 
+    await enterConfigEdit();
     const testBtn = await screen.findByRole('button', { name: /测试连接/ });
     fireEvent.click(testBtn);
 
@@ -156,12 +193,25 @@ describe('GitSettingsTab - provider options', () => {
   });
 });
 
+describe('GitSettingsTab - tab scope', () => {
+  it('keeps the remote repository tab focused on connection configuration', async () => {
+    getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
+
+    renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
+
+    expect(await screen.findByText('连接配置')).toBeTruthy();
+    expect(screen.queryByText('分支维护')).toBeNull();
+    expect(listBranches).not.toHaveBeenCalled();
+  });
+});
+
 describe('GitSettingsTab - confirm dialog behavior', () => {
   it('opens a confirm dialog when delete is triggered', async () => {
     getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
 
     renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
 
+    await enterConfigEdit();
     const deleteBtn = await screen.findByRole('button', { name: /删除配置/ });
     fireEvent.click(deleteBtn);
 
@@ -176,6 +226,7 @@ describe('GitSettingsTab - confirm dialog behavior', () => {
 
     renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
 
+    await enterConfigEdit();
     const deleteBtn = await screen.findByRole('button', { name: /删除配置/ });
     fireEvent.click(deleteBtn);
 
@@ -217,6 +268,7 @@ describe('GitSettingsTab - confirm dialog behavior', () => {
 
     renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
 
+    await enterConfigEdit();
     const deleteBtn = await screen.findByRole('button', { name: /删除配置/ });
     fireEvent.click(deleteBtn);
 
@@ -248,6 +300,7 @@ describe('GitSettingsTab - confirm dialog behavior', () => {
 
     renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
 
+    await enterConfigEdit();
     expect(await screen.findByRole('button', { name: /删除配置/ })).toBeTruthy();
   });
 });
@@ -259,6 +312,7 @@ describe('GitSettingsTab - save config', () => {
 
     renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
 
+    await enterConfigEdit();
     const saveBtn = await screen.findByRole('button', { name: /保存配置/ });
     fireEvent.click(saveBtn);
 
