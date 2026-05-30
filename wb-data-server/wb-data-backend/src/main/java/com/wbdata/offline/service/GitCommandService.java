@@ -122,6 +122,9 @@ public class GitCommandService {
         try {
             switchToExistingOrRemote(repoPath, target);
             runGit(repoPath, "merge", sourceRef);
+            if (originalBranch != null && !originalBranch.isBlank() && !originalBranch.equals(target)) {
+                switchToExistingOrRemote(repoPath, originalBranch);
+            }
             return target;
         } catch (GitException ex) {
             try {

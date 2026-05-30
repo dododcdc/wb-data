@@ -113,3 +113,12 @@ wb-data/
 - [ ] 后端：`mvn clean install` 通过
 - [ ] 逻辑变更：补充或更新对应测试
 - [ ] PR 描述说明变更意图、影响范围和验证方式
+
+
+<claude-mem-context>
+# Memory Context
+
+# [wb-data] recent context, 2026-05-27 2:04am GMT+8
+
+No previous sessions found.
+</claude-mem-context>
