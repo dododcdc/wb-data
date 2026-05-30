@@ -20,6 +20,7 @@ interface ConfirmDialogProps {
   variant?: "default" | "destructive" | "warning" | "success" | "outline"
   onConfirm: () => void | Promise<void>
   isLoading?: boolean
+  disabled?: boolean
   icon?: "info" | "warning" | "error" | "success" | "none"
 }
 
@@ -33,6 +34,7 @@ export function ConfirmDialog({
   variant = "default",
   onConfirm,
   isLoading,
+  disabled,
   icon = "none",
 }: ConfirmDialogProps) {
   const confirmButtonVariant: "default" | "destructive" | "outline" =
@@ -74,7 +76,7 @@ export function ConfirmDialog({
             onClick={async () => {
               await onConfirm()
             }}
-            disabled={isLoading}
+            disabled={isLoading || disabled}
             className={variant === "warning" ? "bg-amber-600 hover:bg-amber-700 text-white border-none" : ""}
             type="button"
           >

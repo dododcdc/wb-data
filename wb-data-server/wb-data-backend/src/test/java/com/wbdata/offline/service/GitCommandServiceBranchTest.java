@@ -153,6 +153,31 @@ class GitCommandServiceBranchTest {
     }
 
     @Test
+    void mergeBranch_restoresOriginalActiveBranchOnSuccess() throws Exception {
+        OfflineProperties properties = properties();
+        Path repo = properties.resolveRepoPath(1L);
+        initRepo(repo);
+        write(repo, "_flows/example/flow.yaml", "id: example\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "init");
+
+        // Create feature branch and switch to it
+        git(repo, "switch", "-c", "feature/my-feature");
+        write(repo, "_flows/example/flow.yaml", "id: changed-in-feature\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "feature change");
+
+        // Merge feature/my-feature into main, while current branch is feature/my-feature
+        service(properties).mergeBranch(1L, "feature/my-feature", "main");
+
+        // Original active branch feature/my-feature should be restored after successful merge
+        assertThat(git(repo, "branch", "--show-current")).isEqualTo("feature/my-feature");
+        // Verify main has the merged changes
+        git(repo, "switch", "main");
+        assertThat(Files.readString(repo.resolve("_flows/example/flow.yaml"))).contains("id: changed-in-feature");
+    }
+
+    @Test
     void mergeBranch_reportsMissingSourceBranch() throws Exception {
         OfflineProperties properties = properties();
         Path repo = properties.resolveRepoPath(1L);
