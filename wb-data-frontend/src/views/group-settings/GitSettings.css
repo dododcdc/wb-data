@@ -4,6 +4,18 @@
     flex: 1;
     min-height: 0;
     flex-direction: column;
+    gap: 28px;
+    padding: 24px;
+    overflow-y: auto;
+}
+
+.kestra-sync-settings-page {
+    display: flex;
+    width: min(100%, 760px);
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    gap: 24px;
     padding: 24px;
     overflow-y: auto;
 }
@@ -138,8 +150,86 @@
     color: var(--muted-foreground);
 }
 
+.git-sync-toolbar {
+    display: flex;
+    max-width: 680px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.git-sync-branch-select {
+    min-width: 220px;
+    max-width: 280px;
+}
+
+.git-sync-list {
+    display: flex;
+    width: min(100%, 720px);
+    flex-direction: column;
+    gap: 8px;
+}
+
+.git-sync-empty-state {
+    display: flex;
+    max-width: 520px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 28px 0;
+}
+
+.git-sync-empty-state p {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: 14px;
+    line-height: 1.55;
+}
+
+.git-sync-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--background) 92%, var(--muted) 8%);
+    padding: 10px 12px;
+}
+
+.git-sync-row-main {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.git-sync-row-main strong,
+.git-sync-row-main span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.git-sync-row-main strong {
+    color: var(--foreground);
+    font-size: 13px;
+}
+
+.git-sync-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
 @media (max-width: 640px) {
     .git-settings-page {
+        width: 100%;
+        padding: 18px;
+    }
+
+    .kestra-sync-settings-page {
         width: 100%;
         padding: 18px;
     }
@@ -147,5 +237,13 @@
     .git-settings-fields,
     .git-settings-ro-table {
         grid-template-columns: 1fr;
+    }
+
+    .git-sync-row {
+        grid-template-columns: 1fr;
+    }
+
+    .git-sync-row-actions {
+        justify-content: flex-start;
     }
 }

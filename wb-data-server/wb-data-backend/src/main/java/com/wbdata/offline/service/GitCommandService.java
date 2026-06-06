@@ -9,6 +9,8 @@ import com.wbdata.offline.dto.DirtyFlowChangeResponse;
 import com.wbdata.offline.dto.DirtyWorkingTreeResponse;
 import com.wbdata.offline.exception.DirtyWorkingTreeException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -33,6 +35,7 @@ public class GitCommandService {
     private final GitConfigService gitConfigService;
     private final OfflineFlowDocumentService offlineFlowDocumentService;
     private final RepoLockManager repoLockManager;
+    private ApplicationEventPublisher applicationEventPublisher = event -> {};
 
     public record PushResult(boolean success, String message, String remoteUrl, boolean remoteCreated, boolean remoteDeleted) {}
     public record CommitResult(boolean success, String message) {}
@@ -314,6 +317,7 @@ public class GitCommandService {
         }
 
         String displayUrl = provider.buildDisplayUrl(repoName);
+        publishPushedEvent(groupId, repoPath);
         return new PushResult(true, "推送成功", displayUrl, remoteCreated, false);
     }
 
@@ -346,7 +350,17 @@ public class GitCommandService {
         runGit(repoPath, "push", "-u", "origin", "HEAD");
 
         String displayUrl = provider.buildDisplayUrl(repoName);
+        publishPushedEvent(groupId, repoPath);
         return new PushResult(true, "推送成功", displayUrl, true, false);
+    }
+
+    @Autowired
+    public void setApplicationEventPublisher(ApplicationEventPublisher applicationEventPublisher) {
+        this.applicationEventPublisher = applicationEventPublisher == null ? event -> {} : applicationEventPublisher;
+    }
+
+    private void publishPushedEvent(Long groupId, Path repoPath) {
+        applicationEventPublisher.publishEvent(new GitRepoPushedEvent(groupId, getCurrentBranch(repoPath)));
     }
 
     /** 获取当前 remote URL（不含 token） */

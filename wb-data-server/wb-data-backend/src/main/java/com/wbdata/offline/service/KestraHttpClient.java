@@ -93,6 +93,51 @@ public class KestraHttpClient implements KestraClient {
     }
 
     @Override
+    public void deleteFlow(String namespace, String flowId) {
+        ensureCredentialsConfigured();
+        HttpResponse<byte[]> response = send(
+                "DELETE",
+                "/api/v1/" + properties.getTenant() + "/flows/" + encode(namespace) + "/" + encode(flowId),
+                null,
+                null,
+                "application/json"
+        );
+        if (!(response.statusCode() == 200 || response.statusCode() == 204 || response.statusCode() == 404)) {
+            throw toKestraException(response, "删除 Flow 失败");
+        }
+    }
+
+    @Override
+    public List<String> validateFlow(String source) {
+        ensureCredentialsConfigured();
+        HttpResponse<byte[]> response = send(
+                "POST",
+                "/api/v1/" + properties.getTenant() + "/flows/validate",
+                source.getBytes(StandardCharsets.UTF_8),
+                "application/x-yaml",
+                "application/json"
+        );
+        if (!isSuccessful(response.statusCode())) {
+            throw toKestraException(response, "校验 Flow 失败");
+        }
+        try {
+            JsonNode root = objectMapper.readTree(response.body());
+            List<String> violations = new ArrayList<>();
+            if (root.isArray()) {
+                for (JsonNode item : root) {
+                    String constraints = readText(item.path("constraints"));
+                    if (constraints != null && !constraints.isBlank()) {
+                        violations.add(constraints);
+                    }
+                }
+            }
+            return violations;
+        } catch (IOException ex) {
+            throw new IllegalStateException("解析 Kestra 校验结果失败", ex);
+        }
+    }
+
+    @Override
     public void upsertNamespaceFile(String namespace, String path, String content) {
         ensureCredentialsConfigured();
         String boundary = "----wb-data-file-" + UUID.randomUUID().toString().replace("-", "");

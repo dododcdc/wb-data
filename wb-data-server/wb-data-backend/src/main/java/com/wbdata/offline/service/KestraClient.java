@@ -4,6 +4,10 @@ public interface KestraClient {
 
     void upsertFlow(String source);
 
+    void deleteFlow(String namespace, String flowId);
+
+    java.util.List<String> validateFlow(String source);
+
     void upsertNamespaceFile(String namespace, String path, String content);
 
     KestraExecutionSnapshot createExecution(String namespace, String flowId);
