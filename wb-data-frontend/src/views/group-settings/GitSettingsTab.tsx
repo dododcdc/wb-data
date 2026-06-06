@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import './GitSettings.css';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getGitConfig, saveGitConfig, deleteGitConfig, testGitConnection, type SaveGitConfigPayload } from './gitSettingsApi';
+import {
+    getGitConfig,
+    saveGitConfig,
+    deleteGitConfig,
+    testGitConnection,
+    type SaveGitConfigPayload,
+} from './gitSettingsApi';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { SimpleSelect } from '../../components/SimpleSelect';
@@ -49,6 +55,7 @@ export default function GitSettingsTab({ groupId, canEdit }: GitSettingsTabProps
             setToken('');
             setConfigEditing(false);
             void queryClient.invalidateQueries({ queryKey: ['git-config', groupId] });
+            void queryClient.invalidateQueries({ queryKey: ['git-sync-config', groupId] });
         },
         onError: () => {
             showFeedback({ tone: 'error', title: '保存失败', detail: '' });
@@ -66,6 +73,7 @@ export default function GitSettingsTab({ groupId, canEdit }: GitSettingsTabProps
             setBaseUrl('https://github.com');
             setConfigEditing(false);
             void queryClient.invalidateQueries({ queryKey: ['git-config', groupId] });
+            void queryClient.invalidateQueries({ queryKey: ['git-sync-config', groupId] });
         },
         onError: () => {
             showFeedback({ tone: 'error', title: '删除失败', detail: '' });

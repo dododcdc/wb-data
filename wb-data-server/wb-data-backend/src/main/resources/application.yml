@@ -27,6 +27,8 @@ wbdata:
     allowed-origins: ${WB_DATA_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,https://dododcdc.tail84596d.ts.net}
   plugins:
     dir: ${WB_DATA_PLUGIN_DIR:/Users/wenbin/Projects/wb-data/plugins}
+  git:
+    sync-cron: "${WB_DATA_GIT_SYNC_CRON:*/5 * * * *}"
   offline:
     repo-base-dir: ${WB_DATA_OFFLINE_REPO_BASE_DIR:/Users/wenbin/Projects/wb-data/output/offline-live/repos}
     repo-dir-prefix: ${WB_DATA_OFFLINE_REPO_DIR_PREFIX:wb-data-}

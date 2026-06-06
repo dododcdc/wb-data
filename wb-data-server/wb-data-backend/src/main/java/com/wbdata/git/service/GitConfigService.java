@@ -59,6 +59,14 @@ public class GitConfigService {
         return loadConfig(groupId) != null;
     }
 
+    public WbGitConfig requireDecryptedConfig(Long groupId) {
+        WbGitConfig config = loadConfig(groupId);
+        if (config == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Git 推送未配置，请先在项目组设置中配置");
+        }
+        return config;
+    }
+
     /**
      * 获取当前配置（token 脱敏返回）
      */

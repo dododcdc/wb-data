@@ -73,6 +73,10 @@ vi.mock('./GitSettingsTab', () => ({
     default: () => <div>git-settings-tab</div>,
 }));
 
+vi.mock('./KestraSyncSettingsTab', () => ({
+    default: () => <div>kestra-sync-settings-tab</div>,
+}));
+
 vi.mock('../../components/ui/confirm-dialog', () => ({
     ConfirmDialog: () => null,
 }));
@@ -125,6 +129,15 @@ describe('GroupSettingsPage', () => {
 
         fireEvent.click(await screen.findByRole('button', { name: '远程仓库' }));
         expect(screen.getByText('git-settings-tab')).toBeTruthy();
+    });
+
+    it('opens schedule sync as an independent settings tab', async () => {
+        renderWithProviders();
+
+        fireEvent.click(await screen.findByRole('button', { name: '调度同步' }));
+
+        expect(screen.getByText('kestra-sync-settings-tab')).toBeTruthy();
+        expect(screen.queryByText('git-settings-tab')).toBeNull();
     });
 
     it('submits batch member payloads and shows quantity-based success feedback', async () => {

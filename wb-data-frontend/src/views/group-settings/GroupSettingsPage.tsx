@@ -28,6 +28,7 @@ import AddMemberDialog from './AddMemberDialog';
 import ChangeRoleDialog from './ChangeRoleDialog';
 import GitSettingsTab from './GitSettingsTab';
 import LocalSettingsTab from './LocalSettingsTab';
+import KestraSyncSettingsTab from './KestraSyncSettingsTab';
 import {
     DEFAULT_PAGE_SIZE,
     getRoleLabel,
@@ -56,7 +57,7 @@ export default function GroupSettingsPage() {
     const [pendingRemoveTarget, setPendingRemoveTarget] = useState<MemberRecord | null>(null);
     const [pendingRemoveId, setPendingRemoveId] = useState<number | null>(null);
     const addedMemberCountRef = useRef(0);
-    const [activeTab, setActiveTab] = useState<'members' | 'git' | 'local'>('members');
+    const [activeTab, setActiveTab] = useState<'members' | 'git' | 'local' | 'kestra'>('members');
 
     const {
         data: records,
@@ -240,6 +241,13 @@ export default function GroupSettingsPage() {
                                 本地仓库
                             </button>
                         )}
+                        <button
+                            type="button"
+                            className={`gs-tab-btn ${activeTab === 'kestra' ? 'is-active' : ''}`}
+                            onClick={() => setActiveTab('kestra')}
+                        >
+                            调度同步
+                        </button>
                     </div>
                 </div>
 
@@ -247,6 +255,12 @@ export default function GroupSettingsPage() {
                     <GitSettingsTab groupId={groupId!} canEdit={canEdit} />
                 ) : (activeTab === 'local' && canEdit) ? (
                     <LocalSettingsTab groupId={groupId!} canEdit={canEdit} />
+                ) : activeTab === 'kestra' ? (
+                    <KestraSyncSettingsTab
+                        groupId={groupId!}
+                        canEdit={canEdit}
+                        onConfigureGit={() => setActiveTab('git')}
+                    />
                 ) : (
                     <div className="gs-members-content">
                         <div className="gs-members-search-row">

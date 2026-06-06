@@ -6,13 +6,16 @@ import { MemoryRouter } from 'react-router-dom';
 
 import GitSettingsTab from './GitSettingsTab';
 
-const { getGitConfig, saveGitConfig, deleteGitConfig, testGitConnection, listBranches, switchBranch } = vi.hoisted(() => ({
+const {
+  getGitConfig,
+  saveGitConfig,
+  deleteGitConfig,
+  testGitConnection,
+} = vi.hoisted(() => ({
   getGitConfig: vi.fn(),
   saveGitConfig: vi.fn(),
   deleteGitConfig: vi.fn(),
   testGitConnection: vi.fn(),
-  listBranches: vi.fn(),
-  switchBranch: vi.fn(),
 }));
 
 vi.mock('./gitSettingsApi', () => ({
@@ -22,14 +25,7 @@ vi.mock('./gitSettingsApi', () => ({
   testGitConnection,
 }));
 
-vi.mock('../../api/offline', () => ({
-  listBranches,
-  switchBranch,
-  deleteBranch: vi.fn(),
-}));
-
 getGitConfig.mockResolvedValue({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
-listBranches.mockResolvedValue({ branches: [] });
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -200,8 +196,8 @@ describe('GitSettingsTab - tab scope', () => {
     renderWithQuery(<GitSettingsTab groupId={1} canEdit={true} />);
 
     expect(await screen.findByText('连接配置')).toBeTruthy();
+    expect(screen.queryByText('自动同步')).toBeNull();
     expect(screen.queryByText('分支维护')).toBeNull();
-    expect(listBranches).not.toHaveBeenCalled();
   });
 });
 

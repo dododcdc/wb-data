@@ -10,6 +10,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -106,6 +107,43 @@ class GitCommandServiceTest {
 
         assertThat(git(repo, "ls-remote", "--heads", "origin", "feature/pipeline"))
                 .contains("refs/heads/feature/pipeline");
+    }
+
+    @Test
+    void push_publishesCurrentBranchAfterSuccessfulPush() throws Exception {
+        OfflineProperties properties = new OfflineProperties();
+        properties.setRepoBaseDir(tempDir.toString());
+        properties.setRepoDirPrefix("wb-data-");
+        OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
+        GitConfigService gitConfigService = Mockito.mock(GitConfigService.class);
+        GitRemoteProvider provider = Mockito.mock(GitRemoteProvider.class);
+        when(gitConfigService.getProvider(1L)).thenReturn(provider);
+        when(provider.repositoryExists("wb-data-1")).thenReturn(true);
+        GitCommandService service = new GitCommandService(properties, gitConfigService, flowDocumentService, new RepoLockManager());
+        List<Object> events = new ArrayList<>();
+        service.setApplicationEventPublisher(events::add);
+
+        Path repo = properties.resolveRepoPath(1L);
+        Path remote = tempDir.resolve("remote.git");
+        git(tempDir, "init", "--bare", remote.toString());
+        when(provider.buildDisplayUrl("wb-data-1")).thenReturn(remote.toUri().toString());
+        when(provider.buildPushUrl("wb-data-1")).thenReturn(remote.toUri().toString());
+        initRepo(repo);
+        write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "init");
+        git(repo, "remote", "add", "origin", remote.toString());
+        git(repo, "switch", "-c", "feature/policy-review");
+        write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks:\n  - id: node_1\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "feature change");
+
+        service.push(1L);
+
+        assertThat(events).hasSize(1);
+        GitRepoPushedEvent event = (GitRepoPushedEvent) events.get(0);
+        assertThat(event.groupId()).isEqualTo(1L);
+        assertThat(event.branch()).isEqualTo("feature/policy-review");
     }
 
     @Test
