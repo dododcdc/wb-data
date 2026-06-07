@@ -4,16 +4,25 @@ import com.wbdata.git.dto.GitSyncConfigResponse;
 import com.wbdata.git.service.GitSyncConfigService;
 import com.wbdata.offline.service.KestraClient;
 import com.wbdata.offline.service.KestraExecutionSnapshot;
+import com.wbdata.offline.service.KestraLogEntry;
 import com.wbdata.offline.service.KestraTaskRunSnapshot;
+import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
 import com.wbdata.operations.dto.OperationsExecutionListItem;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
+import com.wbdata.operations.dto.OperationsExecutionLogEntry;
 import com.wbdata.operations.dto.OperationsExecutionQuery;
+import com.wbdata.operations.dto.OperationsExecutionRerunResponse;
+import com.wbdata.operations.dto.OperationsExecutionTaskRun;
+import com.wbdata.operations.entity.WbOperationExecutionAction;
 import com.wbdata.operations.mapper.WbOperationExecutionActionMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,6 +41,9 @@ public class OperationsExecutionService {
         OperationsExecutionQuery effectiveQuery = query == null
                 ? new OperationsExecutionQuery(null, null, null, null, null)
                 : query;
+        if (effectiveQuery.from() != null && effectiveQuery.to() != null && effectiveQuery.from().isAfter(effectiveQuery.to())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "时间范围不合法");
+        }
         Instant to = effectiveQuery.to() == null ? Instant.now() : effectiveQuery.to();
         Instant from = effectiveQuery.from() == null ? to.minus(Duration.ofHours(24)) : effectiveQuery.from();
         LinkedHashMap<String, String> namespaceToBranch = scopedNamespaces(groupId);
@@ -64,6 +76,87 @@ public class OperationsExecutionService {
                 to,
                 executions
         );
+    }
+
+    public OperationsExecutionDetailResponse getExecution(Long groupId, String executionId) {
+        Scope scope = loadScope(groupId);
+        KestraExecutionSnapshot execution = requireAccessibleExecution(scope, executionId);
+        return toDetail(execution, scope.branchFor(execution.namespace()));
+    }
+
+    public List<OperationsExecutionLogEntry> getLogs(Long groupId, String executionId, String taskId) {
+        Scope scope = loadScope(groupId);
+        requireAccessibleExecution(scope, executionId);
+        List<KestraLogEntry> logs = kestraClient.getLogs(executionId, blankToNull(taskId));
+        if (logs == null) {
+            return List.of();
+        }
+        return logs.stream()
+                .filter(log -> log != null)
+                .map(this::toLogEntry)
+                .toList();
+    }
+
+    public OperationsExecutionRerunResponse rerunExecution(Long groupId, Long requestedBy, String executionId) {
+        Scope scope = loadScope(groupId);
+        KestraExecutionSnapshot original = requireAccessibleExecution(scope, executionId);
+        if (!rerunnable(original.status())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前状态不支持重跑");
+        }
+
+        KestraExecutionSnapshot rerun = kestraClient.createExecution(original.namespace(), original.flowId());
+
+        WbOperationExecutionAction action = new WbOperationExecutionAction();
+        action.setGroupId(groupId);
+        action.setActionType("RERUN");
+        action.setOriginalExecutionId(original.id());
+        action.setNewExecutionId(rerun.id());
+        action.setNamespace(original.namespace());
+        action.setFlowId(original.flowId());
+        action.setRequestedBy(requestedBy);
+        action.setRequestedAt(LocalDateTime.now());
+        insertAuditOrStopExecution(action, rerun.id());
+
+        return new OperationsExecutionRerunResponse(
+                original.id(),
+                rerun.id(),
+                rerun.namespace(),
+                rerun.flowId(),
+                rerun.status(),
+                rerun.createdAt()
+        );
+    }
+
+    private void insertAuditOrStopExecution(WbOperationExecutionAction action, String createdExecutionId) {
+        try {
+            int affectedRows = actionMapper.insert(action);
+            if (affectedRows != 1) {
+                throw new IllegalStateException("审计记录未写入");
+            }
+        } catch (RuntimeException ex) {
+            stopCreatedExecutionAfterAuditFailure(createdExecutionId, ex);
+        }
+    }
+
+    private void stopCreatedExecutionAfterAuditFailure(String createdExecutionId, RuntimeException ex) {
+        try {
+            kestraClient.killExecution(createdExecutionId);
+        } catch (RuntimeException killException) {
+            ex.addSuppressed(killException);
+        }
+        throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "重跑审计记录写入失败，已尝试停止新执行", ex);
+    }
+
+    private Scope loadScope(Long groupId) {
+        return new Scope(scopedNamespaces(groupId));
+    }
+
+    private KestraExecutionSnapshot requireAccessibleExecution(Scope scope, String executionId) {
+        KestraExecutionSnapshot execution = kestraClient.getExecution(executionId);
+        if (!isBusinessExecution(execution, scope.namespaceToBranch())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "执行记录不存在");
+        }
+        return execution;
     }
 
     private LinkedHashMap<String, String> scopedNamespaces(Long groupId) {
@@ -137,10 +230,6 @@ public class OperationsExecutionService {
     }
 
     private OperationsExecutionListItem toListItem(KestraExecutionSnapshot execution, String branch) {
-        Long durationMs = null;
-        if (execution.startDate() != null && execution.endDate() != null) {
-            durationMs = execution.endDate().toEpochMilli() - execution.startDate().toEpochMilli();
-        }
         return new OperationsExecutionListItem(
                 execution.id(),
                 execution.namespace(),
@@ -150,10 +239,61 @@ public class OperationsExecutionService {
                 execution.createdAt(),
                 execution.startDate(),
                 execution.endDate(),
-                durationMs,
+                durationMs(execution.startDate(), execution.endDate()),
                 failureSummary(execution),
                 rerunnable(execution.status())
         );
+    }
+
+    private OperationsExecutionDetailResponse toDetail(KestraExecutionSnapshot execution, String branch) {
+        List<OperationsExecutionTaskRun> taskRuns = execution.taskRuns() == null
+                ? List.of()
+                : execution.taskRuns().stream()
+                .filter(taskRun -> taskRun != null)
+                .map(this::toTaskRun)
+                .toList();
+        return new OperationsExecutionDetailResponse(
+                execution.id(),
+                execution.namespace(),
+                execution.flowId(),
+                branch,
+                execution.status(),
+                execution.createdAt(),
+                execution.startDate(),
+                execution.endDate(),
+                durationMs(execution.startDate(), execution.endDate()),
+                failureSummary(execution),
+                rerunnable(execution.status()),
+                taskRuns,
+                execution.inputs() == null ? Map.of() : execution.inputs(),
+                execution.labels() == null ? Map.of() : execution.labels()
+        );
+    }
+
+    private OperationsExecutionTaskRun toTaskRun(KestraTaskRunSnapshot taskRun) {
+        return new OperationsExecutionTaskRun(
+                taskRun.taskId(),
+                taskRun.status(),
+                taskRun.startDate(),
+                taskRun.endDate(),
+                durationMs(taskRun.startDate(), taskRun.endDate())
+        );
+    }
+
+    private OperationsExecutionLogEntry toLogEntry(KestraLogEntry log) {
+        return new OperationsExecutionLogEntry(
+                log.timestamp(),
+                log.taskId(),
+                log.level(),
+                log.message()
+        );
+    }
+
+    private Long durationMs(Instant startDate, Instant endDate) {
+        if (startDate == null || endDate == null) {
+            return null;
+        }
+        return endDate.toEpochMilli() - startDate.toEpochMilli();
     }
 
     private int compareByExecutionTimeDescending(OperationsExecutionListItem left, OperationsExecutionListItem right) {
@@ -208,5 +348,11 @@ public class OperationsExecutionService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private record Scope(LinkedHashMap<String, String> namespaceToBranch) {
+        private String branchFor(String namespace) {
+            return namespaceToBranch.get(namespace);
+        }
     }
 }
