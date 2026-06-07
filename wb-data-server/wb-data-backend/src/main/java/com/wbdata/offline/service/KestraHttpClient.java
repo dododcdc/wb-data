@@ -335,6 +335,7 @@ public class KestraHttpClient implements KestraClient {
                 readInstant(state.path("startDate"), root.path("startDate")),
                 readInstant(state.path("endDate"), root.path("endDate")),
                 taskRuns,
+                readStringMap(root.path("inputs")),
                 readLabels(root.path("labels"))
         );
     }
@@ -454,6 +455,20 @@ public class KestraHttpClient implements KestraClient {
 
     private String readText(JsonNode node) {
         return node == null || node.isMissingNode() || node.isNull() ? null : node.asText();
+    }
+
+    private Map<String, String> readStringMap(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return Map.of();
+        }
+        Map<String, String> values = new LinkedHashMap<>();
+        if (node.isObject()) {
+            node.fields().forEachRemaining(entry -> {
+                JsonNode value = entry.getValue();
+                values.put(entry.getKey(), value.isValueNode() ? readText(value) : value.toString());
+            });
+        }
+        return values;
     }
 
     private Map<String, String> readLabels(JsonNode labelsNode) {

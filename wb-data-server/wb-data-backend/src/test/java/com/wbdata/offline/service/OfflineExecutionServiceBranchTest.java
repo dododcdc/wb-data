@@ -159,6 +159,7 @@ class OfflineExecutionServiceBranchTest {
                 Instant.parse("2026-05-19T00:00:01Z"),
                 null,
                 List.of(),
+                Map.of(),
                 labels
         );
     }

@@ -54,6 +54,16 @@ public class GitSyncConfigService {
         );
     }
 
+    public List<GitSyncConfigResponse> listEnabledSyncConfigs(Long groupId) {
+        return syncConfigMapper.selectList(new LambdaQueryWrapper<WbGitSyncConfig>()
+                        .eq(WbGitSyncConfig::getGroupId, groupId)
+                        .eq(WbGitSyncConfig::getEnabled, true)
+                        .orderByAsc(WbGitSyncConfig::getBranch))
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
     public GitSyncConfigResponse create(Long groupId, String branch) {
         WbGitConfig gitConfig = gitConfigService.requireDecryptedConfig(groupId);
         String normalizedBranch = normalizeBranch(branch);
