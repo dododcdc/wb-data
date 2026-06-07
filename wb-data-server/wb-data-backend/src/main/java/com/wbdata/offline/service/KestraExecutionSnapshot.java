@@ -13,6 +13,7 @@ public record KestraExecutionSnapshot(
         Instant startDate,
         Instant endDate,
         List<KestraTaskRunSnapshot> taskRuns,
+        Map<String, String> inputs,
         Map<String, String> labels
 ) {
 }

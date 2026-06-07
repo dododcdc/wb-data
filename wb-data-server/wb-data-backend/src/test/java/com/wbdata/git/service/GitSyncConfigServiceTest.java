@@ -1,6 +1,8 @@
 package com.wbdata.git.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.ISqlSegment;
+import com.baomidou.mybatisplus.core.enums.SqlKeyword;
 import com.wbdata.git.dto.AddAllGitSyncConfigsResponse;
 import com.wbdata.git.dto.GitSyncConfigResponse;
 import com.wbdata.git.entity.WbGitConfig;
@@ -125,6 +127,41 @@ class GitSyncConfigServiceTest {
     }
 
     @Test
+    void listEnabledSyncConfigs_returnsOnlyEnabledConfigsWithoutBranchLookup() {
+        WbGitSyncConfigMapper mapper = Mockito.mock(WbGitSyncConfigMapper.class);
+        GitConfigService gitConfigService = Mockito.mock(GitConfigService.class);
+        GitCommandService gitCommandService = Mockito.mock(GitCommandService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        GitSyncConfigService service = service(mapper, gitConfigService, gitCommandService, kestraClient);
+
+        WbGitSyncConfig enabled = existing("feature/policy-review");
+        enabled.setId(11L);
+        enabled.setEnabled(true);
+        when(mapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(enabled));
+
+        List<GitSyncConfigResponse> configs = service.listEnabledSyncConfigs(4L);
+
+        assertThat(configs).extracting(GitSyncConfigResponse::branch)
+                .containsExactly("feature/policy-review");
+        assertThat(configs.get(0).namespace()).isEqualTo("g4-feature-policy-review");
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        ArgumentCaptor<LambdaQueryWrapper<WbGitSyncConfig>> query = ArgumentCaptor.forClass((Class) LambdaQueryWrapper.class);
+        verify(mapper).selectList(query.capture());
+        List<ISqlSegment> normalSegments = query.getValue().getExpression().getNormal();
+        assertThat(normalSegments)
+                .filteredOn(segment -> segment == SqlKeyword.EQ)
+                .hasSize(2);
+        assertThat(normalSegments)
+                .filteredOn(segment -> segment == SqlKeyword.AND)
+                .hasSize(1);
+        assertThat(query.getValue().getExpression().getOrderBy()).hasSize(1);
+        materializeConditionValueSegments(normalSegments);
+        assertThat(query.getValue().getParamNameValuePairs().values())
+                .contains(4L, true);
+        verify(gitCommandService, never()).listBranches(4L);
+    }
+
+    @Test
     void create_doesNotInsertConfigWhenKestraUpsertFails() {
         WbGitSyncConfigMapper mapper = Mockito.mock(WbGitSyncConfigMapper.class);
         GitConfigService gitConfigService = Mockito.mock(GitConfigService.class);
@@ -183,5 +220,10 @@ class GitSyncConfigServiceTest {
         config.setBranch(branch);
         config.setEnabled(true);
         return config;
+    }
+
+    private void materializeConditionValueSegments(List<ISqlSegment> normalSegments) {
+        normalSegments.get(2).getSqlSegment();
+        normalSegments.get(6).getSqlSegment();
     }
 }
