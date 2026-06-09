@@ -2,7 +2,7 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { LucideIcon } from 'lucide-react';
-import { ChevronDown, Database, FolderOpen, Home, Layers, LogOut, Search, Settings, Shield, Users } from 'lucide-react';
+import { Activity, ChevronDown, Database, FolderOpen, Home, Layers, LogOut, Search, Settings, Shield, Users } from 'lucide-react';
 import { useAuthStore } from '../../utils/auth';
 import { getAuthContext } from '../../api/auth';
 import { getDataSourcePage } from '../../api/datasource';
@@ -21,6 +21,7 @@ import {
     loadGroupListModule,
     loadGroupSettingsModule,
     loadOfflineWorkbenchModule,
+    loadOperationsCenterModule,
     loadQueryModule,
     loadUserListModule,
 } from '../../router/routeModules';
@@ -76,6 +77,7 @@ export default function Layout() {
 
         if (hasPermission('offline.read')) {
             items.push({ kind: 'link', path: '/offline', label: '离线开发', icon: Layers });
+            items.push({ kind: 'link', path: '/operations', label: '运维中心', icon: Activity });
         }
 
         if (hasPermission('member.read')) {
@@ -199,6 +201,11 @@ export default function Layout() {
 
             if (path === '/offline') {
                 void loadOfflineWorkbenchModule();
+                return;
+            }
+
+            if (path === '/operations') {
+                void loadOperationsCenterModule();
                 return;
             }
 

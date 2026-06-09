@@ -31,6 +31,7 @@ vi.mock('../../router/routeModules', () => ({
     loadGroupListModule: vi.fn(),
     loadGroupSettingsModule: vi.fn(),
     loadOfflineWorkbenchModule: vi.fn(),
+    loadOperationsCenterModule: vi.fn(),
     loadQueryModule: vi.fn(),
     loadUserListModule: vi.fn(),
 }));
@@ -114,6 +115,13 @@ describe('Layout workspace context', () => {
         expect(await screen.findByText('policy')).toBeTruthy();
         expect(screen.queryByText('feature/policy-etl')).toBeNull();
         expect(screen.queryByRole('button', { name: /切换分支，当前/ })).toBeNull();
+    });
+
+    it('shows operations center entry when offline read permission is available', async () => {
+        renderOfflineLayout();
+
+        expect(await screen.findByText('policy')).toBeTruthy();
+        expect(screen.getByRole('link', { name: /运维中心/ }).getAttribute('href')).toBe('/operations');
     });
 
     it('leaves branch lookup and switching to the offline workbench', async () => {

@@ -18,6 +18,8 @@ import {
     loadNoGroupStateModule,
     loadNotFoundModule,
     loadOfflineWorkbenchModule,
+    loadOperationsCenterModule,
+    loadOperationsExecutionDetailPageModule,
     loadQueryModule,
     loadUnauthorizedModule,
     loadUserListModule,
@@ -30,6 +32,8 @@ const Dashboard = lazy(loadDashboardModule);
 const DataSourceList = lazy(loadDataSourceListModule);
 const OfflineWorkbench = lazy(loadOfflineWorkbenchModule);
 const ExecutionDetailPage = lazy(loadExecutionDetailPageModule);
+const OperationsCenter = lazy(loadOperationsCenterModule);
+const OperationsExecutionDetailPage = lazy(loadOperationsExecutionDetailPageModule);
 const Query = lazy(loadQueryModule);
 const UserList = lazy(loadUserListModule);
 const GroupList = lazy(loadGroupListModule);
@@ -167,6 +171,16 @@ const router = createBrowserRouter([
                                 ],
                             },
                             {
+                                path: 'operations',
+                                element: <RequirePermission required="offline.read" />,
+                                children: [
+                                    {
+                                        index: true,
+                                        element: withRouteSuspense(<OperationsCenter />),
+                                    },
+                                ],
+                            },
+                            {
                                 path: 'group-settings',
                                 element: <RequirePermission required="member.read" />,
                                 children: [
@@ -214,6 +228,16 @@ const router = createBrowserRouter([
                             {
                                 index: true,
                                 element: withRouteSuspense(<ExecutionDetailPage />),
+                            },
+                        ],
+                    },
+                    {
+                        path: 'operations/executions/:executionId',
+                        element: <RequirePermission required="offline.read" />,
+                        children: [
+                            {
+                                index: true,
+                                element: withRouteSuspense(<OperationsExecutionDetailPage />),
                             },
                         ],
                     },
