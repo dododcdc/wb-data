@@ -103,6 +103,35 @@ class OperationsExecutionServiceTest {
     }
 
     @Test
+    void listExecutions_truncatesKestraSearchTimeRangeToMilliseconds() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
+        Instant from = Instant.parse("2026-06-06T00:00:00.123456Z");
+        Instant to = Instant.parse("2026-06-08T00:00:00.987654Z");
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        when(kestraClient.searchExecutions(searchFilter(
+                "g4-main",
+                "2026-06-06T00:00:00.123Z",
+                "2026-06-08T00:00:00.987Z"
+        ))).thenReturn(List.of());
+
+        service.listExecutions(4L, new OperationsExecutionQuery(
+                "main",
+                null,
+                null,
+                from,
+                to
+        ));
+
+        verify(kestraClient).searchExecutions(searchFilter(
+                "g4-main",
+                "2026-06-06T00:00:00.123Z",
+                "2026-06-08T00:00:00.987Z"
+        ));
+    }
+
+    @Test
     void listExecutions_unknownBranchReturnsEmptyExecutionsWithoutSearchingKestra() {
         GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
         KestraClient kestraClient = Mockito.mock(KestraClient.class);
@@ -386,10 +415,14 @@ class OperationsExecutionServiceTest {
     }
 
     private static Map<String, String> searchFilter(String namespace) {
+        return searchFilter(namespace, FROM.toString(), TO.toString());
+    }
+
+    private static Map<String, String> searchFilter(String namespace, String from, String to) {
         Map<String, String> filters = new LinkedHashMap<>();
         filters.put("filters[namespace][EQUALS]", namespace);
-        filters.put("startDate", FROM.toString());
-        filters.put("endDate", TO.toString());
+        filters.put("startDate", from);
+        filters.put("endDate", to);
         return filters;
     }
 

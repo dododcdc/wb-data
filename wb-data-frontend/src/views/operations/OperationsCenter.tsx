@@ -149,18 +149,22 @@ export default function OperationsCenter() {
         setBranchInitializedGroupId(groupId);
     }, [branchInitializedGroupId, groupId, repoStatusQuery.data?.branch, repoStatusQuery.isLoading]);
 
-    const listQueryPayload = useMemo<OperationsExecutionListQuery>(() => ({
-        branch: branchFilter || null,
-        flowId: flowFilter.trim() || null,
-        status: statusFilter === ALL_STATUSES ? null : statusFilter,
-        from: normalizeDateTimeInput(fromFilter),
-        to: normalizeDateTimeInput(toFilter),
-    }), [branchFilter, flowFilter, fromFilter, statusFilter, toFilter]);
+    const listQueryPayload = useMemo<OperationsExecutionListQuery | null>(() => {
+        if (groupId == null) return null;
+        return {
+            groupId,
+            branch: branchFilter || null,
+            flowId: flowFilter.trim() || null,
+            status: statusFilter === ALL_STATUSES ? null : statusFilter,
+            from: normalizeDateTimeInput(fromFilter),
+            to: normalizeDateTimeInput(toFilter),
+        };
+    }, [branchFilter, flowFilter, fromFilter, groupId, statusFilter, toFilter]);
 
     const executionsQuery = useQuery({
         queryKey: ['operations-executions', groupId, listQueryPayload],
-        queryFn: () => listOperationsExecutions(listQueryPayload),
-        enabled: groupId != null && branchInitializedGroupId === groupId,
+        queryFn: () => listOperationsExecutions(listQueryPayload ?? undefined),
+        enabled: listQueryPayload != null && branchInitializedGroupId === groupId,
     });
 
     const branchOptions = useMemo(
@@ -169,7 +173,10 @@ export default function OperationsCenter() {
     );
 
     const rerunMutation = useMutation({
-        mutationFn: (executionId: string) => rerunOperationsExecution(executionId),
+        mutationFn: (executionId: string) => {
+            if (groupId == null) throw new Error('missing group');
+            return rerunOperationsExecution(groupId, executionId);
+        },
         onMutate: (executionId) => {
             setPendingRerunId(executionId);
         },

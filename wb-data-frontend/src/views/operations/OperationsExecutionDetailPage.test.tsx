@@ -73,7 +73,7 @@ describe('OperationsExecutionDetailPage', () => {
             labels: { owner: 'policy' },
         });
 
-        getOperationsExecutionLogsMock.mockImplementation((_executionId, taskId) => {
+        getOperationsExecutionLogsMock.mockImplementation((_groupId, _executionId, taskId) => {
             if (taskId === 'extract_policy') {
                 return Promise.resolve([
                     {
@@ -123,12 +123,12 @@ describe('OperationsExecutionDetailPage', () => {
         expect(await screen.findByText('daily_policy')).toBeTruthy();
         expect(screen.getByText('feature/policy-review')).toBeTruthy();
         expect(screen.getByText('load_policy failed')).toBeTruthy();
-        await waitFor(() => expect(getOperationsExecutionLogsMock).toHaveBeenCalledWith('exec-1', 'load_policy'));
+        await waitFor(() => expect(getOperationsExecutionLogsMock).toHaveBeenCalledWith(4, 'exec-1', 'load_policy'));
         expect(await screen.findByText('load failed on row 42')).toBeTruthy();
 
         fireEvent.click(screen.getByRole('button', { name: '查看 extract_policy 日志' }));
 
-        await waitFor(() => expect(getOperationsExecutionLogsMock).toHaveBeenCalledWith('exec-1', 'extract_policy'));
+        await waitFor(() => expect(getOperationsExecutionLogsMock).toHaveBeenCalledWith(4, 'exec-1', 'extract_policy'));
         expect(await screen.findByText('extract finished')).toBeTruthy();
     });
 
@@ -145,7 +145,7 @@ describe('OperationsExecutionDetailPage', () => {
 
         fireEvent.click(await screen.findByRole('button', { name: '重跑任务' }));
 
-        await waitFor(() => expect(rerunOperationsExecutionMock).toHaveBeenCalledWith('exec-1'));
+        await waitFor(() => expect(rerunOperationsExecutionMock).toHaveBeenCalledWith(4, 'exec-1'));
         expect(showFeedback).toHaveBeenCalledWith({
             tone: 'success',
             title: '已触发重跑',
