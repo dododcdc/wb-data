@@ -118,7 +118,7 @@ describe('OperationsCenter', () => {
         expect(screen.getByRole('button', { name: '重跑 daily_policy' })).toBeTruthy();
         expect(screen.queryByRole('button', { name: '重跑 hourly_policy' })).toBeNull();
         await waitFor(() => expect(listOperationsExecutionsMock).toHaveBeenCalledWith(
-            expect.objectContaining({ branch: 'feature/policy-review' })
+            expect.objectContaining({ groupId: 4, branch: 'feature/policy-review' })
         ));
     });
 
@@ -135,7 +135,7 @@ describe('OperationsCenter', () => {
 
         fireEvent.click(await screen.findByRole('button', { name: '重跑 daily_policy' }));
 
-        await waitFor(() => expect(rerunOperationsExecutionMock).toHaveBeenCalledWith('exec-1'));
+        await waitFor(() => expect(rerunOperationsExecutionMock).toHaveBeenCalledWith(4, 'exec-1'));
         await waitFor(() => expect(listOperationsExecutionsMock).toHaveBeenCalledTimes(2));
     });
 });

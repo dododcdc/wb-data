@@ -197,7 +197,7 @@ export default function OperationsExecutionDetailPage() {
     const detailQuery = useQuery({
         queryKey: ['operations-execution', groupId, executionId],
         enabled: groupId != null && Boolean(executionId),
-        queryFn: () => getOperationsExecution(executionId ?? ''),
+        queryFn: () => getOperationsExecution(groupId ?? 0, executionId ?? ''),
     });
 
     const detail = detailQuery.data ?? null;
@@ -217,11 +217,11 @@ export default function OperationsExecutionDetailPage() {
     const logsQuery = useQuery({
         queryKey: ['operations-execution-logs', groupId, executionId, selectedTaskId ?? 'all'],
         enabled: groupId != null && Boolean(executionId) && Boolean(detail) && selectedTaskId !== undefined,
-        queryFn: () => getOperationsExecutionLogs(executionId ?? '', selectedTaskId ?? null),
+        queryFn: () => getOperationsExecutionLogs(groupId ?? 0, executionId ?? '', selectedTaskId ?? null),
     });
 
     const rerunMutation = useMutation({
-        mutationFn: () => rerunOperationsExecution(executionId ?? ''),
+        mutationFn: () => rerunOperationsExecution(groupId ?? 0, executionId ?? ''),
         onSuccess: () => {
             showFeedback({ tone: 'success', title: '已触发重跑', detail: '' });
             void queryClient.invalidateQueries({ queryKey: ['operations-executions'] });

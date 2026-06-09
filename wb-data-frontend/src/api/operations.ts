@@ -1,6 +1,7 @@
 import request from '../utils/request';
 
 export interface OperationsExecutionListQuery {
+    groupId: number;
     branch?: string | null;
     flowId?: string | null;
     status?: string | null;
@@ -75,6 +76,8 @@ function buildListSearchParams(query?: OperationsExecutionListQuery) {
     const params = new URLSearchParams();
     if (!query) return params;
 
+    params.set('groupId', String(query.groupId));
+
     const entries: Array<[keyof OperationsExecutionListQuery, string | null | undefined]> = [
         ['branch', query.branch],
         ['flowId', query.flowId],
@@ -97,26 +100,27 @@ export const listOperationsExecutions = (query?: OperationsExecutionListQuery) =
     return request.get<unknown, OperationsExecutionListResponse>(`/api/v1/operations/executions${suffix}`);
 };
 
-export const getOperationsExecution = (executionId: string) => {
+export const getOperationsExecution = (groupId: number, executionId: string) => {
+    const params = new URLSearchParams({ groupId: String(groupId) });
     return request.get<unknown, OperationsExecutionDetail>(
-        `/api/v1/operations/executions/${encodeURIComponent(executionId)}`
+        `/api/v1/operations/executions/${encodeURIComponent(executionId)}?${params.toString()}`
     );
 };
 
-export const getOperationsExecutionLogs = (executionId: string, taskId?: string | null) => {
-    const params = new URLSearchParams();
+export const getOperationsExecutionLogs = (groupId: number, executionId: string, taskId?: string | null) => {
+    const params = new URLSearchParams({ groupId: String(groupId) });
     const normalizedTaskId = taskId?.trim();
     if (normalizedTaskId) params.set('taskId', normalizedTaskId);
-    const suffix = params.size > 0 ? `?${params.toString()}` : '';
 
     return request.get<unknown, OperationsExecutionLogEntry[]>(
-        `/api/v1/operations/executions/${encodeURIComponent(executionId)}/logs${suffix}`
+        `/api/v1/operations/executions/${encodeURIComponent(executionId)}/logs?${params.toString()}`
     );
 };
 
-export const rerunOperationsExecution = (executionId: string) => {
+export const rerunOperationsExecution = (groupId: number, executionId: string) => {
+    const params = new URLSearchParams({ groupId: String(groupId) });
     return request.post<unknown, OperationsExecutionRerunResponse>(
-        `/api/v1/operations/executions/${encodeURIComponent(executionId)}/rerun`,
+        `/api/v1/operations/executions/${encodeURIComponent(executionId)}/rerun?${params.toString()}`,
         null
     );
 };

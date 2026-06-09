@@ -23,6 +23,8 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -187,9 +189,13 @@ public class OperationsExecutionService {
     private Map<String, String> buildExecutionSearchFilters(String namespace, Instant from, Instant to) {
         Map<String, String> filters = new LinkedHashMap<>();
         filters.put("filters[namespace][EQUALS]", namespace);
-        filters.put("startDate", from.toString());
-        filters.put("endDate", to.toString());
+        filters.put("startDate", toKestraSearchInstant(from));
+        filters.put("endDate", toKestraSearchInstant(to));
         return filters;
+    }
+
+    private String toKestraSearchInstant(Instant instant) {
+        return DateTimeFormatter.ISO_INSTANT.format(instant.truncatedTo(ChronoUnit.MILLIS));
     }
 
     private boolean isBusinessExecution(KestraExecutionSnapshot execution, Map<String, String> namespaceToBranch) {
