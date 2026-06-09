@@ -4,6 +4,8 @@ export const loadDataSourceListModule = () => import('../views/datasources/DataS
 export const loadQueryModule = () => import('../views/query/Query');
 export const loadOfflineWorkbenchModule = () => import('../views/offline/OfflineWorkbench');
 export const loadExecutionDetailPageModule = () => import('../views/offline/ExecutionDetailPage');
+export const loadOperationsCenterModule = () => import('../views/operations/OperationsCenter');
+export const loadOperationsExecutionDetailPageModule = () => import('../views/operations/OperationsExecutionDetailPage');
 export const loadUserListModule = () => import('../views/users/UserList');
 export const loadGroupListModule = () => import('../views/groups/GroupList');
 export const loadGroupSettingsModule = () => import('../views/group-settings/GroupSettingsPage');
