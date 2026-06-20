@@ -46,6 +46,7 @@
 
 .operations-filter__field--time-range {
     grid-column: span 2;
+    min-width: 0;
 }
 
 .operations-filter__actions {

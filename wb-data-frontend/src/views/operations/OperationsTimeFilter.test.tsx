@@ -104,4 +104,29 @@ describe('OperationsTimeFilter', () => {
         expect(screen.getByText('开始时间不能晚于结束时间')).toBeTruthy();
         expect(screen.getByRole('button', { name: '应用' }).hasAttribute('disabled')).toBe(true);
     });
+
+    it('uses a single calendar month on a narrow viewport', async () => {
+        vi.stubGlobal('matchMedia', vi.fn().mockImplementation((query: string) => ({
+            matches: query === '(max-width: 720px)',
+            media: query,
+            onchange: null,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            dispatchEvent: vi.fn(),
+        })));
+        render(
+            <OperationsTimeFilter
+                from="2025-12-28 08:30:00"
+                to="2026-01-03 18:45:30"
+                onChange={vi.fn()}
+            />
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: /2025-12-28 08:30:00/ }));
+        fireEvent.click(await screen.findByRole('tab', { name: '自定义范围' }));
+
+        expect(screen.getAllByRole('grid')).toHaveLength(1);
+    });
 });
