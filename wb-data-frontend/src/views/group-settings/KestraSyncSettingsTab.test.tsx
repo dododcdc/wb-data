@@ -13,6 +13,7 @@ const {
   createAllGitSyncConfigs,
   triggerGitSyncConfig,
   deleteGitSyncConfig,
+  updateGitSyncConfigStatus,
 } = vi.hoisted(() => ({
   getGitConfig: vi.fn(),
   getGitSyncConfigs: vi.fn(),
@@ -20,6 +21,7 @@ const {
   createAllGitSyncConfigs: vi.fn(),
   triggerGitSyncConfig: vi.fn(),
   deleteGitSyncConfig: vi.fn(),
+  updateGitSyncConfigStatus: vi.fn(),
 }));
 
 vi.mock('./gitSettingsApi', () => ({
@@ -29,6 +31,7 @@ vi.mock('./gitSettingsApi', () => ({
   createAllGitSyncConfigs,
   triggerGitSyncConfig,
   deleteGitSyncConfig,
+  updateGitSyncConfigStatus,
 }));
 
 beforeEach(() => {
@@ -219,6 +222,48 @@ describe('KestraSyncSettingsTab', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '移出同步 feature/policy-review' }));
     await waitFor(() => expect(deleteGitSyncConfig).toHaveBeenCalledWith(1, 8));
+  });
+
+  it('toggles the auto-sync status of a branch', async () => {
+    getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
+    getGitSyncConfigs.mockResolvedValueOnce({
+      configs: [
+        {
+          id: 7,
+          groupId: 1,
+          branch: 'main',
+          namespace: 'g1-main',
+          syncFlowId: 'sync-flows-g1-main',
+          enabled: true,
+          lastSyncAt: null,
+          lastSyncStatus: null,
+          lastSyncMessage: null,
+        },
+      ],
+      availableBranches: ['main'],
+      syncCron: '*/5 * * * *',
+    });
+    updateGitSyncConfigStatus.mockResolvedValueOnce({
+      id: 7,
+      groupId: 1,
+      branch: 'main',
+      namespace: 'g1-main',
+      syncFlowId: 'sync-flows-g1-main',
+      enabled: false,
+      lastSyncAt: null,
+      lastSyncStatus: null,
+      lastSyncMessage: null,
+    });
+
+    renderWithQuery(<KestraSyncSettingsTab groupId={1} canEdit={true} />);
+
+    const checkbox = await screen.findByRole('checkbox', { name: '启用/禁用自动同步' });
+    expect((checkbox as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(checkbox);
+    await waitFor(() => {
+      expect(updateGitSyncConfigStatus).toHaveBeenCalledWith(1, 7, false);
+    });
   });
 
   it('hides sync mutation controls for read-only users', async () => {
