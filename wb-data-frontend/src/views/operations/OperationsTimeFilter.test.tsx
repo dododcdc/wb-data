@@ -51,4 +51,21 @@ describe('OperationsTimeFilter', () => {
         fireEvent.click(screen.getByRole('button', { name: '应用' }));
         expect(onChange).toHaveBeenCalledWith('2026-06-14 12:00:00', '2026-06-21 12:00:00');
     });
+
+    it('shows two consecutive months for a December to January range', async () => {
+        render(
+            <OperationsTimeFilter
+                from="2025-12-28 08:30:00"
+                to="2026-01-03 18:45:30"
+                onChange={vi.fn()}
+            />
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: /2025-12-28 08:30:00/ }));
+        fireEvent.click(await screen.findByRole('tab', { name: '自定义范围' }));
+
+        expect(screen.getByText('2025年12月')).toBeTruthy();
+        expect(screen.getByText('2026年1月')).toBeTruthy();
+        expect(screen.getAllByRole('grid')).toHaveLength(2);
+    });
 });
