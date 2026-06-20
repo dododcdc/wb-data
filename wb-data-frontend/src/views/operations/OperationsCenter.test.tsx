@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getOfflineRepoStatus } from '../../api/offline';
 import { listOperationsExecutions, rerunOperationsExecution } from '../../api/operations';
+import { formatLocalDateTime } from '../../lib/dateTime';
 import { useAuthStore } from '../../utils/auth';
 import OperationsCenter from './OperationsCenter';
 import * as SimpleSelectModule from '../../components/SimpleSelect';
@@ -24,6 +25,29 @@ vi.mock('../../api/operations', () => ({
 
 vi.mock('../../hooks/useOperationFeedback', () => ({
     useOperationFeedback: () => ({ showFeedback }),
+}));
+
+vi.mock('../../components/TimeRangePicker', () => ({
+    TimeRangePicker: ({
+        from,
+        to,
+        onChange,
+    }: {
+        from: string;
+        to: string;
+        onChange: (from: string, to: string) => void;
+    }) => (
+        <div data-testid="mock-time-range-picker">
+            <span data-testid="range-from">{from}</span>
+            <span data-testid="range-to">{to}</span>
+            <button
+                type="button"
+                onClick={() => onChange('2026-06-07 01:00:15', '2026-06-07 02:00:45')}
+            >
+                应用测试时间范围
+            </button>
+        </div>
+    ),
 }));
 
 
@@ -136,6 +160,7 @@ describe('OperationsCenter', () => {
         expect(screen.getByText('load_policy failed')).toBeTruthy();
         expect(screen.getByRole('button', { name: '重跑 daily_policy' })).toBeTruthy();
         expect(screen.queryByRole('button', { name: '重跑 hourly_policy' })).toBeNull();
+        expect(screen.getByText(formatLocalDateTime(new Date('2026-06-07T01:00:00Z')))).toBeTruthy();
         await waitFor(() => expect(listOperationsExecutionsMock).toHaveBeenCalledWith(
             expect.objectContaining({ groupId: 4, branch: 'feature/policy-review' })
         ));
@@ -167,28 +192,11 @@ describe('OperationsCenter', () => {
         expect(options.filter(o => o === '就绪').length).toBe(0);
     });
 
-    it('applies a second-precision range with time segment controls', async () => {
+    it('queries only with the applied second-precision range', async () => {
         renderPage();
 
-        // 1. Time range defaults to 24h, custom start/end fields are hidden
-        expect(screen.queryByLabelText('开始于')).toBeNull();
-        expect(screen.queryByLabelText('结束于')).toBeNull();
+        fireEvent.click(await screen.findByRole('button', { name: '应用测试时间范围' }));
 
-        // 2. Change time range to Custom Time
-        const rangeSelect = await screen.findByTestId('time-range-select') as HTMLSelectElement;
-        fireEvent.change(rangeSelect, { target: { value: 'custom' } });
-
-        // 3. Custom inputs should be rendered with step="1"
-        const startInput = screen.getByLabelText('开始于') as HTMLInputElement;
-        const endInput = screen.getByLabelText('结束于') as HTMLInputElement;
-        expect(startInput.getAttribute('step')).toBe('1');
-        expect(endInput.getAttribute('step')).toBe('1');
-
-        // 4. Fill custom inputs with second-precision dates
-        fireEvent.change(startInput, { target: { value: '2026-06-07T01:00:15' } });
-        fireEvent.change(endInput, { target: { value: '2026-06-07T02:00:45' } });
-
-        // 5. Verify the API is called with custom time range in ISO format
         await waitFor(() => {
             expect(listOperationsExecutionsMock).toHaveBeenLastCalledWith(
                 expect.objectContaining({
@@ -199,38 +207,34 @@ describe('OperationsCenter', () => {
         });
     });
 
-    it('calculates the 7-day range when 7d option is selected', async () => {
-        const mockNow = new Date('2026-06-20T12:00:00Z').getTime();
-        vi.spyOn(Date, 'now').mockReturnValue(mockNow);
+    it('initializes an explicit browser-local last-24-hours range', async () => {
+        const now = new Date(2026, 5, 20, 12, 0, 0);
+        vi.spyOn(Date, 'now').mockReturnValue(now.getTime());
 
         renderPage();
-
-        const rangeSelect = await screen.findByTestId('time-range-select') as HTMLSelectElement;
-        fireEvent.change(rangeSelect, { target: { value: '7d' } });
 
         await waitFor(() => {
             expect(listOperationsExecutionsMock).toHaveBeenLastCalledWith(
                 expect.objectContaining({
-                    from: new Date(mockNow - 7 * 24 * 60 * 60 * 1000).toISOString(),
-                    to: new Date(mockNow).toISOString(),
+                    from: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
+                    to: now.toISOString(),
                 })
             );
         });
     });
 
-    it('clears all custom filters and resets time range on clear button click', async () => {
+    it('resets an applied custom range to the browser-local last 24 hours', async () => {
+        const now = new Date(2026, 5, 20, 12, 0, 0);
+        vi.spyOn(Date, 'now').mockReturnValue(now.getTime());
         renderPage();
 
-        const rangeSelect = await screen.findByTestId('time-range-select') as HTMLSelectElement;
-        fireEvent.change(rangeSelect, { target: { value: 'custom' } });
+        fireEvent.click(await screen.findByRole('button', { name: '应用测试时间范围' }));
+        await waitFor(() => expect(screen.getByTestId('range-from').textContent).toBe('2026-06-07 01:00:15'));
 
-        const startInput = screen.getByLabelText('开始于') as HTMLInputElement;
-        fireEvent.change(startInput, { target: { value: '2026-06-07T01:00:00' } });
+        fireEvent.click(screen.getByRole('button', { name: '重置' }));
 
-        const clearBtn = screen.getByRole('button', { name: '清空' });
-        fireEvent.click(clearBtn);
-
-        expect(rangeSelect.value).toBe('24h');
-        expect(screen.queryByLabelText('开始于')).toBeNull();
+        expect(screen.getByTestId('range-from').textContent)
+            .toBe(formatLocalDateTime(new Date(now.getTime() - 24 * 60 * 60 * 1000)));
+        expect(screen.getByTestId('range-to').textContent).toBe(formatLocalDateTime(now));
     });
 });
