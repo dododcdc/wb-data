@@ -20,19 +20,16 @@ const ALL_BRANCHES = '__all_branches__';
 const ALL_STATUSES = '__all_statuses__';
 
 const STATUS_OPTIONS = [
-    ALL_STATUSES,
-    'SUCCESS',
-    'FAILED',
-    'RUNNING',
-    'RETRYING',
-    'CREATED',
-    'QUEUED',
-    'CANCELLED',
-    'KILLED',
-].map((status) => ({
-    value: status,
-    label: status === ALL_STATUSES ? '全部状态' : getExecutionStatusLabel(status),
-}));
+    { value: ALL_STATUSES, label: '全部状态' },
+    { value: 'SUCCESS', label: '成功' },
+    { value: 'FAILED', label: '失败' },
+    { value: 'RUNNING', label: '执行中' },
+    { value: 'RETRYING', label: '重试中' },
+    { value: 'CREATED', label: '已创建' },
+    { value: 'QUEUED', label: '排队中' },
+    { value: 'CANCELLED', label: '已取消' },
+    { value: 'KILLED', label: '已停止' },
+];
 
 function formatDateTime(value: string | null) {
     if (!value) return '—';
@@ -123,6 +120,7 @@ export default function OperationsCenter() {
     const [branchFilter, setBranchFilter] = useState('');
     const [flowFilter, setFlowFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState(ALL_STATUSES);
+    const [timeRange, setTimeRange] = useState('24h');
     const [fromFilter, setFromFilter] = useState('');
     const [toFilter, setToFilter] = useState('');
     const [branchInitializedGroupId, setBranchInitializedGroupId] = useState<number | null>(null);
@@ -132,6 +130,7 @@ export default function OperationsCenter() {
         setBranchFilter('');
         setFlowFilter('');
         setStatusFilter(ALL_STATUSES);
+        setTimeRange('24h');
         setFromFilter('');
         setToFilter('');
         setBranchInitializedGroupId(null);
@@ -151,15 +150,27 @@ export default function OperationsCenter() {
 
     const listQueryPayload = useMemo<OperationsExecutionListQuery | null>(() => {
         if (groupId == null) return null;
+        const nowMin = Math.floor(Date.now() / 60000) * 60000;
+        let fromVal: string | null = null;
+        let toVal: string | null = null;
+
+        if (timeRange === '7d') {
+            fromVal = new Date(nowMin - 7 * 24 * 60 * 60 * 1000).toISOString();
+            toVal = new Date(nowMin).toISOString();
+        } else if (timeRange === 'custom') {
+            fromVal = normalizeDateTimeInput(fromFilter);
+            toVal = normalizeDateTimeInput(toFilter);
+        }
+
         return {
             groupId,
             branch: branchFilter || null,
             flowId: flowFilter.trim() || null,
             status: statusFilter === ALL_STATUSES ? null : statusFilter,
-            from: normalizeDateTimeInput(fromFilter),
-            to: normalizeDateTimeInput(toFilter),
+            from: fromVal,
+            to: toVal,
         };
-    }, [branchFilter, flowFilter, fromFilter, groupId, statusFilter, toFilter]);
+    }, [branchFilter, flowFilter, fromFilter, groupId, statusFilter, timeRange, toFilter]);
 
     const executionsQuery = useQuery({
         queryKey: ['operations-executions', groupId, listQueryPayload],
@@ -200,6 +211,7 @@ export default function OperationsCenter() {
     const handleClearFilters = () => {
         setFlowFilter('');
         setStatusFilter(ALL_STATUSES);
+        setTimeRange('24h');
         setFromFilter('');
         setToFilter('');
         setBranchFilter(repoStatusQuery.data?.branch ?? '');
@@ -233,6 +245,7 @@ export default function OperationsCenter() {
                     <label className="operations-filter__field">
                         <span>分支</span>
                         <SimpleSelect
+                            id="branch-select"
                             value={branchFilter || ALL_BRANCHES}
                             options={branchOptions}
                             disabled={repoStatusQuery.isLoading}
@@ -257,6 +270,7 @@ export default function OperationsCenter() {
                     <label className="operations-filter__field">
                         <span>状态</span>
                         <SimpleSelect
+                            id="status-select"
                             value={statusFilter}
                             options={STATUS_OPTIONS}
                             className="operations-filter__select"
@@ -265,22 +279,49 @@ export default function OperationsCenter() {
                     </label>
 
                     <label className="operations-filter__field">
-                        <span>开始于</span>
-                        <input
-                            type="datetime-local"
-                            value={fromFilter}
-                            onChange={(event) => setFromFilter(event.target.value)}
+                        <span>时间范围</span>
+                        <SimpleSelect
+                            id="time-range-select"
+                            value={timeRange}
+                            options={[
+                                { value: '24h', label: '最近 24 小时' },
+                                { value: '7d', label: '最近 7 天' },
+                                { value: 'custom', label: '自定义时间' },
+                            ]}
+                            className="operations-filter__select"
+                            onChange={(value) => {
+                                setTimeRange(value);
+                                if (value !== 'custom') {
+                                    setFromFilter('');
+                                    setToFilter('');
+                                }
+                            }}
                         />
                     </label>
 
-                    <label className="operations-filter__field">
-                        <span>结束于</span>
-                        <input
-                            type="datetime-local"
-                            value={toFilter}
-                            onChange={(event) => setToFilter(event.target.value)}
-                        />
-                    </label>
+                    {timeRange === 'custom' && (
+                        <>
+                            <label className="operations-filter__field">
+                                <span>开始于</span>
+                                <input
+                                    type="datetime-local"
+                                    step="1"
+                                    value={fromFilter}
+                                    onChange={(event) => setFromFilter(event.target.value)}
+                                />
+                            </label>
+
+                            <label className="operations-filter__field">
+                                <span>结束于</span>
+                                <input
+                                    type="datetime-local"
+                                    step="1"
+                                    value={toFilter}
+                                    onChange={(event) => setToFilter(event.target.value)}
+                                />
+                            </label>
+                        </>
+                    )}
 
                     <Button type="button" variant="outline" onClick={handleClearFilters}>
                         清空
