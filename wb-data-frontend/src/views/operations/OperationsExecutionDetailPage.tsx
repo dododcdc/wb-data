@@ -22,6 +22,7 @@ import {
     type OperationsExecutionTaskRun,
 } from '../../api/operations';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
+import { formatBrowserDateTime } from '../../lib/dateTime';
 import { useAuthStore } from '../../utils/auth';
 import './OperationsExecutionDetailPage.css';
 
@@ -56,18 +57,6 @@ function getStatusIcon(status: string | null | undefined) {
 
 function shouldSpinStatusIcon(status: string | null | undefined) {
     return status === 'RUNNING' || status === 'RETRYING';
-}
-
-function formatDateTime(value: string | null | undefined) {
-    if (!value) return '—';
-    return new Intl.DateTimeFormat('zh-CN', {
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-    }).format(new Date(value));
 }
 
 function formatDuration(durationMs: number | null | undefined) {
@@ -174,7 +163,7 @@ function TaskRunButton({
                 <TaskStatus status={task.status} />
             </span>
             <span className="operations-execution-task__meta">
-                <span>{formatDateTime(task.startDate)}</span>
+                <span>{formatBrowserDateTime(task.startDate)}</span>
                 <span>{formatDuration(task.durationMs)}</span>
             </span>
         </button>
@@ -329,9 +318,9 @@ export default function OperationsExecutionDetailPage() {
             <main className="operations-execution-detail-main">
                 <section className="operations-execution-summary" aria-label="执行摘要">
                     <DetailMetric label="分支" value={<span title={detail.branch}>{detail.branch}</span>} />
-                    <DetailMetric label="触发时间" value={formatDateTime(detail.createdAt)} />
-                    <DetailMetric label="开始时间" value={formatDateTime(detail.startDate)} />
-                    <DetailMetric label="结束时间" value={formatDateTime(detail.endDate)} />
+                    <DetailMetric label="触发时间" value={formatBrowserDateTime(detail.createdAt)} />
+                    <DetailMetric label="开始时间" value={formatBrowserDateTime(detail.startDate)} />
+                    <DetailMetric label="结束时间" value={formatBrowserDateTime(detail.endDate)} />
                     <DetailMetric label="耗时" value={formatDuration(detail.durationMs)} />
                     <DetailMetric label="节点数" value={detail.taskRuns.length} />
                 </section>
