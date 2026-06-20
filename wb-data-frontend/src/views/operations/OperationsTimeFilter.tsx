@@ -11,6 +11,7 @@ import {
     parseLocalDateTime,
 } from '../../lib/dateTime';
 import 'react-day-picker/dist/style.css';
+import './OperationsTimeFilter.css';
 
 export interface OperationsTimeFilterProps {
     from: string;
@@ -69,8 +70,29 @@ function appliedDates(from: string, to: string) {
     };
 }
 
+function useNarrowViewport() {
+    const query = '(max-width: 720px)';
+    const [narrow, setNarrow] = React.useState(() => (
+        typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia(query).matches
+    ));
+
+    React.useEffect(() => {
+        if (typeof window.matchMedia !== 'function') return undefined;
+        const media = window.matchMedia(query);
+        const handleChange = (event: MediaQueryListEvent) => setNarrow(event.matches);
+        setNarrow(media.matches);
+        media.addEventListener('change', handleChange);
+        return () => media.removeEventListener('change', handleChange);
+    }, []);
+
+    return narrow;
+}
+
 export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilterProps) {
     const titleId = React.useId();
+    const narrowViewport = useNarrowViewport();
     const [open, setOpen] = React.useState(false);
     const [mode, setMode] = React.useState<FilterMode>('quick');
     const [draftStart, setDraftStart] = React.useState<Date | null>(null);
@@ -316,7 +338,7 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
                                         mode="range"
                                         locale={zhCN}
                                         month={visibleMonth}
-                                        numberOfMonths={2}
+                                        numberOfMonths={narrowViewport ? 1 : 2}
                                         selected={selectedRange}
                                         fixedWeeks
                                         showOutsideDays
