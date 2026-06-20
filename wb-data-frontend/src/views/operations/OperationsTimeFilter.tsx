@@ -49,6 +49,14 @@ function withDate(source: Date, date: Date) {
     );
 }
 
+function dateText(date: Date) {
+    return formatLocalDateTime(date).slice(0, 10);
+}
+
+function timeText(date: Date) {
+    return formatLocalDateTime(date).slice(11);
+}
+
 function appliedDates(from: string, to: string) {
     const start = parseLocalDateTime(from);
     const end = parseLocalDateTime(to);
@@ -70,6 +78,10 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
     const [activePreset, setActivePreset] = React.useState<string | null>(null);
     const [visibleMonth, setVisibleMonth] = React.useState(() => new Date());
     const [selectingEnd, setSelectingEnd] = React.useState(false);
+    const [startDateText, setStartDateText] = React.useState('');
+    const [startTimeText, setStartTimeText] = React.useState('');
+    const [endDateText, setEndDateText] = React.useState('');
+    const [endTimeText, setEndTimeText] = React.useState('');
 
     const initializeDraft = React.useCallback(() => {
         const applied = appliedDates(from, to);
@@ -79,6 +91,10 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
         setActivePreset(null);
         setVisibleMonth(new Date(applied.start.getFullYear(), applied.start.getMonth(), 1));
         setSelectingEnd(false);
+        setStartDateText(dateText(applied.start));
+        setStartTimeText(timeText(applied.start));
+        setEndDateText(dateText(applied.end));
+        setEndTimeText(timeText(applied.end));
     }, [from, to]);
 
     const handleOpenChange = (nextOpen: boolean) => {
@@ -88,33 +104,74 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
 
     const selectPreset = (label: string, milliseconds: number) => {
         const end = new Date(Date.now());
-        setDraftStart(new Date(end.getTime() - milliseconds));
+        const start = new Date(end.getTime() - milliseconds);
+        setDraftStart(start);
         setDraftEnd(end);
+        setStartDateText(dateText(start));
+        setStartTimeText(timeText(start));
+        setEndDateText(dateText(end));
+        setEndTimeText(timeText(end));
         setActivePreset(label);
     };
 
+    const validationMessage = !draftStart
+        ? '请输入有效的开始时间'
+        : !draftEnd
+            ? '请输入有效的结束时间'
+            : draftStart.getTime() > draftEnd.getTime()
+                ? '开始时间不能晚于结束时间'
+                : null;
+
     const handleApply = () => {
-        if (!draftStart || !draftEnd || draftStart.getTime() > draftEnd.getTime()) return;
+        if (validationMessage || !draftStart || !draftEnd) return;
         onChange(formatLocalDateTime(draftStart), formatLocalDateTime(draftEnd));
         setOpen(false);
+    };
+
+    const updateStart = (nextDateText: string, nextTimeText: string) => {
+        setStartDateText(nextDateText);
+        setStartTimeText(nextTimeText);
+        const next = parseLocalDateTime(`${nextDateText} ${nextTimeText}`);
+        setDraftStart(next);
+        if (next) setVisibleMonth(new Date(next.getFullYear(), next.getMonth(), 1));
+        setActivePreset(null);
+    };
+
+    const updateEnd = (nextDateText: string, nextTimeText: string) => {
+        setEndDateText(nextDateText);
+        setEndTimeText(nextTimeText);
+        setDraftEnd(parseLocalDateTime(`${nextDateText} ${nextTimeText}`));
+        setActivePreset(null);
     };
 
     const handleDayClick = (day: Date) => {
         setActivePreset(null);
         if (!selectingEnd || !draftStart) {
             const timeSource = draftStart ?? new Date(day.getFullYear(), day.getMonth(), day.getDate());
-            setDraftStart(withDate(timeSource, day));
+            const nextStart = withDate(timeSource, day);
+            setDraftStart(nextStart);
             setDraftEnd(null);
+            setStartDateText(dateText(nextStart));
+            setStartTimeText(timeText(nextStart));
+            setEndDateText('');
+            setEndTimeText('');
             setSelectingEnd(true);
             return;
         }
 
         const nextEnd = withDate(draftEnd ?? draftStart, day);
         if (nextEnd.getTime() < draftStart.getTime()) {
-            setDraftEnd(withDate(draftEnd ?? draftStart, draftStart));
+            const reorderedEnd = withDate(draftEnd ?? draftStart, draftStart);
+            setDraftEnd(reorderedEnd);
             setDraftStart(nextEnd);
+            setStartDateText(dateText(nextEnd));
+            setStartTimeText(timeText(nextEnd));
+            setEndDateText(dateText(reorderedEnd));
+            setEndTimeText(timeText(reorderedEnd));
         } else {
             setDraftEnd(nextEnd);
+            setEndDateText(dateText(nextEnd));
+            setEndTimeText(timeText(nextEnd));
         }
         setSelectingEnd(false);
     };
@@ -185,6 +242,46 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
                                 </div>
                             ) : (
                                 <div className="operations-time-filter__custom">
+                                    <div className="operations-time-filter__exact-fields">
+                                        <div className="operations-time-filter__exact-row">
+                                            <span>开始</span>
+                                            <input
+                                                type="text"
+                                                aria-label="开始日期"
+                                                inputMode="numeric"
+                                                placeholder="yyyy-MM-dd"
+                                                value={startDateText}
+                                                onChange={(event) => updateStart(event.target.value, startTimeText)}
+                                            />
+                                            <input
+                                                type="text"
+                                                aria-label="开始时间"
+                                                inputMode="numeric"
+                                                placeholder="HH:mm:ss"
+                                                value={startTimeText}
+                                                onChange={(event) => updateStart(startDateText, event.target.value)}
+                                            />
+                                        </div>
+                                        <div className="operations-time-filter__exact-row">
+                                            <span>结束</span>
+                                            <input
+                                                type="text"
+                                                aria-label="结束日期"
+                                                inputMode="numeric"
+                                                placeholder="yyyy-MM-dd"
+                                                value={endDateText}
+                                                onChange={(event) => updateEnd(event.target.value, endTimeText)}
+                                            />
+                                            <input
+                                                type="text"
+                                                aria-label="结束时间"
+                                                inputMode="numeric"
+                                                placeholder="HH:mm:ss"
+                                                value={endTimeText}
+                                                onChange={(event) => updateEnd(endDateText, event.target.value)}
+                                            />
+                                        </div>
+                                    </div>
                                     <div className="operations-time-filter__calendar-toolbar">
                                         <button
                                             type="button"
@@ -231,15 +328,20 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
                             )}
                         </div>
 
-                        <div className="operations-time-filter__selection" aria-label="待应用时间范围">
-                            <span>{draftStart ? formatLocalDateTime(draftStart) : '请选择开始时间'}</span>
-                            <span aria-hidden="true">→</span>
-                            <span>{draftEnd ? formatLocalDateTime(draftEnd) : '请选择结束时间'}</span>
-                        </div>
+                        {mode === 'quick' ? (
+                            <div className="operations-time-filter__selection" aria-label="待应用时间范围">
+                                <span>{draftStart ? formatLocalDateTime(draftStart) : '请选择开始时间'}</span>
+                                <span aria-hidden="true">→</span>
+                                <span>{draftEnd ? formatLocalDateTime(draftEnd) : '请选择结束时间'}</span>
+                            </div>
+                        ) : null}
 
                         <footer className="operations-time-filter__footer">
+                            {validationMessage ? (
+                                <p className="operations-time-filter__error" role="alert">{validationMessage}</p>
+                            ) : <span />}
                             <Button type="button" variant="outline" onClick={() => setOpen(false)}>取消</Button>
-                            <Button type="button" onClick={handleApply}>应用</Button>
+                            <Button type="button" disabled={Boolean(validationMessage)} onClick={handleApply}>应用</Button>
                         </footer>
                     </PopoverPrimitive.Popup>
                 </PopoverPrimitive.Positioner>

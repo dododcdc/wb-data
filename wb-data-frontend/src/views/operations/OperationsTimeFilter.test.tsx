@@ -68,4 +68,40 @@ describe('OperationsTimeFilter', () => {
         expect(screen.getByText('2026年1月')).toBeTruthy();
         expect(screen.getAllByRole('grid')).toHaveLength(2);
     });
+
+    it('applies directly entered second-precision values', async () => {
+        const onChange = vi.fn();
+        render(
+            <OperationsTimeFilter
+                from="2026-01-01 00:00:00"
+                to="2026-01-02 00:00:00"
+                onChange={onChange}
+            />
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: /2026-01-01 00:00:00/ }));
+        fireEvent.click(await screen.findByRole('tab', { name: '自定义范围' }));
+        fireEvent.change(screen.getByLabelText('开始日期'), { target: { value: '2025-12-31' } });
+        fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '23:59:58' } });
+        fireEvent.click(screen.getByRole('button', { name: '应用' }));
+
+        expect(onChange).toHaveBeenCalledWith('2025-12-31 23:59:58', '2026-01-02 00:00:00');
+    });
+
+    it('rejects a start timestamp later than the end timestamp', async () => {
+        render(
+            <OperationsTimeFilter
+                from="2026-01-01 08:00:00"
+                to="2026-01-01 18:00:00"
+                onChange={vi.fn()}
+            />
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: /2026-01-01 08:00:00/ }));
+        fireEvent.click(await screen.findByRole('tab', { name: '自定义范围' }));
+        fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '20:00:00' } });
+
+        expect(screen.getByText('开始时间不能晚于结束时间')).toBeTruthy();
+        expect(screen.getByRole('button', { name: '应用' }).hasAttribute('disabled')).toBe(true);
+    });
 });
