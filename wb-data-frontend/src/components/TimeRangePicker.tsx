@@ -15,6 +15,7 @@ import {
 import { cn } from '../lib/utils';
 import { Button } from './ui/button';
 import 'react-day-picker/dist/style.css';
+import './TimeRangePicker.css';
 
 export interface TimeRangePickerProps {
     from: string;
