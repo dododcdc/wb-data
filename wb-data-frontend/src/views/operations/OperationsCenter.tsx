@@ -10,8 +10,10 @@ import {
     type OperationsExecutionListQuery,
 } from '../../api/operations';
 import { SimpleSelect } from '../../components/SimpleSelect';
+import { TimeRangePicker } from '../../components/TimeRangePicker';
 import { Button } from '../../components/ui/button';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
+import { formatBrowserDateTime, formatLocalDateTime, parseLocalDateTime } from '../../lib/dateTime';
 import { useAuthStore } from '../../utils/auth';
 import { getExecutionStatusLabel } from '../offline/executionPresentation';
 import './OperationsCenter.css';
@@ -31,18 +33,6 @@ const STATUS_OPTIONS = [
     { value: 'KILLED', label: '已停止' },
 ];
 
-function formatDateTime(value: string | null) {
-    if (!value) return '—';
-    return new Intl.DateTimeFormat('zh-CN', {
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-    }).format(new Date(value));
-}
-
 function formatDuration(durationMs: number | null) {
     if (durationMs == null) return '—';
     const seconds = Math.max(0, Math.round(durationMs / 1000));
@@ -60,10 +50,7 @@ function statusClassName(status: string) {
 }
 
 function normalizeDateTimeInput(value: string) {
-    if (!value) return null;
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return null;
-    return date.toISOString();
+    return parseLocalDateTime(value)?.toISOString() ?? null;
 }
 
 function buildBranchOptions(branches: string[], currentBranch: string | null | undefined, selectedBranch: string) {
@@ -120,19 +107,20 @@ export default function OperationsCenter() {
     const [branchFilter, setBranchFilter] = useState('');
     const [flowFilter, setFlowFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState(ALL_STATUSES);
-    const [timeRange, setTimeRange] = useState('24h');
-    const [fromFilter, setFromFilter] = useState('');
-    const [toFilter, setToFilter] = useState('');
+    const [fromFilter, setFromFilter] = useState(() => (
+        formatLocalDateTime(new Date(Date.now() - 24 * 60 * 60 * 1000))
+    ));
+    const [toFilter, setToFilter] = useState(() => formatLocalDateTime(new Date(Date.now())));
     const [branchInitializedGroupId, setBranchInitializedGroupId] = useState<number | null>(null);
     const [pendingRerunId, setPendingRerunId] = useState<string | null>(null);
 
     useEffect(() => {
+        const now = new Date(Date.now());
         setBranchFilter('');
         setFlowFilter('');
         setStatusFilter(ALL_STATUSES);
-        setTimeRange('24h');
-        setFromFilter('');
-        setToFilter('');
+        setFromFilter(formatLocalDateTime(new Date(now.getTime() - 24 * 60 * 60 * 1000)));
+        setToFilter(formatLocalDateTime(now));
         setBranchInitializedGroupId(null);
     }, [groupId]);
 
@@ -150,27 +138,16 @@ export default function OperationsCenter() {
 
     const listQueryPayload = useMemo<OperationsExecutionListQuery | null>(() => {
         if (groupId == null) return null;
-        const nowMin = Math.floor(Date.now() / 60000) * 60000;
-        let fromVal: string | null = null;
-        let toVal: string | null = null;
-
-        if (timeRange === '7d') {
-            fromVal = new Date(nowMin - 7 * 24 * 60 * 60 * 1000).toISOString();
-            toVal = new Date(nowMin).toISOString();
-        } else if (timeRange === 'custom') {
-            fromVal = normalizeDateTimeInput(fromFilter);
-            toVal = normalizeDateTimeInput(toFilter);
-        }
 
         return {
             groupId,
             branch: branchFilter || null,
             flowId: flowFilter.trim() || null,
             status: statusFilter === ALL_STATUSES ? null : statusFilter,
-            from: fromVal,
-            to: toVal,
+            from: normalizeDateTimeInput(fromFilter),
+            to: normalizeDateTimeInput(toFilter),
         };
-    }, [branchFilter, flowFilter, fromFilter, groupId, statusFilter, timeRange, toFilter]);
+    }, [branchFilter, flowFilter, fromFilter, groupId, statusFilter, toFilter]);
 
     const executionsQuery = useQuery({
         queryKey: ['operations-executions', groupId, listQueryPayload],
@@ -208,12 +185,12 @@ export default function OperationsCenter() {
     const isInitialLoading = repoStatusQuery.isLoading || !branchReady || executionsQuery.isLoading;
     const isRefreshing = executionsQuery.isFetching && rows.length > 0;
 
-    const handleClearFilters = () => {
+    const handleResetFilters = () => {
+        const now = new Date(Date.now());
         setFlowFilter('');
         setStatusFilter(ALL_STATUSES);
-        setTimeRange('24h');
-        setFromFilter('');
-        setToFilter('');
+        setFromFilter(formatLocalDateTime(new Date(now.getTime() - 24 * 60 * 60 * 1000)));
+        setToFilter(formatLocalDateTime(now));
         setBranchFilter(repoStatusQuery.data?.branch ?? '');
     };
 
@@ -278,54 +255,23 @@ export default function OperationsCenter() {
                         />
                     </label>
 
-                    <label className="operations-filter__field">
+                    <div className="operations-filter__field operations-filter__field--time-range">
                         <span>时间范围</span>
-                        <SimpleSelect
-                            id="time-range-select"
-                            value={timeRange}
-                            options={[
-                                { value: '24h', label: '最近 24 小时' },
-                                { value: '7d', label: '最近 7 天' },
-                                { value: 'custom', label: '自定义时间' },
-                            ]}
-                            className="operations-filter__select"
-                            onChange={(value) => {
-                                setTimeRange(value);
-                                if (value !== 'custom') {
-                                    setFromFilter('');
-                                    setToFilter('');
-                                }
+                        <TimeRangePicker
+                            from={fromFilter}
+                            to={toFilter}
+                            onChange={(from, to) => {
+                                setFromFilter(from);
+                                setToFilter(to);
                             }}
                         />
-                    </label>
+                    </div>
 
-                    {timeRange === 'custom' && (
-                        <>
-                            <label className="operations-filter__field">
-                                <span>开始于</span>
-                                <input
-                                    type="datetime-local"
-                                    step="1"
-                                    value={fromFilter}
-                                    onChange={(event) => setFromFilter(event.target.value)}
-                                />
-                            </label>
-
-                            <label className="operations-filter__field">
-                                <span>结束于</span>
-                                <input
-                                    type="datetime-local"
-                                    step="1"
-                                    value={toFilter}
-                                    onChange={(event) => setToFilter(event.target.value)}
-                                />
-                            </label>
-                        </>
-                    )}
-
-                    <Button type="button" variant="outline" onClick={handleClearFilters}>
-                        清空
-                    </Button>
+                    <div className="operations-filter__actions">
+                        <Button type="button" variant="outline" onClick={handleResetFilters}>
+                            重置
+                        </Button>
+                    </div>
                 </section>
 
                 {isInitialLoading ? (
@@ -373,9 +319,9 @@ export default function OperationsCenter() {
                                         <td>
                                             <span className={statusClassName(row.status)}>{getExecutionStatusLabel(row.status)}</span>
                                         </td>
-                                        <td className="operations-time">{formatDateTime(row.createdAt)}</td>
-                                        <td className="operations-time">{formatDateTime(row.startDate)}</td>
-                                        <td className="operations-time">{formatDateTime(row.endDate)}</td>
+                                        <td className="operations-time">{formatBrowserDateTime(row.createdAt)}</td>
+                                        <td className="operations-time">{formatBrowserDateTime(row.startDate)}</td>
+                                        <td className="operations-time">{formatBrowserDateTime(row.endDate)}</td>
                                         <td className="operations-time">{formatDuration(row.durationMs)}</td>
                                         <td>
                                             <span className="operations-failure" title={row.failureSummary ?? ''}>

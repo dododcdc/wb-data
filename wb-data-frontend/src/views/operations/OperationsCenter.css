@@ -44,6 +44,16 @@
     background: var(--color-bg-primary);
 }
 
+.operations-filter__field--time-range {
+    grid-column: span 2;
+}
+
+.operations-filter__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .operations-filter__field {
     display: flex;
     min-width: 0;
@@ -348,6 +358,10 @@
 
     .operations-filter {
         grid-template-columns: 1fr;
+    }
+
+    .operations-filter__field--time-range {
+        grid-column: 1 / -1;
     }
 }
 
