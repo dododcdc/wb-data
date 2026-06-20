@@ -1,6 +1,8 @@
 import * as React from 'react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
-import { CalendarRange } from 'lucide-react';
+import { CalendarRange, ChevronLeft, ChevronRight } from 'lucide-react';
+import { DayPicker, type CaptionProps, type DateRange } from 'react-day-picker';
+import { zhCN } from 'date-fns/locale';
 
 import { Button } from '../../components/ui/button';
 import {
@@ -8,6 +10,7 @@ import {
     getBrowserTimeZoneName,
     parseLocalDateTime,
 } from '../../lib/dateTime';
+import 'react-day-picker/dist/style.css';
 
 export interface OperationsTimeFilterProps {
     from: string;
@@ -24,6 +27,27 @@ const PRESETS = [
     { label: '最近 7 天', milliseconds: 7 * 24 * 60 * 60 * 1000 },
     { label: '最近 30 天', milliseconds: 30 * 24 * 60 * 60 * 1000 },
 ];
+
+const MONTHS = Array.from({ length: 12 }, (_, index) => `${index + 1}月`);
+
+function MonthCaption({ displayMonth, id }: CaptionProps) {
+    return (
+        <div id={id} className="operations-time-filter__month-caption">
+            {displayMonth.getFullYear()}年{displayMonth.getMonth() + 1}月
+        </div>
+    );
+}
+
+function withDate(source: Date, date: Date) {
+    return new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        source.getHours(),
+        source.getMinutes(),
+        source.getSeconds(),
+    );
+}
 
 function appliedDates(from: string, to: string) {
     const start = parseLocalDateTime(from);
@@ -44,6 +68,8 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
     const [draftStart, setDraftStart] = React.useState<Date | null>(null);
     const [draftEnd, setDraftEnd] = React.useState<Date | null>(null);
     const [activePreset, setActivePreset] = React.useState<string | null>(null);
+    const [visibleMonth, setVisibleMonth] = React.useState(() => new Date());
+    const [selectingEnd, setSelectingEnd] = React.useState(false);
 
     const initializeDraft = React.useCallback(() => {
         const applied = appliedDates(from, to);
@@ -51,6 +77,8 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
         setDraftEnd(applied.end);
         setMode('quick');
         setActivePreset(null);
+        setVisibleMonth(new Date(applied.start.getFullYear(), applied.start.getMonth(), 1));
+        setSelectingEnd(false);
     }, [from, to]);
 
     const handleOpenChange = (nextOpen: boolean) => {
@@ -70,6 +98,32 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
         onChange(formatLocalDateTime(draftStart), formatLocalDateTime(draftEnd));
         setOpen(false);
     };
+
+    const handleDayClick = (day: Date) => {
+        setActivePreset(null);
+        if (!selectingEnd || !draftStart) {
+            const timeSource = draftStart ?? new Date(day.getFullYear(), day.getMonth(), day.getDate());
+            setDraftStart(withDate(timeSource, day));
+            setDraftEnd(null);
+            setSelectingEnd(true);
+            return;
+        }
+
+        const nextEnd = withDate(draftEnd ?? draftStart, day);
+        if (nextEnd.getTime() < draftStart.getTime()) {
+            setDraftEnd(withDate(draftEnd ?? draftStart, draftStart));
+            setDraftStart(nextEnd);
+        } else {
+            setDraftEnd(nextEnd);
+        }
+        setSelectingEnd(false);
+    };
+
+    const selectedRange: DateRange | undefined = draftStart
+        ? { from: draftStart, to: draftEnd ?? undefined }
+        : undefined;
+    const currentYear = new Date().getFullYear();
+    const years = Array.from({ length: currentYear - 1999 }, (_, index) => 2000 + index);
 
     return (
         <PopoverPrimitive.Root open={open} onOpenChange={handleOpenChange}>
@@ -130,7 +184,50 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
                                     ))}
                                 </div>
                             ) : (
-                                <div className="operations-time-filter__custom-placeholder" />
+                                <div className="operations-time-filter__custom">
+                                    <div className="operations-time-filter__calendar-toolbar">
+                                        <button
+                                            type="button"
+                                            aria-label="上一个月"
+                                            onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
+                                        >
+                                            <ChevronLeft size={17} />
+                                        </button>
+                                        <select
+                                            aria-label="年份"
+                                            value={visibleMonth.getFullYear()}
+                                            onChange={(event) => setVisibleMonth(new Date(Number(event.target.value), visibleMonth.getMonth(), 1))}
+                                        >
+                                            {years.map((year) => <option key={year} value={year}>{year}年</option>)}
+                                        </select>
+                                        <select
+                                            aria-label="月份"
+                                            value={visibleMonth.getMonth()}
+                                            onChange={(event) => setVisibleMonth(new Date(visibleMonth.getFullYear(), Number(event.target.value), 1))}
+                                        >
+                                            {MONTHS.map((month, index) => <option key={month} value={index}>{month}</option>)}
+                                        </select>
+                                        <button
+                                            type="button"
+                                            aria-label="下一个月"
+                                            onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
+                                        >
+                                            <ChevronRight size={17} />
+                                        </button>
+                                    </div>
+                                    <DayPicker
+                                        mode="range"
+                                        locale={zhCN}
+                                        month={visibleMonth}
+                                        numberOfMonths={2}
+                                        selected={selectedRange}
+                                        fixedWeeks
+                                        showOutsideDays
+                                        disableNavigation
+                                        onDayClick={handleDayClick}
+                                        components={{ Caption: MonthCaption }}
+                                    />
+                                </div>
                             )}
                         </div>
 
