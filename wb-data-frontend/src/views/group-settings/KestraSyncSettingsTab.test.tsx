@@ -72,6 +72,17 @@ describe('KestraSyncSettingsTab', () => {
           lastSyncStatus: null,
           lastSyncMessage: null,
         },
+        {
+          id: 8,
+          groupId: 1,
+          branch: 'feature/policy-review',
+          namespace: 'g1-feature-policy-review',
+          syncFlowId: 'sync-flows-g1-feature-policy-review',
+          enabled: false,
+          lastSyncAt: null,
+          lastSyncStatus: null,
+          lastSyncMessage: null,
+        },
       ],
       availableBranches: ['main', 'feature/policy-review'],
       syncCron: '*/5 * * * *',
@@ -86,7 +97,8 @@ describe('KestraSyncSettingsTab', () => {
     expect(screen.queryByText('自动检查：开启')).toBeNull();
     expect(screen.queryByText('上次同步：未执行')).toBeNull();
     expect(screen.getByRole('button', { name: '同步一次 main' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '移出同步 main' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '移出同步 main' })).toBeNull();
+    expect(screen.getByRole('button', { name: '移出同步 feature/policy-review' })).toBeTruthy();
   });
 
   it('does not expose sync bookkeeping statuses in the branch list', async () => {
@@ -182,8 +194,19 @@ describe('KestraSyncSettingsTab', () => {
           lastSyncStatus: null,
           lastSyncMessage: null,
         },
+        {
+          id: 8,
+          groupId: 1,
+          branch: 'feature/policy-review',
+          namespace: 'g1-feature-policy-review',
+          syncFlowId: 'sync-flows-g1-feature-policy-review',
+          enabled: false,
+          lastSyncAt: null,
+          lastSyncStatus: null,
+          lastSyncMessage: null,
+        },
       ],
-      availableBranches: ['main'],
+      availableBranches: ['main', 'feature/policy-review'],
       syncCron: '*/5 * * * *',
     });
     triggerGitSyncConfig.mockResolvedValueOnce({ id: 7, executionId: 'exec-1', status: 'CREATED', triggeredAt: null });
@@ -194,8 +217,8 @@ describe('KestraSyncSettingsTab', () => {
     fireEvent.click(await screen.findByRole('button', { name: '同步一次 main' }));
     await waitFor(() => expect(triggerGitSyncConfig).toHaveBeenCalledWith(1, 7));
 
-    fireEvent.click(screen.getByRole('button', { name: '移出同步 main' }));
-    await waitFor(() => expect(deleteGitSyncConfig).toHaveBeenCalledWith(1, 7));
+    fireEvent.click(screen.getByRole('button', { name: '移出同步 feature/policy-review' }));
+    await waitFor(() => expect(deleteGitSyncConfig).toHaveBeenCalledWith(1, 8));
   });
 
   it('hides sync mutation controls for read-only users', async () => {

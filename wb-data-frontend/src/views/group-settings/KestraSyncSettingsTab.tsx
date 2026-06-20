@@ -10,6 +10,7 @@ import {
     getGitConfig,
     getGitSyncConfigs,
     triggerGitSyncConfig,
+    updateGitSyncConfigStatus,
     type GitSyncConfig,
 } from './gitSettingsApi';
 import { Button } from '../../components/ui/button';
@@ -100,6 +101,17 @@ export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit
         },
     });
 
+    const updateStatusMutation = useMutation({
+        mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) => updateGitSyncConfigStatus(groupId, id, enabled),
+        onSuccess: () => {
+            showFeedback({ tone: 'success', title: '自动同步状态已更新', detail: '' });
+            invalidateSyncConfigs();
+        },
+        onError: () => {
+            showFeedback({ tone: 'error', title: '更新同步状态失败', detail: '' });
+        },
+    });
+
     const handleAddSyncBranch = useCallback(() => {
         if (!selectedSyncBranch) {
             showFeedback({ tone: 'error', title: '请选择分支', detail: '' });
@@ -116,7 +128,10 @@ export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit
                 <div className="git-settings-section-header">
                     <div>
                         <h2 className="git-settings-title">自动同步</h2>
-                        <p className="git-settings-description">按分支同步远程仓库中的任务与脚本，默认每 5 分钟自动同步一次。</p>
+                        <p className="git-settings-description">
+                            按分支同步远程仓库中的任务与脚本。
+                            {syncData?.syncCron ? `当前定时调度周期为：${syncData.syncCron}。` : '默认每 5 分钟自动同步一次。'}
+                        </p>
                     </div>
                 </div>
 
@@ -142,6 +157,8 @@ export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit
                                     options={unsyncedBranches.map((branch) => ({ value: branch, label: branch }))}
                                     onChange={setSelectedSyncBranch}
                                     className="git-sync-branch-select"
+                                    placeholder={unsyncedBranches.length === 0 ? '所有分支已同步' : '选择分支'}
+                                    disabled={unsyncedBranches.length === 0 || createSyncMutation.isPending}
                                 />
                                 <Button
                                     type="button"
@@ -158,7 +175,7 @@ export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit
                                     size="sm"
                                     variant="outline"
                                     onClick={() => createAllSyncMutation.mutate()}
-                                    disabled={createAllSyncMutation.isPending || (syncData?.availableBranches.length ?? 0) === 0}
+                                    disabled={createAllSyncMutation.isPending || unsyncedBranches.length === 0}
                                 >
                                     {createAllSyncMutation.isPending ? <LoaderCircle size={14} className="offline-spin" /> : null}
                                     同步全部分支
@@ -166,20 +183,38 @@ export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit
                             </div>
                         ) : null}
 
-                        {(syncData?.configs.length ?? 0) === 0 ? (
+                        {(syncData?.availableBranches.length ?? 0) === 0 ? (
                             <p className="git-settings-ro-empty">尚未添加同步分支</p>
                         ) : (
                             <div className="git-sync-list">
-                                {syncData?.configs.map((item) => (
-                                    <SyncConfigRow
-                                        key={item.id}
-                                        item={item}
-                                        canEdit={canEdit}
-                                        onTrigger={() => triggerSyncMutation.mutate(item.id)}
-                                        onDelete={() => deleteSyncMutation.mutate(item.id)}
-                                        busy={triggerSyncMutation.isPending || deleteSyncMutation.isPending}
-                                    />
-                                ))}
+                                {syncData?.availableBranches.map((branch) => {
+                                    const item = syncData.configs.find((c) => c.branch === branch);
+                                    const isTriggering = item ? triggerSyncMutation.isPending && triggerSyncMutation.variables === item.id : false;
+                                    const isDeleting = item ? deleteSyncMutation.isPending && deleteSyncMutation.variables === item.id : false;
+                                    const isToggling = item ? updateStatusMutation.isPending && updateStatusMutation.variables?.id === item.id : false;
+                                    const isAdding = createSyncMutation.isPending && createSyncMutation.variables === branch;
+
+                                    return (
+                                        <SyncConfigRow
+                                            key={branch}
+                                            branch={branch}
+                                            item={item}
+                                            canEdit={canEdit}
+                                            onTrigger={() => item && triggerSyncMutation.mutate(item.id)}
+                                            onDelete={() => item && deleteSyncMutation.mutate(item.id)}
+                                            onToggle={(enabled) => {
+                                                if (item) {
+                                                    updateStatusMutation.mutate({ id: item.id, enabled });
+                                                } else if (enabled) {
+                                                    createSyncMutation.mutate(branch);
+                                                }
+                                            }}
+                                            isTriggering={isTriggering}
+                                            isDeleting={isDeleting}
+                                            isToggling={isToggling || isAdding}
+                                        />
+                                    );
+                                })}
                             </div>
                         )}
                     </>
@@ -190,33 +225,153 @@ export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit
 }
 
 function SyncConfigRow({
+    branch,
     item,
     canEdit,
     onTrigger,
     onDelete,
-    busy,
+    onToggle,
+    isTriggering,
+    isDeleting,
+    isToggling,
 }: {
-    item: GitSyncConfig;
+    branch: string;
+    item: GitSyncConfig | undefined;
     canEdit: boolean;
     onTrigger: () => void;
     onDelete: () => void;
-    busy: boolean;
+    onToggle: (enabled: boolean) => void;
+    isTriggering: boolean;
+    isDeleting: boolean;
+    isToggling: boolean;
 }) {
+    const [showError, setShowError] = useState(false);
+
+    const formattedTime = item?.lastSyncAt
+        ? new Date(item.lastSyncAt).toLocaleString('zh-CN', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+          })
+        : '无';
+
+    const isEnabled = item ? item.enabled : false;
+    const isSuccess = item?.lastSyncStatus === 'SUCCESS';
+    const isFailed = item?.lastSyncStatus === 'FAILED';
+    const disabledAction = isTriggering || isDeleting || isToggling;
+
     return (
-        <div className="git-sync-row">
+        <div className={`git-sync-row ${item && !isEnabled ? 'git-sync-row--disabled' : ''} ${!item ? 'git-sync-row--new' : ''}`}>
             <div className="git-sync-row-main">
-                <strong>{item.branch}</strong>
-            </div>
-            {canEdit ? (
-                <div className="git-sync-row-actions">
-                    <Button type="button" size="sm" variant="outline" aria-label={`同步一次 ${item.branch}`} onClick={onTrigger} disabled={busy || !item.enabled}>
-                        同步一次
-                    </Button>
-                    <Button type="button" size="sm" variant="destructive" aria-label={`移出同步 ${item.branch}`} onClick={onDelete} disabled={busy}>
-                        移出同步
-                    </Button>
+                <div className="git-sync-branch-header">
+                    <strong>{branch}</strong>
+                    {item ? (
+                        <>
+                            {isSuccess && (
+                                <span className="git-sync-status-badge git-sync-status-badge--success">
+                                    同步成功
+                                </span>
+                            )}
+                            {isFailed && (
+                                <span className="git-sync-status-badge git-sync-status-badge--failed">
+                                    同步失败
+                                </span>
+                            )}
+                        </>
+                    ) : null}
                 </div>
-            ) : null}
+
+                <div className="git-sync-metadata">
+                    {item ? (
+                        <>
+                            <span>上次同步时间: {formattedTime}</span>
+                        </>
+                    ) : (
+                        <span>未开启自动同步</span>
+                    )}
+                </div>
+
+                {item && isFailed && item.lastSyncMessage && (
+                    <div className="git-sync-error-container">
+                        <button
+                            type="button"
+                            className="git-sync-error-toggle"
+                            onClick={() => setShowError(!showError)}
+                        >
+                            {showError ? '隐藏同步报错详情' : '查看同步报错详情'}
+                        </button>
+                        {showError && (
+                            <pre className="git-sync-error-details">
+                                {item.lastSyncMessage}
+                            </pre>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {canEdit ? (
+                <div className="git-sync-row-actions-group">
+                    {/* Status Toggle Switch */}
+                    <div className="git-sync-toggle-wrapper">
+                        <label className="git-sync-switch" aria-label="启用/禁用自动同步">
+                            <input
+                                type="checkbox"
+                                checked={isEnabled}
+                                disabled={isToggling}
+                                onChange={(e) => onToggle(e.target.checked)}
+                            />
+                            <span className="git-sync-slider"></span>
+                        </label>
+                        <span className="git-sync-toggle-label">
+                            {isToggling
+                                ? '更新中...'
+                                : isEnabled
+                                ? '自动同步中'
+                                : item
+                                ? '自动同步已暂停'
+                                : '未开启自动同步'}
+                        </span>
+                    </div>
+
+                    {item ? (
+                        <div className="git-sync-row-actions">
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                aria-label={`同步一次 ${branch}`}
+                                onClick={onTrigger}
+                                disabled={disabledAction || !isEnabled}
+                            >
+                                {isTriggering ? <LoaderCircle size={14} className="offline-spin mr-1" /> : null}
+                                同步一次
+                            </Button>
+                            {!isEnabled ? (
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="destructive"
+                                    aria-label={`移出同步 ${branch}`}
+                                    onClick={onDelete}
+                                    disabled={disabledAction}
+                                >
+                                    {isDeleting ? <LoaderCircle size={14} className="offline-spin mr-1" /> : null}
+                                    移出同步
+                                </Button>
+                            ) : null}
+                        </div>
+                    ) : null}
+                </div>
+            ) : (
+                <div className="git-sync-row-status-ro">
+                    <span className={`git-sync-status-indicator ${isEnabled ? 'active' : 'inactive'}`}>
+                        {isEnabled ? '自动同步中' : item ? '自动同步已暂停' : '自动同步未开启'}
+                    </span>
+                </div>
+            )}
         </div>
     );
 }
