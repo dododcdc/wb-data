@@ -10,13 +10,13 @@ import {
     type OperationsExecutionListQuery,
 } from '../../api/operations';
 import { SimpleSelect } from '../../components/SimpleSelect';
-import { TimeRangePicker } from '../../components/TimeRangePicker';
 import { Button } from '../../components/ui/button';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { formatBrowserDateTime, formatLocalDateTime, parseLocalDateTime } from '../../lib/dateTime';
 import { useAuthStore } from '../../utils/auth';
 import { getExecutionStatusLabel } from '../offline/executionPresentation';
 import './OperationsCenter.css';
+import { OperationsTimeFilter } from './OperationsTimeFilter';
 
 const ALL_BRANCHES = '__all_branches__';
 const ALL_STATUSES = '__all_statuses__';
@@ -257,7 +257,7 @@ export default function OperationsCenter() {
 
                     <div className="operations-filter__field operations-filter__field--time-range">
                         <span>时间范围</span>
-                        <TimeRangePicker
+                        <OperationsTimeFilter
                             from={fromFilter}
                             to={toFilter}
                             onChange={(from, to) => {

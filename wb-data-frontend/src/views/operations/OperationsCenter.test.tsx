@@ -27,8 +27,8 @@ vi.mock('../../hooks/useOperationFeedback', () => ({
     useOperationFeedback: () => ({ showFeedback }),
 }));
 
-vi.mock('../../components/TimeRangePicker', () => ({
-    TimeRangePicker: ({
+vi.mock('./OperationsTimeFilter', () => ({
+    OperationsTimeFilter: ({
         from,
         to,
         onChange,
