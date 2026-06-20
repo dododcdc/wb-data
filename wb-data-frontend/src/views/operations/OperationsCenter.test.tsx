@@ -7,6 +7,7 @@ import { getOfflineRepoStatus } from '../../api/offline';
 import { listOperationsExecutions, rerunOperationsExecution } from '../../api/operations';
 import { useAuthStore } from '../../utils/auth';
 import OperationsCenter from './OperationsCenter';
+import * as SimpleSelectModule from '../../components/SimpleSelect';
 
 const { showFeedback } = vi.hoisted(() => ({
     showFeedback: vi.fn(),
@@ -25,12 +26,29 @@ vi.mock('../../hooks/useOperationFeedback', () => ({
     useOperationFeedback: () => ({ showFeedback }),
 }));
 
+
 const listOperationsExecutionsMock = vi.mocked(listOperationsExecutions);
 const rerunOperationsExecutionMock = vi.mocked(rerunOperationsExecution);
 const getOfflineRepoStatusMock = vi.mocked(getOfflineRepoStatus);
 
 describe('OperationsCenter', () => {
     beforeEach(() => {
+        vi.spyOn(SimpleSelectModule, 'SimpleSelect').mockImplementation(
+            ({ value, options, onChange, id, className }: { value?: string; options: { label: string; value: string }[]; onChange: (val: string) => void; id?: string; className?: string }) => (
+                <select
+                    data-testid={id || 'simple-select'}
+                    className={className}
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                >
+                    {options.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                        </option>
+                    ))}
+                </select>
+            )
+        );
         useAuthStore.setState({
             token: 'token',
             userInfo: { id: 1, username: 'alice', displayName: 'Alice', systemRole: 'USER' },
@@ -93,6 +111,7 @@ describe('OperationsCenter', () => {
     afterEach(() => {
         cleanup();
         vi.clearAllMocks();
+        vi.restoreAllMocks();
     });
 
     function renderPage() {
@@ -113,7 +132,7 @@ describe('OperationsCenter', () => {
 
         expect(await screen.findByText('daily_policy')).toBeTruthy();
         expect(screen.getAllByText('feature/policy-review').length).toBeGreaterThan(0);
-        expect(screen.getByText('失败')).toBeTruthy();
+        expect(screen.getAllByText('失败').length).toBeGreaterThan(0);
         expect(screen.getByText('load_policy failed')).toBeTruthy();
         expect(screen.getByRole('button', { name: '重跑 daily_policy' })).toBeTruthy();
         expect(screen.queryByRole('button', { name: '重跑 hourly_policy' })).toBeNull();
@@ -137,5 +156,81 @@ describe('OperationsCenter', () => {
 
         await waitFor(() => expect(rerunOperationsExecutionMock).toHaveBeenCalledWith(4, 'exec-1'));
         await waitFor(() => expect(listOperationsExecutionsMock).toHaveBeenCalledTimes(2));
+    });
+
+    it('renders distinct status option labels to avoid duplicates', async () => {
+        renderPage();
+        const statusSelect = await screen.findByTestId('status-select') as HTMLSelectElement;
+        const options = Array.from(statusSelect.options).map(opt => opt.text);
+        expect(options).toContain('已创建');
+        expect(options).toContain('排队中');
+        expect(options.filter(o => o === '就绪').length).toBe(0);
+    });
+
+    it('applies a second-precision range with time segment controls', async () => {
+        renderPage();
+
+        // 1. Time range defaults to 24h, custom start/end fields are hidden
+        expect(screen.queryByLabelText('开始于')).toBeNull();
+        expect(screen.queryByLabelText('结束于')).toBeNull();
+
+        // 2. Change time range to Custom Time
+        const rangeSelect = await screen.findByTestId('time-range-select') as HTMLSelectElement;
+        fireEvent.change(rangeSelect, { target: { value: 'custom' } });
+
+        // 3. Custom inputs should be rendered with step="1"
+        const startInput = screen.getByLabelText('开始于') as HTMLInputElement;
+        const endInput = screen.getByLabelText('结束于') as HTMLInputElement;
+        expect(startInput.getAttribute('step')).toBe('1');
+        expect(endInput.getAttribute('step')).toBe('1');
+
+        // 4. Fill custom inputs with second-precision dates
+        fireEvent.change(startInput, { target: { value: '2026-06-07T01:00:15' } });
+        fireEvent.change(endInput, { target: { value: '2026-06-07T02:00:45' } });
+
+        // 5. Verify the API is called with custom time range in ISO format
+        await waitFor(() => {
+            expect(listOperationsExecutionsMock).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    from: new Date('2026-06-07T01:00:15').toISOString(),
+                    to: new Date('2026-06-07T02:00:45').toISOString(),
+                })
+            );
+        });
+    });
+
+    it('calculates the 7-day range when 7d option is selected', async () => {
+        const mockNow = new Date('2026-06-20T12:00:00Z').getTime();
+        vi.spyOn(Date, 'now').mockReturnValue(mockNow);
+
+        renderPage();
+
+        const rangeSelect = await screen.findByTestId('time-range-select') as HTMLSelectElement;
+        fireEvent.change(rangeSelect, { target: { value: '7d' } });
+
+        await waitFor(() => {
+            expect(listOperationsExecutionsMock).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    from: new Date(mockNow - 7 * 24 * 60 * 60 * 1000).toISOString(),
+                    to: new Date(mockNow).toISOString(),
+                })
+            );
+        });
+    });
+
+    it('clears all custom filters and resets time range on clear button click', async () => {
+        renderPage();
+
+        const rangeSelect = await screen.findByTestId('time-range-select') as HTMLSelectElement;
+        fireEvent.change(rangeSelect, { target: { value: 'custom' } });
+
+        const startInput = screen.getByLabelText('开始于') as HTMLInputElement;
+        fireEvent.change(startInput, { target: { value: '2026-06-07T01:00:00' } });
+
+        const clearBtn = screen.getByRole('button', { name: '清空' });
+        fireEvent.click(clearBtn);
+
+        expect(rangeSelect.value).toBe('24h');
+        expect(screen.queryByLabelText('开始于')).toBeNull();
     });
 });
