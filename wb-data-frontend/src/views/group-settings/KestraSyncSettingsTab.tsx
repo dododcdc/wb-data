@@ -167,7 +167,7 @@ export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit
                                     onClick={handleAddSyncBranch}
                                     disabled={!selectedSyncBranch || createSyncMutation.isPending}
                                 >
-                                    {createSyncMutation.isPending ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                                    {createSyncMutation.isPending ? <LoaderCircle size={14} className="offline-spin mr-1" /> : null}
                                     添加分支
                                 </Button>
                                 <Button
@@ -177,7 +177,7 @@ export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit
                                     onClick={() => createAllSyncMutation.mutate()}
                                     disabled={createAllSyncMutation.isPending || unsyncedBranches.length === 0}
                                 >
-                                    {createAllSyncMutation.isPending ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                                    {createAllSyncMutation.isPending ? <LoaderCircle size={14} className="offline-spin mr-1" /> : null}
                                     同步全部分支
                                 </Button>
                             </div>
@@ -316,9 +316,10 @@ function SyncConfigRow({
                 <div className="git-sync-row-actions-group">
                     {/* Status Toggle Switch */}
                     <div className="git-sync-toggle-wrapper">
-                        <label className="git-sync-switch" aria-label="启用/禁用自动同步">
+                        <label className="git-sync-switch">
                             <input
                                 type="checkbox"
+                                aria-label="启用/禁用自动同步"
                                 checked={isEnabled}
                                 disabled={isToggling}
                                 onChange={(e) => onToggle(e.target.checked)}
