@@ -10,7 +10,6 @@ const {
   getGitConfig,
   getGitSyncConfigs,
   createGitSyncConfig,
-  createAllGitSyncConfigs,
   triggerGitSyncConfig,
   deleteGitSyncConfig,
   updateGitSyncConfigStatus,
@@ -18,7 +17,6 @@ const {
   getGitConfig: vi.fn(),
   getGitSyncConfigs: vi.fn(),
   createGitSyncConfig: vi.fn(),
-  createAllGitSyncConfigs: vi.fn(),
   triggerGitSyncConfig: vi.fn(),
   deleteGitSyncConfig: vi.fn(),
   updateGitSyncConfigStatus: vi.fn(),
@@ -28,7 +26,6 @@ vi.mock('./gitSettingsApi', () => ({
   getGitConfig,
   getGitSyncConfigs,
   createGitSyncConfig,
-  createAllGitSyncConfigs,
   triggerGitSyncConfig,
   deleteGitSyncConfig,
   updateGitSyncConfigStatus,
@@ -95,8 +92,6 @@ describe('KestraSyncSettingsTab', () => {
 
     expect(await screen.findByText('main')).toBeTruthy();
     expect(screen.queryByText('g1-main')).toBeNull();
-    expect(screen.getByRole('button', { name: '添加分支' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '同步全部分支' })).toBeTruthy();
     expect(screen.queryByText('自动检查：开启')).toBeNull();
     expect(screen.queryByText('上次同步：未执行')).toBeNull();
     expect(screen.getByRole('button', { name: '同步一次 main' })).toBeTruthy();
@@ -144,14 +139,19 @@ describe('KestraSyncSettingsTab', () => {
     expect(getGitSyncConfigs).not.toHaveBeenCalled();
   });
 
-  it('adds the first unsynced branch by default', async () => {
+  it('toggles switch ON for a branch that is not enabled to create sync config', async () => {
     getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
+    getGitSyncConfigs.mockResolvedValueOnce({
+      configs: [],
+      availableBranches: ['main'],
+      syncCron: '*/5 * * * *',
+    });
     createGitSyncConfig.mockResolvedValueOnce({
-      id: 8,
+      id: 7,
       groupId: 1,
-      branch: 'feature/policy-review',
-      namespace: 'g1-feature-policy-review',
-      syncFlowId: 'sync-flows-g1-feature-policy-review',
+      branch: 'main',
+      namespace: 'g1-main',
+      syncFlowId: 'sync-flows-g1-main',
       enabled: true,
       lastSyncAt: null,
       lastSyncStatus: null,
@@ -160,25 +160,12 @@ describe('KestraSyncSettingsTab', () => {
 
     renderWithQuery(<KestraSyncSettingsTab groupId={1} canEdit={true} />);
 
-    const addButton = await screen.findByRole('button', { name: '添加分支' });
-    await waitFor(() => expect(addButton.hasAttribute('disabled')).toBeFalsy());
-    fireEvent.click(addButton);
+    const checkbox = await screen.findByRole('checkbox', { name: '启用/禁用自动同步' });
+    expect((checkbox as HTMLInputElement).checked).toBe(false);
 
+    fireEvent.click(checkbox);
     await waitFor(() => {
       expect(createGitSyncConfig).toHaveBeenCalledWith(1, 'main');
-    });
-  });
-
-  it('adds all known branches through the bulk action', async () => {
-    getGitConfig.mockResolvedValueOnce({ provider: 'github', username: 'alice', baseUrl: 'https://github.com', tokenMasked: true });
-    createAllGitSyncConfigs.mockResolvedValueOnce({ created: 2, existing: 1, configs: [] });
-
-    renderWithQuery(<KestraSyncSettingsTab groupId={1} canEdit={true} />);
-
-    fireEvent.click(await screen.findByRole('button', { name: '同步全部分支' }));
-
-    await waitFor(() => {
-      expect(createAllGitSyncConfigs).toHaveBeenCalledWith(1);
     });
   });
 
@@ -289,7 +276,6 @@ describe('KestraSyncSettingsTab', () => {
     renderWithQuery(<KestraSyncSettingsTab groupId={1} canEdit={false} />);
 
     expect(await screen.findByText('自动同步')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: '同步全部分支' })).toBeNull();
     expect(screen.queryByRole('button', { name: '同步一次 main' })).toBeNull();
     expect(screen.queryByRole('button', { name: '移出同步 main' })).toBeNull();
   });
