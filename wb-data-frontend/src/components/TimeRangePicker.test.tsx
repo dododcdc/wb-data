@@ -58,6 +58,16 @@ describe('TimeRangePicker', () => {
         expect(screen.getAllByText('2025-12-28 08:30:00').length).toBeGreaterThan(0);
         expect(screen.getAllByText('2026-01-03 18:45:30').length).toBeGreaterThan(0);
         expect(screen.getByText('6天 10小时 15分 30秒')).toBeTruthy();
+
+        const dialog = screen.getByRole('dialog');
+        const dialogLabelId = dialog.getAttribute('aria-labelledby');
+        expect(dialogLabelId).toBeTruthy();
+        expect(document.getElementById(dialogLabelId!)?.textContent).toBe('选择时间范围');
+
+        const calendar = screen.getAllByRole('grid')[0];
+        const calendarLabelId = calendar.getAttribute('aria-labelledby');
+        expect(calendarLabelId).toBeTruthy();
+        expect(document.getElementById(calendarLabelId!)).toBeTruthy();
     });
 
     it('keeps presets as draft values until Apply', async () => {
