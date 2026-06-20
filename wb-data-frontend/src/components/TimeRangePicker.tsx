@@ -65,9 +65,9 @@ function dateWithTime(date: Date, parts: TimeParts) {
     );
 }
 
-function CalendarCaption({ displayMonth }: CaptionProps) {
+function CalendarCaption({ displayMonth, id }: CaptionProps) {
     return (
-        <div className="time-range-picker__month-caption">
+        <div id={id} className="time-range-picker__month-caption">
             {displayMonth.getFullYear()}年{displayMonth.getMonth() + 1}月
         </div>
     );
@@ -143,6 +143,7 @@ function TimeInput({
 }
 
 export function TimeRangePicker({ from, to, onChange, className }: TimeRangePickerProps) {
+    const dialogTitleId = React.useId();
     const compact = useCompactCalendar();
     const [isOpen, setIsOpen] = React.useState(false);
     const [range, setRange] = React.useState<DateRange>();
@@ -260,10 +261,10 @@ export function TimeRangePicker({ from, to, onChange, className }: TimeRangePick
 
             <PopoverPrimitive.Portal>
                 <PopoverPrimitive.Positioner align="end" sideOffset={8} className="z-[1200]">
-                    <PopoverPrimitive.Popup className="time-range-picker__popup">
+                    <PopoverPrimitive.Popup className="time-range-picker__popup" aria-labelledby={dialogTitleId}>
                         <header className="time-range-picker__header">
                             <div>
-                                <h2>选择时间范围</h2>
+                                <h2 id={dialogTitleId}>选择时间范围</h2>
                                 <p>浏览器时区：{browserTimeZone}{offsetSummary ? `（${offsetSummary}）` : ''}</p>
                             </div>
                         </header>
