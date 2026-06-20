@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LoaderCircle } from 'lucide-react';
 
 import './GitSettings.css';
 import {
-    createAllGitSyncConfigs,
     createGitSyncConfig,
     deleteGitSyncConfig,
     getGitConfig,
@@ -14,7 +13,6 @@ import {
     type GitSyncConfig,
 } from './gitSettingsApi';
 import { Button } from '../../components/ui/button';
-import { SimpleSelect } from '../../components/SimpleSelect';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 
 interface KestraSyncSettingsTabProps {
@@ -26,7 +24,6 @@ interface KestraSyncSettingsTabProps {
 export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit }: KestraSyncSettingsTabProps) {
     const { showFeedback } = useOperationFeedback();
     const queryClient = useQueryClient();
-    const [selectedSyncBranch, setSelectedSyncBranch] = useState('');
 
     const { data: config, isLoading: configLoading } = useQuery({
         queryKey: ['git-config', groupId],
@@ -39,19 +36,6 @@ export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit
         queryFn: () => getGitSyncConfigs(groupId),
         enabled: groupId != null && !!config,
     });
-
-    const unsyncedBranches = useMemo(() => {
-        const configured = new Set((syncData?.configs ?? []).map((item) => item.branch));
-        return (syncData?.availableBranches ?? []).filter((branch) => !configured.has(branch));
-    }, [syncData]);
-
-    useEffect(() => {
-        if (unsyncedBranches.length === 0) {
-            setSelectedSyncBranch('');
-            return;
-        }
-        setSelectedSyncBranch((current) => unsyncedBranches.includes(current) ? current : unsyncedBranches[0]);
-    }, [unsyncedBranches]);
 
     const invalidateSyncConfigs = useCallback(() => {
         void queryClient.invalidateQueries({ queryKey: ['git-sync-config', groupId] });
@@ -68,16 +52,6 @@ export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit
         },
     });
 
-    const createAllSyncMutation = useMutation({
-        mutationFn: () => createAllGitSyncConfigs(groupId),
-        onSuccess: (result) => {
-            showFeedback({ tone: 'success', title: '同步分支已更新', detail: `新增 ${result.created} 个，已有 ${result.existing} 个` });
-            invalidateSyncConfigs();
-        },
-        onError: () => {
-            showFeedback({ tone: 'error', title: '同步全部分支失败', detail: '' });
-        },
-    });
 
     const triggerSyncMutation = useMutation({
         mutationFn: (id: number) => triggerGitSyncConfig(groupId, id),
@@ -112,13 +86,6 @@ export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit
         },
     });
 
-    const handleAddSyncBranch = useCallback(() => {
-        if (!selectedSyncBranch) {
-            showFeedback({ tone: 'error', title: '请选择分支', detail: '' });
-            return;
-        }
-        createSyncMutation.mutate(selectedSyncBranch);
-    }, [createSyncMutation, selectedSyncBranch, showFeedback]);
 
     const isLoading = configLoading || (!!config && syncLoading);
 
@@ -150,39 +117,6 @@ export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit
                     </div>
                 ) : (
                     <>
-                        {canEdit ? (
-                            <div className="git-sync-toolbar">
-                                <SimpleSelect
-                                    value={selectedSyncBranch}
-                                    options={unsyncedBranches.map((branch) => ({ value: branch, label: branch }))}
-                                    onChange={setSelectedSyncBranch}
-                                    className="git-sync-branch-select"
-                                    placeholder={unsyncedBranches.length === 0 ? '所有分支已同步' : '选择分支'}
-                                    disabled={unsyncedBranches.length === 0 || createSyncMutation.isPending}
-                                />
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={handleAddSyncBranch}
-                                    disabled={!selectedSyncBranch || createSyncMutation.isPending}
-                                >
-                                    {createSyncMutation.isPending ? <LoaderCircle size={14} className="offline-spin mr-1" /> : null}
-                                    添加分支
-                                </Button>
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => createAllSyncMutation.mutate()}
-                                    disabled={createAllSyncMutation.isPending || unsyncedBranches.length === 0}
-                                >
-                                    {createAllSyncMutation.isPending ? <LoaderCircle size={14} className="offline-spin mr-1" /> : null}
-                                    同步全部分支
-                                </Button>
-                            </div>
-                        ) : null}
-
                         {(syncData?.availableBranches.length ?? 0) === 0 ? (
                             <p className="git-settings-ro-empty">尚未添加同步分支</p>
                         ) : (
