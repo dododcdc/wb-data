@@ -150,24 +150,6 @@
     white-space: nowrap;
 }
 
-.operations-execution-failure {
-    display: flex;
-    align-items: flex-start;
-    gap: 9px;
-    padding: 12px 14px;
-    border: 1px solid rgba(224, 82, 82, 0.3);
-    border-radius: 8px;
-    background: rgba(224, 82, 82, 0.07);
-    color: var(--color-error);
-    font-size: 0.9rem;
-    line-height: 1.45;
-}
-
-.operations-execution-failure svg {
-    flex: 0 0 auto;
-    margin-top: 2px;
-}
-
 .operations-execution-workspace {
     display: grid;
     grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);

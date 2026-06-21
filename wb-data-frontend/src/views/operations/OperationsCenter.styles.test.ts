@@ -19,11 +19,11 @@ describe('OperationsCenter table layout', () => {
             + readColumnWidth('operations-col-status')
             + timeWidth * 3
             + readColumnWidth('operations-col-duration')
-            + readColumnWidth('operations-col-failure')
             + readColumnWidth('operations-col-actions');
 
         expect(minWidth).toBeGreaterThanOrEqual(1360);
         expect(timeWidth).toBeGreaterThanOrEqual(13);
         expect(totalWidth).toBe(100);
+        expect(styles).not.toContain('operations-col-failure');
     });
 });

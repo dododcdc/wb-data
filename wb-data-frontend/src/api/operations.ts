@@ -19,7 +19,6 @@ export interface OperationsExecutionListItem {
     startDate: string | null;
     endDate: string | null;
     durationMs: number | null;
-    failureSummary: string | null;
     rerunnable: boolean;
 }
 
@@ -49,7 +48,6 @@ export interface OperationsExecutionDetail {
     startDate: string | null;
     endDate: string | null;
     durationMs: number | null;
-    failureSummary: string | null;
     rerunnable: boolean;
     taskRuns: OperationsExecutionTaskRun[];
     inputs: Record<string, string>;

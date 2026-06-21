@@ -14,7 +14,6 @@ public record OperationsExecutionDetailResponse(
         Instant startDate,
         Instant endDate,
         Long durationMs,
-        String failureSummary,
         boolean rerunnable,
         List<OperationsExecutionTaskRun> taskRuns,
         Map<String, String> inputs,

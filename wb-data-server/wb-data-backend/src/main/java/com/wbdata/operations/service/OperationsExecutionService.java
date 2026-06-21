@@ -246,7 +246,6 @@ public class OperationsExecutionService {
                 execution.startDate(),
                 execution.endDate(),
                 durationMs(execution.startDate(), execution.endDate()),
-                failureSummary(execution),
                 rerunnable(execution.status())
         );
     }
@@ -268,7 +267,6 @@ public class OperationsExecutionService {
                 execution.startDate(),
                 execution.endDate(),
                 durationMs(execution.startDate(), execution.endDate()),
-                failureSummary(execution),
                 rerunnable(execution.status()),
                 taskRuns,
                 execution.inputs() == null ? Map.of() : execution.inputs(),
@@ -319,21 +317,6 @@ public class OperationsExecutionService {
 
     private Instant executionTime(OperationsExecutionListItem item) {
         return item.createdAt() == null ? item.startDate() : item.createdAt();
-    }
-
-    private String failureSummary(KestraExecutionSnapshot execution) {
-        if (execution.status() == null || !"FAILED".equalsIgnoreCase(execution.status()) || execution.taskRuns() == null) {
-            return null;
-        }
-        for (KestraTaskRunSnapshot taskRun : execution.taskRuns()) {
-            if (taskRun != null
-                    && taskRun.taskId() != null
-                    && taskRun.status() != null
-                    && "FAILED".equalsIgnoreCase(taskRun.status())) {
-                return taskRun.taskId() + " failed";
-            }
-        }
-        return null;
     }
 
     private boolean rerunnable(String status) {

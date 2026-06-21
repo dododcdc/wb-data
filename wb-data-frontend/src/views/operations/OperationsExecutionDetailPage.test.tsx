@@ -52,7 +52,6 @@ describe('OperationsExecutionDetailPage', () => {
             startDate: '2026-06-07T01:00:02Z',
             endDate: '2026-06-07T01:03:12Z',
             durationMs: 190000,
-            failureSummary: 'load_policy failed',
             rerunnable: true,
             taskRuns: [
                 {
@@ -123,7 +122,6 @@ describe('OperationsExecutionDetailPage', () => {
 
         expect(await screen.findByText('daily_policy')).toBeTruthy();
         expect(screen.getByText('feature/policy-review')).toBeTruthy();
-        expect(screen.getByText('load_policy failed')).toBeTruthy();
         expect(screen.getByText(formatLocalDateTime(new Date('2026-06-07T01:00:02Z')))).toBeTruthy();
         await waitFor(() => expect(getOperationsExecutionLogsMock).toHaveBeenCalledWith(4, 'exec-1', 'load_policy'));
         expect(await screen.findByText('load failed on row 42')).toBeTruthy();
