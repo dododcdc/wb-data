@@ -52,6 +52,21 @@ describe('OperationsTimeFilter', () => {
         expect(onChange).toHaveBeenCalledWith('2026-06-14 12:00:00', '2026-06-21 12:00:00');
     });
 
+    it('keeps the quick-range timestamps together as one centered group', async () => {
+        render(
+            <OperationsTimeFilter
+                from="2026-06-20 09:53:45"
+                to="2026-06-21 09:53:45"
+                onChange={vi.fn()}
+            />
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: /2026-06-20 09:53:45/ }));
+
+        await screen.findByLabelText('待应用时间范围');
+        expect(screen.getByRole('group', { name: '开始和结束时间' })).toBeTruthy();
+    });
+
     it('shows two consecutive months for a December to January range', async () => {
         render(
             <OperationsTimeFilter

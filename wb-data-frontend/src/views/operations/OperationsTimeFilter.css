@@ -327,10 +327,9 @@
 }
 
 .operations-time-filter__selection {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    display: flex;
     align-items: center;
-    gap: 12px;
+    justify-content: center;
     padding: 12px 16px;
     border-top: 1px solid var(--color-border-subtle);
     color: var(--color-text-primary);
@@ -339,12 +338,15 @@
     font-variant-numeric: tabular-nums;
 }
 
-.operations-time-filter__selection span:nth-child(2) {
-    color: var(--color-text-muted);
+.operations-time-filter__selection-range {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    white-space: nowrap;
 }
 
-.operations-time-filter__selection span:last-child {
-    text-align: right;
+.operations-time-filter__selection-range span:nth-child(2) {
+    color: var(--color-text-muted);
 }
 
 .operations-time-filter__footer {
@@ -403,16 +405,13 @@
         --rdp-cell-size: min(42px, calc((100vw - 56px) / 7));
     }
 
-    .operations-time-filter__selection {
-        grid-template-columns: 1fr;
+    .operations-time-filter__selection-range {
+        align-items: flex-start;
+        flex-direction: column;
         gap: 4px;
     }
 
-    .operations-time-filter__selection span:nth-child(2) {
+    .operations-time-filter__selection-range span:nth-child(2) {
         display: none;
-    }
-
-    .operations-time-filter__selection span:last-child {
-        text-align: left;
     }
 }
