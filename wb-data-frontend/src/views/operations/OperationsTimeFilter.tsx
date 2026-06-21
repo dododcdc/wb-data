@@ -352,9 +352,15 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
 
                         {mode === 'quick' ? (
                             <div className="operations-time-filter__selection" aria-label="待应用时间范围">
-                                <span>{draftStart ? formatLocalDateTime(draftStart) : '请选择开始时间'}</span>
-                                <span aria-hidden="true">→</span>
-                                <span>{draftEnd ? formatLocalDateTime(draftEnd) : '请选择结束时间'}</span>
+                                <div
+                                    className="operations-time-filter__selection-range"
+                                    role="group"
+                                    aria-label="开始和结束时间"
+                                >
+                                    <span>{draftStart ? formatLocalDateTime(draftStart) : '请选择开始时间'}</span>
+                                    <span aria-hidden="true">→</span>
+                                    <span>{draftEnd ? formatLocalDateTime(draftEnd) : '请选择结束时间'}</span>
+                                </div>
                             </div>
                         ) : null}
 
