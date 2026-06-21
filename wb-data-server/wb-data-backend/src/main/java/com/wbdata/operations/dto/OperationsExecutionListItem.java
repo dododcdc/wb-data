@@ -12,7 +12,6 @@ public record OperationsExecutionListItem(
         Instant startDate,
         Instant endDate,
         Long durationMs,
-        String failureSummary,
         boolean rerunnable
 ) {
 }

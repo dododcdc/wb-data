@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    AlertTriangle,
     ArrowLeft,
     CheckCircle2,
     Clock,
@@ -324,13 +323,6 @@ export default function OperationsExecutionDetailPage() {
                     <DetailMetric label="耗时" value={formatDuration(detail.durationMs)} />
                     <DetailMetric label="节点数" value={detail.taskRuns.length} />
                 </section>
-
-                {detail.failureSummary && (
-                    <section className="operations-execution-failure" role="alert">
-                        <AlertTriangle size={17} />
-                        <span>{detail.failureSummary}</span>
-                    </section>
-                )}
 
                 <section className="operations-execution-workspace">
                     <aside className="operations-execution-tasks" aria-label="节点列表">

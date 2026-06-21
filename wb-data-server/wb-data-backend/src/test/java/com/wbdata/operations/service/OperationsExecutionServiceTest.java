@@ -7,6 +7,7 @@ import com.wbdata.offline.service.KestraExecutionSnapshot;
 import com.wbdata.offline.service.KestraLogEntry;
 import com.wbdata.offline.service.KestraTaskRunSnapshot;
 import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
+import com.wbdata.operations.dto.OperationsExecutionListItem;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
 import com.wbdata.operations.dto.OperationsExecutionQuery;
 import com.wbdata.operations.dto.OperationsExecutionRerunResponse;
@@ -34,6 +35,23 @@ import static org.mockito.Mockito.when;
 class OperationsExecutionServiceTest {
     private static final Instant FROM = Instant.parse("2026-06-06T00:00:00Z");
     private static final Instant TO = Instant.parse("2026-06-08T00:00:00Z");
+
+    @Test
+    void executionDtos_exposeOnlyKestraBackedExecutionData() {
+        assertThat(Arrays.stream(OperationsExecutionListItem.class.getRecordComponents())
+                .map(component -> component.getName()))
+                .containsExactly(
+                        "id", "namespace", "flowId", "branch", "status",
+                        "createdAt", "startDate", "endDate", "durationMs", "rerunnable"
+                );
+        assertThat(Arrays.stream(OperationsExecutionDetailResponse.class.getRecordComponents())
+                .map(component -> component.getName()))
+                .containsExactly(
+                        "id", "namespace", "flowId", "branch", "status",
+                        "createdAt", "startDate", "endDate", "durationMs", "rerunnable",
+                        "taskRuns", "inputs", "labels"
+                );
+    }
 
     @Test
     void listExecutions_returnsOnlyCurrentGroupBusinessNamespaces() {
@@ -69,7 +87,6 @@ class OperationsExecutionServiceTest {
         assertThat(response.branches()).containsExactly("feature/policy-review", "main");
         assertThat(response.executions()).extracting("id").containsExactly("exec-review", "exec-main");
         assertThat(response.executions().getFirst().branch()).isEqualTo("feature/policy-review");
-        assertThat(response.executions().getFirst().failureSummary()).isEqualTo("load_policy failed");
         assertThat(response.executions().getFirst().rerunnable()).isTrue();
         verify(kestraClient).searchExecutions(searchFilter("g4-feature-policy-review"));
         verify(kestraClient).searchExecutions(searchFilter("g4-main"));
@@ -241,7 +258,6 @@ class OperationsExecutionServiceTest {
         assertThat(response.id()).isEqualTo("exec-main");
         assertThat(response.branch()).isEqualTo("main");
         assertThat(response.durationMs()).isEqualTo(5_000L);
-        assertThat(response.failureSummary()).isEqualTo("load failed");
         assertThat(response.rerunnable()).isTrue();
         assertThat(response.taskRuns()).hasSize(1);
         assertThat(response.taskRuns().getFirst().taskId()).isEqualTo("load");

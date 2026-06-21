@@ -159,11 +159,11 @@
 }
 
 .operations-col-task {
-    width: 13%;
+    width: 15%;
 }
 
 .operations-col-branch {
-    width: 13%;
+    width: 15%;
 }
 
 .operations-col-status {
@@ -171,24 +171,19 @@
 }
 
 .operations-col-time {
-    width: 13%;
+    width: 14%;
 }
 
 .operations-col-duration {
     width: 6%;
 }
 
-.operations-col-failure {
-    width: 9%;
-}
-
 .operations-col-actions {
-    width: 13%;
+    width: 15%;
 }
 
 .operations-flow,
-.operations-branch,
-.operations-failure {
+.operations-branch {
     display: block;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -203,10 +198,6 @@
     color: var(--color-text-secondary);
     font-family: var(--font-mono);
     font-size: 0.78rem;
-}
-
-.operations-failure {
-    color: var(--color-text-secondary);
 }
 
 .operations-time {

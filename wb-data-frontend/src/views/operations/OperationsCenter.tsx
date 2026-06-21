@@ -291,7 +291,6 @@ export default function OperationsCenter() {
                                 <col className="operations-col-time" />
                                 <col className="operations-col-time" />
                                 <col className="operations-col-duration" />
-                                <col className="operations-col-failure" />
                                 <col className="operations-col-actions" />
                             </colgroup>
                             <thead>
@@ -303,7 +302,6 @@ export default function OperationsCenter() {
                                     <th>开始时间</th>
                                     <th>结束时间</th>
                                     <th>耗时</th>
-                                    <th>失败摘要</th>
                                     <th>操作</th>
                                 </tr>
                             </thead>
@@ -323,11 +321,6 @@ export default function OperationsCenter() {
                                         <td className="operations-time">{formatBrowserDateTime(row.startDate)}</td>
                                         <td className="operations-time">{formatBrowserDateTime(row.endDate)}</td>
                                         <td className="operations-time">{formatDuration(row.durationMs)}</td>
-                                        <td>
-                                            <span className="operations-failure" title={row.failureSummary ?? ''}>
-                                                {row.failureSummary || '—'}
-                                            </span>
-                                        </td>
                                         <td>
                                             <div className="operations-actions">
                                                 <DetailLink row={row} />

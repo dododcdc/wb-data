@@ -112,7 +112,6 @@ describe('OperationsCenter', () => {
                     startDate: '2026-06-07T01:00:02Z',
                     endDate: '2026-06-07T01:03:12Z',
                     durationMs: 190000,
-                    failureSummary: 'load_policy failed',
                     rerunnable: true,
                 },
                 {
@@ -125,7 +124,6 @@ describe('OperationsCenter', () => {
                     startDate: '2026-06-07T00:00:01Z',
                     endDate: '2026-06-07T00:01:01Z',
                     durationMs: 60000,
-                    failureSummary: null,
                     rerunnable: false,
                 },
             ],
@@ -157,7 +155,7 @@ describe('OperationsCenter', () => {
         expect(await screen.findByText('daily_policy')).toBeTruthy();
         expect(screen.getAllByText('feature/policy-review').length).toBeGreaterThan(0);
         expect(screen.getAllByText('失败').length).toBeGreaterThan(0);
-        expect(screen.getByText('load_policy failed')).toBeTruthy();
+        expect(screen.getAllByRole('columnheader')).toHaveLength(8);
         expect(screen.getByRole('button', { name: '重跑 daily_policy' })).toBeTruthy();
         expect(screen.queryByRole('button', { name: '重跑 hourly_policy' })).toBeNull();
         expect(screen.getByText(formatLocalDateTime(new Date('2026-06-07T01:00:00Z')))).toBeTruthy();
