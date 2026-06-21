@@ -130,7 +130,7 @@
 
 .operations-table table {
     width: 100%;
-    min-width: 1180px;
+    min-width: 1400px;
     border-collapse: collapse;
     table-layout: fixed;
 }
@@ -159,31 +159,31 @@
 }
 
 .operations-col-task {
-    width: 15%;
+    width: 13%;
 }
 
 .operations-col-branch {
-    width: 17%;
+    width: 13%;
 }
 
 .operations-col-status {
-    width: 8%;
-}
-
-.operations-col-time {
-    width: 10.5%;
-}
-
-.operations-col-duration {
     width: 7%;
 }
 
+.operations-col-time {
+    width: 13%;
+}
+
+.operations-col-duration {
+    width: 6%;
+}
+
 .operations-col-failure {
-    width: 15%;
+    width: 9%;
 }
 
 .operations-col-actions {
-    width: 15%;
+    width: 13%;
 }
 
 .operations-flow,
@@ -210,8 +210,10 @@
 }
 
 .operations-time {
+    overflow: hidden;
     color: var(--color-text-secondary);
     font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 
