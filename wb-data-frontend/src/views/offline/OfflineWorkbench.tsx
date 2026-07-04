@@ -36,7 +36,6 @@ import {
 } from 'lucide-react';
 import {
     commitOfflineCurrentFlow,
-    commitOfflineRepo,
     createOfflineFolder,
     createOfflineDocumentDebugExecution,
     deleteOfflineFlow,
@@ -872,6 +871,7 @@ export default function OfflineWorkbench() {
         resetBranchSwitchState,
         refreshRepoStatus,
         refreshRemoteStatus,
+        commitRepo: commitRepository,
         push: pushRepository,
         rebuildRemote,
         toggleBranchMenu: handleBranchMenuToggle,
@@ -2114,23 +2114,20 @@ export default function OfflineWorkbench() {
         if (!groupId) return;
         setCommitting(true);
         try {
-            if (mode === 'save-and-commit' && activeFlowPath && isDirty) {
-                const saved = await handleSaveFlow(undefined, false);
-                if (!saved) return;
-            }
-            const result = await commitOfflineRepo(groupId, commitMessage);
-            if (result.success) {
+            const committed = await commitRepository(commitMessage, {
+                saveCurrentFlowBeforeCommit: mode === 'save-and-commit' && activeFlowPath && isDirty
+                    ? () => handleSaveFlow(undefined, false)
+                    : undefined,
+                afterCommit: refreshFlowCommitStatus,
+            });
+            if (committed) {
                 setRepoCommitDialogOpen(false);
                 setCommitMessage('');
-                await Promise.all([refreshRepoStatus(), refreshFlowCommitStatus()]);
-                showFeedback({ tone: 'success', title: result.message, detail: '' });
             }
-        } catch {
-            showFeedback({ tone: 'error', title: '仓库提交失败', detail: '' });
         } finally {
             setCommitting(false);
         }
-    }, [groupId, activeFlowPath, commitMessage, isDirty, handleSaveFlow, refreshRepoStatus, refreshFlowCommitStatus, showFeedback]);
+    }, [groupId, activeFlowPath, commitMessage, isDirty, handleSaveFlow, commitRepository, refreshFlowCommitStatus]);
 
     const handleConfirmLeave = useCallback(async (action: 'save' | 'discard') => {
         if (!pendingNavigation) return;
