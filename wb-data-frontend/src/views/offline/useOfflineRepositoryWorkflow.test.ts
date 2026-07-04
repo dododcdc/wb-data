@@ -11,6 +11,7 @@ vi.mock('../../api/offline', async () => {
         listBranches: vi.fn(),
         pushOfflineRepo: vi.fn(),
         rebuildOfflineRepo: vi.fn(),
+        switchBranch: vi.fn(),
     };
 });
 
@@ -36,12 +37,21 @@ describe('useOfflineRepositoryWorkflow', () => {
         vi.clearAllMocks();
     });
 
+    function renderRepositoryWorkflow(showFeedback = vi.fn()) {
+        return renderHook(() => useOfflineRepositoryWorkflow({
+            groupId: 1,
+            canManageBranches: true,
+            hasUnsavedFlowDraft: false,
+            showFeedback,
+        }));
+    }
+
     it('refreshes repository status for the current group', async () => {
         const offlineApi = await import('../../api/offline');
         const showFeedback = vi.fn();
         vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue(makeRepoStatus());
 
-        const { result } = renderHook(() => useOfflineRepositoryWorkflow({ groupId: 1, canSwitchBranch: true, showFeedback }));
+        const { result } = renderRepositoryWorkflow(showFeedback);
 
         await act(async () => {
             await result.current.refreshRepoStatus();
@@ -66,7 +76,7 @@ describe('useOfflineRepositoryWorkflow', () => {
         vi.mocked(offlineApi.getOfflineRepoRemote).mockResolvedValue({ hasRemote: true, remoteUrl: 'origin-url' });
         vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), ahead: false });
 
-        const { result } = renderHook(() => useOfflineRepositoryWorkflow({ groupId: 1, canSwitchBranch: true, showFeedback }));
+        const { result } = renderRepositoryWorkflow(showFeedback);
 
         act(() => {
             result.current.setPushDialogOpen(true);
@@ -83,6 +93,25 @@ describe('useOfflineRepositoryWorkflow', () => {
         expect(showFeedback).toHaveBeenCalledWith({ tone: 'success', title: '推送成功', detail: '' });
     });
 
+    it('allows the first push when the repo has a remote but no upstream yet', async () => {
+        const offlineApi = await import('../../api/offline');
+        const showFeedback = vi.fn();
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({
+            ...makeRepoStatus(),
+            hasRemote: true,
+            hasUpstream: false,
+            ahead: true,
+        });
+
+        const { result } = renderRepositoryWorkflow(showFeedback);
+
+        await act(async () => {
+            await result.current.refreshRepoStatus();
+        });
+
+        expect(result.current.canPush).toBe(true);
+    });
+
     it('opens the rebuild dialog when push reports a deleted remote', async () => {
         const offlineApi = await import('../../api/offline');
         const showFeedback = vi.fn();
@@ -94,7 +123,7 @@ describe('useOfflineRepositoryWorkflow', () => {
             remoteDeleted: true,
         });
 
-        const { result } = renderHook(() => useOfflineRepositoryWorkflow({ groupId: 1, canSwitchBranch: true, showFeedback }));
+        const { result } = renderRepositoryWorkflow(showFeedback);
 
         act(() => {
             result.current.setPushDialogOpen(true);
@@ -121,7 +150,7 @@ describe('useOfflineRepositoryWorkflow', () => {
         vi.mocked(offlineApi.getOfflineRepoRemote).mockResolvedValue({ hasRemote: true, remoteUrl: 'origin-url' });
         vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue(makeRepoStatus());
 
-        const { result } = renderHook(() => useOfflineRepositoryWorkflow({ groupId: 1, canSwitchBranch: true, showFeedback }));
+        const { result } = renderRepositoryWorkflow(showFeedback);
 
         act(() => {
             result.current.setRebuildDialogOpen(true);
@@ -139,6 +168,7 @@ describe('useOfflineRepositoryWorkflow', () => {
     it('loads branch list when the branch menu opens', async () => {
         const offlineApi = await import('../../api/offline');
         const showFeedback = vi.fn();
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue(makeRepoStatus());
         vi.mocked(offlineApi.listBranches).mockResolvedValue({
             branches: [
                 { name: 'main', current: true, local: true, remote: true, remoteName: 'origin/main', trackingBranch: 'origin/main' },
@@ -146,8 +176,11 @@ describe('useOfflineRepositoryWorkflow', () => {
             ],
         });
 
-        const { result } = renderHook(() => useOfflineRepositoryWorkflow({ groupId: 1, canSwitchBranch: true, showFeedback }));
+        const { result } = renderRepositoryWorkflow(showFeedback);
 
+        await act(async () => {
+            await result.current.refreshRepoStatus();
+        });
         act(() => {
             result.current.toggleBranchMenu();
         });
@@ -159,5 +192,85 @@ describe('useOfflineRepositoryWorkflow', () => {
         expect(offlineApi.listBranches).toHaveBeenCalledWith(1);
         expect(result.current.branchMenuOpen).toBe(true);
         expect(result.current.branches.map((branch) => branch.name)).toEqual(['main', 'dev']);
+    });
+
+    it('returns branch dirty state when branch switch hits a dirty working tree', async () => {
+        const offlineApi = await import('../../api/offline');
+        const { AxiosError } = await import('axios');
+        const showFeedback = vi.fn();
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue(makeRepoStatus());
+        vi.mocked(offlineApi.switchBranch).mockRejectedValue(new AxiosError(
+            'dirty',
+            undefined,
+            undefined,
+            undefined,
+            {
+                status: 409,
+                statusText: 'Conflict',
+                headers: {},
+                config: {} as never,
+                data: {
+                    data: {
+                        changedFlows: ['_flows/example/flow.yaml'],
+                        changedFiles: ['_flows/example/flow.yaml'],
+                        otherFileCount: 0,
+                        changedFlowDetails: [{ path: '_flows/example/flow.yaml', status: 'MODIFIED' }],
+                    },
+                },
+            },
+        ));
+
+        const { result } = renderRepositoryWorkflow(showFeedback);
+
+        await act(async () => {
+            await result.current.refreshRepoStatus();
+        });
+        await act(async () => {
+            result.current.requestBranchSwitch('dev');
+            await Promise.resolve();
+        });
+
+        expect(offlineApi.switchBranch).toHaveBeenCalledWith(1, 'dev');
+        expect(result.current.branchDirtyState?.changedFlows).toEqual(['_flows/example/flow.yaml']);
+        expect(result.current.branchMenuOpen).toBe(true);
+        expect(showFeedback).toHaveBeenCalledWith(expect.objectContaining({
+            tone: 'error',
+            title: '工作区有未提交改动',
+        }));
+    });
+
+    it('confirms draft discard before switching branches', async () => {
+        const offlineApi = await import('../../api/offline');
+        const showFeedback = vi.fn();
+        const discardDraft = vi.fn();
+        const afterSwitch = vi.fn();
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue(makeRepoStatus());
+        vi.mocked(offlineApi.switchBranch).mockResolvedValue(null);
+
+        const { result } = renderRepositoryWorkflow(showFeedback);
+
+        await act(async () => {
+            await result.current.refreshRepoStatus();
+        });
+        act(() => {
+            result.current.requestBranchSwitch('dev', {
+                hasUnsavedDraft: true,
+                discardDraft,
+                afterSwitch,
+            });
+        });
+
+        expect(result.current.discardBranchSwitchOpen).toBe(true);
+        expect(offlineApi.switchBranch).not.toHaveBeenCalled();
+
+        await act(async () => {
+            result.current.confirmDiscardDraftAndSwitchBranch();
+            await Promise.resolve();
+        });
+
+        expect(discardDraft).toHaveBeenCalled();
+        expect(offlineApi.switchBranch).toHaveBeenCalledWith(1, 'dev');
+        expect(afterSwitch).toHaveBeenCalledWith('dev');
+        expect(result.current.discardBranchSwitchOpen).toBe(false);
     });
 });

@@ -52,9 +52,6 @@ import {
     saveOfflineFlowDocument,
     stopAllOfflineExecutions,
     stopOfflineExecution,
-    switchBranch,
-    type DirtyFlowChange,
-    type DirtyWorkingTreeResponse,
     type OfflineExecutionDetail,
     type OfflineExecutionListItem,
     type OfflineFlowDocument,
@@ -151,12 +148,6 @@ type PendingNavigationState =
     | { type: 'flow'; flowPath: string }
     | { type: 'router'; blocker: NavigationBlocker };
 
-interface BranchDirtyState {
-    changedFlows: string[];
-    changedFlowDetails: DirtyFlowChange[];
-    otherFileCount: number;
-}
-
 function flattenDocumentNodes(document: OfflineFlowDocument | null) {
     return document?.stages.flatMap((stage) => stage.nodes) ?? [];
 }
@@ -169,45 +160,6 @@ function formatFlowPathDisplayName(flowPath: string) {
         return segments[flowYamlIndex - 1];
     }
     return segments[segments.length - 1] ?? flowPath;
-}
-
-function readDirtyFlowChanges(details: Record<string, unknown>, changedFlows: string[]): DirtyFlowChange[] {
-    if (Array.isArray(details.changedFlowDetails)) {
-        return details.changedFlowDetails.flatMap((item): DirtyFlowChange[] => {
-            if (!item || typeof item !== 'object') {
-                return [];
-            }
-            const candidate = item as Record<string, unknown>;
-            if (typeof candidate.path !== 'string') {
-                return [];
-            }
-            const status = candidate.status === 'ADDED' || candidate.status === 'DELETED' ? candidate.status : 'MODIFIED';
-            return [{ path: candidate.path, status }];
-        });
-    }
-    return changedFlows.map((path) => ({ path, status: 'MODIFIED' }));
-}
-
-function readDirtyWorkingTreeDetails(error: unknown): DirtyWorkingTreeResponse | null {
-    if (!(error instanceof AxiosError) || error.response?.status !== 409) {
-        return null;
-    }
-    const details = error.response.data?.data;
-    if (!details || typeof details !== 'object') {
-        return null;
-    }
-    const detailRecord = details as Record<string, unknown>;
-    const changedFlows = Array.isArray(detailRecord.changedFlows)
-        ? detailRecord.changedFlows.filter((item: unknown): item is string => typeof item === 'string')
-        : [];
-    return {
-        changedFlows,
-        changedFiles: Array.isArray(details.changedFiles)
-            ? details.changedFiles.filter((item: unknown): item is string => typeof item === 'string')
-            : [],
-        otherFileCount: typeof details.otherFileCount === 'number' ? details.otherFileCount : 0,
-        changedFlowDetails: readDirtyFlowChanges(detailRecord, changedFlows),
-    };
 }
 
 function resolveSelectedNodeId(document: OfflineFlowDocument | null, candidate: string | null) {
@@ -795,37 +747,11 @@ export default function OfflineWorkbench() {
 
     const [repoTree, setRepoTree] = useState<OfflineRepoTreeResponse | null>(null);
     const [treeLoading, setTreeLoading] = useState(false);
-    const {
-        repoStatus,
-        repoLoading,
-        pushLoading,
-        pushDialogOpen,
-        setPushDialogOpen,
-        rebuildLoading,
-        rebuildDialogOpen,
-        setRebuildDialogOpen,
-        branchMenuOpen,
-        setBranchMenuOpen,
-        branchTooltipOpen,
-        setBranchTooltipOpen,
-        branchLoading,
-        branches,
-        resetBranchList,
-        refreshRepoStatus,
-        refreshRemoteStatus,
-        push: pushRepository,
-        rebuildRemote,
-        toggleBranchMenu: handleBranchMenuToggle,
-    } = useOfflineRepositoryWorkflow({ groupId, canSwitchBranch: isGroupAdmin && !!groupId, showFeedback });
     const [flowCommitDialogOpen, setFlowCommitDialogOpen] = useState(false);
     const [repoCommitDialogOpen, setRepoCommitDialogOpen] = useState(false);
     const [commitMessage, setCommitMessage] = useState('');
     const [committing, setCommitting] = useState(false);
     const [flowCommitDirty, setFlowCommitDirty] = useState(false);
-    const [branchSwitching, setBranchSwitching] = useState(false);
-    const [branchDirtyState, setBranchDirtyState] = useState<BranchDirtyState | null>(null);
-    const [pendingBranchSwitch, setPendingBranchSwitch] = useState<string | null>(null);
-    const [discardBranchSwitchOpen, setDiscardBranchSwitchOpen] = useState(false);
     const [expandedTreeIds, setExpandedTreeIds] = useState<string[]>([]);
     const [activeFlowPath, setActiveFlowPath] = useState<string | null>(null);
     const [flowLoading, setFlowLoading] = useState(false);
@@ -916,6 +842,45 @@ export default function OfflineWorkbench() {
     const activeNode = useMemo(() => flattenDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null, [activeNodeId, flowDocument]);
     const nodeCount = useMemo(() => flattenDocumentNodes(flowDocument).length, [flowDocument]);
     const isDirty = draftSession !== null && hasFlowDraftChanges(draftSession);
+    const {
+        repoStatus,
+        repoLoading,
+        branchLabel,
+        canSwitchBranch,
+        canCommitRepo,
+        canPush,
+        pushLoading,
+        pushDialogOpen,
+        setPushDialogOpen,
+        rebuildLoading,
+        rebuildDialogOpen,
+        setRebuildDialogOpen,
+        branchMenuOpen,
+        setBranchMenuOpen,
+        branchTooltipOpen,
+        setBranchTooltipOpen,
+        branchLoading,
+        branches,
+        resetBranchList,
+        branchSwitching,
+        branchDirtyState,
+        pendingBranchSwitch,
+        discardBranchSwitchOpen,
+        setDiscardBranchSwitchOpen,
+        requestBranchSwitch,
+        confirmDiscardDraftAndSwitchBranch,
+        resetBranchSwitchState,
+        refreshRepoStatus,
+        refreshRemoteStatus,
+        push: pushRepository,
+        rebuildRemote,
+        toggleBranchMenu: handleBranchMenuToggle,
+    } = useOfflineRepositoryWorkflow({
+        groupId,
+        canManageBranches: isGroupAdmin && !!groupId,
+        hasUnsavedFlowDraft: isDirty,
+        showFeedback,
+    });
 
     useBeforeUnloadGuard(isDirty);
 
@@ -955,8 +920,6 @@ export default function OfflineWorkbench() {
         });
         return statuses;
     }, [executionDetail]);
-    const branchLabel = repoStatus?.gitInitialized ? repoStatus.branch ?? 'main' : '未初始化';
-    const canSwitchBranch = isGroupAdmin && !!groupId && !!repoStatus?.gitInitialized;
     const currentBranchFromList = useMemo(
         () => branches.find((branch) => branch.current) ?? branches.find((branch) => branch.name === branchLabel) ?? null,
         [branches, branchLabel],
@@ -1211,98 +1174,24 @@ export default function OfflineWorkbench() {
         setExecutionDetail(null);
     }, []);
 
-    const executeBranchSwitch = useCallback(async (branchName: string, options?: { discardDraft?: boolean }) => {
-        if (!groupId || !canSwitchBranch || branchName === branchLabel) return;
-        const isCurrentGroupAction = captureGroupActionGuard(groupId);
+    const discardActiveDraftForBranchSwitch = useCallback(() => {
+        if (!groupId || !draftSession) return;
+        didDiscardLeaveRef.current = true;
+        leaveCurrentFlow(draftSession);
+        removeRecoverySnapshot(groupId, draftSession.path);
+        resetActiveFlowAfterBranchSwitch();
+    }, [draftSession, groupId, leaveCurrentFlow, resetActiveFlowAfterBranchSwitch]);
 
-        setBranchSwitching(true);
-        try {
-            if (options?.discardDraft && draftSession) {
-                didDiscardLeaveRef.current = true;
-                leaveCurrentFlow(draftSession);
-                removeRecoverySnapshot(groupId, draftSession.path);
+    const handleBranchSwitchRequest = useCallback((branchName: string) => {
+        requestBranchSwitch(branchName, {
+            hasUnsavedDraft: isDirty,
+            discardDraft: discardActiveDraftForBranchSwitch,
+            afterSwitch: async () => {
                 resetActiveFlowAfterBranchSwitch();
-            }
-
-            await switchBranch(groupId, branchName);
-            if (!isCurrentGroupAction()) return;
-
-            setBranchDirtyState(null);
-            setBranchMenuOpen(false);
-            setPendingBranchSwitch(null);
-            setDiscardBranchSwitchOpen(false);
-            resetActiveFlowAfterBranchSwitch();
-            window.dispatchEvent(new CustomEvent('wbdata:offline-branch-changed', {
-                detail: { groupId, branch: branchName, source: 'workbench' },
-            }));
-            await refreshWorkspace();
-            if (!isCurrentGroupAction()) return;
-            showFeedback({ tone: 'success', title: '分支已切换', detail: branchName });
-        } catch (error) {
-            if (!isCurrentGroupAction()) return;
-            const dirtyDetails = readDirtyWorkingTreeDetails(error);
-            if (dirtyDetails) {
-                setBranchDirtyState({
-                    changedFlows: dirtyDetails.changedFlows,
-                    changedFlowDetails: dirtyDetails.changedFlowDetails ?? dirtyDetails.changedFlows.map((path) => ({ path, status: 'MODIFIED' })),
-                    otherFileCount: dirtyDetails.otherFileCount,
-                });
-                setBranchMenuOpen(true);
-                showFeedback({
-                    tone: 'error',
-                    title: '工作区有未提交改动',
-                    detail: dirtyDetails.changedFlows.length > 0
-                        ? `还有 ${dirtyDetails.changedFlows.length} 个已保存但未提交的 Flow，请提交仓库改动后再切换分支。`
-                        : '请提交仓库改动后再切换分支。',
-                });
-                return;
-            }
-            setBranchDirtyState(null);
-            showFeedback({
-                tone: 'error',
-                title: '切换分支失败',
-                detail: getErrorMessage(error, ''),
-            });
-        } finally {
-            if (isCurrentGroupAction()) {
-                setBranchSwitching(false);
-            }
-        }
-    }, [
-        branchLabel,
-        canSwitchBranch,
-        captureGroupActionGuard,
-        draftSession,
-        groupId,
-        leaveCurrentFlow,
-        refreshWorkspace,
-        resetActiveFlowAfterBranchSwitch,
-        showFeedback,
-    ]);
-
-    const requestBranchSwitch = useCallback((branchName: string) => {
-        if (!canSwitchBranch || branchName === branchLabel) return;
-        if (isDirty) {
-            setPendingBranchSwitch(branchName);
-            setDiscardBranchSwitchOpen(true);
-            return;
-        }
-        void executeBranchSwitch(branchName);
-    }, [branchLabel, canSwitchBranch, executeBranchSwitch, isDirty]);
-
-    const confirmDiscardDraftAndSwitchBranch = useCallback(() => {
-        if (!pendingBranchSwitch) {
-            setDiscardBranchSwitchOpen(false);
-            return;
-        }
-        void executeBranchSwitch(pendingBranchSwitch, { discardDraft: true });
-    }, [executeBranchSwitch, pendingBranchSwitch]);
-
-    useEffect(() => {
-        if (!repoStatus?.dirty) {
-            setBranchDirtyState(null);
-        }
-    }, [repoStatus?.dirty]);
+                await refreshWorkspace();
+            },
+        });
+    }, [discardActiveDraftForBranchSwitch, isDirty, refreshWorkspace, requestBranchSwitch, resetActiveFlowAfterBranchSwitch]);
 
     useEffect(() => {
         if (!branchMenuOpen) return;
@@ -1343,14 +1232,12 @@ export default function OfflineWorkbench() {
         setSaveConflictState(null);
         setSaveConflictPending(false);
         resetBranchList();
-        setBranchDirtyState(null);
-        setPendingBranchSwitch(null);
-        setDiscardBranchSwitchOpen(false);
+        resetBranchSwitchState();
         pendingNodeEditorDraftRef.current = null;
 
         if (!groupId) return;
         void refreshWorkspace();
-    }, [groupId, leaveCurrentFlow, refreshWorkspace, resetBranchList]);
+    }, [groupId, leaveCurrentFlow, refreshWorkspace, resetBranchList, resetBranchSwitchState]);
 
     useEffect(() => {
         const handleBranchChanged = (event: Event) => {
@@ -1359,16 +1246,14 @@ export default function OfflineWorkbench() {
             if (detail?.source === 'workbench') return;
 
             resetBranchList();
-            setBranchDirtyState(null);
-            setPendingBranchSwitch(null);
-            setDiscardBranchSwitchOpen(false);
+            resetBranchSwitchState();
             resetActiveFlowAfterBranchSwitch();
             void refreshWorkspace();
         };
 
         window.addEventListener('wbdata:offline-branch-changed', handleBranchChanged);
         return () => window.removeEventListener('wbdata:offline-branch-changed', handleBranchChanged);
-    }, [groupId, refreshWorkspace, resetActiveFlowAfterBranchSwitch, resetBranchList]);
+    }, [groupId, refreshWorkspace, resetActiveFlowAfterBranchSwitch, resetBranchList, resetBranchSwitchState]);
 
     // Restore flow from URL param (e.g. returning from execution log page)
     const restoreFlowRef = useRef(false);
@@ -2617,7 +2502,7 @@ export default function OfflineWorkbench() {
                                                                 className="offline-branch-row"
                                                                 aria-label={`切换到 ${branch.name}`}
                                                                 title={branch.name}
-                                                                onClick={() => requestBranchSwitch(branch.name)}
+                                                                onClick={() => handleBranchSwitchRequest(branch.name)}
                                                                 disabled={branchSwitching}
                                                             >
                                                                 <div>
@@ -2707,7 +2592,7 @@ export default function OfflineWorkbench() {
                                                     className="offline-rail-toolbar-btn"
                                                     aria-label="提交仓库改动"
                                                     onClick={() => void handleOpenRepoCommitDialog()}
-                                                    disabled={!groupId || !repoStatus?.gitInitialized || !(isDirty || repoStatus?.dirty) || committing || repoLoading || treeLoading}
+                                                    disabled={!canCommitRepo || committing || repoLoading || treeLoading}
                                                 >
                                                     <span className="relative flex">
                                                         <GitCommitHorizontal size={14} />
@@ -2728,7 +2613,7 @@ export default function OfflineWorkbench() {
                                                     className="offline-rail-toolbar-btn"
                                                     aria-label="推送"
                                                     onClick={() => setPushDialogOpen(true)}
-                                                    disabled={!groupId || !repoStatus?.gitInitialized || !repoStatus?.headCommitId || (repoStatus?.hasRemote && !repoStatus?.ahead && repoStatus?.hasUpstream) || pushLoading || repoLoading || treeLoading}
+                                                    disabled={!canPush || pushLoading || repoLoading || treeLoading}
                                                 >
                                                     {pushLoading ? <LoaderCircle size={14} className="offline-spin" /> : <GitPushIcon dirty={!!repoStatus?.ahead} />}
                                                 </button>
@@ -3236,9 +3121,6 @@ export default function OfflineWorkbench() {
                 onOpenChange={(open) => {
                     if (!open && branchSwitching) return;
                     setDiscardBranchSwitchOpen(open);
-                    if (!open) {
-                        setPendingBranchSwitch(null);
-                    }
                 }}
                 title="放弃画布草稿并切换分支"
                 description={
