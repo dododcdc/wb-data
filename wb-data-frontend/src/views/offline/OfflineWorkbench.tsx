@@ -44,14 +44,10 @@ import {
     getOfflineExecution,
     getOfflineFlowCommitStatus,
     getOfflineFlowDocument,
-    getOfflineRepoStatus,
     getOfflineRepoTree,
-    getOfflineRepoRemote,
     getOfflineSchedule,
     listBranches,
     listOfflineExecutions,
-    pushOfflineRepo,
-    rebuildOfflineRepo,
     renameOfflineFlow,
     renameOfflineFolder,
     saveOfflineFlowDocument,
@@ -66,8 +62,6 @@ import {
     type OfflineFlowDocument,
     type OfflineFlowNodeKind,
     type OfflineFlowNode,
-    type OfflineRepoStatus,
-    type RemoteStatus,
     type OfflineRepoTreeNode,
     type OfflineRepoTreeResponse,
     type OfflineScheduleResponse,
@@ -142,6 +136,7 @@ import { resolvePendingNodeEditorDraftAfterDocumentChange } from './pendingNodeE
 import { isAcyclic } from './dagUtils';
 import { SaveConflictDialog } from './SaveConflictDialog';
 import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
+import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
 
 import './OfflineWorkbench.css';
 
@@ -800,15 +795,22 @@ export default function OfflineWorkbench() {
     const defaultTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', []);
     const { showFeedback } = useOperationFeedback();
 
-    const [repoStatus, setRepoStatus] = useState<OfflineRepoStatus | null>(null);
-    const [repoLoading, setRepoLoading] = useState(false);
     const [repoTree, setRepoTree] = useState<OfflineRepoTreeResponse | null>(null);
     const [treeLoading, setTreeLoading] = useState(false);
-    const [, setRemoteStatus] = useState<RemoteStatus | null>(null);
-    const [pushLoading, setPushLoading] = useState(false);
-    const [pushDialogOpen, setPushDialogOpen] = useState(false);
-    const [rebuildLoading, setRebuildLoading] = useState(false);
-    const [rebuildDialogOpen, setRebuildDialogOpen] = useState(false);
+    const {
+        repoStatus,
+        repoLoading,
+        pushLoading,
+        pushDialogOpen,
+        setPushDialogOpen,
+        rebuildLoading,
+        rebuildDialogOpen,
+        setRebuildDialogOpen,
+        refreshRepoStatus,
+        refreshRemoteStatus,
+        push: pushRepository,
+        rebuildRemote,
+    } = useOfflineRepositoryWorkflow({ groupId, showFeedback });
     const [flowCommitDialogOpen, setFlowCommitDialogOpen] = useState(false);
     const [repoCommitDialogOpen, setRepoCommitDialogOpen] = useState(false);
     const [commitMessage, setCommitMessage] = useState('');
@@ -988,28 +990,6 @@ export default function OfflineWorkbench() {
         return () => currentGroupIdRef.current === expectedGroupId && groupActionVersionRef.current === version;
     }, []);
 
-    const refreshRepoStatus = useCallback(async () => {
-        if (!groupId) return;
-        const isCurrentGroupAction = captureGroupActionGuard(groupId);
-        setRepoLoading(true);
-        try {
-            const nextStatus = await getOfflineRepoStatus(groupId);
-            if (!isCurrentGroupAction()) return;
-            setRepoStatus(nextStatus);
-        } catch (error) {
-            if (!isCurrentGroupAction()) return;
-            showFeedback({
-                tone: 'error',
-                title: '仓库状态读取失败',
-                detail: getErrorMessage(error, '暂时无法读取本地仓库状态。'),
-            });
-        } finally {
-            if (isCurrentGroupAction()) {
-                setRepoLoading(false);
-            }
-        }
-    }, [captureGroupActionGuard, groupId, showFeedback]);
-
     const refreshRepoTree = useCallback(async () => {
         if (!groupId) return;
         setTreeLoading(true);
@@ -1027,15 +1007,6 @@ export default function OfflineWorkbench() {
             setTreeLoading(false);
         }
     }, [groupId, showFeedback]);
-
-    const refreshRemoteStatus = useCallback(async () => {
-        if (!groupId) return;
-        try {
-            setRemoteStatus(await getOfflineRepoRemote(groupId));
-        } catch {
-            setRemoteStatus(null);
-        }
-    }, [groupId]);
 
     const refreshWorkspace = useCallback(async () => {
         await Promise.all([
@@ -1445,49 +1416,6 @@ export default function OfflineWorkbench() {
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [draftSession, groupId, leaveCurrentFlow]);
-
-    const handlePush = useCallback(async () => {
-        if (!groupId) return;
-        setPushLoading(true);
-        try {
-            const result = await pushOfflineRepo(groupId);
-            if (result.success) {
-                setPushDialogOpen(false);
-                showFeedback({ tone: 'success', title: '推送成功', detail: '' });
-                await refreshRemoteStatus();
-                await refreshRepoStatus();
-            } else if (result.remoteDeleted) {
-                setPushDialogOpen(false);
-                setRebuildDialogOpen(true);
-            } else {
-                showFeedback({ tone: 'error', title: result.message, detail: '' });
-            }
-        } catch {
-            showFeedback({ tone: 'error', title: '推送失败', detail: '' });
-        } finally {
-            setPushLoading(false);
-        }
-    }, [groupId, showFeedback, refreshRemoteStatus, refreshRepoStatus]);
-
-    const handleRebuild = useCallback(async () => {
-        if (!groupId) return;
-        setRebuildLoading(true);
-        try {
-            const result = await rebuildOfflineRepo(groupId);
-            if (result.success) {
-                setRebuildDialogOpen(false);
-                showFeedback({ tone: 'success', title: '推送成功', detail: '' });
-                await refreshRemoteStatus();
-                await refreshRepoStatus();
-            } else {
-                showFeedback({ tone: 'error', title: result.message, detail: '' });
-            }
-        } catch {
-            showFeedback({ tone: 'error', title: '推送失败', detail: '' });
-        } finally {
-            setRebuildLoading(false);
-        }
-    }, [groupId, showFeedback, refreshRemoteStatus, refreshRepoStatus]);
 
     const handleCreateFlow = useCallback(async () => {
         if (!groupId || !newFlowName.trim()) return;
@@ -3323,7 +3251,7 @@ export default function OfflineWorkbench() {
                         <Button variant="outline" onClick={() => setPushDialogOpen(false)} disabled={pushLoading}>
                             取消
                         </Button>
-                        <Button variant="default" onClick={() => void handlePush()} disabled={pushLoading}>
+                        <Button variant="default" onClick={() => void pushRepository()} disabled={pushLoading}>
                             {pushLoading ? <LoaderCircle size={14} className="offline-spin" style={{ marginRight: 8 }} /> : null}
                             {pushLoading ? '推送中…' : '推送'}
                         </Button>
@@ -3370,7 +3298,7 @@ export default function OfflineWorkbench() {
                         <Button variant="outline" onClick={() => setRebuildDialogOpen(false)} disabled={rebuildLoading}>
                             取消
                         </Button>
-                        <Button variant="default" onClick={() => void handleRebuild()} disabled={rebuildLoading}>
+                        <Button variant="default" onClick={() => void rebuildRemote()} disabled={rebuildLoading}>
                             {rebuildLoading ? <LoaderCircle size={14} className="offline-spin" style={{ marginRight: 8 }} /> : null}
                             {rebuildLoading ? '推送中…' : '重建并推送'}
                         </Button>
