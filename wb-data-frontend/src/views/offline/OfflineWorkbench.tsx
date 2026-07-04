@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { AxiosError } from 'axios';
 import { getErrorMessage } from '../../utils/error';
 import { ReactFlowProvider, type Node, type Edge } from '@xyflow/react';
@@ -44,7 +45,6 @@ import {
     type OfflineExecutionListItem,
     type OfflineFlowDocument,
     type OfflineFlowNodeKind,
-    type OfflineFlowNode,
     type OfflineRepoTreeNode,
     type OfflineRepoTreeResponse,
 } from '../../api/offline';
@@ -66,10 +66,16 @@ import { NodeEditorDialog } from './NodeEditorDialog';
 import { ScheduleDialog } from './ScheduleDialog';
 import { UnsavedChangesDialog } from '../../components/ui/unsaved-changes-dialog';
 import {
-    applyCanvasStateToDocument,
-    buildEdgesFromCanvasEdges,
-    buildLayoutFromCanvasNodes,
-} from './flowCanvasState';
+    addFlowNode,
+    applyFlowCanvasEdges,
+    applyFlowCanvasLayout,
+    applyFlowCanvasNodes,
+    flattenFlowDocumentNodes,
+    renameFlowNode,
+    resolveFlowSelectedTaskIds,
+    type RenameFlowNodeFailureReason,
+    validateFlowDocumentGraph,
+} from './flowDocumentMutations';
 import {
     buildRecoverySnapshotFromSession,
     createFlowDraftSession,
@@ -97,18 +103,12 @@ import {
     validateSqlNodeDataSourceRequirement,
 } from './nodeEditorDataSourceRules';
 import {
-    getOfflineNodeDefaultScript,
-    getOfflineNodeScriptExtension,
-} from './offlineNodeKinds';
-import {
     readRecoverySnapshot,
     removeRecoverySnapshot,
     writeRecoverySnapshot,
 } from './recoverySnapshotStore';
 import { finalizeNodeEditorDraftOnClose } from './nodeEditorCloseDraftState';
-import { resolveSelectionStateAfterAddingNode } from './nodeSelectionState';
 import { resolvePendingNodeEditorDraftAfterDocumentChange } from './pendingNodeEditorDraftState';
-import { isAcyclic } from './dagUtils';
 import { SaveConflictDialog } from './SaveConflictDialog';
 import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
@@ -130,10 +130,6 @@ type PendingNavigationState =
     | { type: 'flow'; flowPath: string }
     | { type: 'router'; blocker: NavigationBlocker };
 
-function flattenDocumentNodes(document: OfflineFlowDocument | null) {
-    return document?.stages.flatMap((stage) => stage.nodes) ?? [];
-}
-
 function formatFlowPathDisplayName(flowPath: string) {
     const normalized = flowPath.replace(/\\/g, '/');
     const segments = normalized.split('/').filter(Boolean);
@@ -142,20 +138,6 @@ function formatFlowPathDisplayName(flowPath: string) {
         return segments[flowYamlIndex - 1];
     }
     return segments[segments.length - 1] ?? flowPath;
-}
-
-function resolveSelectedNodeId(document: OfflineFlowDocument | null, candidate: string | null) {
-    const nodes = flattenDocumentNodes(document);
-    if (nodes.length === 0) return null;
-    if (candidate && nodes.some((node) => node.taskId === candidate)) {
-        return candidate;
-    }
-    return nodes[0].taskId;
-}
-
-function resolveSelectedTaskIds(document: OfflineFlowDocument | null, candidates: string[]) {
-    const validIds = new Set(flattenDocumentNodes(document).map((node) => node.taskId));
-    return candidates.filter((taskId, index, array) => validIds.has(taskId) && array.indexOf(taskId) === index);
 }
 
 function formatDateTime(value: string | number | null | undefined) {
@@ -772,8 +754,8 @@ export default function OfflineWorkbench() {
     const activeNodeId = draftSession?.selectedNodeId ?? null;
     const selectedTaskIds = draftSession?.selectedTaskIds ?? EMPTY_SELECTED_TASK_IDS;
     const staleDraft = draftSession?.conflict ?? null;
-    const activeNode = useMemo(() => flattenDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null, [activeNodeId, flowDocument]);
-    const nodeCount = useMemo(() => flattenDocumentNodes(flowDocument).length, [flowDocument]);
+    const activeNode = useMemo(() => flattenFlowDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null, [activeNodeId, flowDocument]);
+    const nodeCount = useMemo(() => flattenFlowDocumentNodes(flowDocument).length, [flowDocument]);
     const isDirty = draftSession !== null && hasFlowDraftChanges(draftSession);
     const {
         repoStatus,
@@ -873,7 +855,7 @@ export default function OfflineWorkbench() {
     const nodeIssues = useMemo(() => {
         if (!flowDocument) return {};
         const issues: Record<string, string | null> = {};
-        flattenDocumentNodes(flowDocument).forEach(node => {
+        flattenFlowDocumentNodes(flowDocument).forEach(node => {
             const validation = validateSqlNodeDataSourceRequirement({
                 kind: node.kind,
                 dataSourceId: node.dataSourceId,
@@ -1278,7 +1260,7 @@ export default function OfflineWorkbench() {
     }, [setDraftSelectedTaskIds]);
 
     const handleReplaceTaskSelection = useCallback((taskIds: string[]) => {
-        setDraftSelectedTaskIds(resolveSelectedTaskIds(flowDocument, taskIds));
+        setDraftSelectedTaskIds(resolveFlowSelectedTaskIds(flowDocument, taskIds));
     }, [flowDocument, setDraftSelectedTaskIds]);
 
     const handleToggleTreeNode = useCallback((nodeId: string) => {
@@ -1288,7 +1270,7 @@ export default function OfflineWorkbench() {
         }, []);
 
     const handleOpenNodeEditor = useCallback((taskId: string) => {
-        const node = flattenDocumentNodes(flowDocument).find((n) => n.taskId === taskId);
+        const node = flattenFlowDocumentNodes(flowDocument).find((n) => n.taskId === taskId);
         if (!node) return;
         nodeEditorDraftSchedulerRef.current?.cancel();
         setDraftSelectedNodeId(taskId);
@@ -1322,7 +1304,7 @@ export default function OfflineWorkbench() {
                 flushNow: (draft) => nodeEditorDraftSchedulerRef.current?.flushNow(draft),
                 cancel: () => nodeEditorDraftSchedulerRef.current?.cancel(),
             });
-            const currentNode = flattenDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null;
+            const currentNode = flattenFlowDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null;
             setNodeEditorContent(currentNode?.scriptContent ?? '');
         }
     }, [activeNodeId, flowDocument]);
@@ -1332,7 +1314,7 @@ export default function OfflineWorkbench() {
         const pendingDraft = buildPendingNodeEditorDraft(activeNodeId, content, dataSourceId, dataSourceType);
         pendingNodeEditorDraftRef.current = pendingDraft;
         nodeEditorDraftSchedulerRef.current?.flushNow(pendingDraft);
-        const activeEditingNode = flattenDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null;
+        const activeEditingNode = flattenFlowDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null;
         const validation = validateSqlNodeDataSourceRequirement({
             kind: activeEditingNode?.kind ?? 'SHELL',
             dataSourceId,
@@ -1370,143 +1352,66 @@ export default function OfflineWorkbench() {
     }, [activeNodeId, buildPendingNodeEditorDraft]);
 
     const handleRenameNode = useCallback((oldId: string, newId: string) => {
-        if (!oldId || !newId || !flowDocument) return;
-        const cleanNewId = newId.trim();
-        if (!cleanNewId) return;
-
-        if (oldId === cleanNewId) return;
-
-        // Check for duplicate ID
-        const allNodes = flowDocument.stages.flatMap(s => s.nodes);
-        if (allNodes.some(n => n.taskId === cleanNewId)) {
-            showFeedback({ tone: 'error', title: '重命名失败', detail: '已存在相同名称的节点。' });
-            return;
-        }
-
-        // Validate ID format (basic check)
-        if (!/^[a-zA-Z0-9_]+$/.test(cleanNewId)) {
-            showFeedback({ tone: 'error', title: '重命名失败', detail: '节点名称仅支持字母、数字和下划线。' });
-            return;
-        }
-
-        setDraftSession(current => {
-            if (!current) return current;
-
-            const nextStages = current.workingDraft.stages.map(stage => ({
-                ...stage,
-                nodes: stage.nodes.map(node => {
-                    if (node.taskId === oldId) {
-                        let nextScriptPath = node.scriptPath;
-                        const oldFileName = `${oldId}.`;
-                        const newFileName = `${cleanNewId}.`;
-                        if (nextScriptPath.includes(oldFileName)) {
-                            nextScriptPath = nextScriptPath.replace(oldFileName, newFileName);
-                        }
-                        
-                        return { ...node, taskId: cleanNewId, scriptPath: nextScriptPath };
-                    }
-                    return node;
-                })
-            }));
-
-            const nextEdges = (current.workingDraft.edges || []).map(edge => {
-                let changed = false;
-                let source = edge.source;
-                let target = edge.target;
-                if (source === oldId) {
-                    source = cleanNewId;
-                    changed = true;
+        let failureReason: RenameFlowNodeFailureReason | null = null;
+        flushSync(() => {
+            setDraftSession((current) => {
+                if (!current) return current;
+                const result = renameFlowNode({
+                    document: current.workingDraft,
+                    oldId,
+                    newId,
+                    activeNodeId: current.selectedNodeId,
+                    selectedTaskIds: current.selectedTaskIds,
+                });
+                if (!result.ok) {
+                    failureReason = result.reason;
+                    return current;
                 }
-                if (target === oldId) {
-                    target = cleanNewId;
-                    changed = true;
-                }
-                return changed ? { ...edge, source, target, id: `${source}->${target}` } : edge;
+
+                return {
+                    ...replaceFlowDraftWorkingDocument(current, result.document),
+                    selectedNodeId: result.nextActiveNodeId,
+                    selectedTaskIds: result.nextSelectedTaskIds,
+                };
             });
-
-            const nextLayout = { ...(current.workingDraft.layout || {}) };
-            if (nextLayout[oldId]) {
-                nextLayout[cleanNewId] = nextLayout[oldId];
-                delete nextLayout[oldId];
-            }
-
-            const nextDocument = {
-                ...current.workingDraft,
-                stages: nextStages,
-                edges: nextEdges,
-                layout: nextLayout,
-            };
-            return replaceFlowDraftWorkingDocument(current, nextDocument);
         });
 
-        if (activeNodeId === oldId) {
-            setDraftSelectedNodeId(cleanNewId);
+        if (failureReason === 'duplicate') {
+            showFeedback({ tone: 'error', title: '重命名失败', detail: '已存在相同名称的节点。' });
+        } else if (failureReason === 'invalid-format') {
+            showFeedback({ tone: 'error', title: '重命名失败', detail: '节点名称仅支持字母、数字和下划线。' });
         }
-        setDraftSelectedTaskIds(currIds => currIds.map(id => id === oldId ? cleanNewId : id));
-
-    }, [activeNodeId, flowDocument, setDraftSelectedNodeId, setDraftSelectedTaskIds, showFeedback]);
+    }, [showFeedback]);
 
     const handleAddCanvasNode = useCallback((kind: OfflineFlowNodeKind, position: { x: number; y: number }) => {
-        if (!flowDocument) return;
-
-        const currentNodeCount = flattenDocumentNodes(flowDocument).length;
-        if (currentNodeCount >= 20) {
-            showFeedback({ tone: 'info', title: '节点数量已达上限', detail: '离线 Flow 最多支持 20 个节点，请精简流程设计。' });
-            return;
-        }
-
-        const existingIds = new Set(flattenDocumentNodes(flowDocument).map((n) => n.taskId));
-        let index = 1;
-        let newTaskId = `${kind.toLowerCase()}_node_${index}`;
-        while (existingIds.has(newTaskId)) {
-            index++;
-            newTaskId = `${kind.toLowerCase()}_node_${index}`;
-        }
-
-        const ext = getOfflineNodeScriptExtension(kind);
-        const flowDir = flowDocument.path.replace('/flow.yaml', '');
-        const scriptPath = `${flowDir.replace(/^_flows\//, 'scripts/')}/${newTaskId}.${ext}`;
-
-        const newNode: OfflineFlowNode = {
-            taskId: newTaskId,
-            kind,
-            scriptPath,
-            scriptContent: getOfflineNodeDefaultScript(kind),
-        };
-
-        setDraftSession((current) => {
-            if (!current) return current;
-            const updatedStages = [...current.workingDraft.stages];
-            if (updatedStages.length === 0) {
-                updatedStages.push({
-                    stageId: 'main',
-                    parallel: false,
-                    nodes: [newNode],
+        let failureReason: 'max-nodes' | null = null;
+        flushSync(() => {
+            setDraftSession((current) => {
+                if (!current) return current;
+                const result = addFlowNode({
+                    document: current.workingDraft,
+                    kind,
+                    position,
+                    selectedTaskIds: current.selectedTaskIds,
+                    maxNodes: 20,
                 });
-            } else {
-                updatedStages[0] = {
-                    ...updatedStages[0],
-                    nodes: [...updatedStages[0].nodes, newNode],
-                };
-            }
+                if (!result.ok) {
+                    failureReason = result.reason;
+                    return current;
+                }
 
-            return replaceFlowDraftWorkingDocument(current, {
-                ...current.workingDraft,
-                stages: updatedStages,
-                layout: {
-                    ...(current.workingDraft.layout || {}),
-                    [newTaskId]: position,
-                },
+                return {
+                    ...replaceFlowDraftWorkingDocument(current, result.document),
+                    selectedNodeId: result.nextActiveNodeId,
+                    selectedTaskIds: result.nextSelectedTaskIds,
+                };
             });
         });
 
-        const { nextActiveNodeId, nextSelectedTaskIds } = resolveSelectionStateAfterAddingNode({
-            currentSelectedTaskIds: selectedTaskIds,
-            newTaskId,
-        });
-        setDraftSelectedNodeId(nextActiveNodeId);
-        setDraftSelectedTaskIds(nextSelectedTaskIds);
-    }, [flowDocument, selectedTaskIds, setDraftSelectedNodeId, setDraftSelectedTaskIds]);
+        if (failureReason === 'max-nodes') {
+            showFeedback({ tone: 'info', title: '节点数量已达上限', detail: '离线 Flow 最多支持 20 个节点，请精简流程设计。' });
+        }
+    }, [showFeedback]);
 
     const handleCanvasNodesChange = useCallback((nodes: Node[]) => {
         const previousNodeIds = new Set(canvasNodesRef.current.map((node) => node.id));
@@ -1530,10 +1435,17 @@ export default function OfflineWorkbench() {
             const currentWithPending = pendingDraft
                 ? flushNodeEditorDraft(current, pendingDraft)
                 : current;
-            const nextDocument = applyCanvasStateToDocument(currentWithPending.workingDraft, nodes, canvasEdgesRef.current);
+            const canvasResult = applyFlowCanvasNodes({
+                document: currentWithPending.workingDraft,
+                nodes,
+                edges: canvasEdgesRef.current,
+                activeNodeId,
+                selectedTaskIds,
+            });
+            const nextDocument = canvasResult.document;
             nextPendingDraft = resolvePendingNodeEditorDraftAfterDocumentChange(pendingDraft, nextDocument);
-            const nextSelectedNodeId = resolveSelectedNodeId(nextDocument, activeNodeId);
-            const nextSelectedTaskIds = resolveSelectedTaskIds(nextDocument, selectedTaskIds);
+            const nextSelectedNodeId = canvasResult.nextActiveNodeId;
+            const nextSelectedTaskIds = canvasResult.nextSelectedTaskIds;
 
             return {
                 ...replaceFlowDraftWorkingDocument(currentWithPending, nextDocument),
@@ -1553,32 +1465,26 @@ export default function OfflineWorkbench() {
     }, [activeNodeId, selectedTaskIds]);
 
     const handleCanvasEdgesChange = useCallback((edges: Edge[]) => {
-        const nextEdges = buildEdgesFromCanvasEdges(edges);
         canvasEdgesRef.current = edges;
         setDraftSession((current) => {
             if (!current) return current;
-            if (JSON.stringify(current.workingDraft.edges) === JSON.stringify(nextEdges)) {
+            const nextDocument = applyFlowCanvasEdges(current.workingDraft, edges);
+            if (JSON.stringify(current.workingDraft.edges) === JSON.stringify(nextDocument.edges)) {
                 return current;
             }
-            return replaceFlowDraftWorkingDocument(current, {
-                ...current.workingDraft,
-                edges: nextEdges,
-            });
+            return replaceFlowDraftWorkingDocument(current, nextDocument);
         });
     }, []);
 
     const handleCanvasNodeLayoutCommit = useCallback((nodes: Node[]) => {
-        const nextLayout = buildLayoutFromCanvasNodes(nodes);
         canvasNodesRef.current = nodes;
         setDraftSession((current) => {
             if (!current) return current;
-            if (JSON.stringify(current.workingDraft.layout) === JSON.stringify(nextLayout)) {
+            const nextDocument = applyFlowCanvasLayout(current.workingDraft, nodes);
+            if (JSON.stringify(current.workingDraft.layout) === JSON.stringify(nextDocument.layout)) {
                 return current;
             }
-            return replaceFlowDraftWorkingDocument(current, {
-                ...current.workingDraft,
-                layout: nextLayout,
-            });
+            return replaceFlowDraftWorkingDocument(current, nextDocument);
         });
     }, []);
 
@@ -1654,40 +1560,16 @@ export default function OfflineWorkbench() {
             : draftSession;
         const draftDocument = sessionForSave.workingDraft;
 
-        const allNodeIds = draftDocument.stages.flatMap(s => s.nodes.map(n => n.taskId));
-
-        if (!isAcyclic(
-            draftDocument.stages.flatMap(s => s.nodes.map(n => ({ id: n.taskId } as Node))),
-            draftDocument.edges as Edge[],
-        )) {
-            showFeedback({ tone: 'error', title: '保存失败', detail: '' });
+        const graphValidation = validateFlowDocumentGraph(draftDocument);
+        if (!graphValidation.valid) {
+            showFeedback({
+                tone: 'error',
+                title: '保存失败',
+                detail: graphValidation.reason === 'disconnected'
+                    ? '画布中存在未连接的节点，请将所有节点连入一张依赖图。'
+                    : '',
+            });
             return false;
-        }
-
-        // 禁止孤立节点：所有节点必须属于同一张连通图
-        if (allNodeIds.length > 1) {
-            const adj = new Map<string, Set<string>>();
-            for (const id of allNodeIds) adj.set(id, new Set());
-            for (const e of draftDocument.edges) {
-                adj.get(e.source)?.add(e.target);
-                adj.get(e.target)?.add(e.source);
-            }
-            const visited = new Set<string>();
-            const stack = [allNodeIds[0]];
-            visited.add(allNodeIds[0]);
-            while (stack.length > 0) {
-                const cur = stack.pop()!;
-                for (const nb of adj.get(cur) ?? []) {
-                    if (!visited.has(nb)) {
-                        visited.add(nb);
-                        stack.push(nb);
-                    }
-                }
-            }
-            if (visited.size !== allNodeIds.length) {
-                showFeedback({ tone: 'error', title: '保存失败', detail: '画布中存在未连接的节点，请将所有节点连入一张依赖图。' });
-                return false;
-            }
         }
 
         setSavingFlow(true);
@@ -2213,7 +2095,7 @@ export default function OfflineWorkbench() {
                                             checked={nodeCount > 0 && selectedTaskIds.length === nodeCount}
                                             onChange={(e) => {
                                                 if (e.target.checked) {
-                                                    setDraftSelectedTaskIds(flattenDocumentNodes(flowDocument).map((n) => n.taskId));
+                                                    setDraftSelectedTaskIds(flattenFlowDocumentNodes(flowDocument).map((n) => n.taskId));
                                                 } else {
                                                     setDraftSelectedTaskIds([]);
                                                 }

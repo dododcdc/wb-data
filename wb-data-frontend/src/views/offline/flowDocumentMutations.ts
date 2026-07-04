@@ -295,12 +295,15 @@ export function applyFlowCanvasLayout(document: OfflineFlowDocument, nodes: Node
 
 export function validateFlowDocumentGraph(
     document: OfflineFlowDocument,
-): { valid: true } | { valid: false; reason: 'cycle' | 'disconnected' } {
+): { valid: true } | { valid: false; reason: 'cycle' | 'disconnected' | 'dangling-edge' } {
     const nodeIds = flattenFlowDocumentNodes(document).map((node) => node.taskId);
     const nodeIdSet = new Set(nodeIds);
-    const validEdges = (document.edges ?? []).filter((edge) => (
-        nodeIdSet.has(edge.source) && nodeIdSet.has(edge.target)
-    ));
+    const validEdges = document.edges ?? [];
+
+    if (validEdges.some((edge) => !nodeIdSet.has(edge.source) || !nodeIdSet.has(edge.target))) {
+        return { valid: false, reason: 'dangling-edge' };
+    }
+
     const outgoing = new Map(nodeIds.map((nodeId) => [nodeId, [] as string[]]));
     const indegree = new Map(nodeIds.map((nodeId) => [nodeId, 0]));
 

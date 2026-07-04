@@ -189,6 +189,12 @@ describe('applyFlowCanvasEdges and applyFlowCanvasLayout', () => {
 });
 
 describe('validateFlowDocumentGraph', () => {
+    it('rejects edges whose endpoints are not present in the document', () => {
+        expect(validateFlowDocumentGraph(makeDocument({
+            edges: [{ source: 'shell_node_1', target: 'missing_node' }],
+        }))).toEqual({ valid: false, reason: 'dangling-edge' });
+    });
+
     it('rejects cycles and disconnected graphs while accepting a normal chain', () => {
         expect(validateFlowDocumentGraph(makeDocument({
             edges: [
