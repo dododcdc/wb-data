@@ -2,7 +2,6 @@ package com.wbdata.offline.dto;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
 import java.util.List;
@@ -15,6 +14,7 @@ public record SaveOfflineFlowDocumentRequest(
         long documentUpdatedAt,
         List<@Valid SaveOfflineFlowStageRequest> stages,
         List<SaveOfflineFlowEdgeRequest> edges,
-        Map<String, NodePosition> layout
+        Map<String, NodePosition> layout,
+        @Valid OfflineFlowSchedule schedule
 ) {
 }

@@ -89,8 +89,8 @@ class GitSyncConfigServiceTest {
                 .contains("branch: feature/policy-review")
                 .contains("targetNamespace: g4-feature-policy-review")
                 .contains("namespace: g4-feature-policy-review")
-                .contains("gitDirectory: _flows")
-                .contains("gitDirectory: .")
+                .contains("gitDirectory: .wb-data/kestra-flows")
+                .contains("gitDirectory: .\n    delete: true")
                 .contains("cron: \"*/5 * * * *\"")
                 .contains("defaults: \"alice\"")
                 .contains("defaults: \"ghp_secret\"");

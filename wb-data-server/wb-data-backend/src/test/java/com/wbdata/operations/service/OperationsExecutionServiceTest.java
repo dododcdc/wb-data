@@ -42,14 +42,20 @@ class OperationsExecutionServiceTest {
                 .map(component -> component.getName()))
                 .containsExactly(
                         "id", "namespace", "flowId", "branch", "status",
-                        "createdAt", "startDate", "endDate", "durationMs", "rerunnable"
+                        "plannedAt", "createdAt", "startDate", "endDate", "durationMs", "rerunnable"
                 );
         assertThat(Arrays.stream(OperationsExecutionDetailResponse.class.getRecordComponents())
                 .map(component -> component.getName()))
                 .containsExactly(
                         "id", "namespace", "flowId", "branch", "status",
-                        "createdAt", "startDate", "endDate", "durationMs", "rerunnable",
+                        "plannedAt", "createdAt", "startDate", "endDate", "durationMs", "rerunnable",
                         "taskRuns", "inputs", "labels"
+                );
+        assertThat(Arrays.stream(OperationsExecutionListResponse.class.getRecordComponents())
+                .map(component -> component.getName()))
+                .containsExactly(
+                        "branches", "selectedBranch", "from", "to",
+                        "page", "pageSize", "total", "totalPages", "executions"
                 );
     }
 
@@ -76,7 +82,7 @@ class OperationsExecutionServiceTest {
                 execution("exec-main", "g4-main", "main_job", "SUCCESS", "2026-06-07T00:30:00Z")
         ));
 
-        OperationsExecutionListResponse response = service.listExecutions(4L, new OperationsExecutionQuery(
+        OperationsExecutionListResponse response = service.listExecutions(4L, listQuery(
                 null,
                 null,
                 null,
@@ -85,6 +91,7 @@ class OperationsExecutionServiceTest {
         ));
 
         assertThat(response.branches()).containsExactly("feature/policy-review", "main");
+        assertThat(response.pageSize()).isEqualTo(50);
         assertThat(response.executions()).extracting("id").containsExactly("exec-review", "exec-main");
         assertThat(response.executions().getFirst().branch()).isEqualTo("feature/policy-review");
         assertThat(response.executions().getFirst().rerunnable()).isTrue();
@@ -105,7 +112,7 @@ class OperationsExecutionServiceTest {
                 execution("too-old", "g4-feature-policy-review", "daily_policy", "FAILED", "2026-06-05T23:59:59Z")
         ));
 
-        OperationsExecutionListResponse response = service.listExecutions(4L, new OperationsExecutionQuery(
+        OperationsExecutionListResponse response = service.listExecutions(4L, listQuery(
                 "feature/policy-review",
                 "daily",
                 "FAILED",
@@ -133,7 +140,7 @@ class OperationsExecutionServiceTest {
                 "2026-06-08T00:00:00.987Z"
         ))).thenReturn(List.of());
 
-        service.listExecutions(4L, new OperationsExecutionQuery(
+        service.listExecutions(4L, listQuery(
                 "main",
                 null,
                 null,
@@ -155,7 +162,7 @@ class OperationsExecutionServiceTest {
         OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
         when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(syncConfigs());
 
-        OperationsExecutionListResponse response = service.listExecutions(4L, new OperationsExecutionQuery(
+        OperationsExecutionListResponse response = service.listExecutions(4L, listQuery(
                 "missing",
                 null,
                 null,
@@ -191,7 +198,7 @@ class OperationsExecutionServiceTest {
                 execution("created-newer", "g4-main", "main_job", "SUCCESS", "2026-06-07T00:30:00Z")
         ));
 
-        OperationsExecutionListResponse response = service.listExecutions(4L, new OperationsExecutionQuery(
+        OperationsExecutionListResponse response = service.listExecutions(4L, listQuery(
                 null,
                 null,
                 null,
@@ -203,12 +210,97 @@ class OperationsExecutionServiceTest {
     }
 
     @Test
+    void listExecutions_exposesPlannedTimeAndPaginatesAfterFilteringAndSorting() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        when(kestraClient.searchExecutions(searchFilter("g4-main"))).thenReturn(List.of(
+                execution(
+                        "newest",
+                        "g4-main",
+                        "hourly_policy",
+                        "SUCCESS",
+                        "2026-06-07T03:00:00Z",
+                        "2026-06-07T03:10:00Z",
+                        "2026-06-07T03:10:30Z",
+                        "2026-06-07T03:11:00Z",
+                        List.of()
+                ),
+                execution(
+                        "middle",
+                        "g4-main",
+                        "hourly_policy",
+                        "SUCCESS",
+                        "2026-06-07T02:00:00Z",
+                        "2026-06-07T02:00:10Z",
+                        "2026-06-07T02:00:11Z",
+                        "2026-06-07T02:01:00Z",
+                        List.of()
+                ),
+                execution(
+                        "oldest",
+                        "g4-main",
+                        "hourly_policy",
+                        "SUCCESS",
+                        "2026-06-07T01:00:00Z",
+                        "2026-06-07T01:00:10Z",
+                        "2026-06-07T01:00:12Z",
+                        "2026-06-07T01:01:00Z",
+                        List.of()
+                )
+        ));
+
+        OperationsExecutionListResponse response = service.listExecutions(4L, listQuery(
+                "main",
+                "hourly",
+                null,
+                FROM,
+                TO,
+                2,
+                2
+        ));
+
+        assertThat(response.page()).isEqualTo(2);
+        assertThat(response.pageSize()).isEqualTo(2);
+        assertThat(response.total()).isEqualTo(3);
+        assertThat(response.totalPages()).isEqualTo(2);
+        assertThat(response.executions()).extracting("id").containsExactly("oldest");
+        assertThat(response.executions().getFirst().plannedAt()).isEqualTo(Instant.parse("2026-06-07T01:00:00Z"));
+    }
+
+    @Test
+    void listExecutions_capsLargePageSizeAtOperationsMaximum() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        when(kestraClient.searchExecutions(searchFilter("g4-main"))).thenReturn(List.of(
+                execution("exec-main", "g4-main", "main_job", "SUCCESS", "2026-06-07T00:30:00Z")
+        ));
+
+        OperationsExecutionListResponse response = service.listExecutions(4L, listQuery(
+                "main",
+                null,
+                null,
+                FROM,
+                TO,
+                1,
+                500
+        ));
+
+        assertThat(response.pageSize()).isEqualTo(200);
+        assertThat(response.totalPages()).isEqualTo(1);
+        assertThat(response.executions()).extracting("id").containsExactly("exec-main");
+    }
+
+    @Test
     void listExecutions_rejectsInvertedTimeRange() {
         GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
         KestraClient kestraClient = Mockito.mock(KestraClient.class);
         OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
 
-        assertThatThrownBy(() -> service.listExecutions(4L, new OperationsExecutionQuery(null, null, null, TO, FROM)))
+        assertThatThrownBy(() -> service.listExecutions(4L, listQuery(null, null, null, TO, FROM)))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
                     assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
                     assertThat(exception.getReason()).isEqualTo("时间范围不合法");
@@ -244,10 +336,15 @@ class OperationsExecutionServiceTest {
                 "g4-main",
                 "daily",
                 "FAILED",
+                Instant.parse("2026-06-07T00:00:00Z"),
                 Instant.parse("2026-06-07T01:00:00Z"),
                 Instant.parse("2026-06-07T01:00:01Z"),
                 Instant.parse("2026-06-07T01:00:06Z"),
-                List.of(taskRun("load", "FAILED", "2026-06-07T01:00:02Z", "2026-06-07T01:00:05Z")),
+                List.of(
+                        taskRun("flow_dag", "SUCCESS", "2026-06-07T01:00:01Z", "2026-06-07T01:00:02Z"),
+                        taskRun("parallel_root", "SUCCESS", "2026-06-07T01:00:01Z", "2026-06-07T01:00:02Z"),
+                        taskRun("load", "FAILED", "2026-06-07T01:00:02Z", "2026-06-07T01:00:05Z")
+                ),
                 Map.of("date", "2026-06-07"),
                 Map.of("env", "prod")
         );
@@ -257,6 +354,7 @@ class OperationsExecutionServiceTest {
 
         assertThat(response.id()).isEqualTo("exec-main");
         assertThat(response.branch()).isEqualTo("main");
+        assertThat(response.plannedAt()).isEqualTo(Instant.parse("2026-06-07T00:00:00Z"));
         assertThat(response.durationMs()).isEqualTo(5_000L);
         assertThat(response.rerunnable()).isTrue();
         assertThat(response.taskRuns()).hasSize(1);
@@ -416,6 +514,24 @@ class OperationsExecutionServiceTest {
         );
     }
 
+    private static OperationsExecutionQuery listQuery(String branch,
+                                                      String flowId,
+                                                      String status,
+                                                      Instant from,
+                                                      Instant to) {
+        return listQuery(branch, flowId, status, from, to, null, null);
+    }
+
+    private static OperationsExecutionQuery listQuery(String branch,
+                                                      String flowId,
+                                                      String status,
+                                                      Instant from,
+                                                      Instant to,
+                                                      Integer page,
+                                                      Integer pageSize) {
+        return new OperationsExecutionQuery(branch, flowId, status, from, to, page, pageSize);
+    }
+
     private static GitSyncConfigResponse syncConfig(String branch, String namespace) {
         return new GitSyncConfigResponse(
                 1L,
@@ -458,11 +574,24 @@ class OperationsExecutionServiceTest {
                                                      String startDate,
                                                      String endDate,
                                                      List<KestraTaskRunSnapshot> taskRuns) {
+        return execution(id, namespace, flowId, status, null, createdAt, startDate, endDate, taskRuns);
+    }
+
+    private static KestraExecutionSnapshot execution(String id,
+                                                     String namespace,
+                                                     String flowId,
+                                                     String status,
+                                                     String plannedAt,
+                                                     String createdAt,
+                                                     String startDate,
+                                                     String endDate,
+                                                     List<KestraTaskRunSnapshot> taskRuns) {
         return new KestraExecutionSnapshot(
                 id,
                 namespace,
                 flowId,
                 status,
+                plannedAt == null ? null : Instant.parse(plannedAt),
                 createdAt == null ? null : Instant.parse(createdAt),
                 startDate == null ? null : Instant.parse(startDate),
                 endDate == null ? null : Instant.parse(endDate),

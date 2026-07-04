@@ -1,5 +1,6 @@
 package com.wbdata.offline.service;
 
+import com.wbdata.offline.dto.OfflineFlowSchedule;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import org.yaml.snakeyaml.DumperOptions;
@@ -19,6 +20,7 @@ import java.util.Set;
 final class OfflineFlowYamlSupport {
     private static final String WB_DATA_META_PREFIX = "[wbdata-meta]";
     private static final String SHELL_COMMANDS_TASK_TYPE = "io.kestra.plugin.scripts.shell.Commands";
+    private static final String RECOVER_MISSED_SCHEDULES_NONE = "NONE";
     private static final java.util.regex.Pattern READ_CALL_PATTERN =
             java.util.regex.Pattern.compile("\\{\\{\\s*read\\(\\s*['\"]([^'\"]+)['\"]\\s*\\)\\s*}}");
 
@@ -109,23 +111,7 @@ final class OfflineFlowYamlSupport {
     }
 
     String updateSchedule(String source, String cron, String timezone) {
-        Map<String, Object> root = loadRoot(source);
-        Map<String, Object> trigger = findScheduleTrigger(root);
-        if (trigger == null) {
-            trigger = new LinkedHashMap<>();
-            trigger.put("id", "schedule");
-            trigger.put("type", "io.kestra.plugin.core.trigger.Schedule");
-            ensureTriggers(root).add(trigger);
-        }
-
-        trigger.put("cron", cron);
-        if (timezone == null || timezone.isBlank()) {
-            trigger.remove("timezone");
-        } else {
-            trigger.put("timezone", timezone);
-        }
-        trigger.put("disabled", false);
-        return yaml.dump(root);
+        return applySchedule(source, new OfflineFlowSchedule(cron, timezone, true));
     }
 
     String updateScheduleStatus(String source, boolean enabled) {
@@ -135,6 +121,38 @@ final class OfflineFlowYamlSupport {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 尚未配置调度");
         }
         if (enabled) {
+            trigger.remove("disabled");
+        } else {
+            trigger.put("disabled", true);
+        }
+        return yaml.dump(root);
+    }
+
+    String applySchedule(String source, OfflineFlowSchedule schedule) {
+        if (schedule == null) {
+            return source;
+        }
+        if (schedule.cron() == null || schedule.cron().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cron 表达式不能为空");
+        }
+
+        Map<String, Object> root = loadRoot(source);
+        Map<String, Object> trigger = findScheduleTrigger(root);
+        if (trigger == null) {
+            trigger = new LinkedHashMap<>();
+            trigger.put("id", "schedule");
+            trigger.put("type", "io.kestra.plugin.core.trigger.Schedule");
+            ensureTriggers(root).add(trigger);
+        }
+
+        trigger.put("cron", schedule.cron());
+        if (schedule.timezone() == null || schedule.timezone().isBlank()) {
+            trigger.remove("timezone");
+        } else {
+            trigger.put("timezone", schedule.timezone());
+        }
+        trigger.put("recoverMissedSchedules", RECOVER_MISSED_SCHEDULES_NONE);
+        if (schedule.enabled()) {
             trigger.remove("disabled");
         } else {
             trigger.put("disabled", true);

@@ -9,6 +9,7 @@ public record KestraExecutionSnapshot(
         String namespace,
         String flowId,
         String status,
+        Instant plannedAt,
         Instant createdAt,
         Instant startDate,
         Instant endDate,

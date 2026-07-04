@@ -12,6 +12,7 @@ public record OfflineFlowDocumentResponse(
         long documentUpdatedAt,
         List<OfflineFlowStageResponse> stages,
         List<OfflineFlowEdgeResponse> edges,
-        Map<String, NodePosition> layout
+        Map<String, NodePosition> layout,
+        OfflineFlowSchedule schedule
 ) {
 }

@@ -16,7 +16,6 @@ import {
     getOperationsExecution,
     getOperationsExecutionLogs,
     rerunOperationsExecution,
-    type OperationsExecutionDetail,
     type OperationsExecutionLogEntry,
     type OperationsExecutionTaskRun,
 } from '../../api/operations';
@@ -70,9 +69,13 @@ function formatDuration(durationMs: number | null | undefined) {
     return minuteRest > 0 ? `${hours}h ${minuteRest}m` : `${hours}h`;
 }
 
-function pickDefaultTaskId(detail: OperationsExecutionDetail) {
-    const failedTask = detail.taskRuns.find((task) => getStatusTone(task.status) === 'failed');
-    return failedTask?.taskId ?? detail.taskRuns[0]?.taskId ?? null;
+function isUserTaskRun(task: OperationsExecutionTaskRun) {
+    return task.taskId !== 'flow_dag' && !task.taskId.startsWith('parallel_');
+}
+
+function pickDefaultTaskId(taskRuns: OperationsExecutionTaskRun[]) {
+    const failedTask = taskRuns.find((task) => getStatusTone(task.status) === 'failed');
+    return failedTask?.taskId ?? taskRuns[0]?.taskId ?? null;
 }
 
 function countLevels(logs: OperationsExecutionLogEntry[]) {
@@ -178,7 +181,7 @@ export default function OperationsExecutionDetailPage() {
     const systemAdmin = useAuthStore((state) => state.systemAdmin);
     const { showFeedback } = useOperationFeedback();
     const groupId = currentGroup?.id ?? null;
-    const [selectedTaskId, setSelectedTaskId] = useState<string | null | undefined>(undefined);
+    const [selectedTaskId, setSelectedTaskId] = useState<string | undefined>(undefined);
     const [activeLevels, setActiveLevels] = useState<Set<string>>(new Set());
     const [searchText, setSearchText] = useState('');
 
@@ -189,7 +192,11 @@ export default function OperationsExecutionDetailPage() {
     });
 
     const detail = detailQuery.data ?? null;
-    const defaultTaskId = useMemo(() => (detail ? pickDefaultTaskId(detail) : undefined), [detail]);
+    const visibleTaskRuns = useMemo(
+        () => detail?.taskRuns.filter(isUserTaskRun) ?? [],
+        [detail],
+    );
+    const defaultTaskId = useMemo(() => (detail ? pickDefaultTaskId(visibleTaskRuns) : undefined), [detail, visibleTaskRuns]);
 
     useEffect(() => {
         setSelectedTaskId(undefined);
@@ -203,9 +210,9 @@ export default function OperationsExecutionDetailPage() {
     }, [defaultTaskId, selectedTaskId]);
 
     const logsQuery = useQuery({
-        queryKey: ['operations-execution-logs', groupId, executionId, selectedTaskId ?? 'all'],
+        queryKey: ['operations-execution-logs', groupId, executionId, selectedTaskId],
         enabled: groupId != null && Boolean(executionId) && Boolean(detail) && selectedTaskId !== undefined,
-        queryFn: () => getOperationsExecutionLogs(groupId ?? 0, executionId ?? '', selectedTaskId ?? null),
+        queryFn: () => getOperationsExecutionLogs(groupId ?? 0, executionId ?? '', selectedTaskId ?? ''),
     });
 
     const rerunMutation = useMutation({
@@ -233,7 +240,11 @@ export default function OperationsExecutionDetailPage() {
     }, [activeLevels, logs, searchText]);
 
     const canRerun = Boolean(detail?.rerunnable && (systemAdmin || permissions.includes('offline.write')));
-    const selectedTaskLabel = selectedTaskId ?? '全部日志';
+    const isRefreshing = detailQuery.isRefetching || logsQuery.isRefetching;
+    const refreshCurrentExecution = () => {
+        void detailQuery.refetch();
+        void logsQuery.refetch();
+    };
 
     if (!groupId || !executionId) {
         return (
@@ -285,21 +296,9 @@ export default function OperationsExecutionDetailPage() {
                         <h1 title={detail.flowId}>{detail.flowId}</h1>
                         <TaskStatus status={detail.status} />
                     </div>
-                    <p title={detail.id}>{detail.id}</p>
                 </div>
 
                 <div className="operations-execution-detail-actions">
-                    <button
-                        type="button"
-                        className="operations-execution-icon-button"
-                        onClick={() => {
-                            void detailQuery.refetch();
-                            void logsQuery.refetch();
-                        }}
-                        aria-label="刷新执行详情"
-                    >
-                        <RefreshCw size={16} className={detailQuery.isRefetching || logsQuery.isRefetching ? 'operations-execution-spin' : undefined} />
-                    </button>
                     {canRerun && (
                         <button
                             type="button"
@@ -317,30 +316,19 @@ export default function OperationsExecutionDetailPage() {
             <main className="operations-execution-detail-main">
                 <section className="operations-execution-summary" aria-label="执行摘要">
                     <DetailMetric label="分支" value={<span title={detail.branch}>{detail.branch}</span>} />
-                    <DetailMetric label="触发时间" value={formatBrowserDateTime(detail.createdAt)} />
+                    <DetailMetric label="计划执行时间" value={formatBrowserDateTime(detail.plannedAt)} />
                     <DetailMetric label="开始时间" value={formatBrowserDateTime(detail.startDate)} />
                     <DetailMetric label="结束时间" value={formatBrowserDateTime(detail.endDate)} />
                     <DetailMetric label="耗时" value={formatDuration(detail.durationMs)} />
-                    <DetailMetric label="节点数" value={detail.taskRuns.length} />
+                    <DetailMetric label="节点数" value={visibleTaskRuns.length} />
                 </section>
 
                 <section className="operations-execution-workspace">
                     <aside className="operations-execution-tasks" aria-label="节点列表">
-                        <div className="operations-execution-panel-title">
-                            <h2>节点</h2>
-                            <button
-                                type="button"
-                                className={`operations-execution-all-logs${selectedTaskId === null ? ' is-active' : ''}`}
-                                onClick={() => setSelectedTaskId(null)}
-                            >
-                                全部日志
-                            </button>
-                        </div>
-
                         <div className="operations-execution-task-list">
-                            {detail.taskRuns.length === 0 ? (
+                            {visibleTaskRuns.length === 0 ? (
                                 <div className="operations-execution-empty-inline">暂无节点。</div>
-                            ) : detail.taskRuns.map((task) => (
+                            ) : visibleTaskRuns.map((task) => (
                                 <TaskRunButton
                                     key={task.taskId}
                                     task={task}
@@ -352,21 +340,6 @@ export default function OperationsExecutionDetailPage() {
                     </aside>
 
                     <section className="operations-execution-logs" aria-label="执行日志">
-                        <div className="operations-execution-log-header">
-                            <div>
-                                <h2>日志</h2>
-                                <p title={selectedTaskLabel}>{selectedTaskLabel}</p>
-                            </div>
-                            <button
-                                type="button"
-                                className="operations-execution-icon-button"
-                                onClick={() => void logsQuery.refetch()}
-                                aria-label="刷新日志"
-                            >
-                                <RefreshCw size={15} className={logsQuery.isRefetching ? 'operations-execution-spin' : undefined} />
-                            </button>
-                        </div>
-
                         <div className="operations-execution-log-tools">
                             <div className="operations-execution-levels" aria-label="日志级别">
                                 {LEVELS.map((level) => {
@@ -395,15 +368,26 @@ export default function OperationsExecutionDetailPage() {
                                 })}
                             </div>
 
-                            <label className="operations-execution-log-search">
-                                <Search size={14} />
-                                <input
-                                    type="search"
-                                    value={searchText}
-                                    onChange={(event) => setSearchText(event.target.value)}
-                                    placeholder="搜索日志"
-                                />
-                            </label>
+                            <div className="operations-execution-log-actions">
+                                <label className="operations-execution-log-search">
+                                    <Search size={14} />
+                                    <input
+                                        type="search"
+                                        value={searchText}
+                                        onChange={(event) => setSearchText(event.target.value)}
+                                        placeholder="搜索日志"
+                                    />
+                                </label>
+                                <button
+                                    type="button"
+                                    className="operations-execution-icon-button"
+                                    onClick={refreshCurrentExecution}
+                                    aria-label="刷新当前执行"
+                                    title="刷新当前执行"
+                                >
+                                    <RefreshCw size={15} className={isRefreshing ? 'operations-execution-spin' : undefined} />
+                                </button>
+                            </div>
                         </div>
 
                         {logsQuery.isLoading || selectedTaskId === undefined ? (

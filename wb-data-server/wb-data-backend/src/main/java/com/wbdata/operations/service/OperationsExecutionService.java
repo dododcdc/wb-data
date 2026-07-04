@@ -35,13 +35,17 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class OperationsExecutionService {
 
+    private static final int DEFAULT_PAGE = 1;
+    private static final int DEFAULT_PAGE_SIZE = 50;
+    private static final int MAX_PAGE_SIZE = 200;
+
     private final GitSyncConfigService gitSyncConfigService;
     private final KestraClient kestraClient;
     private final WbOperationExecutionActionMapper actionMapper;
 
     public OperationsExecutionListResponse listExecutions(Long groupId, OperationsExecutionQuery query) {
         OperationsExecutionQuery effectiveQuery = query == null
-                ? new OperationsExecutionQuery(null, null, null, null, null)
+                ? new OperationsExecutionQuery(null, null, null, null, null, null, null)
                 : query;
         if (effectiveQuery.from() != null && effectiveQuery.to() != null && effectiveQuery.from().isAfter(effectiveQuery.to())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "时间范围不合法");
@@ -70,13 +74,25 @@ public class OperationsExecutionService {
         }
 
         executions.sort(this::compareByExecutionTimeDescending);
+        int total = executions.size();
+        int pageSize = normalizePageSize(effectiveQuery.pageSize());
+        int totalPages = total == 0 ? 0 : (int) Math.ceil((double) total / pageSize);
+        int page = normalizePage(effectiveQuery.page(), totalPages);
+        List<OperationsExecutionListItem> pageExecutions = executions.stream()
+                .skip((long) (page - 1) * pageSize)
+                .limit(pageSize)
+                .toList();
 
         return new OperationsExecutionListResponse(
                 namespaceToBranch.values().stream().toList(),
                 blankToNull(effectiveQuery.branch()),
                 from,
                 to,
-                executions
+                page,
+                pageSize,
+                total,
+                totalPages,
+                pageExecutions
         );
     }
 
@@ -242,6 +258,7 @@ public class OperationsExecutionService {
                 execution.flowId(),
                 branch,
                 execution.status(),
+                execution.plannedAt(),
                 execution.createdAt(),
                 execution.startDate(),
                 execution.endDate(),
@@ -255,6 +272,7 @@ public class OperationsExecutionService {
                 ? List.of()
                 : execution.taskRuns().stream()
                 .filter(taskRun -> taskRun != null)
+                .filter(this::isUserTaskRun)
                 .map(this::toTaskRun)
                 .toList();
         return new OperationsExecutionDetailResponse(
@@ -263,6 +281,7 @@ public class OperationsExecutionService {
                 execution.flowId(),
                 branch,
                 execution.status(),
+                execution.plannedAt(),
                 execution.createdAt(),
                 execution.startDate(),
                 execution.endDate(),
@@ -282,6 +301,11 @@ public class OperationsExecutionService {
                 taskRun.endDate(),
                 durationMs(taskRun.startDate(), taskRun.endDate())
         );
+    }
+
+    private boolean isUserTaskRun(KestraTaskRunSnapshot taskRun) {
+        String taskId = taskRun.taskId();
+        return taskId != null && !"flow_dag".equals(taskId) && !taskId.startsWith("parallel_");
     }
 
     private OperationsExecutionLogEntry toLogEntry(KestraLogEntry log) {
@@ -317,6 +341,21 @@ public class OperationsExecutionService {
 
     private Instant executionTime(OperationsExecutionListItem item) {
         return item.createdAt() == null ? item.startDate() : item.createdAt();
+    }
+
+    private int normalizePage(Integer requestedPage, int totalPages) {
+        int page = requestedPage == null || requestedPage < DEFAULT_PAGE ? DEFAULT_PAGE : requestedPage;
+        if (totalPages == 0) {
+            return DEFAULT_PAGE;
+        }
+        return Math.min(page, totalPages);
+    }
+
+    private int normalizePageSize(Integer requestedPageSize) {
+        if (requestedPageSize == null || requestedPageSize < 1) {
+            return DEFAULT_PAGE_SIZE;
+        }
+        return Math.min(requestedPageSize, MAX_PAGE_SIZE);
     }
 
     private boolean rerunnable(String status) {

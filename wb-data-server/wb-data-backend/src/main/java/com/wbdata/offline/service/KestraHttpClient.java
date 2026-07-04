@@ -331,6 +331,7 @@ public class KestraHttpClient implements KestraClient {
                 readText(root.path("namespace")),
                 readText(root.path("flowId")),
                 readText(state.path("current")),
+                readInstant(root.path("trigger").path("variables").path("date")),
                 readInstant(state.path("startDate"), firstHistoryDate(state), root.path("createdAt"), root.path("createdDate")),
                 readInstant(state.path("startDate"), root.path("startDate")),
                 readInstant(state.path("endDate"), root.path("endDate")),

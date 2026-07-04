@@ -7,6 +7,8 @@ public record OperationsExecutionQuery(
         String flowId,
         String status,
         Instant from,
-        Instant to
+        Instant to,
+        Integer page,
+        Integer pageSize
 ) {
 }

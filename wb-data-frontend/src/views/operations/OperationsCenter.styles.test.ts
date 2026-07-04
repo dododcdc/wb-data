@@ -24,6 +24,7 @@ describe('OperationsCenter table layout', () => {
         expect(minWidth).toBeGreaterThanOrEqual(1360);
         expect(timeWidth).toBeGreaterThanOrEqual(13);
         expect(totalWidth).toBe(100);
+        expect(readColumnWidth('operations-col-actions')).toBeLessThanOrEqual(9);
         expect(styles).not.toContain('operations-col-failure');
     });
 });

@@ -10,6 +10,7 @@ public record OperationsExecutionDetailResponse(
         String flowId,
         String branch,
         String status,
+        Instant plannedAt,
         Instant createdAt,
         Instant startDate,
         Instant endDate,

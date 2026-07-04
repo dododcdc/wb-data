@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -48,12 +48,27 @@ describe('OperationsExecutionDetailPage', () => {
             flowId: 'daily_policy',
             branch: 'feature/policy-review',
             status: 'FAILED',
+            plannedAt: '2026-06-07T00:00:00Z',
             createdAt: '2026-06-07T01:00:00Z',
             startDate: '2026-06-07T01:00:02Z',
             endDate: '2026-06-07T01:03:12Z',
             durationMs: 190000,
             rerunnable: true,
             taskRuns: [
+                {
+                    taskId: 'flow_dag',
+                    status: 'SUCCESS',
+                    startDate: '2026-06-07T01:00:02Z',
+                    endDate: '2026-06-07T01:00:03Z',
+                    durationMs: 1000,
+                },
+                {
+                    taskId: 'parallel_root',
+                    status: 'SUCCESS',
+                    startDate: '2026-06-07T01:00:02Z',
+                    endDate: '2026-06-07T01:00:03Z',
+                    durationMs: 1000,
+                },
                 {
                     taskId: 'extract_policy',
                     status: 'SUCCESS',
@@ -121,15 +136,44 @@ describe('OperationsExecutionDetailPage', () => {
         renderPage();
 
         expect(await screen.findByText('daily_policy')).toBeTruthy();
+        expect(screen.queryByRole('button', { name: '刷新执行详情' })).toBeNull();
+        expect(screen.getAllByRole('button', { name: '刷新当前执行' })).toHaveLength(1);
+        expect(screen.queryByText('exec-1')).toBeNull();
         expect(screen.getByText('feature/policy-review')).toBeTruthy();
+        expect(screen.getByText('计划执行时间')).toBeTruthy();
+        expect(screen.queryByText('触发时间')).toBeNull();
+        expect(screen.queryByRole('button', { name: '全部日志' })).toBeNull();
+        expect(screen.queryByText('节点')).toBeNull();
+        expect(screen.queryByText('日志')).toBeNull();
+        expect(document.querySelector('.operations-execution-log-header')).toBeNull();
+        expect(screen.getByRole('button', { name: '刷新当前执行' }).closest('.operations-execution-log-tools')).not.toBeNull();
+        expect(screen.getByText(formatLocalDateTime(new Date('2026-06-07T00:00:00Z')))).toBeTruthy();
         expect(screen.getByText(formatLocalDateTime(new Date('2026-06-07T01:00:02Z')))).toBeTruthy();
+        expect(screen.queryByRole('button', { name: '查看 flow_dag 日志' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '查看 parallel_root 日志' })).toBeNull();
+        const summary = screen.getByLabelText('执行摘要');
+        expect(within(summary).getByText('节点数').nextElementSibling?.textContent).toBe('2');
         await waitFor(() => expect(getOperationsExecutionLogsMock).toHaveBeenCalledWith(4, 'exec-1', 'load_policy'));
         expect(await screen.findByText('load failed on row 42')).toBeTruthy();
+        expect(getOperationsExecutionLogsMock).not.toHaveBeenCalledWith(4, 'exec-1', null);
 
         fireEvent.click(screen.getByRole('button', { name: '查看 extract_policy 日志' }));
 
         await waitFor(() => expect(getOperationsExecutionLogsMock).toHaveBeenCalledWith(4, 'exec-1', 'extract_policy'));
         expect(await screen.findByText('extract finished')).toBeTruthy();
+    });
+
+    it('refreshes the current execution and logs from one action', async () => {
+        renderPage();
+
+        await waitFor(() => expect(getOperationsExecutionLogsMock).toHaveBeenCalledWith(4, 'exec-1', 'load_policy'));
+        const detailCalls = getOperationsExecutionMock.mock.calls.length;
+        const logCalls = getOperationsExecutionLogsMock.mock.calls.length;
+
+        fireEvent.click(screen.getByRole('button', { name: '刷新当前执行' }));
+
+        await waitFor(() => expect(getOperationsExecutionMock.mock.calls.length).toBeGreaterThan(detailCalls));
+        await waitFor(() => expect(getOperationsExecutionLogsMock.mock.calls.length).toBeGreaterThan(logCalls));
     });
 
     it('reruns the whole execution when permitted', async () => {

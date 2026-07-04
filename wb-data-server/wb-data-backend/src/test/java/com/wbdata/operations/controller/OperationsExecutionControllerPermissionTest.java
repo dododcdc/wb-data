@@ -22,7 +22,9 @@ class OperationsExecutionControllerPermissionTest {
                 String.class,
                 String.class,
                 Instant.class,
-                Instant.class
+                Instant.class,
+                Integer.class,
+                Integer.class
         );
         Method detail = OperationsExecutionController.class.getMethod("getExecution", AuthContextResponse.class, String.class);
         Method logs = OperationsExecutionController.class.getMethod("getLogs", AuthContextResponse.class, String.class, String.class);

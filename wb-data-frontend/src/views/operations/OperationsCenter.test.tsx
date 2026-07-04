@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getOfflineRepoStatus } from '../../api/offline';
@@ -58,11 +58,12 @@ const getOfflineRepoStatusMock = vi.mocked(getOfflineRepoStatus);
 describe('OperationsCenter', () => {
     beforeEach(() => {
         vi.spyOn(SimpleSelectModule, 'SimpleSelect').mockImplementation(
-            ({ value, options, onChange, id, className }: { value?: string; options: { label: string; value: string }[]; onChange: (val: string) => void; id?: string; className?: string }) => (
+            ({ value, options, onChange, id, className, disabled }: { value?: string; options: { label: string; value: string }[]; onChange: (val: string) => void; id?: string; className?: string; disabled?: boolean }) => (
                 <select
                     data-testid={id || 'simple-select'}
                     className={className}
                     value={value}
+                    disabled={disabled}
                     onChange={(e) => onChange(e.target.value)}
                 >
                     {options.map((opt) => (
@@ -101,6 +102,10 @@ describe('OperationsCenter', () => {
             selectedBranch: 'feature/policy-review',
             from: '2026-06-06T02:00:00Z',
             to: '2026-06-07T02:00:00Z',
+            page: 1,
+            pageSize: 50,
+            total: 2,
+            totalPages: 1,
             executions: [
                 {
                     id: 'exec-1',
@@ -108,6 +113,7 @@ describe('OperationsCenter', () => {
                     flowId: 'daily_policy',
                     branch: 'feature/policy-review',
                     status: 'FAILED',
+                    plannedAt: '2026-06-07T00:00:00Z',
                     createdAt: '2026-06-07T01:00:00Z',
                     startDate: '2026-06-07T01:00:02Z',
                     endDate: '2026-06-07T01:03:12Z',
@@ -120,6 +126,7 @@ describe('OperationsCenter', () => {
                     flowId: 'hourly_policy',
                     branch: 'feature/policy-review',
                     status: 'SUCCESS',
+                    plannedAt: '2026-06-06T23:00:00Z',
                     createdAt: '2026-06-07T00:00:00Z',
                     startDate: '2026-06-07T00:00:01Z',
                     endDate: '2026-06-07T00:01:01Z',
@@ -128,10 +135,12 @@ describe('OperationsCenter', () => {
                 },
             ],
         });
+        window.localStorage.clear();
     });
 
     afterEach(() => {
         cleanup();
+        window.localStorage.clear();
         vi.clearAllMocks();
         vi.restoreAllMocks();
     });
@@ -143,7 +152,10 @@ describe('OperationsCenter', () => {
         render(
             <QueryClientProvider client={queryClient}>
                 <MemoryRouter>
-                    <OperationsCenter />
+                    <Routes>
+                        <Route path="/" element={<OperationsCenter />} />
+                        <Route path="/operations/executions/:executionId" element={<div>execution detail route</div>} />
+                    </Routes>
                 </MemoryRouter>
             </QueryClientProvider>
         );
@@ -153,14 +165,88 @@ describe('OperationsCenter', () => {
         renderPage();
 
         expect(await screen.findByText('daily_policy')).toBeTruthy();
+        expect(screen.queryByText('运维中心')).toBeNull();
         expect(screen.getAllByText('feature/policy-review').length).toBeGreaterThan(0);
         expect(screen.getAllByText('失败').length).toBeGreaterThan(0);
+        expect(within(screen.getByLabelText('运行记录筛选')).getByRole('button', { name: '刷新运行记录' })).toBeTruthy();
         expect(screen.getAllByRole('columnheader')).toHaveLength(8);
+        expect(screen.getByRole('columnheader', { name: '计划执行时间' })).toBeTruthy();
+        expect(screen.queryByRole('columnheader', { name: '触发时间' })).toBeNull();
         expect(screen.getByRole('button', { name: '重跑 daily_policy' })).toBeTruthy();
         expect(screen.queryByRole('button', { name: '重跑 hourly_policy' })).toBeNull();
-        expect(screen.getByText(formatLocalDateTime(new Date('2026-06-07T01:00:00Z')))).toBeTruthy();
+        expect(screen.getByText(formatLocalDateTime(new Date('2026-06-07T00:00:00Z')))).toBeTruthy();
         await waitFor(() => expect(listOperationsExecutionsMock).toHaveBeenCalledWith(
-            expect.objectContaining({ groupId: 4, branch: 'feature/policy-review' })
+            expect.objectContaining({ groupId: 4, branch: 'feature/policy-review', pageSize: 50 })
+        ));
+    });
+
+    it('opens detail from the row and keeps detail action compact', async () => {
+        renderPage();
+
+        const row = await screen.findByRole('row', { name: '查看 daily_policy 执行详情' });
+        const detailLink = within(row).getByRole('link', { name: '查看 daily_policy 详情' });
+
+        expect(detailLink.getAttribute('title')).toBe('查看详情');
+        expect(within(row).queryByText('查看详情')).toBeNull();
+
+        fireEvent.click(row);
+
+        expect(await screen.findByText('execution detail route')).toBeTruthy();
+    });
+
+    it('changes operations pages and page size', async () => {
+        listOperationsExecutionsMock.mockResolvedValue({
+            branches: ['feature/policy-review', 'main'],
+            selectedBranch: 'feature/policy-review',
+            from: '2026-06-06T02:00:00Z',
+            to: '2026-06-07T02:00:00Z',
+            page: 1,
+            pageSize: 50,
+            total: 75,
+            totalPages: 2,
+            executions: [
+                {
+                    id: 'exec-1',
+                    namespace: 'g4-feature-policy-review',
+                    flowId: 'daily_policy',
+                    branch: 'feature/policy-review',
+                    status: 'FAILED',
+                    plannedAt: '2026-06-07T00:00:00Z',
+                    createdAt: '2026-06-07T01:00:00Z',
+                    startDate: '2026-06-07T01:00:02Z',
+                    endDate: '2026-06-07T01:03:12Z',
+                    durationMs: 190000,
+                    rerunnable: true,
+                },
+            ],
+        });
+        renderPage();
+
+        expect(await screen.findByText('daily_policy')).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+
+        await waitFor(() => expect(listOperationsExecutionsMock).toHaveBeenLastCalledWith(
+            expect.objectContaining({ page: 2, pageSize: 50 })
+        ));
+
+        const pageSizeSelect = await screen.findByTestId('operations-page-size') as HTMLSelectElement;
+        expect(Array.from(pageSizeSelect.options).map(option => option.value)).toEqual(['50', '100', '200']);
+        await waitFor(() => expect(pageSizeSelect.disabled).toBe(false));
+        fireEvent.change(pageSizeSelect, { target: { value: '100' } });
+
+        await waitFor(() => expect(listOperationsExecutionsMock).toHaveBeenLastCalledWith(
+            expect.objectContaining({ page: 1, pageSize: 100 })
+        ));
+        expect(window.localStorage.getItem('wb-data.operations.pageSize')).toBe('100');
+    });
+
+    it('uses the remembered operations page size', async () => {
+        window.localStorage.setItem('wb-data.operations.pageSize', '100');
+
+        renderPage();
+
+        await waitFor(() => expect(listOperationsExecutionsMock).toHaveBeenLastCalledWith(
+            expect.objectContaining({ page: 1, pageSize: 100 })
         ));
     });
 
