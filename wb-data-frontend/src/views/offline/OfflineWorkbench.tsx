@@ -46,7 +46,6 @@ import {
     getOfflineFlowDocument,
     getOfflineRepoTree,
     getOfflineSchedule,
-    listBranches,
     listOfflineExecutions,
     renameOfflineFlow,
     renameOfflineFolder,
@@ -54,7 +53,6 @@ import {
     stopAllOfflineExecutions,
     stopOfflineExecution,
     switchBranch,
-    type BranchItem,
     type DirtyFlowChange,
     type DirtyWorkingTreeResponse,
     type OfflineExecutionDetail,
@@ -806,21 +804,25 @@ export default function OfflineWorkbench() {
         rebuildLoading,
         rebuildDialogOpen,
         setRebuildDialogOpen,
+        branchMenuOpen,
+        setBranchMenuOpen,
+        branchTooltipOpen,
+        setBranchTooltipOpen,
+        branchLoading,
+        branches,
+        resetBranchList,
         refreshRepoStatus,
         refreshRemoteStatus,
         push: pushRepository,
         rebuildRemote,
-    } = useOfflineRepositoryWorkflow({ groupId, showFeedback });
+        toggleBranchMenu: handleBranchMenuToggle,
+    } = useOfflineRepositoryWorkflow({ groupId, canSwitchBranch: isGroupAdmin && !!groupId, showFeedback });
     const [flowCommitDialogOpen, setFlowCommitDialogOpen] = useState(false);
     const [repoCommitDialogOpen, setRepoCommitDialogOpen] = useState(false);
     const [commitMessage, setCommitMessage] = useState('');
     const [committing, setCommitting] = useState(false);
     const [flowCommitDirty, setFlowCommitDirty] = useState(false);
-    const [branchMenuOpen, setBranchMenuOpen] = useState(false);
-    const [branchTooltipOpen, setBranchTooltipOpen] = useState(false);
-    const [branchLoading, setBranchLoading] = useState(false);
     const [branchSwitching, setBranchSwitching] = useState(false);
-    const [branches, setBranches] = useState<BranchItem[]>([]);
     const [branchDirtyState, setBranchDirtyState] = useState<BranchDirtyState | null>(null);
     const [pendingBranchSwitch, setPendingBranchSwitch] = useState<string | null>(null);
     const [discardBranchSwitchOpen, setDiscardBranchSwitchOpen] = useState(false);
@@ -1209,34 +1211,6 @@ export default function OfflineWorkbench() {
         setExecutionDetail(null);
     }, []);
 
-    const loadBranchList = useCallback(async () => {
-        if (!groupId || !canSwitchBranch) return;
-        setBranchLoading(true);
-        try {
-            const response = await listBranches(groupId);
-            setBranches(response.branches);
-        } catch (error) {
-            showFeedback({
-                tone: 'error',
-                title: '分支列表读取失败',
-                detail: getErrorMessage(error, '暂时无法读取本地分支。'),
-            });
-        } finally {
-            setBranchLoading(false);
-        }
-    }, [canSwitchBranch, groupId, showFeedback]);
-
-    const handleBranchMenuToggle = useCallback(() => {
-        if (!canSwitchBranch) return;
-        setBranchMenuOpen((open) => {
-            const nextOpen = !open;
-            if (nextOpen) {
-                void loadBranchList();
-            }
-            return nextOpen;
-        });
-    }, [canSwitchBranch, loadBranchList]);
-
     const executeBranchSwitch = useCallback(async (branchName: string, options?: { discardDraft?: boolean }) => {
         if (!groupId || !canSwitchBranch || branchName === branchLabel) return;
         const isCurrentGroupAction = captureGroupActionGuard(groupId);
@@ -1368,8 +1342,7 @@ export default function OfflineWorkbench() {
         setDraftSession(null);
         setSaveConflictState(null);
         setSaveConflictPending(false);
-        setBranchMenuOpen(false);
-        setBranches([]);
+        resetBranchList();
         setBranchDirtyState(null);
         setPendingBranchSwitch(null);
         setDiscardBranchSwitchOpen(false);
@@ -1377,7 +1350,7 @@ export default function OfflineWorkbench() {
 
         if (!groupId) return;
         void refreshWorkspace();
-    }, [groupId, leaveCurrentFlow, refreshWorkspace]);
+    }, [groupId, leaveCurrentFlow, refreshWorkspace, resetBranchList]);
 
     useEffect(() => {
         const handleBranchChanged = (event: Event) => {
@@ -1385,8 +1358,7 @@ export default function OfflineWorkbench() {
             if (!groupId || detail?.groupId !== groupId) return;
             if (detail?.source === 'workbench') return;
 
-            setBranchMenuOpen(false);
-            setBranches([]);
+            resetBranchList();
             setBranchDirtyState(null);
             setPendingBranchSwitch(null);
             setDiscardBranchSwitchOpen(false);
@@ -1396,7 +1368,7 @@ export default function OfflineWorkbench() {
 
         window.addEventListener('wbdata:offline-branch-changed', handleBranchChanged);
         return () => window.removeEventListener('wbdata:offline-branch-changed', handleBranchChanged);
-    }, [groupId, refreshWorkspace, resetActiveFlowAfterBranchSwitch]);
+    }, [groupId, refreshWorkspace, resetActiveFlowAfterBranchSwitch, resetBranchList]);
 
     // Restore flow from URL param (e.g. returning from execution log page)
     const restoreFlowRef = useRef(false);
