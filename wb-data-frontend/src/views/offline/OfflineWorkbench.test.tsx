@@ -45,10 +45,16 @@ vi.mock('../../components/ui/tooltip', () => ({
 vi.mock('./FlowCanvas', () => ({
     default: ({
         flowDocument,
+        onAddNode,
+        onEdgesChange,
         onNodeLayoutCommit,
+        onRenameNode,
     }: {
         flowDocument: { path: string };
+        onAddNode: (kind: 'SHELL', position: { x: number; y: number }) => void;
+        onEdgesChange: (edges: Array<{ id: string; source: string; target: string }>) => void;
         onNodeLayoutCommit: (nodes: Array<{ id: string; position: { x: number; y: number } }>) => void;
+        onRenameNode: (oldId: string, newId: string) => void;
     }) => (
         <div data-testid="flow-canvas">
             {flowDocument.path}
@@ -58,6 +64,47 @@ vi.mock('./FlowCanvas', () => ({
                 onClick={() => onNodeLayoutCommit([{ id: 'node_1', position: { x: 32, y: 48 } }])}
             >
                 mutate
+            </button>
+            <button
+                type="button"
+                aria-label="模拟连续新增和重命名"
+                onClick={() => {
+                    onAddNode('SHELL', { x: 100, y: 120 });
+                    onEdgesChange([{ id: 'node_1->shell_node_1', source: 'node_1', target: 'shell_node_1' }]);
+                    onRenameNode('node_1', 'renamed_node');
+                }}
+            >
+                add-and-rename
+            </button>
+            <button
+                type="button"
+                aria-label="模拟新增后重命名新增节点"
+                onClick={() => {
+                    onAddNode('SHELL', { x: 100, y: 120 });
+                    onRenameNode('shell_node_1', 'created_node');
+                    onEdgesChange([{ id: 'node_1->created_node', source: 'node_1', target: 'created_node' }]);
+                }}
+            >
+                add-rename-created
+            </button>
+            <button
+                type="button"
+                aria-label="模拟连续新增超过上限"
+                onClick={() => {
+                    onAddNode('SHELL', { x: 100, y: 120 });
+                    onAddNode('SHELL', { x: 140, y: 160 });
+                }}
+            >
+                add-past-limit
+            </button>
+            <button
+                type="button"
+                aria-label="模拟悬空连线"
+                onClick={() => {
+                    onEdgesChange([{ id: 'node_1->missing_node', source: 'node_1', target: 'missing_node' }]);
+                }}
+            >
+                dangling-edge
             </button>
         </div>
     ),
@@ -190,6 +237,33 @@ function makeFlowDocument() {
         ...makeFlowDocumentBase(),
         documentHash: 'base-hash',
         documentUpdatedAt: 100,
+    };
+}
+
+function makeFlowDocumentWithNodeCount(nodeCount: number) {
+    const nodes = Array.from({ length: nodeCount }, (_, index) => {
+        const taskId = `node_${index + 1}`;
+        return {
+            taskId,
+            kind: 'SHELL' as const,
+            scriptPath: `scripts/example/${taskId}.sh`,
+            scriptContent: `echo ${index + 1}`,
+        };
+    });
+
+    return {
+        ...makeFlowDocument(),
+        stages: [
+            {
+                stageId: 'main',
+                parallel: false,
+                nodes,
+            },
+        ],
+        layout: Object.fromEntries(nodes.map((node, index) => [
+            node.taskId,
+            { x: index * 40, y: 0 },
+        ])),
     };
 }
 
@@ -570,6 +644,123 @@ describe('OfflineWorkbench commit UI', () => {
         await waitFor(() => {
             expect(offlineApi.commitOfflineRepo).toHaveBeenCalledWith(1, 'repo commit');
         });
+    });
+
+    it('preserves queued add and rename canvas mutations in the saved payload', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write'];
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue({
+            ...makeFlowDocument(),
+            documentHash: 'saved-hash',
+            documentUpdatedAt: 101,
+        });
+
+        renderOfflineWorkbench();
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        fireEvent.click(screen.getByRole('button', { name: '模拟连续新增和重命名' }));
+        fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+        await waitFor(() => {
+            expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalled();
+        });
+
+        const payload = vi.mocked(offlineApi.saveOfflineFlowDocument).mock.calls[0][0];
+        const savedNodes = payload.stages.flatMap((stage) => stage.nodes);
+        expect(savedNodes).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                taskId: 'renamed_node',
+                scriptPath: 'scripts/example/renamed_node.sh',
+            }),
+            expect.objectContaining({
+                taskId: 'shell_node_1',
+                scriptPath: 'scripts/example/shell_node_1.sh',
+            }),
+        ]));
+        expect(payload.edges).toEqual([{ source: 'renamed_node', target: 'shell_node_1' }]);
+    });
+
+    it('renames a newly added canvas node before saving when both happen in one canvas event', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write'];
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue({
+            ...makeFlowDocument(),
+            documentHash: 'saved-hash',
+            documentUpdatedAt: 101,
+        });
+
+        renderOfflineWorkbench();
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        fireEvent.click(screen.getByRole('button', { name: '模拟新增后重命名新增节点' }));
+        fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+        await waitFor(() => {
+            expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalled();
+        });
+
+        const payload = vi.mocked(offlineApi.saveOfflineFlowDocument).mock.calls[0][0];
+        const savedNodes = payload.stages.flatMap((stage) => stage.nodes);
+        expect(savedNodes).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                taskId: 'created_node',
+                scriptPath: 'scripts/example/created_node.sh',
+            }),
+        ]));
+        expect(savedNodes.some((node) => node.taskId === 'shell_node_1')).toBe(false);
+        expect(payload.edges).toEqual([{ source: 'node_1', target: 'created_node' }]);
+    });
+
+    it('shows max-node feedback when consecutive canvas adds exceed the latest draft limit', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write'];
+        vi.mocked(offlineApi.getOfflineFlowDocument).mockResolvedValue(makeFlowDocumentWithNodeCount(19));
+
+        renderOfflineWorkbench();
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        fireEvent.click(screen.getByRole('button', { name: '模拟连续新增超过上限' }));
+
+        await waitFor(() => {
+            expect(feedbackSpy).toHaveBeenCalledWith({
+                tone: 'info',
+                title: '节点数量已达上限',
+                detail: '离线 Flow 最多支持 20 个节点，请精简流程设计。',
+            });
+        });
+    });
+
+    it('blocks save and shows generic graph feedback when the draft has a dangling edge', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write'];
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue({
+            ...makeFlowDocument(),
+            documentHash: 'saved-hash',
+            documentUpdatedAt: 101,
+        });
+
+        renderOfflineWorkbench();
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        fireEvent.click(screen.getByRole('button', { name: '模拟悬空连线' }));
+        fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+        await waitFor(() => {
+            expect(feedbackSpy).toHaveBeenCalledWith({
+                tone: 'error',
+                title: '保存失败',
+                detail: '',
+            });
+        });
+        expect(offlineApi.saveOfflineFlowDocument).not.toHaveBeenCalled();
     });
 
     it('stages schedule changes before saving, committing, and pushing the current Flow', async () => {
