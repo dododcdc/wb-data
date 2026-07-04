@@ -2514,8 +2514,8 @@ export default function OfflineWorkbench() {
         });
         showFeedback({
             tone: 'success',
-            title: enabled ? '调度已开启' : '调度已关闭',
-            detail: '',
+            title: enabled ? '调度开启已暂存' : '调度关闭已暂存',
+            detail: '保存 Flow 后生效。',
         });
     }, [activeFlowPath, draftSession, groupId, scheduleCron, scheduleTimezone, showFeedback]);
 

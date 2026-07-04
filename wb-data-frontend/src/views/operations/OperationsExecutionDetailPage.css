@@ -18,7 +18,6 @@
 .operations-execution-detail-back,
 .operations-execution-icon-button,
 .operations-execution-rerun,
-.operations-execution-all-logs,
 .operations-execution-level,
 .operations-execution-log-error button {
     border: 1px solid var(--color-border);
@@ -41,7 +40,6 @@
 .operations-execution-detail-back:hover,
 .operations-execution-icon-button:hover,
 .operations-execution-rerun:hover,
-.operations-execution-all-logs:hover,
 .operations-execution-level:hover,
 .operations-execution-log-error button:hover {
     background: var(--color-bg-secondary);
@@ -168,44 +166,12 @@
     background: color-mix(in srgb, var(--color-bg-primary) 82%, var(--color-bg-secondary));
 }
 
-.operations-execution-panel-title,
-.operations-execution-log-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    min-height: 50px;
-    padding: 0 14px;
-    border-bottom: 1px solid var(--color-border);
-}
-
-.operations-execution-panel-title h2,
-.operations-execution-log-header h2 {
-    margin: 0;
-    font-size: 0.96rem;
-    font-weight: 700;
-    letter-spacing: 0;
-}
-
-.operations-execution-all-logs {
-    height: 30px;
-    padding: 0 10px;
-    color: var(--color-text-secondary);
-    font-size: 0.82rem;
-}
-
-.operations-execution-all-logs.is-active {
-    border-color: color-mix(in srgb, var(--color-accent) 36%, var(--color-border));
-    background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg-primary));
-    color: var(--color-accent);
-}
-
 .operations-execution-task-list {
     display: flex;
     flex-direction: column;
     gap: 6px;
     min-height: 0;
-    padding: 10px;
+    padding: 12px 10px;
     overflow-y: auto;
 }
 
@@ -300,16 +266,6 @@
     min-height: 0;
 }
 
-.operations-execution-log-header p {
-    max-width: min(520px, 45vw);
-    margin: 4px 0 0;
-    overflow: hidden;
-    color: var(--color-text-muted);
-    font-size: 0.76rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .operations-execution-log-tools {
     display: flex;
     align-items: center;
@@ -318,6 +274,13 @@
     min-height: 44px;
     padding: 0 14px;
     border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.operations-execution-log-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
 }
 
 .operations-execution-levels {
@@ -549,6 +512,10 @@
         align-items: stretch;
         flex-direction: column;
         padding: 10px 14px;
+    }
+
+    .operations-execution-log-actions {
+        width: 100%;
     }
 
     .operations-execution-log-search {

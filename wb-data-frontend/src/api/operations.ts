@@ -7,6 +7,8 @@ export interface OperationsExecutionListQuery {
     status?: string | null;
     from?: string | null;
     to?: string | null;
+    page?: number | null;
+    pageSize?: number | null;
 }
 
 export interface OperationsExecutionListItem {
@@ -15,6 +17,7 @@ export interface OperationsExecutionListItem {
     flowId: string;
     branch: string;
     status: string;
+    plannedAt: string | null;
     createdAt: string | null;
     startDate: string | null;
     endDate: string | null;
@@ -27,6 +30,10 @@ export interface OperationsExecutionListResponse {
     selectedBranch: string | null;
     from: string | null;
     to: string | null;
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
     executions: OperationsExecutionListItem[];
 }
 
@@ -44,6 +51,7 @@ export interface OperationsExecutionDetail {
     flowId: string;
     branch: string;
     status: string;
+    plannedAt: string | null;
     createdAt: string | null;
     startDate: string | null;
     endDate: string | null;
@@ -88,6 +96,9 @@ function buildListSearchParams(query?: OperationsExecutionListQuery) {
         const normalized = value?.trim();
         if (normalized) params.set(key, normalized);
     }
+
+    if (query.page != null) params.set('page', String(query.page));
+    if (query.pageSize != null) params.set('pageSize', String(query.pageSize));
 
     return params;
 }

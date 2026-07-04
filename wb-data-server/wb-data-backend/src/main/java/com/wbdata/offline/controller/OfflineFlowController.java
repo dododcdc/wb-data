@@ -77,7 +77,8 @@ public class OfflineFlowController {
                 request.documentUpdatedAt(),
                 request.stages(),
                 request.edges(),
-                request.layout()
+                request.layout(),
+                request.schedule()
         );
         return Result.success(offlineFlowDocumentService.saveFlowDocument(normalizedRequest));
     }

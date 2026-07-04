@@ -215,7 +215,7 @@ public class GitSyncConfigService {
                     username: "{{ inputs.git_username }}"
                     password: "{{ inputs.git_token }}"
                     targetNamespace: %s
-                    gitDirectory: _flows
+                    gitDirectory: .wb-data/kestra-flows
                     delete: true
                   - id: sync_files
                     type: io.kestra.plugin.git.SyncNamespaceFiles

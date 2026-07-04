@@ -22,6 +22,7 @@ public class OfflineFlowContentService {
 
     private final OfflineProperties offlineProperties;
     private final RepoLockManager repoLockManager;
+    private final OfflineKestraFlowFileService kestraFlowFileService;
 
     public OfflineFlowContentResponse getFlowContent(Long groupId, String path) {
         return repoLockManager.withLock(groupId, () -> getFlowContentUnlocked(groupId, path));
@@ -56,6 +57,7 @@ public class OfflineFlowContentService {
 
             Files.createDirectories(flowPath.getParent());
             Files.writeString(flowPath, request.content(), StandardCharsets.UTF_8);
+            kestraFlowFileService.syncFlowFile(repoPath, request.path());
             return readFlowContent(request.groupId(), request.path(), flowPath);
         } catch (IOException ex) {
             throw new IllegalStateException("保存 Flow 文件失败", ex);

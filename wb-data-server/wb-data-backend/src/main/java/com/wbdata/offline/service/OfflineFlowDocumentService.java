@@ -2,19 +2,20 @@ package com.wbdata.offline.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wbdata.datasource.entity.DataSource;
+import com.wbdata.datasource.service.DataSourceService;
 import com.wbdata.offline.config.OfflineProperties;
-import com.wbdata.offline.dto.NodePosition;
 import com.wbdata.offline.dto.DebugDocumentExecutionRequest;
+import com.wbdata.offline.dto.NodePosition;
 import com.wbdata.offline.dto.OfflineFlowDocumentResponse;
 import com.wbdata.offline.dto.OfflineFlowEdgeResponse;
 import com.wbdata.offline.dto.OfflineFlowNodeResponse;
+import com.wbdata.offline.dto.OfflineFlowSchedule;
 import com.wbdata.offline.dto.OfflineFlowStageResponse;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowEdgeRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowNodeRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowStageRequest;
-import com.wbdata.datasource.service.DataSourceService;
-import com.wbdata.datasource.entity.DataSource;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -54,6 +55,7 @@ public class OfflineFlowDocumentService {
     private final OfflineFlowContentService offlineFlowContentService;
     private final DataSourceService dataSourceService;
     private final RepoLockManager repoLockManager;
+    private final OfflineKestraFlowFileService kestraFlowFileService;
     private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -113,6 +115,11 @@ public class OfflineFlowDocumentService {
                 saveWithStages(request, current);
             }
 
+            if (request.schedule() != null) {
+                applyScheduleToFlowFile(repoPath, request.path(), request.schedule());
+            }
+            kestraFlowFileService.syncFlowFile(repoPath, request.path());
+
             // Save layout.json if provided
             if (request.layout() != null && !request.layout().isEmpty()) {
                 saveLayout(request.groupId(), request.path(), request.layout());
@@ -138,6 +145,11 @@ public class OfflineFlowDocumentService {
             Path layoutFile = resolveLayoutFile(repoPath, path);
             if (Files.exists(layoutFile)) {
                 files.add(repoPath.relativize(layoutFile).toString().replace('\\', '/'));
+            }
+
+            Path kestraFlowFile = kestraFlowFileService.resolveFlowFile(repoPath, path);
+            if (Files.exists(kestraFlowFile)) {
+                files.add(repoPath.relativize(kestraFlowFile).toString().replace('\\', '/'));
             }
 
             for (Path taskFile : snapshot.taskFiles().values()) {
@@ -214,6 +226,12 @@ public class OfflineFlowDocumentService {
         Path flowFile = resolveRepoFile(repoPath, request.path());
         Files.createDirectories(flowFile.getParent());
         Files.writeString(flowFile, compiledYaml, StandardCharsets.UTF_8);
+    }
+
+    private void applyScheduleToFlowFile(Path repoPath, String flowPath, OfflineFlowSchedule schedule) throws IOException {
+        Path flowFile = resolveRepoFile(repoPath, flowPath);
+        String current = Files.readString(flowFile, StandardCharsets.UTF_8);
+        Files.writeString(flowFile, yamlSupport.applySchedule(current, schedule), StandardCharsets.UTF_8);
     }
 
     private void writeGraphScripts(Path repoPath, GraphDraft graphDraft) throws IOException {
@@ -293,6 +311,14 @@ public class OfflineFlowDocumentService {
         // Parse both stage-based and graph-based representations
         OfflineFlowYamlSupport.FlowDocument document = yamlSupport.parseDocument(flow.content());
         OfflineFlowYamlSupport.FlowGraph graph = yamlSupport.parseGraph(flow.content());
+        OfflineFlowYamlSupport.ScheduleData scheduleData = yamlSupport.readSchedule(flow.content());
+        OfflineFlowSchedule schedule = scheduleData == null
+                ? null
+                : new OfflineFlowSchedule(
+                        scheduleData.cron(),
+                        scheduleData.timezone(),
+                        scheduleData.enabled()
+                );
 
         List<OfflineFlowStageResponse> stages = new ArrayList<>();
         Map<String, Path> taskFiles = new LinkedHashMap<>();
@@ -356,7 +382,8 @@ public class OfflineFlowDocumentService {
                         updatedAt,
                         stages,
                         edges,
-                        layout
+                        layout,
+                        schedule
                 ),
                 taskFiles,
                 stageKeys,

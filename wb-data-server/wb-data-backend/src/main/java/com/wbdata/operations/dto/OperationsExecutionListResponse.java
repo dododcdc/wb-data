@@ -8,6 +8,10 @@ public record OperationsExecutionListResponse(
         String selectedBranch,
         Instant from,
         Instant to,
+        int page,
+        int pageSize,
+        int total,
+        int totalPages,
         List<OperationsExecutionListItem> executions
 ) {
 }
