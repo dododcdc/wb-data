@@ -36,18 +36,13 @@ import {
 } from 'lucide-react';
 import {
     commitOfflineCurrentFlow,
-    createOfflineFolder,
     createOfflineDocumentDebugExecution,
-    deleteOfflineFlow,
-    deleteOfflineFolder,
     getOfflineExecution,
     getOfflineFlowCommitStatus,
     getOfflineFlowDocument,
     getOfflineRepoTree,
     getOfflineSchedule,
     listOfflineExecutions,
-    renameOfflineFlow,
-    renameOfflineFolder,
     saveOfflineFlowDocument,
     stopAllOfflineExecutions,
     stopOfflineExecution,
@@ -116,14 +111,10 @@ import {
     getOfflineNodeScriptExtension,
 } from './offlineNodeKinds';
 import {
-    moveFolderRecoverySnapshots,
-    moveRecoverySnapshot,
     readRecoverySnapshot,
-    removeFolderRecoverySnapshots,
     removeRecoverySnapshot,
     writeRecoverySnapshot,
 } from './recoverySnapshotStore';
-import { clearDeletedFolderDraftState } from './deletedFolderDraftState';
 import { finalizeNodeEditorDraftOnClose } from './nodeEditorCloseDraftState';
 import { resolveSelectionStateAfterAddingNode } from './nodeSelectionState';
 import { resolvePendingNodeEditorDraftAfterDocumentChange } from './pendingNodeEditorDraftState';
@@ -131,6 +122,7 @@ import { isAcyclic } from './dagUtils';
 import { SaveConflictDialog } from './SaveConflictDialog';
 import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
+import { useOfflineTreeMutations } from './useOfflineTreeMutations';
 
 import './OfflineWorkbench.css';
 
@@ -772,39 +764,6 @@ export default function OfflineWorkbench() {
     const [scheduleSaving] = useState(false);
     const [scheduleCron, setScheduleCron] = useState('');
     const [scheduleTimezone, setScheduleTimezone] = useState(defaultTimezone);
-    const [newFlowDialogOpen, setNewFlowDialogOpen] = useState(false);
-    const [newFlowName, setNewFlowName] = useState('');
-    const [newFlowCreating, setNewFlowCreating] = useState(false);
-    const [newFlowParentPath, setNewFlowParentPath] = useState(''); // e.g. "_flows" or "_flows/subdir"
-    const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
-    const [newFolderName, setNewFolderName] = useState('');
-    const [newFolderCreating, setNewFolderCreating] = useState(false);
-    const [newFolderParentPath, setNewFolderParentPath] = useState(''); // e.g. "_flows"
-    const [newItemMenuOpen, setNewItemMenuOpen] = useState(false);
-    const [contextMenuOpen, setContextMenuOpen] = useState(false);
-    const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
-    const [contextMenuNode, setContextMenuNode] = useState<OfflineRepoTreeNode | null>(null);
-    const [deleteFlowDialogOpen, setDeleteFlowDialogOpen] = useState(false);
-    const [deleteFlowName, setDeleteFlowName] = useState('');
-    const [deleteFlowPath, setDeleteFlowPath] = useState('');
-    const [deleteFlowLoading, setDeleteFlowLoading] = useState(false);
-
-    const [deleteFolderDialogOpen, setDeleteFolderDialogOpen] = useState(false);
-    const [deleteFolderName, setDeleteFolderName] = useState('');
-    const [deleteFolderPath, setDeleteFolderPath] = useState('');
-    const [deleteFolderLoading, setDeleteFolderLoading] = useState(false);
-
-    const [renameFlowDialogOpen, setRenameFlowDialogOpen] = useState(false);
-    const [renameFlowName, setRenameFlowName] = useState('');
-    const [renameFlowOriginalName, setRenameFlowOriginalName] = useState('');
-    const [renameFlowPath, setRenameFlowPath] = useState('');
-    const [renameFlowLoading, setRenameFlowLoading] = useState(false);
-
-    const [renameFolderDialogOpen, setRenameFolderDialogOpen] = useState(false);
-    const [renameFolderName, setRenameFolderName] = useState('');
-    const [renameFolderOriginalName, setRenameFolderOriginalName] = useState('');
-    const [renameFolderPath, setRenameFolderPath] = useState('');
-    const [renameFolderLoading, setRenameFolderLoading] = useState(false);
     const [nodeEditorOpen, setNodeEditorOpen] = useState(false);
     const [nodeEditorContent, setNodeEditorContent] = useState('');
     const canvasNodesRef = useRef<Node[]>([]);
@@ -817,8 +776,6 @@ export default function OfflineWorkbench() {
     const groupActionVersionRef = useRef(0);
     const pendingNodeEditorDraftRef = useRef<PendingNodeEditorDraft | null>(null);
     const draftSessionRef = useRef<FlowDraftSession | null>(null);
-    const openFlowDocumentRef = useRef<(pathValue: string, options?: { preferRecoverySnapshot?: boolean }) => Promise<boolean>>(async () => false);
-    const leaveCurrentFlowRef = useRef<((session: FlowDraftSession | null, groupIdValue?: number | null) => void) | null>(null);
     const nodeEditorDraftSchedulerRef = useRef<ReturnType<typeof createNodeEditorDraftScheduler> | null>(null);
     const [pendingNavigation, setPendingNavigation] = useState<PendingNavigationState | null>(null);
     const didDiscardLeaveRef = useRef(false);
@@ -1106,10 +1063,6 @@ export default function OfflineWorkbench() {
         return result;
     }, [groupId]);
 
-    useEffect(() => {
-        leaveCurrentFlowRef.current = leaveCurrentFlow;
-    }, [leaveCurrentFlow]);
-
     const openFlowDocument = useCallback(async (pathValue: string, options?: { preferRecoverySnapshot?: boolean; force?: boolean }) => {
         if (!groupId) return false;
         const isCurrentGroupAction = captureGroupActionGuard(groupId);
@@ -1155,10 +1108,6 @@ export default function OfflineWorkbench() {
         }
     }, [applyFlowDocumentPayload, captureGroupActionGuard, draftSession, groupId, isDirty, leaveCurrentFlow, loadScheduleSnapshot, showFeedback]);
 
-    useEffect(() => {
-        openFlowDocumentRef.current = openFlowDocument;
-    }, [openFlowDocument]);
-
     const resetActiveFlowAfterBranchSwitch = useCallback(() => {
         nodeEditorDraftSchedulerRef.current?.cancel();
         pendingNodeEditorDraftRef.current = null;
@@ -1192,6 +1141,73 @@ export default function OfflineWorkbench() {
             },
         });
     }, [discardActiveDraftForBranchSwitch, isDirty, refreshWorkspace, requestBranchSwitch, resetActiveFlowAfterBranchSwitch]);
+
+    const {
+        newFlowDialogOpen,
+        setNewFlowDialogOpen,
+        newFlowName,
+        setNewFlowName,
+        newFlowCreating,
+        newFlowParentPath,
+        setNewFlowParentPath,
+        newFolderDialogOpen,
+        setNewFolderDialogOpen,
+        newFolderName,
+        setNewFolderName,
+        newFolderCreating,
+        newFolderParentPath,
+        setNewFolderParentPath,
+        newItemMenuOpen,
+        setNewItemMenuOpen,
+        contextMenuOpen,
+        setContextMenuOpen,
+        contextMenuPosition,
+        contextMenuNode,
+        deleteFlowDialogOpen,
+        setDeleteFlowDialogOpen,
+        deleteFlowName,
+        deleteFlowLoading,
+        deleteFolderDialogOpen,
+        setDeleteFolderDialogOpen,
+        deleteFolderName,
+        deleteFolderLoading,
+        renameFlowDialogOpen,
+        setRenameFlowDialogOpen,
+        renameFlowName,
+        setRenameFlowName,
+        renameFlowOriginalName,
+        renameFlowLoading,
+        renameFolderDialogOpen,
+        setRenameFolderDialogOpen,
+        renameFolderName,
+        setRenameFolderName,
+        renameFolderOriginalName,
+        renameFolderLoading,
+        handleCreateFlow,
+        handleCreateFolder,
+        handleDeleteFlow,
+        handleRenameFlow,
+        handleDeleteFolder,
+        handleRenameFolder,
+        handleContextMenu,
+        openNewFlowDialogFromContext,
+        openNewFolderDialogFromContext,
+        openDeleteFlowDialogFromContext,
+        openDeleteFolderDialogFromContext,
+        openRenameFlowDialogFromContext,
+        openRenameFolderDialogFromContext,
+        openRootNewFlowDialog,
+    } = useOfflineTreeMutations({
+        groupId,
+        activeFlowPath,
+        draftSession,
+        refreshRepoTree,
+        openFlowDocument,
+        leaveCurrentFlow,
+        setActiveFlowPath,
+        setDraftSession,
+        showFeedback,
+    });
 
     useEffect(() => {
         if (!branchMenuOpen) return;
@@ -1274,231 +1290,6 @@ export default function OfflineWorkbench() {
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [draftSession, groupId, leaveCurrentFlow]);
 
-    const handleCreateFlow = useCallback(async () => {
-        if (!groupId || !newFlowName.trim()) return;
-        const name = newFlowName.trim();
-        // Strip _flows/ prefix since newFlowParentPath may already contain it (from PathPicker)
-        const parentPathClean = newFlowParentPath.replace(/^_flows\/?/, '');
-        const parentPath = parentPathClean ? `${parentPathClean}/${name}` : name;
-        const path = `_flows/${parentPath}/flow.yaml`;
-        setNewFlowCreating(true);
-        try {
-            await saveOfflineFlowDocument({
-                groupId,
-                path,
-                documentHash: '',
-                documentUpdatedAt: 0,
-                stages: [],
-                edges: [],
-                layout: {},
-            });
-            setNewFlowDialogOpen(false);
-            setNewFlowName('');
-            setNewFlowParentPath('');
-            showFeedback({ tone: 'success', title: 'Flow 创建成功', detail: '' });
-            await refreshRepoTree();
-            await openFlowDocument(path);
-        } catch (error) {
-            showFeedback({
-                tone: 'error',
-                title: '创建 Flow 失败',
-                detail: getErrorMessage(error, '请稍后重试'),
-            });
-        } finally {
-            setNewFlowCreating(false);
-        }
-    }, [groupId, newFlowName, newFlowParentPath, showFeedback, refreshRepoTree, openFlowDocument]);
-
-    const handleCreateFolder = useCallback(async () => {
-        if (!groupId || !newFolderName.trim()) return;
-        const name = newFolderName.trim();
-        const parentPath = newFolderParentPath ? `${newFolderParentPath}/${name}` : name;
-        const folderPath = `_flows/${parentPath}`;
-        setNewFolderCreating(true);
-        try {
-            await createOfflineFolder(groupId, folderPath);
-            setNewFolderDialogOpen(false);
-            setNewFolderName('');
-            setNewFolderParentPath('');
-            showFeedback({ tone: 'success', title: '文件夹创建成功', detail: '' });
-            await refreshRepoTree();
-        } catch (error) {
-            showFeedback({
-                tone: 'error',
-                title: '创建文件夹失败',
-                detail: getErrorMessage(error, '请稍后重试'),
-            });
-        } finally {
-            setNewFolderCreating(false);
-        }
-    }, [groupId, newFolderName, newFolderParentPath, showFeedback, refreshRepoTree]);
-
-    const handleDeleteFlow = useCallback(async () => {
-        if (!groupId || !deleteFlowPath) return;
-        setDeleteFlowLoading(true);
-        try {
-            await deleteOfflineFlow(groupId, deleteFlowPath);
-            setDeleteFlowDialogOpen(false);
-            removeRecoverySnapshot(groupId, deleteFlowPath);
-            if (activeFlowPath === deleteFlowPath) {
-                setActiveFlowPath(null);
-                setDraftSession(null);
-            }
-            showFeedback({ tone: 'success', title: 'Flow 已删除', detail: '' });
-            await refreshRepoTree();
-        } catch (error) {
-            showFeedback({
-                tone: 'error',
-                title: '删除 Flow 失败',
-                detail: getErrorMessage(error, '请稍后重试'),
-            });
-        } finally {
-            setDeleteFlowLoading(false);
-        }
-    }, [groupId, deleteFlowPath, activeFlowPath, showFeedback, refreshRepoTree]);
-
-    const handleRenameFlow = useCallback(async () => {
-        if (!groupId || !renameFlowPath || !renameFlowName.trim()) return;
-        const newName = renameFlowName.trim();
-        setRenameFlowLoading(true);
-        try {
-            await renameOfflineFlow(groupId, renameFlowPath, newName);
-            setRenameFlowDialogOpen(false);
-            const oldPath = renameFlowPath;
-            const parts = oldPath.split('/');
-            const newPath = parts.length >= 2 ? `_flows/${newName}/flow.yaml` : oldPath;
-            if (draftSession?.path === oldPath) {
-                leaveCurrentFlowRef.current?.(draftSession);
-                setDraftSession(null);
-            }
-            moveRecoverySnapshot(groupId, oldPath, newPath);
-            if (activeFlowPath === oldPath) {
-                setActiveFlowPath(newPath);
-            }
-            showFeedback({ tone: 'success', title: 'Flow 已重命名', detail: `${renameFlowOriginalName} → ${newName}` });
-            await refreshRepoTree();
-            if (activeFlowPath === newPath || activeFlowPath === oldPath) {
-                await openFlowDocumentRef.current(newPath !== oldPath ? newPath : oldPath);
-            }
-        } catch (error) {
-            showFeedback({
-                tone: 'error',
-                title: '重命名 Flow 失败',
-                detail: getErrorMessage(error, '请稍后重试'),
-            });
-        } finally {
-            setRenameFlowLoading(false);
-        }
-    }, [groupId, renameFlowPath, renameFlowName, renameFlowOriginalName, activeFlowPath, draftSession, showFeedback, refreshRepoTree]);
-
-    const handleDeleteFolder = useCallback(async () => {
-        if (!groupId || !deleteFolderPath) return;
-        setDeleteFolderLoading(true);
-        try {
-            await deleteOfflineFolder(groupId, deleteFolderPath);
-            setDeleteFolderDialogOpen(false);
-            removeFolderRecoverySnapshots(groupId, deleteFolderPath);
-            const nextState = clearDeletedFolderDraftState({
-                activeFlowPath,
-                deleteFolderPath,
-                draftSession,
-                leaveCurrentFlow: (session) => { leaveCurrentFlowRef.current?.(session); },
-            });
-            setActiveFlowPath(nextState.activeFlowPath);
-            setDraftSession(nextState.draftSession);
-            showFeedback({ tone: 'success', title: '文件夹已删除', detail: '' });
-            await refreshRepoTree();
-        } catch (error) {
-            showFeedback({
-                tone: 'error',
-                title: '删除文件夹失败',
-                detail: getErrorMessage(error, '请稍后重试'),
-            });
-        } finally {
-            setDeleteFolderLoading(false);
-        }
-    }, [groupId, deleteFolderPath, activeFlowPath, draftSession, showFeedback, refreshRepoTree]);
-
-    const handleRenameFolder = useCallback(async () => {
-        if (!groupId || !renameFolderPath || !renameFolderName.trim()) return;
-        const newName = renameFolderName.trim();
-        setRenameFolderLoading(true);
-        try {
-            await renameOfflineFolder(groupId, renameFolderPath, newName);
-            setRenameFolderDialogOpen(false);
-
-            const oldPath = renameFolderPath;
-            const parts = oldPath.split('/');
-            parts[parts.length - 1] = newName;
-            const newPath = parts.join('/');
-            if (draftSession?.path && draftSession.path.startsWith(`${oldPath}/`)) {
-                leaveCurrentFlowRef.current?.(draftSession);
-                setDraftSession(null);
-            }
-            moveFolderRecoverySnapshots(groupId, oldPath, newPath);
-
-            if (activeFlowPath && activeFlowPath.startsWith(oldPath + '/')) {
-                const refreshedPath = activeFlowPath.replace(oldPath, newPath);
-                setActiveFlowPath(refreshedPath);
-                await openFlowDocumentRef.current(refreshedPath);
-            }
-
-            showFeedback({ tone: 'success', title: '文件夹已重命名', detail: `${renameFolderOriginalName} → ${newName}` });
-            await refreshRepoTree();
-        } catch (error) {
-            showFeedback({
-                tone: 'error',
-                title: '重命名文件夹失败',
-                detail: getErrorMessage(error, '请稍后重试'),
-            });
-        } finally {
-            setRenameFolderLoading(false);
-        }
-    }, [groupId, renameFolderPath, renameFolderName, renameFolderOriginalName, activeFlowPath, draftSession, showFeedback, refreshRepoTree]);
-
-    const handleContextMenu = useCallback((event: React.MouseEvent, node: OfflineRepoTreeNode) => {
-        event.preventDefault();
-        event.stopPropagation();
-        setContextMenuPosition({ x: event.clientX, y: event.clientY });
-        setContextMenuNode(node);
-        setContextMenuOpen(true);
-    }, []);
-
-    const openNewFlowDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
-        setContextMenuOpen(false);
-        // node.path is like "_flows/subdir", strip "_flows/" to get relative path
-        const relativePath = node.path.replace(/^_flows\/?/, '');
-        setNewFlowParentPath(relativePath);
-        setNewFlowName('');
-        setNewFlowDialogOpen(true);
-    }, []);
-
-    const openNewFolderDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
-        setContextMenuOpen(false);
-        // node.path is like "_flows/subdir", strip "_flows/" to get relative path for API
-        const relativePath = node.path.replace(/^_flows\/?/, '');
-        setNewFolderParentPath(relativePath);
-        setNewFolderName('');
-        setNewFolderDialogOpen(true);
-    }, []);
-
-    const openDeleteFlowDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
-        setContextMenuOpen(false);
-        // node.path is like "_flows/demo/flow.yaml"
-        setDeleteFlowPath(node.path);
-        // Extract flow name from path: "_flows/demo/flow.yaml" -> "demo"
-        const parts = node.path.split('/');
-        setDeleteFlowName(parts.length >= 2 ? parts[1] : node.name);
-        setDeleteFlowDialogOpen(true);
-    }, []);
-
-    const openDeleteFolderDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
-        setContextMenuOpen(false);
-        setDeleteFolderPath(node.path);
-        setDeleteFolderName(node.name);
-        setDeleteFolderDialogOpen(true);
-    }, []);
-
     const loadExecutionDetail = useCallback(async (executionId: string, silent = false) => {
         if (!groupId) return;
         if (!silent) setExecutionDetailLoading(true);
@@ -1535,27 +1326,6 @@ export default function OfflineWorkbench() {
             if (!silent) setExecutionDetailLoading(false);
         }
     }, [groupId, showFeedback]);
-
-    const openRenameFlowDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
-        setContextMenuOpen(false);
-        // node.path is like "_flows/demo/flow.yaml"
-        setRenameFlowPath(node.path);
-        // Extract flow name from path: "_flows/demo/flow.yaml" -> "demo"
-        const parts = node.path.split('/');
-        const originalName = parts.length >= 2 ? parts[1] : node.name;
-        setRenameFlowOriginalName(originalName);
-        setRenameFlowName(originalName);
-        setRenameFlowDialogOpen(true);
-    }, []);
-
-    const openRenameFolderDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
-        setContextMenuOpen(false);
-        setRenameFolderPath(node.path);
-        setRenameFolderOriginalName(node.name);
-        setRenameFolderName(node.name);
-        setRenameFolderDialogOpen(true);
-    }, []);
-
 
     const refreshExecutions = useCallback(async (preferExecutionId?: string | null, requestedByOverride?: number | null) => {
         if (!groupId || !activeFlowPath) return;
@@ -1611,15 +1381,13 @@ export default function OfflineWorkbench() {
             if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
                 e.preventDefault();
                 if (!newFlowDialogOpen && !nodeEditorOpen && !executionDialogOpen && !scheduleDialogOpen) {
-                    setNewFlowParentPath('');
-                    setNewFlowName('');
-                    setNewFlowDialogOpen(true);
+                    openRootNewFlowDialog();
                 }
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [newFlowDialogOpen, nodeEditorOpen, executionDialogOpen, scheduleDialogOpen]);
+    }, [newFlowDialogOpen, nodeEditorOpen, executionDialogOpen, scheduleDialogOpen, openRootNewFlowDialog]);
 
 
 
