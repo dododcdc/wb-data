@@ -48,6 +48,33 @@ class GitCommandServiceBranchTest {
     }
 
     @Test
+    void listRemoteBranchNames_refreshesOriginAndExcludesLocalOnlyAndDeletedBranches() throws Exception {
+        OfflineProperties properties = properties();
+        Path repo = properties.resolveRepoPath(1L);
+        Path remote = tempDir.resolve("remote.git");
+        initRepoWithRemote(repo, remote);
+
+        git(repo, "switch", "-c", "feature/local-only");
+        createRemoteOnlyBranch(remote, "feature/deleted-remotely");
+        git(repo, "fetch", "origin");
+        git(remote, "update-ref", "-d", "refs/heads/feature/deleted-remotely");
+        createRemoteOnlyBranch(remote, "feature/remote-only");
+
+        List<String> branches = service(properties).listRemoteBranchNames(1L);
+
+        assertThat(branches).containsExactly("feature/remote-only", "main");
+    }
+
+    @Test
+    void listRemoteBranchNames_returnsEmptyWhenOriginIsMissing() throws Exception {
+        OfflineProperties properties = properties();
+        Path repo = properties.resolveRepoPath(1L);
+        initRepo(repo);
+
+        assertThat(service(properties).listRemoteBranchNames(1L)).isEmpty();
+    }
+
+    @Test
     void createBranch_rejectsDirtyWorkingTreeWithFlowSummary() throws Exception {
         OfflineProperties properties = properties();
         Path repo = properties.resolveRepoPath(1L);

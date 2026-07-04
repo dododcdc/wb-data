@@ -4,13 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.ISqlSegment;
 import com.baomidou.mybatisplus.core.enums.SqlKeyword;
 import com.wbdata.git.dto.AddAllGitSyncConfigsResponse;
+import com.wbdata.git.dto.GitSyncConfigListResponse;
 import com.wbdata.git.dto.GitSyncConfigResponse;
 import com.wbdata.git.entity.WbGitConfig;
 import com.wbdata.git.entity.WbGitSyncConfig;
 import com.wbdata.git.mapper.WbGitSyncConfigMapper;
 import com.wbdata.offline.config.OfflineKestraProperties;
-import com.wbdata.offline.dto.BranchItemResponse;
-import com.wbdata.offline.dto.BranchListResponse;
 import com.wbdata.offline.service.GitCommandService;
 import com.wbdata.offline.service.KestraClient;
 import org.junit.jupiter.api.Test;
@@ -29,6 +28,23 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class GitSyncConfigServiceTest {
+
+    @Test
+    void list_usesOnlyRefreshedRemoteBranchNames() {
+        WbGitSyncConfigMapper mapper = Mockito.mock(WbGitSyncConfigMapper.class);
+        GitConfigService gitConfigService = Mockito.mock(GitConfigService.class);
+        GitCommandService gitCommandService = Mockito.mock(GitCommandService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        GitSyncConfigService service = service(mapper, gitConfigService, gitCommandService, kestraClient);
+
+        when(mapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
+        when(gitCommandService.listRemoteBranchNames(4L)).thenReturn(List.of("feature/remote-only", "main"));
+
+        GitSyncConfigListResponse response = service.list(4L);
+
+        assertThat(response.availableBranches()).containsExactly("feature/remote-only", "main");
+        verify(gitCommandService, never()).listBranches(4L);
+    }
 
     @Test
     void buildNamespace_usesReadableBranchSlugForNormalBranch() {
@@ -61,10 +77,10 @@ class GitSyncConfigServiceTest {
         GitSyncConfigService service = service(mapper, gitConfigService, gitCommandService, kestraClient);
 
         when(gitConfigService.requireDecryptedConfig(4L)).thenReturn(gitConfig(99L));
-        when(gitCommandService.listBranches(4L)).thenReturn(new BranchListResponse(List.of(
-                new BranchItemResponse("main", true, true, true, "origin/main", "origin/main"),
-                new BranchItemResponse("feature/policy-review", false, true, false, null, null)
-        )));
+        when(gitCommandService.listRemoteBranchNames(4L)).thenReturn(List.of(
+                "main",
+                "feature/policy-review"
+        ));
         when(mapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
         doAnswer(invocation -> {
             WbGitSyncConfig entity = invocation.getArgument(0);
@@ -105,11 +121,11 @@ class GitSyncConfigServiceTest {
         GitSyncConfigService service = service(mapper, gitConfigService, gitCommandService, kestraClient);
 
         when(gitConfigService.requireDecryptedConfig(4L)).thenReturn(gitConfig(99L));
-        when(gitCommandService.listBranches(4L)).thenReturn(new BranchListResponse(List.of(
-                new BranchItemResponse("main", true, true, true, "origin/main", "origin/main"),
-                new BranchItemResponse("feature/policy-review", false, true, false, null, null),
-                new BranchItemResponse("feature/policy-etl", false, true, false, null, null)
-        )));
+        when(gitCommandService.listRemoteBranchNames(4L)).thenReturn(List.of(
+                "main",
+                "feature/policy-review",
+                "feature/policy-etl"
+        ));
         when(mapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(existing("main")));
         when(mapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
         doAnswer(invocation -> {
@@ -158,7 +174,7 @@ class GitSyncConfigServiceTest {
         materializeConditionValueSegments(normalSegments);
         assertThat(query.getValue().getParamNameValuePairs().values())
                 .contains(4L, true);
-        verify(gitCommandService, never()).listBranches(4L);
+        verify(gitCommandService, never()).listRemoteBranchNames(4L);
     }
 
     @Test
@@ -170,9 +186,7 @@ class GitSyncConfigServiceTest {
         GitSyncConfigService service = service(mapper, gitConfigService, gitCommandService, kestraClient);
 
         when(gitConfigService.requireDecryptedConfig(4L)).thenReturn(gitConfig(99L));
-        when(gitCommandService.listBranches(4L)).thenReturn(new BranchListResponse(List.of(
-                new BranchItemResponse("feature/policy-review", false, true, false, null, null)
-        )));
+        when(gitCommandService.listRemoteBranchNames(4L)).thenReturn(List.of("feature/policy-review"));
         when(mapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
         doThrow(new RuntimeException("Kestra rejected flow")).when(kestraClient).upsertFlow(any(String.class));
 
