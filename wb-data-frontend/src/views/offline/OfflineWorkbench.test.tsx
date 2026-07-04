@@ -571,6 +571,75 @@ describe('OfflineWorkbench commit UI', () => {
             expect(offlineApi.commitOfflineRepo).toHaveBeenCalledWith(1, 'repo commit');
         });
     });
+
+    it('stages schedule changes before saving, committing, and pushing the current Flow', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write', 'group.settings'];
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue({
+            ...makeFlowDocument(),
+            documentHash: 'saved-hash',
+            documentUpdatedAt: 101,
+            schedule: {
+                cron: '* * * * *',
+                timezone: 'Asia/Singapore',
+                enabled: true,
+            },
+        });
+        vi.mocked(offlineApi.commitOfflineCurrentFlow).mockResolvedValue({ success: true, message: 'flow committed' });
+        vi.mocked(offlineApi.pushOfflineRepo).mockResolvedValue({
+            success: true,
+            message: 'pushed',
+            remoteUrl: 'https://github.example/team/wb-data-1',
+            remoteCreated: false,
+            remoteDeleted: false,
+        });
+
+        renderOfflineWorkbench();
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        fireEvent.click(screen.getByRole('button', { name: '调度' }));
+        const scheduleDialog = await screen.findByRole('dialog', { name: '调度配置' });
+        const cronInputs = scheduleDialog.querySelectorAll<HTMLInputElement>('.offline-segmented-cron-input');
+        fireEvent.change(cronInputs[0], { target: { value: '' } });
+        fireEvent.change(cronInputs[1], { target: { value: '' } });
+        fireEvent.click(within(scheduleDialog).getByRole('switch', { name: '启用调度' }));
+        fireEvent.click(within(scheduleDialog).getByRole('button', { name: '暂存配置' }));
+
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: '调度配置' })).toBeNull();
+        });
+        fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+        await waitFor(() => {
+            expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledWith(expect.objectContaining({
+                groupId: 1,
+                path: '_flows/example/flow.yaml',
+                schedule: {
+                    cron: '* * * * *',
+                    timezone: 'Asia/Singapore',
+                    enabled: true,
+                },
+            }));
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: '提交当前 Flow' }));
+        fireEvent.change(await screen.findByPlaceholderText(/简要描述本次修改/), { target: { value: 'schedule flow commit' } });
+        fireEvent.click(screen.getByRole('button', { name: '提交' }));
+
+        await waitFor(() => {
+            expect(offlineApi.commitOfflineCurrentFlow).toHaveBeenCalledWith(1, '_flows/example/flow.yaml', 'schedule flow commit');
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: '推送' }));
+        const pushDialog = await screen.findByRole('dialog', { name: '推送' });
+        fireEvent.click(within(pushDialog).getByRole('button', { name: '推送' }));
+
+        await waitFor(() => {
+            expect(offlineApi.pushOfflineRepo).toHaveBeenCalledWith(1);
+        });
+    });
 });
 
 describe('OfflineWorkbench branch menu motion', () => {

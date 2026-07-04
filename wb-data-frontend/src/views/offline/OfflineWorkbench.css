@@ -25,6 +25,8 @@
 .offline-rail {
     display: flex;
     flex-direction: column;
+    position: relative;
+    z-index: 2;
     gap: 0;
     padding: 0;
     border-right: none; /* Handled by resizable handle */
@@ -320,6 +322,9 @@ button.offline-tree-row {
 .offline-main-panel {
     padding-left: 0;
     padding-right: 0;
+    position: relative;
+    z-index: 1;
+    min-width: 0;
     border-top: 1px solid var(--color-border);
 }
 
