@@ -6,6 +6,7 @@ vi.mock('../../api/offline', async () => {
     const actual = await vi.importActual<typeof import('../../api/offline')>('../../api/offline');
     return {
         ...actual,
+        commitOfflineRepo: vi.fn(),
         getOfflineRepoStatus: vi.fn(),
         getOfflineRepoRemote: vi.fn(),
         listBranches: vi.fn(),
@@ -110,6 +111,31 @@ describe('useOfflineRepositoryWorkflow', () => {
         });
 
         expect(result.current.canPush).toBe(true);
+    });
+
+    it('saves the current Flow before committing the repository when requested', async () => {
+        const offlineApi = await import('../../api/offline');
+        const showFeedback = vi.fn();
+        const saveCurrentFlowBeforeCommit = vi.fn().mockResolvedValue(true);
+        const afterCommit = vi.fn().mockResolvedValue(undefined);
+        vi.mocked(offlineApi.commitOfflineRepo).mockResolvedValue({ success: true, message: 'repo committed' });
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue(makeRepoStatus());
+
+        const { result } = renderRepositoryWorkflow(showFeedback);
+
+        await act(async () => {
+            const committed = await result.current.commitRepo('repo commit', {
+                saveCurrentFlowBeforeCommit,
+                afterCommit,
+            });
+            expect(committed).toBe(true);
+        });
+
+        expect(saveCurrentFlowBeforeCommit).toHaveBeenCalled();
+        expect(offlineApi.commitOfflineRepo).toHaveBeenCalledWith(1, 'repo commit');
+        expect(afterCommit).toHaveBeenCalled();
+        expect(offlineApi.getOfflineRepoStatus).toHaveBeenCalledWith(1);
+        expect(showFeedback).toHaveBeenCalledWith({ tone: 'success', title: 'repo committed', detail: '' });
     });
 
     it('opens the rebuild dialog when push reports a deleted remote', async () => {

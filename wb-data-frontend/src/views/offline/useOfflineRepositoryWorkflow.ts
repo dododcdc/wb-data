@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AxiosError } from 'axios';
 import {
+    commitOfflineRepo,
     getOfflineRepoRemote,
     getOfflineRepoStatus,
     listBranches,
@@ -36,6 +37,11 @@ interface BranchSwitchCallbacks {
 
 interface RequestBranchSwitchOptions extends BranchSwitchCallbacks {
     hasUnsavedDraft?: boolean;
+}
+
+interface CommitRepoOptions {
+    saveCurrentFlowBeforeCommit?: () => Promise<boolean>;
+    afterCommit?: () => Promise<void>;
 }
 
 function readDirtyFlowChanges(details: Record<string, unknown>, changedFlows: string[]): DirtyFlowChange[] {
@@ -332,6 +338,26 @@ export function useOfflineRepositoryWorkflow({
         }
     }, [groupId, refreshRemoteStatus, refreshRepoStatus, showFeedback]);
 
+    const commitRepo = useCallback(async (message: string, options: CommitRepoOptions = {}) => {
+        if (!groupId) return false;
+        try {
+            if (options.saveCurrentFlowBeforeCommit) {
+                const saved = await options.saveCurrentFlowBeforeCommit();
+                if (!saved) return false;
+            }
+            const result = await commitOfflineRepo(groupId, message);
+            if (result.success) {
+                await Promise.all([refreshRepoStatus(), options.afterCommit?.()]);
+                showFeedback({ tone: 'success', title: result.message, detail: '' });
+                return true;
+            }
+            return false;
+        } catch {
+            showFeedback({ tone: 'error', title: '仓库提交失败', detail: '' });
+            return false;
+        }
+    }, [groupId, refreshRepoStatus, showFeedback]);
+
     const rebuildRemote = useCallback(async () => {
         if (!groupId) return;
         setRebuildLoading(true);
@@ -385,6 +411,7 @@ export function useOfflineRepositoryWorkflow({
         resetBranchSwitchState,
         refreshRepoStatus,
         refreshRemoteStatus,
+        commitRepo,
         push,
         rebuildRemote,
     };
