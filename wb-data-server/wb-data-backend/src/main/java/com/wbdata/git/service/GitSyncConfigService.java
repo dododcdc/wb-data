@@ -9,7 +9,6 @@ import com.wbdata.git.entity.WbGitConfig;
 import com.wbdata.git.entity.WbGitSyncConfig;
 import com.wbdata.git.mapper.WbGitSyncConfigMapper;
 import com.wbdata.offline.config.OfflineKestraProperties;
-import com.wbdata.offline.dto.BranchItemResponse;
 import com.wbdata.offline.service.GitCommandService;
 import com.wbdata.offline.service.GitRepoPushedEvent;
 import com.wbdata.offline.service.KestraClient;
@@ -256,8 +255,7 @@ public class GitSyncConfigService {
     }
 
     private Set<String> knownBranches(Long groupId) {
-        return gitCommandService.listBranches(groupId).branches().stream()
-                .map(BranchItemResponse::name)
+        return gitCommandService.listRemoteBranchNames(groupId).stream()
                 .filter(name -> name != null && !name.isBlank())
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }

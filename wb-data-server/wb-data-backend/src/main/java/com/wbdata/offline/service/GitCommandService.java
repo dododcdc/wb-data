@@ -44,6 +44,25 @@ public class GitCommandService {
         return repoLockManager.withLock(groupId, () -> listBranchesUnlocked(groupId));
     }
 
+    public List<String> listRemoteBranchNames(Long groupId) {
+        return repoLockManager.withLock(groupId, () -> listRemoteBranchNamesUnlocked(groupId));
+    }
+
+    private List<String> listRemoteBranchNamesUnlocked(Long groupId) {
+        Path repoPath = offlineProperties.resolveRepoPath(groupId);
+        ensureRepoExists(repoPath);
+        if (getCurrentRemote(repoPath) == null) {
+            return List.of();
+        }
+        runGit(repoPath, "fetch", "--prune", "origin");
+        return runGit(repoPath, "for-each-ref", "--format=%(refname:short)", "--sort=refname", "refs/remotes/origin")
+                .lines()
+                .map(String::trim)
+                .filter(remoteName -> !remoteName.isBlank() && !"origin/HEAD".equals(remoteName))
+                .map(this::stripOrigin)
+                .toList();
+    }
+
     private BranchListResponse listBranchesUnlocked(Long groupId) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
         ensureRepoExists(repoPath);
