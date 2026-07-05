@@ -117,6 +117,57 @@ describe('useOfflineTreeMutations', () => {
         expect(params.refreshRepoTree).toHaveBeenCalled();
     });
 
+    it('uses the selected nested Flow name in rename and delete dialogs', () => {
+        const { result } = renderTreeMutations();
+        const flowNode = {
+            id: 'flow-test11',
+            name: 'test11',
+            path: '_flows/jack/test11/flow.yaml',
+            kind: 'FLOW' as const,
+            children: [],
+        };
+
+        act(() => {
+            result.current.openRenameFlowDialogFromContext(flowNode);
+        });
+
+        expect(result.current.renameFlowOriginalName).toBe('test11');
+        expect(result.current.renameFlowName).toBe('test11');
+
+        act(() => {
+            result.current.openDeleteFlowDialogFromContext(flowNode);
+        });
+
+        expect(result.current.deleteFlowName).toBe('test11');
+    });
+
+    it('renames a nested active Flow without moving it to the repository root', async () => {
+        const offlineApi = await import('../../api/offline');
+        vi.mocked(offlineApi.renameOfflineFlow).mockResolvedValue(undefined as never);
+        const { result, params } = renderTreeMutations({
+            activeFlowPath: '_flows/jack/test11/flow.yaml',
+            draftSession: makeSession('_flows/jack/test11/flow.yaml'),
+        });
+
+        act(() => {
+            result.current.openRenameFlowDialogFromContext({
+                id: 'flow-test11',
+                name: 'test11',
+                path: '_flows/jack/test11/flow.yaml',
+                kind: 'FLOW',
+                children: [],
+            });
+            result.current.setRenameFlowName('test11_new');
+        });
+        await act(async () => {
+            await result.current.handleRenameFlow();
+        });
+
+        expect(offlineApi.renameOfflineFlow).toHaveBeenCalledWith(1, '_flows/jack/test11/flow.yaml', 'test11_new');
+        expect(params.setActiveFlowPath).toHaveBeenCalledWith('_flows/jack/test11_new/flow.yaml');
+        expect(params.openFlowDocument).toHaveBeenCalledWith('_flows/jack/test11_new/flow.yaml');
+    });
+
     it('renames a folder containing the active Flow and reopens the moved Flow', async () => {
         const offlineApi = await import('../../api/offline');
         vi.mocked(offlineApi.renameOfflineFolder).mockResolvedValue(undefined as never);
