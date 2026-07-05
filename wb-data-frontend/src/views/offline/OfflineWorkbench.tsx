@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AxiosError } from 'axios';
 import { getErrorMessage } from '../../utils/error';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useNavigate, useBlocker, useSearchParams } from 'react-router-dom';
@@ -35,11 +34,7 @@ import {
     Copy,
 } from 'lucide-react';
 import {
-    commitOfflineCurrentFlow,
-    getOfflineFlowCommitStatus,
-    getOfflineFlowDocument,
     getOfflineRepoTree,
-    saveOfflineFlowDocument,
     type OfflineExecutionDetail,
     type OfflineExecutionListItem,
     type OfflineRepoTreeNode,
@@ -65,16 +60,7 @@ import { UnsavedChangesDialog } from '../../components/ui/unsaved-changes-dialog
 import {
     flattenFlowDocumentNodes,
     resolveFlowSelectedTaskIds,
-    validateFlowDocumentGraph,
 } from './flowDocumentMutations';
-import {
-    buildRecoverySnapshotFromSession,
-    forceOverwriteRebase,
-    flushNodeEditorDraft,
-    rebaseFlowDraftSession,
-    resolveDraftConflict,
-    type FlowDraftSession,
-} from './flowDraftController';
 import { isExecuteButtonDisabled } from './executionToolbarState';
 import { 
     getExecutionPresentation, 
@@ -84,12 +70,10 @@ import {
     isStoppable 
 } from './executionPresentation';
 import {
-    findFirstNodeWithInvalidDataSource,
     validateSqlNodeDataSourceRequirement,
 } from './nodeEditorDataSourceRules';
 import {
     removeRecoverySnapshot,
-    writeRecoverySnapshot,
 } from './recoverySnapshotStore';
 import { SaveConflictDialog } from './SaveConflictDialog';
 import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
@@ -99,11 +83,6 @@ import { useFlowExecutionAndSchedule } from './useFlowExecutionAndSchedule';
 import { useFlowEditingSession, type OpenFlowDocumentOptions } from './useFlowEditingSession';
 
 import './OfflineWorkbench.css';
-
-interface SaveConflictState {
-    path: string;
-    pendingSession: FlowDraftSession;
-}
 
 type NavigationBlocker = ReturnType<typeof useBlocker>;
 type PendingNavigationState =
@@ -695,19 +674,13 @@ export default function OfflineWorkbench() {
     const [repoCommitDialogOpen, setRepoCommitDialogOpen] = useState(false);
     const [commitMessage, setCommitMessage] = useState('');
     const [committing, setCommitting] = useState(false);
-    const [flowCommitDirty, setFlowCommitDirty] = useState(false);
     const [expandedTreeIds, setExpandedTreeIds] = useState<string[]>([]);
-    const [savingFlow, setSavingFlow] = useState(false);
-    const [saveConflictState, setSaveConflictState] = useState<SaveConflictState | null>(null);
-    const [saveConflictPending, setSaveConflictPending] = useState(false);
     const canvasBoardRef = useRef<HTMLDivElement>(null);
     const branchSwitcherRef = useRef<HTMLDivElement>(null);
     const previousGroupIdRef = useRef<number | null>(groupId);
-    const currentGroupIdRef = useRef<number | null>(groupId);
-    const activeFlowPathRef = useRef<string | null>(null);
-    const groupActionVersionRef = useRef(0);
     const loadScheduleSnapshotRef = useRef<((path: string) => Promise<void>) | null>(null);
     const resetExecutionAndScheduleRef = useRef<(() => void) | null>(null);
+    const refreshRepoStatusRef = useRef<(() => Promise<void>) | null>(null);
     const [pendingNavigation, setPendingNavigation] = useState<PendingNavigationState | null>(null);
     const didDiscardLeaveRef = useRef(false);
 
@@ -715,11 +688,13 @@ export default function OfflineWorkbench() {
     const resetExecutionAndScheduleBridge = useCallback(() => {
         resetExecutionAndScheduleRef.current?.();
     }, []);
+    const refreshRepoStatusBridge = useCallback(() => refreshRepoStatusRef.current?.() ?? Promise.resolve(), []);
 
     const flowEditing = useFlowEditingSession({
         groupId,
         loadScheduleSnapshot: loadScheduleSnapshotBridge,
         showFeedback,
+        refreshRepoStatus: refreshRepoStatusBridge,
         resetExecutionAndSchedule: resetExecutionAndScheduleBridge,
     });
     const {
@@ -730,6 +705,10 @@ export default function OfflineWorkbench() {
         setDraftSession,
         nodeEditorOpen,
         nodeEditorContent,
+        savingFlow,
+        flowCommitDirty,
+        saveConflictState,
+        saveConflictPending,
         flowDocument,
         activeNodeId,
         selectedTaskIds,
@@ -750,12 +729,19 @@ export default function OfflineWorkbench() {
         updateNodeEditorContent: handleNodeEditorContentChange,
         stageNodeEditorDraft,
         saveNodeEditorDraft,
+        saveFlow: handleSaveFlow,
+        commitCurrentFlow,
+        restoreStaleDraft: handleRestoreStaleDraft,
+        discardStaleDraft: handleDiscardStaleDraft,
+        closeSaveConflict: handleCloseSaveConflict,
+        discardSaveConflict: handleDiscardSaveConflict,
+        overwriteSaveConflict: handleOverwriteSaveConflict,
+        refreshFlowCommitStatus,
         renameNode,
         addNode,
         updateCanvasNodes,
         updateCanvasEdges,
         commitCanvasLayout,
-        flushPendingNodeEditorDraftForSave,
     } = flowEditing;
     const {
         repoStatus,
@@ -797,6 +783,7 @@ export default function OfflineWorkbench() {
         hasUnsavedFlowDraft: isDirty,
         showFeedback,
     });
+    refreshRepoStatusRef.current = refreshRepoStatus;
     const {
         executionDialogOpen,
         setExecutionDialogOpen,
@@ -888,24 +875,6 @@ export default function OfflineWorkbench() {
         [branches, branchLabel],
     );
 
-    useEffect(() => useAuthStore.subscribe((state, previousState) => {
-        const nextGroupId = state.currentGroup?.id ?? null;
-        const previousGroupId = previousState.currentGroup?.id ?? null;
-        if (nextGroupId === previousGroupId) return;
-        currentGroupIdRef.current = nextGroupId;
-        groupActionVersionRef.current += 1;
-    }), []);
-
-    if (currentGroupIdRef.current !== groupId) {
-        currentGroupIdRef.current = groupId;
-        groupActionVersionRef.current += 1;
-    }
-
-    const captureGroupActionGuard = useCallback((expectedGroupId: number | null) => {
-        const version = groupActionVersionRef.current;
-        return () => currentGroupIdRef.current === expectedGroupId && groupActionVersionRef.current === version;
-    }, []);
-
     const refreshRepoTree = useCallback(async () => {
         if (!groupId) return;
         setTreeLoading(true);
@@ -932,33 +901,6 @@ export default function OfflineWorkbench() {
         ]);
     }, [refreshRepoStatus, refreshRepoTree, refreshRemoteStatus]);
 
-    const refreshFlowCommitStatus = useCallback(async () => {
-        if (!groupId || !activeFlowPath) {
-            setFlowCommitDirty(false);
-            return;
-        }
-        const requestedGroupId = groupId;
-        const requestedFlowPath = activeFlowPath;
-        try {
-            const result = await getOfflineFlowCommitStatus(requestedGroupId, requestedFlowPath);
-            if (result.groupId === requestedGroupId && result.flowPath === activeFlowPathRef.current) {
-                setFlowCommitDirty(result.dirty);
-            }
-        } catch {
-            if (requestedGroupId === currentGroupIdRef.current && requestedFlowPath === activeFlowPathRef.current) {
-                setFlowCommitDirty(false);
-            }
-        }
-    }, [groupId, activeFlowPath]);
-
-    useEffect(() => {
-        void refreshFlowCommitStatus();
-    }, [refreshFlowCommitStatus]);
-
-    useEffect(() => {
-        activeFlowPathRef.current = activeFlowPath;
-    }, [activeFlowPath]);
-
     const openFlowDocument = useCallback(async (pathValue: string, options?: OpenFlowDocumentOptions) => {
         if (!groupId) return false;
         const normalizedPath = pathValue.trim();
@@ -984,9 +926,6 @@ export default function OfflineWorkbench() {
 
     const resetActiveFlowAfterBranchSwitch = useCallback(() => {
         resetAfterBranchSwitch();
-        setSaveConflictState(null);
-        setSaveConflictPending(false);
-        setFlowCommitDirty(false);
     }, [resetAfterBranchSwitch]);
 
     const discardActiveDraftForBranchSwitch = useCallback(() => {
@@ -1204,152 +1143,19 @@ export default function OfflineWorkbench() {
         stageNodeEditorDraft(content, dataSourceId, dataSourceType);
     }, [stageNodeEditorDraft]);
 
-    const validateDocumentForAction = useCallback((nodeOverride?: { taskId: string; content: string; dataSourceId?: number; dataSourceType?: string }) => {
-        if (!flowDocument) return true;
-        
-        const invalidNode = findFirstNodeWithInvalidDataSource(flowDocument, nodeOverride);
-        if (invalidNode) {
-            const validation = validateSqlNodeDataSourceRequirement({
-                kind: invalidNode.kind,
-                dataSourceId: invalidNode.dataSourceId,
-                dataSourceType: invalidNode.dataSourceType,
-                strict: true,
-            });
-            if (!validation.allowed && validation.feedback) {
-                showFeedback(validation.feedback);
-                return false;
-            }
-        }
-        return true;
-    }, [flowDocument, showFeedback]);
-
-    const persistFlowSession = useCallback(async (sessionForSave: FlowDraftSession) => {
-        if (!groupId) {
-            throw new Error('Missing groupId');
-        }
-        const draftDocument = sessionForSave.workingDraft;
-        return saveOfflineFlowDocument({
-            groupId,
-            path: sessionForSave.path,
-            documentHash: sessionForSave.baseDocument.documentHash,
-            documentUpdatedAt: sessionForSave.baseDocument.documentUpdatedAt,
-            stages: draftDocument.stages.map((stage) => ({
-                stageId: stage.stageId,
-                nodes: stage.nodes.map((node) => ({
-                    taskId: node.taskId,
-                    scriptContent: node.scriptContent,
-                    kind: node.kind,
-                    scriptPath: node.scriptPath,
-                    dataSourceId: node.dataSourceId,
-                    dataSourceType: node.dataSourceType,
-                })),
-            })),
-            edges: draftDocument.edges,
-            layout: draftDocument.layout,
-            schedule: draftDocument.schedule,
-        });
-    }, [groupId]);
-
-    const handleSaveFlow = useCallback(async (nodeOverride?: { taskId: string; content: string; dataSourceId?: number; dataSourceType?: string }, silent = false) => {
-        if (!groupId || !activeFlowPath || !draftSession) return false;
-        const pendingDraftForSave = flushPendingNodeEditorDraftForSave();
-        const sessionForSaveBase = pendingDraftForSave?.session ?? draftSession;
-        const effectiveNodeOverride = nodeOverride ?? pendingDraftForSave?.nodeOverride;
-
-        if (!validateDocumentForAction(effectiveNodeOverride)) {
-            return false;
-        }
-        const sessionForSave = effectiveNodeOverride
-            ? flushNodeEditorDraft(sessionForSaveBase, {
-                taskId: effectiveNodeOverride.taskId,
-                scriptContent: effectiveNodeOverride.content,
-                dataSourceId: effectiveNodeOverride.dataSourceId,
-                dataSourceType: effectiveNodeOverride.dataSourceType,
-            })
-            : sessionForSaveBase;
-        const draftDocument = sessionForSave.workingDraft;
-
-        const graphValidation = validateFlowDocumentGraph(draftDocument);
-        if (!graphValidation.valid) {
-            showFeedback({
-                tone: 'error',
-                title: '保存失败',
-                detail: graphValidation.reason === 'disconnected'
-                    ? '画布中存在未连接的节点，请将所有节点连入一张依赖图。'
-                    : '',
-            });
-            return false;
-        }
-
-        setSavingFlow(true);
-        try {
-            setDraftSession(sessionForSave);
-
-            const response = await persistFlowSession(sessionForSave);
-            const nextSession = rebaseFlowDraftSession(sessionForSave, response);
-            setDraftSession(nextSession);
-            removeRecoverySnapshot(groupId, sessionForSave.path);
-            await Promise.all([refreshRepoStatus(), refreshFlowCommitStatus()]);
-            if (!silent) {
-                showFeedback({
-                    tone: 'success',
-                    title: 'Flow 已保存',
-                    detail: '',
-                });
-            }
-            return true;
-        } catch (error) {
-            if (error instanceof AxiosError && error.response?.status === 409) {
-                writeRecoverySnapshot(groupId, sessionForSave.path, buildRecoverySnapshotFromSession(sessionForSave, Date.now()));
-                setSaveConflictState({
-                    path: sessionForSave.path,
-                    pendingSession: sessionForSave,
-                });
-                return false;
-            }
-            showFeedback({
-                tone: 'error',
-                title: '保存失败',
-                detail: getErrorMessage(error, '本地脚本文件保存失败，请稍后重试。'),
-            });
-            return false;
-        } finally {
-            setSavingFlow(false);
-        }
-    }, [
-        activeFlowPath,
-        draftSession,
-        flushPendingNodeEditorDraftForSave,
-        groupId,
-        persistFlowSession,
-        refreshFlowCommitStatus,
-        refreshRepoStatus,
-        showFeedback,
-        setDraftSession,
-        validateDocumentForAction,
-    ]);
-
     const handleFlowCommit = useCallback(async (mode: 'save-and-commit' | 'saved-only') => {
         if (!groupId || !activeFlowPath) return;
         setCommitting(true);
         try {
-            if (mode === 'save-and-commit' && isDirty) {
-                const saved = await handleSaveFlow(undefined, false);
-                if (!saved) return;
-            }
-            const result = await commitOfflineCurrentFlow(groupId, activeFlowPath, commitMessage);
-            if (result.success) {
+            const committed = await commitCurrentFlow(commitMessage, mode);
+            if (committed) {
                 setFlowCommitDialogOpen(false);
                 setCommitMessage('');
-                await Promise.all([refreshRepoStatus(), refreshFlowCommitStatus()]);
-                showFeedback({ tone: 'success', title: result.message, detail: '' });
             }
-        } catch {
-            showFeedback({ tone: 'error', title: '当前 Flow 提交失败', detail: '' });
         } finally {
             setCommitting(false);
         }
-    }, [groupId, activeFlowPath, commitMessage, isDirty, handleSaveFlow, refreshRepoStatus, refreshFlowCommitStatus, showFeedback]);
+    }, [activeFlowPath, commitCurrentFlow, commitMessage, groupId]);
 
     const handleRepoCommit = useCallback(async (mode: 'save-and-commit' | 'saved-only') => {
         if (!groupId) return;
@@ -1411,92 +1217,6 @@ export default function OfflineWorkbench() {
         if (!groupId) return;
         setRepoCommitDialogOpen(true);
     }, [groupId]);
-
-    const handleRestoreStaleDraft = useCallback(() => {
-        if (!staleDraft) return;
-        setDraftSession((current) => current ? resolveDraftConflict(current, 'restore-local') : current);
-        showFeedback({
-            tone: 'info',
-            title: '已恢复旧草稿',
-            detail: '',
-        });
-    }, [setDraftSession, showFeedback, staleDraft]);
-
-    const handleDiscardStaleDraft = useCallback(() => {
-        if (!groupId || !activeFlowPath) return;
-        removeRecoverySnapshot(groupId, activeFlowPath);
-        setDraftSession((current) => current ? resolveDraftConflict(current, 'load-server') : current);
-        showFeedback({
-            tone: 'info',
-            title: '已丢弃本地草稿',
-            detail: '',
-        });
-    }, [activeFlowPath, groupId, setDraftSession, showFeedback]);
-
-    const handleCloseSaveConflict = useCallback(() => {
-        if (saveConflictPending) return;
-        setSaveConflictState(null);
-    }, [saveConflictPending]);
-
-    const handleDiscardSaveConflict = useCallback(async () => {
-        if (!groupId || !saveConflictState) return;
-        const isCurrentGroupAction = captureGroupActionGuard(groupId);
-        setSaveConflictPending(true);
-        try {
-            const reloaded = await openFlowDocument(saveConflictState.path, { preferRecoverySnapshot: false });
-            if (!isCurrentGroupAction()) return;
-            if (!reloaded) return;
-            removeRecoverySnapshot(groupId, saveConflictState.path);
-            setSaveConflictState(null);
-        } finally {
-            if (isCurrentGroupAction()) {
-                setSaveConflictPending(false);
-            }
-        }
-    }, [captureGroupActionGuard, groupId, openFlowDocument, saveConflictState]);
-
-    const handleOverwriteSaveConflict = useCallback(async () => {
-        if (!groupId || !saveConflictState) return;
-        const isCurrentGroupAction = captureGroupActionGuard(groupId);
-        setSaveConflictPending(true);
-        try {
-            const latest = await getOfflineFlowDocument(groupId, saveConflictState.path);
-            if (!isCurrentGroupAction()) return;
-            const rebasedSession = forceOverwriteRebase(saveConflictState.pendingSession, latest);
-            writeRecoverySnapshot(groupId, rebasedSession.path, buildRecoverySnapshotFromSession(rebasedSession, Date.now()));
-            setSaveConflictState({
-                path: rebasedSession.path,
-                pendingSession: rebasedSession,
-            });
-            setDraftSession(rebasedSession);
-            const response = await persistFlowSession(rebasedSession);
-            if (!isCurrentGroupAction()) return;
-            setDraftSession(rebaseFlowDraftSession(rebasedSession, response));
-            removeRecoverySnapshot(groupId, rebasedSession.path);
-            setSaveConflictState(null);
-            await refreshRepoStatus();
-            if (!isCurrentGroupAction()) return;
-            showFeedback({
-                tone: 'success',
-                title: 'Flow 已保存',
-                detail: '',
-            });
-        } catch (error) {
-            if (!isCurrentGroupAction()) return;
-            const detail = error instanceof AxiosError && error.response?.status === 409
-                ? '服务器版本再次发生变化，请确认后重试覆盖保存。'
-                : getErrorMessage(error, '暂时无法基于最新版本覆盖保存，请稍后重试。');
-            showFeedback({
-                tone: 'error',
-                title: '覆盖保存失败',
-                detail,
-            });
-        } finally {
-            if (isCurrentGroupAction()) {
-                setSaveConflictPending(false);
-            }
-        }
-    }, [captureGroupActionGuard, groupId, persistFlowSession, refreshRepoStatus, saveConflictState, setDraftSession, showFeedback]);
 
     return (
         <section className="offline-page">
