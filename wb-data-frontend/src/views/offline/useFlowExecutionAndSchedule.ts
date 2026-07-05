@@ -62,6 +62,7 @@ export function useFlowExecutionAndSchedule({
     const [scheduleTimezone, setScheduleTimezone] = useState(defaultTimezone);
     const groupIdRef = useRef(groupId);
     const actionVersionRef = useRef(0);
+    const scheduleLoadVersionRef = useRef(0);
 
     useEffect(() => {
         if (groupIdRef.current !== groupId) {
@@ -77,11 +78,14 @@ export function useFlowExecutionAndSchedule({
 
     const resetExecutionAndSchedule = useCallback(() => {
         setSchedule(null);
+        setScheduleCron('');
+        setScheduleTimezone(defaultTimezone);
+        setScheduleDialogOpen(false);
         setExecutionDialogOpen(false);
         setExecutions([]);
         setActiveExecutionId(null);
         setExecutionDetail(null);
-    }, []);
+    }, [defaultTimezone]);
 
     const loadExecutionDetail = useCallback(async (executionId: string, silent = false) => {
         if (!groupId) return;
@@ -257,8 +261,14 @@ export function useFlowExecutionAndSchedule({
     const loadScheduleSnapshot = useCallback(async (path: string) => {
         if (!groupId) return;
 
-        if (draftSession?.workingDraft.schedule) {
-            const draftSchedule = draftSession.workingDraft.schedule;
+        const loadVersion = scheduleLoadVersionRef.current + 1;
+        scheduleLoadVersionRef.current = loadVersion;
+        setSchedule(null);
+
+        const draftSchedule = draftSession?.path === path
+            ? draftSession.workingDraft.schedule
+            : null;
+        if (draftSchedule) {
             setScheduleCron(draftSchedule.cron);
             setScheduleTimezone(draftSchedule.timezone || defaultTimezone);
             setSchedule({
@@ -275,15 +285,16 @@ export function useFlowExecutionAndSchedule({
         }
 
         const isCurrentGroupAction = captureGroupActionGuard(groupId);
+        const isCurrentScheduleLoad = () => isCurrentGroupAction() && scheduleLoadVersionRef.current === loadVersion;
         setScheduleLoading(true);
         try {
             const nextSchedule = await getOfflineSchedule(groupId, path);
-            if (!isCurrentGroupAction()) return;
+            if (!isCurrentScheduleLoad()) return;
             setSchedule(nextSchedule);
             setScheduleCron(nextSchedule.cron);
             setScheduleTimezone(nextSchedule.timezone ?? defaultTimezone);
         } catch (error) {
-            if (!isCurrentGroupAction()) return;
+            if (!isCurrentScheduleLoad()) return;
             if (error instanceof AxiosError && error.response?.status === 404) {
                 setSchedule(null);
                 setScheduleCron('0 2 * * *');
@@ -296,11 +307,11 @@ export function useFlowExecutionAndSchedule({
                 detail: '',
             });
         } finally {
-            if (isCurrentGroupAction()) {
+            if (isCurrentScheduleLoad()) {
                 setScheduleLoading(false);
             }
         }
-    }, [captureGroupActionGuard, defaultTimezone, draftSession?.workingDraft.schedule, groupId, showFeedback]);
+    }, [captureGroupActionGuard, defaultTimezone, draftSession, groupId, showFeedback]);
 
     const stageSchedule = useCallback(async () => {
         if (!draftSession) return;
