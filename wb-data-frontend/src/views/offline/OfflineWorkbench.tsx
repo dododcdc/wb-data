@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
 import { AxiosError } from 'axios';
 import { getErrorMessage } from '../../utils/error';
-import { ReactFlowProvider, type Node, type Edge } from '@xyflow/react';
+import { ReactFlowProvider } from '@xyflow/react';
 import { useNavigate, useBlocker, useSearchParams } from 'react-router-dom';
 import FlowCanvas from './FlowCanvas';
 import '../core/RouteSkeletons.css';
@@ -43,7 +42,6 @@ import {
     saveOfflineFlowDocument,
     type OfflineExecutionDetail,
     type OfflineExecutionListItem,
-    type OfflineFlowNodeKind,
     type OfflineRepoTreeNode,
     type OfflineRepoTreeResponse,
 } from '../../api/offline';
@@ -65,14 +63,8 @@ import { NodeEditorDialog } from './NodeEditorDialog';
 import { ScheduleDialog } from './ScheduleDialog';
 import { UnsavedChangesDialog } from '../../components/ui/unsaved-changes-dialog';
 import {
-    addFlowNode,
-    applyFlowCanvasEdges,
-    applyFlowCanvasLayout,
-    applyFlowCanvasNodes,
     flattenFlowDocumentNodes,
-    renameFlowNode,
     resolveFlowSelectedTaskIds,
-    type RenameFlowNodeFailureReason,
     validateFlowDocumentGraph,
 } from './flowDocumentMutations';
 import {
@@ -80,7 +72,6 @@ import {
     forceOverwriteRebase,
     flushNodeEditorDraft,
     rebaseFlowDraftSession,
-    replaceFlowDraftWorkingDocument,
     resolveDraftConflict,
     type FlowDraftSession,
 } from './flowDraftController';
@@ -100,7 +91,6 @@ import {
     removeRecoverySnapshot,
     writeRecoverySnapshot,
 } from './recoverySnapshotStore';
-import { resolvePendingNodeEditorDraftAfterDocumentChange } from './pendingNodeEditorDraftState';
 import { SaveConflictDialog } from './SaveConflictDialog';
 import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
@@ -710,8 +700,6 @@ export default function OfflineWorkbench() {
     const [savingFlow, setSavingFlow] = useState(false);
     const [saveConflictState, setSaveConflictState] = useState<SaveConflictState | null>(null);
     const [saveConflictPending, setSaveConflictPending] = useState(false);
-    const canvasNodesRef = useRef<Node[]>([]);
-    const canvasEdgesRef = useRef<Edge[]>([]);
     const canvasBoardRef = useRef<HTMLDivElement>(null);
     const branchSwitcherRef = useRef<HTMLDivElement>(null);
     const previousGroupIdRef = useRef<number | null>(groupId);
@@ -749,8 +737,9 @@ export default function OfflineWorkbench() {
         activeNode,
         nodeCount,
         isDirty,
-        pendingNodeEditorDraftRef,
         draftSessionRef,
+        canvasNodesRef,
+        canvasEdgesRef,
         setSelectedNodeId: setDraftSelectedNodeId,
         setSelectedTaskIds: setDraftSelectedTaskIds,
         leaveCurrentFlow,
@@ -760,8 +749,13 @@ export default function OfflineWorkbench() {
         setNodeEditorOpen: handleNodeEditorOpenChange,
         updateNodeEditorContent: handleNodeEditorContentChange,
         stageNodeEditorDraft,
-        resetNodeEditorState,
-        cancelNodeEditorDraftFlush,
+        saveNodeEditorDraft,
+        renameNode,
+        addNode,
+        updateCanvasNodes,
+        updateCanvasEdges,
+        commitCanvasLayout,
+        flushPendingNodeEditorDraftForSave,
     } = flowEditing;
     const {
         repoStatus,
@@ -1191,7 +1185,7 @@ export default function OfflineWorkbench() {
 
     const handleNodeEditorTempSave = useCallback((content: string, dataSourceId?: number, dataSourceType?: string) => {
         if (!activeNodeId) return;
-        stageNodeEditorDraft(content, dataSourceId, dataSourceType);
+        saveNodeEditorDraft(content, dataSourceId, dataSourceType);
         const activeEditingNode = flattenFlowDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null;
         const validation = validateSqlNodeDataSourceRequirement({
             kind: activeEditingNode?.kind ?? 'SHELL',
@@ -1204,148 +1198,11 @@ export default function OfflineWorkbench() {
             title: '已更新当前草稿',
             detail: '当前修改仅保留在本机恢复稿中，点击“保存 Flow”后才会写入本地仓库。',
         });
-        handleNodeEditorOpenChange(false);
-    }, [activeNodeId, flowDocument, handleNodeEditorOpenChange, showFeedback, stageNodeEditorDraft]);
+    }, [activeNodeId, flowDocument, saveNodeEditorDraft, showFeedback]);
 
     const handleNodeEditorDraftChange = useCallback((content: string, dataSourceId?: number, dataSourceType?: string) => {
         stageNodeEditorDraft(content, dataSourceId, dataSourceType);
     }, [stageNodeEditorDraft]);
-
-    const handleRenameNode = useCallback((oldId: string, newId: string) => {
-        let failureReason: RenameFlowNodeFailureReason | null = null;
-        flushSync(() => {
-            setDraftSession((current) => {
-                if (!current) return current;
-                const result = renameFlowNode({
-                    document: current.workingDraft,
-                    oldId,
-                    newId,
-                    activeNodeId: current.selectedNodeId,
-                    selectedTaskIds: current.selectedTaskIds,
-                });
-                if (!result.ok) {
-                    failureReason = result.reason;
-                    return current;
-                }
-
-                return {
-                    ...replaceFlowDraftWorkingDocument(current, result.document),
-                    selectedNodeId: result.nextActiveNodeId,
-                    selectedTaskIds: result.nextSelectedTaskIds,
-                };
-            });
-        });
-
-        if (failureReason === 'duplicate') {
-            showFeedback({ tone: 'error', title: '重命名失败', detail: '已存在相同名称的节点。' });
-        } else if (failureReason === 'invalid-format') {
-            showFeedback({ tone: 'error', title: '重命名失败', detail: '节点名称仅支持字母、数字和下划线。' });
-        }
-    }, [setDraftSession, showFeedback]);
-
-    const handleAddCanvasNode = useCallback((kind: OfflineFlowNodeKind, position: { x: number; y: number }) => {
-        let failureReason: 'max-nodes' | null = null;
-        flushSync(() => {
-            setDraftSession((current) => {
-                if (!current) return current;
-                const result = addFlowNode({
-                    document: current.workingDraft,
-                    kind,
-                    position,
-                    selectedTaskIds: current.selectedTaskIds,
-                    maxNodes: 20,
-                });
-                if (!result.ok) {
-                    failureReason = result.reason;
-                    return current;
-                }
-
-                return {
-                    ...replaceFlowDraftWorkingDocument(current, result.document),
-                    selectedNodeId: result.nextActiveNodeId,
-                    selectedTaskIds: result.nextSelectedTaskIds,
-                };
-            });
-        });
-
-        if (failureReason === 'max-nodes') {
-            showFeedback({ tone: 'info', title: '节点数量已达上限', detail: '离线 Flow 最多支持 20 个节点，请精简流程设计。' });
-        }
-    }, [setDraftSession, showFeedback]);
-
-    const handleCanvasNodesChange = useCallback((nodes: Node[]) => {
-        const previousNodeIds = new Set(canvasNodesRef.current.map((node) => node.id));
-        const nextNodeIds = new Set(nodes.map((node) => node.id));
-        canvasNodesRef.current = nodes;
-        const nodeSetChanged = previousNodeIds.size !== nextNodeIds.size
-            || Array.from(previousNodeIds).some((nodeId) => !nextNodeIds.has(nodeId));
-        if (!nodeSetChanged) {
-            return;
-        }
-
-        const pendingDraft = pendingNodeEditorDraftRef.current;
-        let nextPendingDraft = pendingDraft;
-
-        setDraftSession((current) => {
-            if (!current) {
-                nextPendingDraft = null;
-                return current;
-            }
-
-            const currentWithPending = pendingDraft
-                ? flushNodeEditorDraft(current, pendingDraft)
-                : current;
-            const canvasResult = applyFlowCanvasNodes({
-                document: currentWithPending.workingDraft,
-                nodes,
-                edges: canvasEdgesRef.current,
-                activeNodeId,
-                selectedTaskIds,
-            });
-            const nextDocument = canvasResult.document;
-            nextPendingDraft = resolvePendingNodeEditorDraftAfterDocumentChange(pendingDraft, nextDocument);
-            const nextSelectedNodeId = canvasResult.nextActiveNodeId;
-            const nextSelectedTaskIds = canvasResult.nextSelectedTaskIds;
-
-            return {
-                ...replaceFlowDraftWorkingDocument(currentWithPending, nextDocument),
-                selectedNodeId: nextSelectedNodeId,
-                selectedTaskIds: [...nextSelectedTaskIds],
-            };
-        });
-
-        pendingNodeEditorDraftRef.current = nextPendingDraft;
-        if (!nextPendingDraft) {
-            if (pendingDraft) {
-                cancelNodeEditorDraftFlush();
-                resetNodeEditorState();
-            }
-        }
-    }, [activeNodeId, cancelNodeEditorDraftFlush, pendingNodeEditorDraftRef, resetNodeEditorState, selectedTaskIds, setDraftSession]);
-
-    const handleCanvasEdgesChange = useCallback((edges: Edge[]) => {
-        canvasEdgesRef.current = edges;
-        setDraftSession((current) => {
-            if (!current) return current;
-            const nextDocument = applyFlowCanvasEdges(current.workingDraft, edges);
-            if (JSON.stringify(current.workingDraft.edges) === JSON.stringify(nextDocument.edges)) {
-                return current;
-            }
-            return replaceFlowDraftWorkingDocument(current, nextDocument);
-        });
-    }, [setDraftSession]);
-
-    const handleCanvasNodeLayoutCommit = useCallback((nodes: Node[]) => {
-        canvasNodesRef.current = nodes;
-        setDraftSession((current) => {
-            if (!current) return current;
-            const nextDocument = applyFlowCanvasLayout(current.workingDraft, nodes);
-            if (JSON.stringify(current.workingDraft.layout) === JSON.stringify(nextDocument.layout)) {
-                return current;
-            }
-            return replaceFlowDraftWorkingDocument(current, nextDocument);
-        });
-    }, [setDraftSession]);
 
     const validateDocumentForAction = useCallback((nodeOverride?: { taskId: string; content: string; dataSourceId?: number; dataSourceType?: string }) => {
         if (!flowDocument) return true;
@@ -1395,28 +1252,21 @@ export default function OfflineWorkbench() {
 
     const handleSaveFlow = useCallback(async (nodeOverride?: { taskId: string; content: string; dataSourceId?: number; dataSourceType?: string }, silent = false) => {
         if (!groupId || !activeFlowPath || !draftSession) return false;
-        cancelNodeEditorDraftFlush();
-        const pendingNodeOverride = pendingNodeEditorDraftRef.current
-            ? {
-                taskId: pendingNodeEditorDraftRef.current.taskId,
-                content: pendingNodeEditorDraftRef.current.scriptContent,
-                dataSourceId: pendingNodeEditorDraftRef.current.dataSourceId,
-                dataSourceType: pendingNodeEditorDraftRef.current.dataSourceType,
-            }
-            : undefined;
-        const effectiveNodeOverride = nodeOverride ?? pendingNodeOverride;
+        const pendingDraftForSave = flushPendingNodeEditorDraftForSave();
+        const sessionForSaveBase = pendingDraftForSave?.session ?? draftSession;
+        const effectiveNodeOverride = nodeOverride ?? pendingDraftForSave?.nodeOverride;
 
         if (!validateDocumentForAction(effectiveNodeOverride)) {
             return false;
         }
         const sessionForSave = effectiveNodeOverride
-            ? flushNodeEditorDraft(draftSession, {
+            ? flushNodeEditorDraft(sessionForSaveBase, {
                 taskId: effectiveNodeOverride.taskId,
                 scriptContent: effectiveNodeOverride.content,
                 dataSourceId: effectiveNodeOverride.dataSourceId,
                 dataSourceType: effectiveNodeOverride.dataSourceType,
             })
-            : draftSession;
+            : sessionForSaveBase;
         const draftDocument = sessionForSave.workingDraft;
 
         const graphValidation = validateFlowDocumentGraph(draftDocument);
@@ -1434,7 +1284,6 @@ export default function OfflineWorkbench() {
         setSavingFlow(true);
         try {
             setDraftSession(sessionForSave);
-            pendingNodeEditorDraftRef.current = null;
 
             const response = await persistFlowSession(sessionForSave);
             const nextSession = rebaseFlowDraftSession(sessionForSave, response);
@@ -1469,10 +1318,9 @@ export default function OfflineWorkbench() {
         }
     }, [
         activeFlowPath,
-        cancelNodeEditorDraftFlush,
         draftSession,
+        flushPendingNodeEditorDraftForSave,
         groupId,
-        pendingNodeEditorDraftRef,
         persistFlowSession,
         refreshFlowCommitStatus,
         refreshRepoStatus,
@@ -2073,7 +1921,7 @@ export default function OfflineWorkbench() {
                                                         const center = board
                                                             ? { x: board.getBoundingClientRect().width / 2, y: board.getBoundingClientRect().height / 2 }
                                                             : { x: 300, y: 200 };
-                                                        handleAddCanvasNode('SQL', center);
+                                                        addNode('SQL', center);
                                                     }}
                                                     aria-label="添加 SQL 节点"
                                                 >
@@ -2097,7 +1945,7 @@ export default function OfflineWorkbench() {
                                                         const center = board
                                                             ? { x: board.getBoundingClientRect().width / 2, y: board.getBoundingClientRect().height / 2 }
                                                             : { x: 300, y: 200 };
-                                                        handleAddCanvasNode('HIVE_SQL', center);
+                                                        addNode('HIVE_SQL', center);
                                                     }}
                                                     aria-label="添加 HiveSQL 节点"
                                                 >
@@ -2121,7 +1969,7 @@ export default function OfflineWorkbench() {
                                                         const center = board
                                                             ? { x: board.getBoundingClientRect().width / 2, y: board.getBoundingClientRect().height / 2 }
                                                             : { x: 300, y: 200 };
-                                                        handleAddCanvasNode('SHELL', center);
+                                                        addNode('SHELL', center);
                                                     }}
                                                     aria-label="添加 Shell 节点"
                                                 >
@@ -2162,15 +2010,15 @@ export default function OfflineWorkbench() {
                                             activeNodeId={activeNodeId}
                                             nodeIssues={nodeIssues}
                                             nodeStatuses={nodeStatuses}
-                                            onNodesChange={handleCanvasNodesChange}
-                                            onEdgesChange={handleCanvasEdgesChange}
-                                            onNodeLayoutCommit={handleCanvasNodeLayoutCommit}
+                                            onNodesChange={updateCanvasNodes}
+                                            onEdgesChange={updateCanvasEdges}
+                                            onNodeLayoutCommit={commitCanvasLayout}
                                             onSelectNode={setDraftSelectedNodeId}
                                             onToggleTaskSelection={handleToggleTaskSelection}
                                             onReplaceTaskSelection={handleReplaceTaskSelection}
                                             onDoubleClickNode={handleOpenNodeEditor}
-                                            onAddNode={handleAddCanvasNode}
-                                            onRenameNode={handleRenameNode}
+                                            onAddNode={addNode}
+                                            onRenameNode={renameNode}
                                         />
                                     </ReactFlowProvider>
                                 </section>

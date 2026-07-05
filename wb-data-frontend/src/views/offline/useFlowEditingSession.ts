@@ -7,25 +7,39 @@ import {
     type Dispatch,
     type SetStateAction,
 } from 'react';
+import { flushSync } from 'react-dom';
+import type { Edge, Node } from '@xyflow/react';
 
 import {
     getOfflineFlowDocument,
+    type NodePosition,
     type OfflineFlowDocument,
     type OfflineFlowNode,
+    type OfflineFlowNodeKind,
 } from '../../api/offline';
 import type { FeedbackPayload } from '../../hooks/useOperationFeedback';
 import { getErrorMessage } from '../../utils/error';
-import { flattenFlowDocumentNodes } from './flowDocumentMutations';
+import {
+    addFlowNode,
+    applyFlowCanvasEdges,
+    applyFlowCanvasLayout,
+    applyFlowCanvasNodes,
+    flattenFlowDocumentNodes,
+    renameFlowNode,
+    type RenameFlowNodeFailureReason,
+} from './flowDocumentMutations';
 import {
     createFlowDraftSession,
     flushNodeEditorDraft,
     hasFlowDraftChanges,
     prepareSessionForLeave,
+    replaceFlowDraftWorkingDocument,
     type FlowDraftSession,
     type PendingNodeEditorDraft,
 } from './flowDraftController';
 import { finalizeNodeEditorDraftOnClose } from './nodeEditorCloseDraftState';
 import { createNodeEditorDraftScheduler } from './nodeEditorDraftScheduler';
+import { resolvePendingNodeEditorDraftAfterDocumentChange } from './pendingNodeEditorDraftState';
 import {
     readRecoverySnapshot,
     removeRecoverySnapshot,
@@ -49,6 +63,40 @@ export interface OpenFlowDocumentOptions {
     skipLeaveCurrent?: boolean;
 }
 
+interface PendingNodeOverrideForSave {
+    taskId: string;
+    content: string;
+    dataSourceId?: number;
+    dataSourceType?: string;
+}
+
+interface FlushPendingNodeEditorDraftForSaveResult {
+    session: FlowDraftSession;
+    nodeOverride?: PendingNodeOverrideForSave;
+}
+
+function buildCanvasNodesFromFlowDocument(document: OfflineFlowDocument): Node[] {
+    return flattenFlowDocumentNodes(document).map((node, index) => {
+        const position = document.layout?.[node.taskId] ?? { x: 250, y: index * 120 };
+
+        return {
+            id: node.taskId,
+            type: 'flowNode',
+            position: { ...position },
+            data: {},
+        };
+    });
+}
+
+function buildCanvasEdgesFromFlowDocument(document: OfflineFlowDocument): Edge[] {
+    return (document.edges ?? []).map((edge) => ({
+        id: `${edge.source}->${edge.target}`,
+        source: edge.source,
+        target: edge.target,
+        type: 'default',
+    }));
+}
+
 export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
     const {
         groupId,
@@ -65,6 +113,8 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
     const groupActionVersionRef = useRef(0);
     const pendingNodeEditorDraftRef = useRef<PendingNodeEditorDraft | null>(null);
     const draftSessionRef = useRef<FlowDraftSession | null>(null);
+    const canvasNodesRef = useRef<Node[]>([]);
+    const canvasEdgesRef = useRef<Edge[]>([]);
     const nodeEditorDraftSchedulerRef = useRef<ReturnType<typeof createNodeEditorDraftScheduler> | null>(null);
 
     if (currentGroupIdRef.current !== groupId) {
@@ -122,6 +172,11 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         });
     }, []);
 
+    const syncCanvasRefsFromDocument = useCallback((document: OfflineFlowDocument) => {
+        canvasNodesRef.current = buildCanvasNodesFromFlowDocument(document);
+        canvasEdgesRef.current = buildCanvasEdgesFromFlowDocument(document);
+    }, []);
+
     const applyFlowDocumentPayload = useCallback((
         path: string,
         payload: OfflineFlowDocument,
@@ -136,9 +191,10 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             snapshot,
         });
         pendingNodeEditorDraftRef.current = null;
+        syncCanvasRefsFromDocument(nextSession.workingDraft);
         setActiveFlowPath(path);
         setDraftSession(nextSession);
-    }, [groupId]);
+    }, [groupId, syncCanvasRefsFromDocument]);
 
     const leaveCurrentFlow = useCallback((
         session?: FlowDraftSession | null,
@@ -214,6 +270,8 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
     const resetAfterBranchSwitch = useCallback(() => {
         nodeEditorDraftSchedulerRef.current?.cancel();
         pendingNodeEditorDraftRef.current = null;
+        canvasNodesRef.current = [];
+        canvasEdgesRef.current = [];
         setActiveFlowPath(null);
         setFlowLoading(false);
         setDraftSession(null);
@@ -311,6 +369,190 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         nodeEditorDraftSchedulerRef.current?.cancel();
     }, []);
 
+    const renameNode = useCallback((oldId: string, newId: string) => {
+        let failureReason: RenameFlowNodeFailureReason | null = null;
+        let nextDocument: OfflineFlowDocument | null = null;
+        flushSync(() => {
+            setDraftSession((current) => {
+                if (!current) return current;
+                const result = renameFlowNode({
+                    document: current.workingDraft,
+                    oldId,
+                    newId,
+                    activeNodeId: current.selectedNodeId,
+                    selectedTaskIds: current.selectedTaskIds,
+                });
+                if (!result.ok) {
+                    failureReason = result.reason;
+                    return current;
+                }
+
+                nextDocument = result.document;
+                return {
+                    ...replaceFlowDraftWorkingDocument(current, result.document),
+                    selectedNodeId: result.nextActiveNodeId,
+                    selectedTaskIds: result.nextSelectedTaskIds,
+                };
+            });
+        });
+        if (nextDocument) {
+            syncCanvasRefsFromDocument(nextDocument);
+        }
+
+        if (failureReason === 'duplicate') {
+            showFeedback({ tone: 'error', title: '重命名失败', detail: '已存在相同名称的节点。' });
+        } else if (failureReason === 'invalid-format') {
+            showFeedback({ tone: 'error', title: '重命名失败', detail: '节点名称仅支持字母、数字和下划线。' });
+        }
+    }, [showFeedback, syncCanvasRefsFromDocument]);
+
+    const addNode = useCallback((kind: OfflineFlowNodeKind, position: NodePosition) => {
+        let failureReason: 'max-nodes' | null = null;
+        let nextDocument: OfflineFlowDocument | null = null;
+        flushSync(() => {
+            setDraftSession((current) => {
+                if (!current) return current;
+                const result = addFlowNode({
+                    document: current.workingDraft,
+                    kind,
+                    position,
+                    selectedTaskIds: current.selectedTaskIds,
+                    maxNodes: 20,
+                });
+                if (!result.ok) {
+                    failureReason = result.reason;
+                    return current;
+                }
+
+                nextDocument = result.document;
+                return {
+                    ...replaceFlowDraftWorkingDocument(current, result.document),
+                    selectedNodeId: result.nextActiveNodeId,
+                    selectedTaskIds: result.nextSelectedTaskIds,
+                };
+            });
+        });
+        if (nextDocument) {
+            syncCanvasRefsFromDocument(nextDocument);
+        }
+
+        if (failureReason === 'max-nodes') {
+            showFeedback({ tone: 'info', title: '节点数量已达上限', detail: '离线 Flow 最多支持 20 个节点，请精简流程设计。' });
+        }
+    }, [showFeedback, syncCanvasRefsFromDocument]);
+
+    const updateCanvasNodes = useCallback((nodes: Node[]) => {
+        const previousNodeIds = new Set(canvasNodesRef.current.map((node) => node.id));
+        const nextNodeIds = new Set(nodes.map((node) => node.id));
+        canvasNodesRef.current = nodes;
+        const nodeSetChanged = previousNodeIds.size !== nextNodeIds.size
+            || Array.from(previousNodeIds).some((nodeId) => !nextNodeIds.has(nodeId));
+        if (!nodeSetChanged) {
+            return;
+        }
+
+        const pendingDraft = pendingNodeEditorDraftRef.current;
+        let nextPendingDraft = pendingDraft;
+        let nextCanvasDocument: OfflineFlowDocument | null = null;
+        const shouldResetNodeEditor = Boolean(pendingDraft && !nextNodeIds.has(pendingDraft.taskId));
+
+        setDraftSession((current) => {
+            if (!current) {
+                nextPendingDraft = null;
+                return current;
+            }
+
+            const currentWithPending = pendingDraft
+                ? flushNodeEditorDraft(current, pendingDraft)
+                : current;
+            const canvasResult = applyFlowCanvasNodes({
+                document: currentWithPending.workingDraft,
+                nodes,
+                edges: canvasEdgesRef.current,
+                activeNodeId: currentWithPending.selectedNodeId,
+                selectedTaskIds: currentWithPending.selectedTaskIds,
+            });
+            const nextDocument = canvasResult.document;
+            nextCanvasDocument = nextDocument;
+            nextPendingDraft = resolvePendingNodeEditorDraftAfterDocumentChange(pendingDraft, nextDocument);
+
+            return {
+                ...replaceFlowDraftWorkingDocument(currentWithPending, nextDocument),
+                selectedNodeId: canvasResult.nextActiveNodeId,
+                selectedTaskIds: [...canvasResult.nextSelectedTaskIds],
+            };
+        });
+
+        pendingNodeEditorDraftRef.current = nextPendingDraft;
+        if (nextCanvasDocument) {
+            canvasEdgesRef.current = buildCanvasEdgesFromFlowDocument(nextCanvasDocument);
+        }
+        if (shouldResetNodeEditor) {
+            resetNodeEditorState();
+        }
+    }, [resetNodeEditorState]);
+
+    const updateCanvasEdges = useCallback((edges: Edge[]) => {
+        canvasEdgesRef.current = edges;
+        let nextCanvasDocument: OfflineFlowDocument | null = null;
+        setDraftSession((current) => {
+            if (!current) return current;
+            const nextDocument = applyFlowCanvasEdges(current.workingDraft, edges);
+            if (JSON.stringify(current.workingDraft.edges) === JSON.stringify(nextDocument.edges)) {
+                return current;
+            }
+            nextCanvasDocument = nextDocument;
+            return replaceFlowDraftWorkingDocument(current, nextDocument);
+        });
+        if (nextCanvasDocument) {
+            canvasEdgesRef.current = buildCanvasEdgesFromFlowDocument(nextCanvasDocument);
+        }
+    }, []);
+
+    const commitCanvasLayout = useCallback((nodes: Node[]) => {
+        canvasNodesRef.current = nodes;
+        let nextCanvasDocument: OfflineFlowDocument | null = null;
+        setDraftSession((current) => {
+            if (!current) return current;
+            const nextDocument = applyFlowCanvasLayout(current.workingDraft, nodes);
+            if (JSON.stringify(current.workingDraft.layout) === JSON.stringify(nextDocument.layout)) {
+                return current;
+            }
+            nextCanvasDocument = nextDocument;
+            return replaceFlowDraftWorkingDocument(current, nextDocument);
+        });
+        if (nextCanvasDocument) {
+            canvasNodesRef.current = buildCanvasNodesFromFlowDocument(nextCanvasDocument);
+        }
+    }, []);
+
+    const flushPendingNodeEditorDraftForSave = useCallback((): FlushPendingNodeEditorDraftForSaveResult | null => {
+        nodeEditorDraftSchedulerRef.current?.cancel();
+        const currentSession = draftSessionRef.current;
+        const pendingDraft = pendingNodeEditorDraftRef.current;
+        if (!currentSession) {
+            pendingNodeEditorDraftRef.current = null;
+            return null;
+        }
+
+        if (!pendingDraft) {
+            return { session: currentSession };
+        }
+
+        const nextSession = flushNodeEditorDraft(currentSession, pendingDraft);
+        pendingNodeEditorDraftRef.current = null;
+        setDraftSession(nextSession);
+        return {
+            session: nextSession,
+            nodeOverride: {
+                taskId: pendingDraft.taskId,
+                content: pendingDraft.scriptContent,
+                dataSourceId: pendingDraft.dataSourceId,
+                dataSourceType: pendingDraft.dataSourceType,
+            },
+        };
+    }, []);
+
     return {
         activeFlowPath,
         setActiveFlowPath,
@@ -326,8 +568,9 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         activeNode: activeNode as OfflineFlowNode | null,
         nodeCount,
         isDirty,
-        pendingNodeEditorDraftRef,
         draftSessionRef,
+        canvasNodesRef,
+        canvasEdgesRef,
         setSelectedNodeId,
         setSelectedTaskIds,
         applyFlowDocumentPayload,
@@ -341,5 +584,11 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         saveNodeEditorDraft,
         resetNodeEditorState,
         cancelNodeEditorDraftFlush,
+        renameNode,
+        addNode,
+        updateCanvasNodes,
+        updateCanvasEdges,
+        commitCanvasLayout,
+        flushPendingNodeEditorDraftForSave,
     };
 }
