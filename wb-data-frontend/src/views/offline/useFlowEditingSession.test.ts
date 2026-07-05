@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
+import type { Node } from '@xyflow/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { OfflineFlowDocument } from '../../api/offline';
@@ -173,7 +174,7 @@ describe('useFlowEditingSession', () => {
         expect(result.current.flowLoading).toBe(false);
         expect(result.current.nodeEditorOpen).toBe(false);
         expect(result.current.nodeEditorContent).toBe('');
-        expect(result.current.pendingNodeEditorDraftRef.current).toBeNull();
+        expect(result.current.flushPendingNodeEditorDraftForSave()).toBeNull();
         expect(removeRecoverySnapshot).not.toHaveBeenCalled();
     });
 
@@ -296,6 +297,246 @@ describe('useFlowEditingSession', () => {
                             ],
                         }),
                     ],
+                }),
+            }),
+        );
+    });
+
+    it('renames a node through the editing session and preserves selection', async () => {
+        vi.mocked(getOfflineFlowDocument).mockResolvedValue(makeFlowDocument({
+            stages: [
+                {
+                    stageId: 'main',
+                    parallel: false,
+                    nodes: [
+                        {
+                            taskId: 'shell_node_1',
+                            kind: 'SHELL',
+                            scriptPath: 'scripts/jack/demo/shell_node_1.sh',
+                            scriptContent: 'server content',
+                        },
+                        {
+                            taskId: 'shell_node_2',
+                            kind: 'SHELL',
+                            scriptPath: 'scripts/jack/demo/shell_node_2.sh',
+                            scriptContent: 'second content',
+                        },
+                    ],
+                },
+            ],
+            edges: [{ source: 'shell_node_1', target: 'shell_node_2' }],
+            layout: {
+                shell_node_1: { x: 10, y: 20 },
+                shell_node_2: { x: 30, y: 40 },
+            },
+        }));
+        const { result } = renderSessionHook();
+
+        await act(async () => {
+            await result.current.openFlowDocument('_flows/jack/demo/flow.yaml');
+        });
+        act(() => {
+            result.current.setSelectedNodeId('shell_node_1');
+            result.current.setSelectedTaskIds(['shell_node_1']);
+        });
+
+        act(() => {
+            result.current.renameNode('shell_node_1', 'renamed_node');
+        });
+
+        expect(result.current.flowDocument?.stages[0].nodes.map((node) => node.taskId)).toEqual([
+            'renamed_node',
+            'shell_node_2',
+        ]);
+        expect(result.current.flowDocument?.stages[0].nodes[0].scriptPath).toBe('scripts/jack/demo/renamed_node.sh');
+        expect(result.current.flowDocument?.edges).toEqual([{ source: 'renamed_node', target: 'shell_node_2' }]);
+        expect(result.current.flowDocument?.layout).toEqual({
+            renamed_node: { x: 10, y: 20 },
+            shell_node_2: { x: 30, y: 40 },
+        });
+        expect(result.current.activeNodeId).toBe('renamed_node');
+        expect(result.current.selectedTaskIds).toEqual(['renamed_node']);
+    });
+
+    it('adds a shell node through the editing session', async () => {
+        vi.mocked(getOfflineFlowDocument).mockResolvedValue(makeFlowDocument());
+        const { result } = renderSessionHook();
+
+        await act(async () => {
+            await result.current.openFlowDocument('_flows/jack/demo/flow.yaml');
+        });
+
+        act(() => {
+            result.current.addNode('SHELL', { x: 100, y: 200 });
+        });
+
+        const nodes = result.current.flowDocument?.stages[0].nodes ?? [];
+        expect(nodes.map((node) => node.taskId)).toEqual(['shell_node_1', 'shell_node_2']);
+        expect(nodes[1]).toEqual(expect.objectContaining({
+            taskId: 'shell_node_2',
+            kind: 'SHELL',
+            scriptPath: 'scripts/jack/demo/shell_node_2.sh',
+        }));
+        expect(result.current.flowDocument?.layout.shell_node_2).toEqual({ x: 100, y: 200 });
+        expect(result.current.activeNodeId).toBe('shell_node_2');
+    });
+
+    it('synchronizes canvas refs immediately after hook-owned add and rename commands', async () => {
+        vi.mocked(getOfflineFlowDocument).mockResolvedValue(makeFlowDocument({
+            stages: [
+                {
+                    stageId: 'main',
+                    parallel: false,
+                    nodes: [
+                        {
+                            taskId: 'shell_node_1',
+                            kind: 'SHELL',
+                            scriptPath: 'scripts/jack/demo/shell_node_1.sh',
+                            scriptContent: 'server content',
+                        },
+                        {
+                            taskId: 'shell_node_2',
+                            kind: 'SHELL',
+                            scriptPath: 'scripts/jack/demo/shell_node_2.sh',
+                            scriptContent: 'second content',
+                        },
+                    ],
+                },
+            ],
+            edges: [{ source: 'shell_node_1', target: 'shell_node_2' }],
+            layout: {
+                shell_node_1: { x: 10, y: 20 },
+                shell_node_2: { x: 30, y: 40 },
+            },
+        }));
+        const { result } = renderSessionHook();
+
+        await act(async () => {
+            await result.current.openFlowDocument('_flows/jack/demo/flow.yaml');
+        });
+
+        result.current.canvasNodesRef.current = [
+            { id: 'shell_node_1', type: 'flowNode', position: { x: 10, y: 20 }, data: {} },
+            { id: 'shell_node_2', type: 'flowNode', position: { x: 30, y: 40 }, data: {} },
+        ];
+        result.current.canvasEdgesRef.current = [
+            { id: 'shell_node_1->shell_node_2', source: 'shell_node_1', target: 'shell_node_2' },
+        ];
+
+        act(() => {
+            result.current.addNode('SHELL', { x: 100, y: 200 });
+        });
+
+        expect(result.current.canvasNodesRef.current.map((node) => node.id)).toEqual([
+            'shell_node_1',
+            'shell_node_2',
+            'shell_node_3',
+        ]);
+        expect(result.current.canvasNodesRef.current.find((node) => node.id === 'shell_node_3')?.position).toEqual({
+            x: 100,
+            y: 200,
+        });
+        expect(result.current.canvasEdgesRef.current.map((edge) => `${edge.source}->${edge.target}`)).toEqual([
+            'shell_node_1->shell_node_2',
+        ]);
+
+        act(() => {
+            result.current.renameNode('shell_node_1', 'renamed_node');
+        });
+
+        expect(result.current.canvasNodesRef.current.map((node) => node.id)).toEqual([
+            'renamed_node',
+            'shell_node_2',
+            'shell_node_3',
+        ]);
+        expect(result.current.canvasNodesRef.current.find((node) => node.id === 'renamed_node')?.position).toEqual({
+            x: 10,
+            y: 20,
+        });
+        expect(result.current.canvasEdgesRef.current.map((edge) => `${edge.source}->${edge.target}`)).toEqual([
+            'renamed_node->shell_node_2',
+        ]);
+    });
+
+    it('removes a node through canvas node changes and clears stale pending editor draft', async () => {
+        vi.mocked(getOfflineFlowDocument).mockResolvedValue(makeFlowDocument({
+            stages: [
+                {
+                    stageId: 'main',
+                    parallel: false,
+                    nodes: [
+                        {
+                            taskId: 'shell_node_1',
+                            kind: 'SHELL',
+                            scriptPath: 'scripts/jack/demo/shell_node_1.sh',
+                            scriptContent: 'server content',
+                        },
+                        {
+                            taskId: 'shell_node_2',
+                            kind: 'SHELL',
+                            scriptPath: 'scripts/jack/demo/shell_node_2.sh',
+                            scriptContent: 'second content',
+                        },
+                    ],
+                },
+            ],
+            edges: [{ source: 'shell_node_1', target: 'shell_node_2' }],
+            layout: {
+                shell_node_1: { x: 0, y: 0 },
+                shell_node_2: { x: 200, y: 0 },
+            },
+        }));
+        const { result } = renderSessionHook();
+
+        await act(async () => {
+            await result.current.openFlowDocument('_flows/jack/demo/flow.yaml');
+        });
+
+        act(() => {
+            result.current.openNodeEditor('shell_node_1');
+            result.current.updateNodeEditorContent('edited but removed');
+        });
+
+        const remainingNodes: Node[] = [
+            {
+                id: 'shell_node_2',
+                type: 'flowNode',
+                position: { x: 200, y: 0 },
+                data: {},
+            },
+        ];
+        act(() => {
+            result.current.updateCanvasNodes(remainingNodes);
+        });
+
+        expect(result.current.nodeEditorOpen).toBe(false);
+        expect(result.current.nodeEditorContent).toBe('');
+        expect(result.current.activeNodeId).toBe('shell_node_2');
+        expect(result.current.selectedTaskIds).toEqual([]);
+        expect(result.current.flowDocument?.stages[0].nodes.map((node) => node.taskId)).toEqual(['shell_node_2']);
+        expect(result.current.flowDocument?.edges).toEqual([]);
+        expect(result.current.flushPendingNodeEditorDraftForSave()?.nodeOverride).toBeUndefined();
+
+        act(() => {
+            result.current.leaveCurrentFlow();
+        });
+
+        expect(writeRecoverySnapshot).toHaveBeenCalledWith(
+            1,
+            '_flows/jack/demo/flow.yaml',
+            expect.objectContaining({
+                document: expect.objectContaining({
+                    stages: [
+                        expect.objectContaining({
+                            nodes: [
+                                expect.objectContaining({
+                                    taskId: 'shell_node_2',
+                                    scriptContent: 'second content',
+                                }),
+                            ],
+                        }),
+                    ],
+                    edges: [],
                 }),
             }),
         );
