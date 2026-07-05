@@ -72,9 +72,6 @@ import {
 import {
     validateSqlNodeDataSourceRequirement,
 } from './nodeEditorDataSourceRules';
-import {
-    removeRecoverySnapshot,
-} from './recoverySnapshotStore';
 import { SaveConflictDialog } from './SaveConflictDialog';
 import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
@@ -708,7 +705,7 @@ export default function OfflineWorkbench() {
         savingFlow,
         flowCommitDirty,
         saveConflictState,
-        saveConflictPending,
+        isSaveConflictPending,
         flowDocument,
         activeNodeId,
         selectedTaskIds,
@@ -716,12 +713,12 @@ export default function OfflineWorkbench() {
         activeNode,
         nodeCount,
         isDirty,
-        draftSessionRef,
         canvasNodesRef,
         canvasEdgesRef,
         setSelectedNodeId: setDraftSelectedNodeId,
         setSelectedTaskIds: setDraftSelectedTaskIds,
         leaveCurrentFlow,
+        discardCurrentFlowDraft,
         openFlowDocument: openFlowDocumentFromSession,
         resetAfterBranchSwitch,
         openNodeEditor: handleOpenNodeEditor,
@@ -929,12 +926,11 @@ export default function OfflineWorkbench() {
     }, [resetAfterBranchSwitch]);
 
     const discardActiveDraftForBranchSwitch = useCallback(() => {
-        if (!groupId || !draftSession) return;
+        if (!draftSession) return;
         didDiscardLeaveRef.current = true;
-        leaveCurrentFlow(draftSession);
-        removeRecoverySnapshot(groupId, draftSession.path);
+        discardCurrentFlowDraft();
         resetActiveFlowAfterBranchSwitch();
-    }, [draftSession, groupId, leaveCurrentFlow, resetActiveFlowAfterBranchSwitch]);
+    }, [discardCurrentFlowDraft, draftSession, resetActiveFlowAfterBranchSwitch]);
 
     const handleBranchSwitchRequest = useCallback((branchName: string) => {
         requestBranchSwitch(branchName, {
@@ -1042,8 +1038,8 @@ export default function OfflineWorkbench() {
 
     useEffect(() => {
         const previousGroupId = previousGroupIdRef.current;
-        if (previousGroupId !== null && previousGroupId !== groupId && draftSessionRef.current) {
-            leaveCurrentFlow(draftSessionRef.current, previousGroupId);
+        if (previousGroupId !== null && previousGroupId !== groupId) {
+            leaveCurrentFlow(undefined, previousGroupId);
         }
         previousGroupIdRef.current = groupId;
 
@@ -1053,7 +1049,7 @@ export default function OfflineWorkbench() {
 
         if (!groupId) return;
         void refreshWorkspace();
-    }, [draftSessionRef, groupId, leaveCurrentFlow, refreshWorkspace, resetActiveFlowAfterBranchSwitch, resetBranchList, resetBranchSwitchState]);
+    }, [groupId, leaveCurrentFlow, refreshWorkspace, resetActiveFlowAfterBranchSwitch, resetBranchList, resetBranchSwitchState]);
 
     useEffect(() => {
         const handleBranchChanged = (event: Event) => {
@@ -1084,11 +1080,11 @@ export default function OfflineWorkbench() {
     useEffect(() => {
         if (!groupId || !draftSession) return;
         const handleBeforeUnload = () => {
-            leaveCurrentFlow(draftSessionRef.current);
+            leaveCurrentFlow();
         };
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, [draftSession, draftSessionRef, groupId, leaveCurrentFlow]);
+    }, [draftSession, groupId, leaveCurrentFlow]);
 
     // Ctrl/Cmd+N to open new Flow dialog
     useEffect(() => {
@@ -1183,10 +1179,9 @@ export default function OfflineWorkbench() {
             const saved = await handleSaveFlow();
             if (!saved) return;
         } else {
-            if (draftSession && groupId) {
+            if (draftSession) {
                 didDiscardLeaveRef.current = true;
-                leaveCurrentFlow(draftSession);
-                removeRecoverySnapshot(groupId, draftSession.path);
+                discardCurrentFlowDraft();
             }
         }
 
@@ -1198,7 +1193,7 @@ export default function OfflineWorkbench() {
         } else if (target.type === 'flow' && target.flowPath) {
             void openFlowDocument(target.flowPath, { force: true });
         }
-    }, [pendingNavigation, handleSaveFlow, draftSession, groupId, leaveCurrentFlow, openFlowDocument]);
+    }, [pendingNavigation, handleSaveFlow, draftSession, discardCurrentFlowDraft, openFlowDocument]);
 
     const handleCancelLeave = useCallback(() => {
         if (!pendingNavigation) return;
@@ -1750,7 +1745,7 @@ export default function OfflineWorkbench() {
 
             <SaveConflictDialog
                 open={saveConflictState !== null}
-                pending={saveConflictPending}
+                pending={isSaveConflictPending}
                 onOpenChange={(open) => {
                     if (!open) handleCloseSaveConflict();
                 }}

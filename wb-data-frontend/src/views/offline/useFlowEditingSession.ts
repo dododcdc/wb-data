@@ -254,6 +254,17 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         return result;
     }, [groupId, setDraftSessionSync]);
 
+    const discardCurrentFlowDraft = useCallback((groupOverride: number | null = groupId) => {
+        const sessionToDiscard = draftSessionRef.current;
+        if (!groupOverride || !sessionToDiscard) return null;
+        nodeEditorDraftSchedulerRef.current?.cancel();
+        const result = prepareSessionForLeave(sessionToDiscard, pendingNodeEditorDraftRef.current, Date.now());
+        setDraftSessionSync(result.nextSession);
+        pendingNodeEditorDraftRef.current = null;
+        removeRecoverySnapshot(groupOverride, sessionToDiscard.path);
+        return result;
+    }, [groupId, setDraftSessionSync]);
+
     const openFlowDocument = useCallback(async (pathValue: string, options?: OpenFlowDocumentOptions) => {
         if (!groupId) return false;
         const isCurrentGroupAction = captureGroupActionGuard(groupId);
@@ -892,7 +903,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         savingFlow,
         flowCommitDirty,
         saveConflictState,
-        saveConflictPending,
+        isSaveConflictPending: saveConflictPending,
         flowDocument,
         activeNodeId,
         selectedTaskIds,
@@ -900,13 +911,13 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         activeNode: activeNode as OfflineFlowNode | null,
         nodeCount,
         isDirty,
-        draftSessionRef,
         canvasNodesRef,
         canvasEdgesRef,
         setSelectedNodeId,
         setSelectedTaskIds,
         applyFlowDocumentPayload,
         leaveCurrentFlow,
+        discardCurrentFlowDraft,
         openFlowDocument,
         resetAfterBranchSwitch,
         openNodeEditor,

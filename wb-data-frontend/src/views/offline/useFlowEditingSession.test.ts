@@ -468,6 +468,25 @@ describe('useFlowEditingSession', () => {
         );
     });
 
+    it('discards the current dirty Flow by clearing recovery without writing a snapshot', async () => {
+        vi.mocked(getOfflineFlowDocument).mockResolvedValue(makeFlowDocument());
+        const { result } = renderSessionHook();
+
+        await act(async () => {
+            await result.current.openFlowDocument('_flows/jack/demo/flow.yaml');
+        });
+
+        act(() => {
+            result.current.openNodeEditor('shell_node_1');
+            result.current.updateNodeEditorContent('discarded content');
+            result.current.discardCurrentFlowDraft();
+        });
+
+        expect(writeRecoverySnapshot).not.toHaveBeenCalled();
+        expect(removeRecoverySnapshot).toHaveBeenCalledWith(1, '_flows/jack/demo/flow.yaml');
+        expect(result.current.flushPendingNodeEditorDraftForSave()?.nodeOverride).toBeUndefined();
+    });
+
     it('resetAfterBranchSwitch clears active path, draft session, loading, node editor state, and pending draft', async () => {
         vi.mocked(getOfflineFlowDocument).mockResolvedValue(makeFlowDocument());
         const { result } = renderSessionHook();
