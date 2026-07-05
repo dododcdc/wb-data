@@ -103,6 +103,44 @@ describe('useFlowExecutionAndSchedule', () => {
         expect(result.current.schedule?.enabled).toBe(true);
     });
 
+    it('does not reuse a different Flow draft schedule when switching flows', async () => {
+        const offlineApi = await import('../../api/offline');
+        const previousDocument = {
+            ...makeDocument(),
+            path: '_flows/jack/codex_flow_jack_2153/flow.yaml',
+            flowId: 'codex_flow_jack_2153',
+            schedule: {
+                cron: '* * * * *',
+                timezone: 'Asia/Singapore',
+                enabled: true,
+            },
+        };
+        const nextPath = '_flows/codex_flow_session_2140/flow.yaml';
+        vi.mocked(offlineApi.getOfflineSchedule).mockResolvedValue({
+            groupId: 1,
+            path: nextPath,
+            triggerId: 'schedule',
+            cron: '* * * * *',
+            timezone: 'Asia/Singapore',
+            enabled: false,
+            contentHash: 'hash-next',
+            fileUpdatedAt: 2,
+        });
+        const { result } = renderExecutionAndSchedule({
+            activeFlowPath: nextPath,
+            draftSession: makeSession(previousDocument),
+            flowDocument: previousDocument,
+        });
+
+        await act(async () => {
+            await result.current.loadScheduleSnapshot(nextPath);
+        });
+
+        expect(offlineApi.getOfflineSchedule).toHaveBeenCalledWith(1, nextPath);
+        expect(result.current.schedule?.path).toBe(nextPath);
+        expect(result.current.schedule?.enabled).toBe(false);
+    });
+
     it('toggles schedule by updating the draft without calling the schedule API', async () => {
         const offlineApi = await import('../../api/offline');
         const { result, params } = renderExecutionAndSchedule();

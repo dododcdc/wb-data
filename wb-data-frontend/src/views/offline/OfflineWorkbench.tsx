@@ -1153,6 +1153,13 @@ export default function OfflineWorkbench() {
         }
     }, [activeFlowPath, commitCurrentFlow, commitMessage, groupId]);
 
+    const handleOpenScheduleDialog = useCallback(() => {
+        setScheduleDialogOpen(true);
+        if (activeFlowPath) {
+            void loadScheduleSnapshot(activeFlowPath);
+        }
+    }, [activeFlowPath, loadScheduleSnapshot, setScheduleDialogOpen]);
+
     const handleRepoCommit = useCallback(async (mode: 'save-and-commit' | 'saved-only') => {
         if (!groupId) return;
         setCommitting(true);
@@ -1577,7 +1584,7 @@ export default function OfflineWorkbench() {
                                                     type="button"
                                                     className="offline-canvas-toolbar-btn"
                                                     disabled={!activeFlowPath || !canWrite}
-                                                    onClick={() => setScheduleDialogOpen(true)}
+                                                    onClick={handleOpenScheduleDialog}
                                                     aria-label="调度"
                                                 >
                                                     <Settings2 size={16} />

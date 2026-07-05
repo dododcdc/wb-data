@@ -31,6 +31,25 @@ interface UseOfflineTreeMutationsParams {
     showFeedback: (payload: FeedbackPayload) => void;
 }
 
+function getFlowNameFromPath(path: string, fallbackName: string) {
+    const parts = path.replace(/\\/g, '/').split('/').filter(Boolean);
+    const flowYamlIndex = parts.lastIndexOf('flow.yaml');
+    if (flowYamlIndex > 0) {
+        return parts[flowYamlIndex - 1];
+    }
+    return fallbackName;
+}
+
+function buildRenamedFlowPath(path: string, newName: string) {
+    const parts = path.replace(/\\/g, '/').split('/').filter(Boolean);
+    const flowYamlIndex = parts.lastIndexOf('flow.yaml');
+    if (flowYamlIndex <= 0) {
+        return path;
+    }
+    parts[flowYamlIndex - 1] = newName;
+    return parts.join('/');
+}
+
 export function useOfflineTreeMutations({
     groupId,
     activeFlowPath,
@@ -163,8 +182,7 @@ export function useOfflineTreeMutations({
             await renameOfflineFlow(groupId, renameFlowPath, newName);
             setRenameFlowDialogOpen(false);
             const oldPath = renameFlowPath;
-            const parts = oldPath.split('/');
-            const newPath = parts.length >= 2 ? `_flows/${newName}/flow.yaml` : oldPath;
+            const newPath = buildRenamedFlowPath(oldPath, newName);
             if (draftSession?.path === oldPath) {
                 leaveCurrentFlow(draftSession);
                 setDraftSession(null);
@@ -307,8 +325,7 @@ export function useOfflineTreeMutations({
     const openDeleteFlowDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
         setContextMenuOpen(false);
         setDeleteFlowPath(node.path);
-        const parts = node.path.split('/');
-        setDeleteFlowName(parts.length >= 2 ? parts[1] : node.name);
+        setDeleteFlowName(getFlowNameFromPath(node.path, node.name));
         setDeleteFlowDialogOpen(true);
     }, []);
 
@@ -322,8 +339,7 @@ export function useOfflineTreeMutations({
     const openRenameFlowDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
         setContextMenuOpen(false);
         setRenameFlowPath(node.path);
-        const parts = node.path.split('/');
-        const originalName = parts.length >= 2 ? parts[1] : node.name;
+        const originalName = getFlowNameFromPath(node.path, node.name);
         setRenameFlowOriginalName(originalName);
         setRenameFlowName(originalName);
         setRenameFlowDialogOpen(true);
