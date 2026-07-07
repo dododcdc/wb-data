@@ -1,4 +1,5 @@
 import request from '../utils/request';
+import { groupScopedPath } from './groupScoped';
 
 export interface OperationsExecutionListQuery {
     groupId: number;
@@ -82,8 +83,6 @@ function buildListSearchParams(query?: OperationsExecutionListQuery) {
     const params = new URLSearchParams();
     if (!query) return params;
 
-    params.set('groupId', String(query.groupId));
-
     const entries: Array<[keyof OperationsExecutionListQuery, string | null | undefined]> = [
         ['branch', query.branch],
         ['flowId', query.flowId],
@@ -103,33 +102,33 @@ function buildListSearchParams(query?: OperationsExecutionListQuery) {
     return params;
 }
 
-export const listOperationsExecutions = (query?: OperationsExecutionListQuery) => {
+export const listOperationsExecutions = (query: OperationsExecutionListQuery) => {
     const params = buildListSearchParams(query);
     const suffix = params.size > 0 ? `?${params.toString()}` : '';
-    return request.get<unknown, OperationsExecutionListResponse>(`/api/v1/operations/executions${suffix}`);
+    const path = groupScopedPath(query.groupId, '/operations/executions');
+    return request.get<unknown, OperationsExecutionListResponse>(`${path}${suffix}`);
 };
 
 export const getOperationsExecution = (groupId: number, executionId: string) => {
-    const params = new URLSearchParams({ groupId: String(groupId) });
     return request.get<unknown, OperationsExecutionDetail>(
-        `/api/v1/operations/executions/${encodeURIComponent(executionId)}?${params.toString()}`
+        groupScopedPath(groupId, `/operations/executions/${encodeURIComponent(executionId)}`)
     );
 };
 
 export const getOperationsExecutionLogs = (groupId: number, executionId: string, taskId?: string | null) => {
-    const params = new URLSearchParams({ groupId: String(groupId) });
+    const params = new URLSearchParams();
     const normalizedTaskId = taskId?.trim();
     if (normalizedTaskId) params.set('taskId', normalizedTaskId);
+    const suffix = params.size > 0 ? `?${params.toString()}` : '';
 
     return request.get<unknown, OperationsExecutionLogEntry[]>(
-        `/api/v1/operations/executions/${encodeURIComponent(executionId)}/logs?${params.toString()}`
+        `${groupScopedPath(groupId, `/operations/executions/${encodeURIComponent(executionId)}/logs`)}${suffix}`
     );
 };
 
 export const rerunOperationsExecution = (groupId: number, executionId: string) => {
-    const params = new URLSearchParams({ groupId: String(groupId) });
     return request.post<unknown, OperationsExecutionRerunResponse>(
-        `/api/v1/operations/executions/${encodeURIComponent(executionId)}/rerun?${params.toString()}`,
+        groupScopedPath(groupId, `/operations/executions/${encodeURIComponent(executionId)}/rerun`),
         null
     );
 };

@@ -6,7 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 public record SavedDebugExecutionRequest(
-        @NotNull Long groupId,
+        Long groupId,
         @NotBlank String flowPath,
         @NotNull List<String> selectedTaskIds,
         @NotBlank String mode

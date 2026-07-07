@@ -434,7 +434,7 @@ export function useMetadata(groupId: number | undefined) {
         if (!Number.isFinite(numericPreferredId) || numericPreferredId <= 0) return;
 
         const requestId = ++preferredDsRequestIdRef.current;
-        getDataSourceById(numericPreferredId)
+        getDataSourceById(numericPreferredId, groupId)
             .then((dataSource) => {
                 if (preferredDsRequestIdRef.current !== requestId) return;
                 setDataSources(prev => prev.some(item => item.id === dataSource.id) ? prev : [dataSource, ...prev]);
@@ -459,6 +459,7 @@ export function useMetadata(groupId: number | undefined) {
         preferredStoredDataSourceId,
         selectedDsId,
         defaultDsId,
+        groupId,
         lastDsId,
     ]);
 

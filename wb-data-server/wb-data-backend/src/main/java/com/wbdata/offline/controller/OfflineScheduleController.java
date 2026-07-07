@@ -25,7 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Tag(name = "离线开发", description = "Flow 调度配置")
 @RestController
-@RequestMapping("/api/v1/offline/schedules")
+@RequestMapping({"/api/v1/offline/schedules", "/api/v1/groups/{groupId}/offline/schedules"})
 @RequiredArgsConstructor
 public class OfflineScheduleController {
 
@@ -42,14 +42,29 @@ public class OfflineScheduleController {
     @PutMapping
     public Result<OfflineScheduleResponse> updateSchedule(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
                                                           @Valid @RequestBody UpdateOfflineScheduleRequest request) {
-        return Result.success(offlineScheduleService.updateSchedule(request));
+        UpdateOfflineScheduleRequest normalizedRequest = new UpdateOfflineScheduleRequest(
+                context.currentGroup().id(),
+                request.path(),
+                request.cron(),
+                request.timezone(),
+                request.contentHash(),
+                request.fileUpdatedAt()
+        );
+        return Result.success(offlineScheduleService.updateSchedule(normalizedRequest));
     }
 
     @Operation(summary = "启用/停用 Flow 调度")
     @PatchMapping("/status")
     public Result<OfflineScheduleResponse> updateScheduleStatus(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
                                                                 @Valid @RequestBody UpdateOfflineScheduleStatusRequest request) {
-        return Result.success(offlineScheduleService.updateScheduleStatus(request));
+        UpdateOfflineScheduleStatusRequest normalizedRequest = new UpdateOfflineScheduleStatusRequest(
+                context.currentGroup().id(),
+                request.path(),
+                request.enabled(),
+                request.contentHash(),
+                request.fileUpdatedAt()
+        );
+        return Result.success(offlineScheduleService.updateScheduleStatus(normalizedRequest));
     }
 
 }

@@ -1,4 +1,5 @@
 import request from '../utils/request';
+import { groupScopedPath } from './groupScoped';
 import type { PageResult } from './datasource';
 
 export interface GroupSettingsInfo {
@@ -43,33 +44,34 @@ export interface UpdateMemberRolePayload {
 }
 
 export const getGroupSettings = (groupId: number) => {
-    return request.get<unknown, GroupSettingsInfo>('/api/v1/group-settings', { params: { groupId } });
+    return request.get<unknown, GroupSettingsInfo>(groupScopedPath(groupId, '/settings'));
 };
 
 export const updateGroupSettings = (groupId: number, data: UpdateGroupSettingsPayload) => {
-    return request.put<unknown, GroupSettingsInfo>('/api/v1/group-settings', data, { params: { groupId } });
+    return request.put<unknown, GroupSettingsInfo>(groupScopedPath(groupId, '/settings'), data);
 };
 
 export const getMemberPage = (params: { groupId: number; page?: number; size?: number; keyword?: string }) => {
-    return request.get<unknown, PageResult<MemberRecord>>('/api/v1/group-settings/members', { params });
+    const { groupId, ...rest } = params;
+    return request.get<unknown, PageResult<MemberRecord>>(groupScopedPath(groupId, '/settings/members'), { params: rest });
 };
 
 export const getAvailableUsers = (groupId: number, keyword?: string, page: number = 1, size: number = 50) => {
-    return request.get<unknown, PageResult<AvailableUser>>('/api/v1/group-settings/available-users', { params: { groupId, keyword, page, size } });
+    return request.get<unknown, PageResult<AvailableUser>>(groupScopedPath(groupId, '/settings/available-users'), { params: { keyword, page, size } });
 };
 
 export const addMember = (groupId: number, data: AddMemberPayload) => {
-    return request.post<unknown, MemberRecord>('/api/v1/group-settings/members', data, { params: { groupId } });
+    return request.post<unknown, MemberRecord>(groupScopedPath(groupId, '/settings/members'), data);
 };
 
 export const addMembers = (groupId: number, data: AddMembersPayload) => {
-    return request.post<unknown, void>('/api/v1/group-settings/members/batch', data, { params: { groupId } });
+    return request.post<unknown, void>(groupScopedPath(groupId, '/settings/members/batch'), data);
 };
 
 export const updateMemberRole = (groupId: number, memberId: number, data: UpdateMemberRolePayload) => {
-    return request.put<unknown, void>(`/api/v1/group-settings/members/${memberId}/role`, data, { params: { groupId } });
+    return request.put<unknown, void>(groupScopedPath(groupId, `/settings/members/${memberId}/role`), data);
 };
 
 export const removeMember = (groupId: number, memberId: number) => {
-    return request.delete<unknown, void>(`/api/v1/group-settings/members/${memberId}`, { params: { groupId } });
+    return request.delete<unknown, void>(groupScopedPath(groupId, `/settings/members/${memberId}`));
 };

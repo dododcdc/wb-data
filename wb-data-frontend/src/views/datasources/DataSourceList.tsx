@@ -147,7 +147,7 @@ export default function DataSourceList() {
     }, [currentPage, pageData, searchParams, setSearchParams]);
 
     const deleteMutation = useMutation({
-        mutationFn: deleteDataSource,
+        mutationFn: (id: number) => deleteDataSource(id, groupId!),
         onMutate: async (id) => {
             setPendingDeleteId(id);
             await queryClient.cancelQueries({ queryKey: ['dataSources'] });
@@ -197,7 +197,7 @@ export default function DataSourceList() {
     });
 
     const toggleStatusMutation = useMutation({
-        mutationFn: ({ id, status }: { id: number; status: string }) => updateDataSourceStatus(id, status),
+        mutationFn: ({ id, status }: { id: number; status: string }) => updateDataSourceStatus(id, status, groupId!),
         onMutate: async ({ id, status }) => {
             setPendingStatusId(id);
             await queryClient.cancelQueries({ queryKey: ['dataSources'] });

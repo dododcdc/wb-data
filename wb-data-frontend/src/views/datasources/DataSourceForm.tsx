@@ -217,7 +217,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                 setIsLoadingDetails(true);
                 setFormData(createEmptyFormState());
 
-                getDataSourceById(dataSourceId)
+                getDataSourceById(dataSourceId, groupId)
                     .then(res => {
                         if (detailRequestIdRef.current !== requestId || !res) {
                             return;
@@ -253,7 +253,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                 setFormData(createEmptyFormState());
             }
         }
-    }, [dataSourceId, isEdit, open, refetchPlugins]);
+    }, [dataSourceId, groupId, isEdit, open, refetchPlugins]);
 
     useEffect(() => {
         if (!open || pluginDescriptors.length === 0 || (isEdit && isLoadingDetails)) {
@@ -438,7 +438,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                 connectionParams: normalizeConnectionParams(formData.connectionParams),
             };
             if (isEdit && dataSourceId) {
-                await updateDataSource(dataSourceId, payload);
+                await updateDataSource(dataSourceId, payload, groupId!);
                 onSuccess({
                     action: 'edit',
                     dataSourceId,

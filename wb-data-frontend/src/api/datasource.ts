@@ -1,4 +1,5 @@
 import request from '../utils/request';
+import { groupScopedPath } from './groupScoped';
 
 export interface DataSource {
     id: number;
@@ -60,31 +61,36 @@ export interface ConnectionTestResult {
 }
 
 export const getDataSourcePage = (params: DataSourceSearchQuery) => {
-    return request.get<unknown, PageResult<DataSource>>('/api/v1/datasources', { params });
+    const { groupId, ...rest } = params;
+    if (groupId == null) {
+        return request.get<unknown, PageResult<DataSource>>('/api/v1/datasources', { params: rest });
+    }
+    return request.get<unknown, PageResult<DataSource>>(groupScopedPath(groupId, '/datasources'), { params: rest });
 };
 
 export const getDataSourcePlugins = () => {
     return request.get<unknown, DataSourcePluginDescriptor[]>('/api/v1/datasources/plugins');
 };
 
-export const getDataSourceById = (id: number) => {
-    return request.get<unknown, DataSource>(`/api/v1/datasources/${id}`);
+export const getDataSourceById = (id: number, groupId?: number | null) => {
+    const path = groupId == null ? `/api/v1/datasources/${id}` : groupScopedPath(groupId, `/datasources/${id}`);
+    return request.get<unknown, DataSource>(path);
 };
 
 export const createDataSource = (data: Partial<DataSource>, groupId: number) => {
-    return request.post<unknown, boolean>('/api/v1/datasources', data, { params: { groupId } });
+    return request.post<unknown, boolean>(groupScopedPath(groupId, '/datasources'), data);
 };
 
-export const updateDataSource = (id: number, data: Partial<DataSource>) => {
-    return request.put<unknown, boolean>(`/api/v1/datasources/${id}`, data);
+export const updateDataSource = (id: number, data: Partial<DataSource>, groupId: number) => {
+    return request.put<unknown, boolean>(groupScopedPath(groupId, `/datasources/${id}`), data);
 };
 
-export const deleteDataSource = (id: number) => {
-    return request.delete<unknown, boolean>(`/api/v1/datasources/${id}`);
+export const deleteDataSource = (id: number, groupId: number) => {
+    return request.delete<unknown, boolean>(groupScopedPath(groupId, `/datasources/${id}`));
 };
 
-export const updateDataSourceStatus = (id: number, status: string) => {
-    return request.patch<unknown, void>(`/api/v1/datasources/${id}/status`, { status });
+export const updateDataSourceStatus = (id: number, status: string, groupId: number) => {
+    return request.patch<unknown, void>(groupScopedPath(groupId, `/datasources/${id}/status`), { status });
 };
 
 export interface DataSourceConnectionPayload {
@@ -98,9 +104,9 @@ export interface DataSourceConnectionPayload {
 }
 
 export const testNewConnection = (data: DataSourceConnectionPayload, groupId: number) => {
-    return request.post<unknown, ConnectionTestResult>('/api/v1/datasources/test-connection', data, { params: { groupId } });
+    return request.post<unknown, ConnectionTestResult>(groupScopedPath(groupId, '/datasources/test-connection'), data);
 };
 
-export const testExistingConnection = (id: number) => {
-    return request.post<unknown, ConnectionTestResult>(`/api/v1/datasources/${id}/test`);
+export const testExistingConnection = (id: number, groupId: number) => {
+    return request.post<unknown, ConnectionTestResult>(groupScopedPath(groupId, `/datasources/${id}/test`));
 };
