@@ -73,6 +73,7 @@ import {
     validateSqlNodeDataSourceRequirement,
 } from './nodeEditorDataSourceRules';
 import { SaveConflictDialog } from './SaveConflictDialog';
+import { OfflineCommitDialogs } from './OfflineCommitDialogs';
 import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
 import { useOfflineTreeMutations } from './useOfflineTreeMutations';
@@ -1761,119 +1762,27 @@ export default function OfflineWorkbench() {
                 onToggle={(enabled) => void handleScheduleToggle(enabled)}
             />
 
-            <Dialog open={flowCommitDialogOpen} onOpenChange={(open) => {
-                setFlowCommitDialogOpen(open);
-                if (!open) { setCommitMessage(''); }
-            }}>
-                <DialogContent style={{ maxWidth: '500px' }}>
-                    <DialogHeader>
-                        <DialogTitle>提交改动</DialogTitle>
-                    </DialogHeader>
-                    <div className="dialog-body">
-                        <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
-                            提交说明
-                        </label>
-                        <textarea
-                            value={commitMessage}
-                            onChange={(e) => setCommitMessage(e.target.value)}
-                            placeholder={'简要描述本次修改\n\n详细说明修改原因和影响（可选）'}
-                            autoFocus
-                            rows={4}
-                            className="offline-commit-textarea"
-                        />
-                    </div>
-                    <DialogFooter>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => { setFlowCommitDialogOpen(false); setCommitMessage(''); }}
-                            disabled={committing}
-                        >
-                            取消
-                        </Button>
-                        {isDirty && flowCommitDirty && (
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => void handleFlowCommit('saved-only')}
-                                disabled={!commitMessage.trim() || committing}
-                            >
-                                {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                                仅提交已保存内容
-                            </Button>
-                        )}
-                        <Button
-                            type="button"
-                            variant="default"
-                            size="sm"
-                            onClick={() => void handleFlowCommit(isDirty ? 'save-and-commit' : 'saved-only')}
-                            disabled={!commitMessage.trim() || committing}
-                        >
-                            {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                            {committing ? '提交中…' : isDirty ? '保存并提交' : '提交'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            <Dialog open={repoCommitDialogOpen} onOpenChange={(open) => {
-                setRepoCommitDialogOpen(open);
-                if (!open) { setCommitMessage(''); }
-            }}>
-                <DialogContent style={{ maxWidth: '500px' }}>
-                    <DialogHeader>
-                        <DialogTitle>提交仓库</DialogTitle>
-                    </DialogHeader>
-                    <div className="dialog-body">
-                        <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
-                            提交说明
-                        </label>
-                        <textarea
-                            value={commitMessage}
-                            onChange={(e) => setCommitMessage(e.target.value)}
-                            placeholder={'简要描述本次修改\n\n详细说明修改原因和影响（可选）'}
-                            autoFocus
-                            rows={4}
-                            className="offline-commit-textarea"
-                        />
-                    </div>
-                    <DialogFooter>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => { setRepoCommitDialogOpen(false); setCommitMessage(''); }}
-                            disabled={committing}
-                        >
-                            取消
-                        </Button>
-                        {isDirty && repoStatus?.dirty && (
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => void handleRepoCommit('saved-only')}
-                                disabled={!commitMessage.trim() || committing}
-                            >
-                                {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                                仅提交已保存内容
-                            </Button>
-                        )}
-                        <Button
-                            type="button"
-                            variant="default"
-                            size="sm"
-                            onClick={() => void handleRepoCommit(isDirty ? 'save-and-commit' : 'saved-only')}
-                            disabled={!commitMessage.trim() || committing}
-                        >
-                            {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                            {committing ? '提交中…' : isDirty ? '保存并提交' : '提交'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <OfflineCommitDialogs
+                flowCommitOpen={flowCommitDialogOpen}
+                repoCommitOpen={repoCommitDialogOpen}
+                commitMessage={commitMessage}
+                committing={committing}
+                flowDraftDirty={isDirty}
+                flowCommitDirty={flowCommitDirty}
+                repoDraftDirty={isDirty}
+                repoDirty={!!repoStatus?.dirty}
+                onFlowCommitOpenChange={(open) => {
+                    setFlowCommitDialogOpen(open);
+                    if (!open) { setCommitMessage(''); }
+                }}
+                onRepoCommitOpenChange={(open) => {
+                    setRepoCommitDialogOpen(open);
+                    if (!open) { setCommitMessage(''); }
+                }}
+                onCommitMessageChange={setCommitMessage}
+                onCommitFlow={(mode) => void handleFlowCommit(mode)}
+                onCommitRepo={(mode) => void handleRepoCommit(mode)}
+            />
 
             <Dialog open={pushDialogOpen} onOpenChange={setPushDialogOpen}>
                 <DialogContent style={{ maxWidth: '420px' }}>
