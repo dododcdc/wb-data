@@ -195,7 +195,7 @@ function makeRepoStatus() {
     };
 }
 
-function makeRepoTree(options?: { includeFolder?: boolean }) {
+function makeRepoTree(options?: { includeFolder?: boolean; includeSecondFlow?: boolean }) {
     const children: Array<{
         id: string;
         kind: 'FLOW' | 'DIRECTORY';
@@ -211,6 +211,15 @@ function makeRepoTree(options?: { includeFolder?: boolean }) {
             children: [],
         },
     ];
+    if (options?.includeSecondFlow) {
+        children.push({
+            id: 'flow-2',
+            kind: 'FLOW',
+            name: 'Second Flow',
+            path: '_flows/second/flow.yaml',
+            children: [],
+        });
+    }
     if (options?.includeFolder) {
         children.push({
             id: 'folder-1',
@@ -233,8 +242,13 @@ function makeRepoTree(options?: { includeFolder?: boolean }) {
 }
 
 function makeFlowDocument() {
+    return makeFlowDocumentForPath('_flows/example/flow.yaml');
+}
+
+function makeFlowDocumentForPath(path: string) {
+    const flowId = path.includes('/second/') ? 'second' : 'example';
     return {
-        ...makeFlowDocumentBase(),
+        ...makeFlowDocumentBase(path, flowId),
         documentHash: 'base-hash',
         documentUpdatedAt: 100,
     };
@@ -267,12 +281,12 @@ function makeFlowDocumentWithNodeCount(nodeCount: number) {
     };
 }
 
-function makeFlowDocumentBase() {
+function makeFlowDocumentBase(path = '_flows/example/flow.yaml', flowId = 'example') {
     return {
         groupId: 1,
-        path: '_flows/example/flow.yaml',
-        flowId: 'example',
-        namespace: 'team.example',
+        path,
+        flowId,
+        namespace: `team.${flowId}`,
         documentHash: 'base-hash',
         documentUpdatedAt: 100,
         stages: [
@@ -830,6 +844,85 @@ describe('OfflineWorkbench commit UI', () => {
         await waitFor(() => {
             expect(offlineApi.pushOfflineRepo).toHaveBeenCalledWith(1);
         });
+    });
+
+    it('keeps the current Flow open when cancelling dirty Flow navigation', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write'];
+        vi.mocked(offlineApi.getOfflineRepoTree).mockResolvedValue(makeRepoTree({ includeSecondFlow: true }));
+        vi.mocked(offlineApi.getOfflineFlowDocument).mockImplementation(async (_groupId, path) => makeFlowDocumentForPath(path));
+
+        renderOfflineWorkbench();
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        expect((await screen.findByTestId('flow-canvas')).textContent).toContain('_flows/example/flow.yaml');
+
+        fireEvent.click(screen.getByRole('button', { name: '模拟画布修改' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Second Flow' }));
+
+        const dialog = await screen.findByRole('dialog', { name: '您有未保存的更改' });
+        fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: '您有未保存的更改' })).toBeNull();
+        });
+        expect(screen.getByTestId('flow-canvas').textContent).toContain('_flows/example/flow.yaml');
+        expect(offlineApi.getOfflineFlowDocument).not.toHaveBeenCalledWith(1, '_flows/second/flow.yaml');
+    });
+
+    it('opens the target Flow after discarding dirty Flow navigation', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write'];
+        vi.mocked(offlineApi.getOfflineRepoTree).mockResolvedValue(makeRepoTree({ includeSecondFlow: true }));
+        vi.mocked(offlineApi.getOfflineFlowDocument).mockImplementation(async (_groupId, path) => makeFlowDocumentForPath(path));
+
+        renderOfflineWorkbench();
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        expect((await screen.findByTestId('flow-canvas')).textContent).toContain('_flows/example/flow.yaml');
+
+        fireEvent.click(screen.getByRole('button', { name: '模拟画布修改' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Second Flow' }));
+
+        const dialog = await screen.findByRole('dialog', { name: '您有未保存的更改' });
+        fireEvent.click(within(dialog).getByRole('button', { name: '放弃修改' }));
+
+        await waitFor(() => {
+            expect(offlineApi.getOfflineFlowDocument).toHaveBeenCalledWith(1, '_flows/second/flow.yaml');
+        });
+        expect((await screen.findByTestId('flow-canvas')).textContent).toContain('_flows/second/flow.yaml');
+    });
+
+    it('saves before opening the target Flow during dirty Flow navigation', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write'];
+        vi.mocked(offlineApi.getOfflineRepoTree).mockResolvedValue(makeRepoTree({ includeSecondFlow: true }));
+        vi.mocked(offlineApi.getOfflineFlowDocument).mockImplementation(async (_groupId, path) => makeFlowDocumentForPath(path));
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue({
+            ...makeFlowDocumentForPath('_flows/example/flow.yaml'),
+            documentHash: 'saved-hash',
+            documentUpdatedAt: 101,
+        });
+
+        renderOfflineWorkbench();
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        expect((await screen.findByTestId('flow-canvas')).textContent).toContain('_flows/example/flow.yaml');
+
+        fireEvent.click(screen.getByRole('button', { name: '模拟画布修改' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Second Flow' }));
+
+        const dialog = await screen.findByRole('dialog', { name: '您有未保存的更改' });
+        fireEvent.click(within(dialog).getByRole('button', { name: '保存并离开' }));
+
+        await waitFor(() => {
+            expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledWith(expect.objectContaining({
+                groupId: 1,
+                path: '_flows/example/flow.yaml',
+            }));
+            expect(offlineApi.getOfflineFlowDocument).toHaveBeenCalledWith(1, '_flows/second/flow.yaml');
+        });
+        expect((await screen.findByTestId('flow-canvas')).textContent).toContain('_flows/second/flow.yaml');
     });
 });
 
