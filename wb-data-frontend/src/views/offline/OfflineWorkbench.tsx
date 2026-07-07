@@ -80,6 +80,13 @@ import { useOfflineTreeMutations } from './useOfflineTreeMutations';
 import { useFlowExecutionAndSchedule } from './useFlowExecutionAndSchedule';
 import { useFlowEditingSession } from './useFlowEditingSession';
 import { useOfflineWorkbenchNavigation } from './useOfflineWorkbenchNavigation';
+import {
+    useOfflineWorkbenchBeforeUnloadLeave,
+    useOfflineWorkbenchBranchEvent,
+    useOfflineWorkbenchGroupLifecycle,
+    useOfflineWorkbenchNewFlowShortcut,
+    useOfflineWorkbenchUrlRestore,
+} from './OfflineWorkbenchLifecycle';
 
 import './OfflineWorkbench.css';
 
@@ -671,7 +678,6 @@ export default function OfflineWorkbench() {
     const [expandedTreeIds, setExpandedTreeIds] = useState<string[]>([]);
     const canvasBoardRef = useRef<HTMLDivElement>(null);
     const branchSwitcherRef = useRef<HTMLDivElement>(null);
-    const previousGroupIdRef = useRef<number | null>(groupId);
     const loadScheduleSnapshotRef = useRef<((path: string) => Promise<void>) | null>(null);
     const resetExecutionAndScheduleRef = useRef<(() => void) | null>(null);
     const refreshRepoStatusRef = useRef<(() => Promise<void>) | null>(null);
@@ -1022,69 +1028,43 @@ export default function OfflineWorkbench() {
         };
     }, [branchMenuOpen, setBranchMenuOpen]);
 
-    useEffect(() => {
-        const previousGroupId = previousGroupIdRef.current;
-        if (previousGroupId !== null && previousGroupId !== groupId) {
-            leaveCurrentFlow(undefined, previousGroupId);
-        }
-        previousGroupIdRef.current = groupId;
+    useOfflineWorkbenchGroupLifecycle({
+        groupId,
+        leaveCurrentFlow,
+        resetActiveFlow: resetActiveFlowAfterBranchSwitch,
+        resetBranchList,
+        resetBranchSwitchState,
+        refreshWorkspace,
+    });
 
-        resetActiveFlowAfterBranchSwitch();
-        resetBranchList();
-        resetBranchSwitchState();
+    useOfflineWorkbenchBranchEvent({
+        groupId,
+        resetActiveFlow: resetActiveFlowAfterBranchSwitch,
+        resetBranchList,
+        resetBranchSwitchState,
+        refreshWorkspace,
+    });
 
-        if (!groupId) return;
-        void refreshWorkspace();
-    }, [groupId, leaveCurrentFlow, refreshWorkspace, resetActiveFlowAfterBranchSwitch, resetBranchList, resetBranchSwitchState]);
+    useOfflineWorkbenchUrlRestore({
+        groupId,
+        repoTree,
+        searchParams,
+        openFlowDocument,
+    });
 
-    useEffect(() => {
-        const handleBranchChanged = (event: Event) => {
-            const detail = (event as CustomEvent<{ groupId?: number; source?: string }>).detail;
-            if (!groupId || detail?.groupId !== groupId) return;
-            if (detail?.source === 'workbench') return;
+    useOfflineWorkbenchBeforeUnloadLeave({
+        groupId,
+        draftSession,
+        leaveCurrentFlow,
+    });
 
-            resetBranchList();
-            resetBranchSwitchState();
-            resetActiveFlowAfterBranchSwitch();
-            void refreshWorkspace();
-        };
-
-        window.addEventListener('wbdata:offline-branch-changed', handleBranchChanged);
-        return () => window.removeEventListener('wbdata:offline-branch-changed', handleBranchChanged);
-    }, [groupId, refreshWorkspace, resetActiveFlowAfterBranchSwitch, resetBranchList, resetBranchSwitchState]);
-
-    // Restore flow from URL param (e.g. returning from execution log page)
-    const restoreFlowRef = useRef(false);
-    useEffect(() => {
-        if (!groupId || !repoTree || restoreFlowRef.current) return;
-        const flowPath = searchParams.get('flowPath');
-        if (!flowPath) return;
-        restoreFlowRef.current = true;
-        void openFlowDocument(flowPath, { force: true });
-    }, [groupId, repoTree, searchParams, openFlowDocument]);
-
-    useEffect(() => {
-        if (!groupId || !draftSession) return;
-        const handleBeforeUnload = () => {
-            leaveCurrentFlow();
-        };
-        window.addEventListener('beforeunload', handleBeforeUnload);
-        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, [draftSession, groupId, leaveCurrentFlow]);
-
-    // Ctrl/Cmd+N to open new Flow dialog
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
-                e.preventDefault();
-                if (!newFlowDialogOpen && !nodeEditorOpen && !executionDialogOpen && !scheduleDialogOpen) {
-                    openRootNewFlowDialog();
-                }
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [newFlowDialogOpen, nodeEditorOpen, executionDialogOpen, scheduleDialogOpen, openRootNewFlowDialog]);
+    useOfflineWorkbenchNewFlowShortcut({
+        newFlowDialogOpen,
+        nodeEditorOpen,
+        executionDialogOpen,
+        scheduleDialogOpen,
+        openRootNewFlowDialog,
+    });
 
 
 
