@@ -1,6 +1,5 @@
-export function buildExecutionListSearchParams(groupId: number, flowPath: string, requestedBy?: number | null) {
+export function buildExecutionListSearchParams(flowPath: string, requestedBy?: number | null) {
     const params = new URLSearchParams({
-        groupId: String(groupId),
         flowPath,
     });
     if (requestedBy != null) {

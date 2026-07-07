@@ -43,7 +43,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Tag(name = "离线开发", description = "离线开发模块基础能力")
 @RestController
-@RequestMapping("/api/v1/offline")
+@RequestMapping({"/api/v1/offline", "/api/v1/groups/{groupId}/offline"})
 @RequiredArgsConstructor
 public class OfflineRepoController {
 

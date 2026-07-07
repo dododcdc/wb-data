@@ -23,7 +23,7 @@ import java.time.Instant;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/operations/executions")
+@RequestMapping({"/api/v1/operations/executions", "/api/v1/groups/{groupId}/operations/executions"})
 @RequiredArgsConstructor
 public class OperationsExecutionController {
 

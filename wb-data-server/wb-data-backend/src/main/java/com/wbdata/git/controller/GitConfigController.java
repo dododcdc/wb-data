@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
-@RequestMapping("/api/v1/git/config")
+@RequestMapping({"/api/v1/git/config", "/api/v1/groups/{groupId}/git/config"})
 @RequiredArgsConstructor
 public class GitConfigController {
 

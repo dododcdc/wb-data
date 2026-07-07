@@ -28,7 +28,7 @@ import java.util.List;
 
 @Tag(name = "数据源管理", description = "数据源的增删改查及测试连接")
 @RestController
-@RequestMapping("/api/v1/datasources")
+@RequestMapping({"/api/v1/datasources", "/api/v1/groups/{groupId}/datasources"})
 @RequiredArgsConstructor
 public class DataSourceController {
 
@@ -57,8 +57,10 @@ public class DataSourceController {
 
     @Operation(summary = "获取数据源详情")
     @GetMapping("/{id}")
-    public Result<DataSource> getById(@PathVariable Long id) {
+    public Result<DataSource> getById(@PathVariable Long id,
+                                      @PathVariable(name = "groupId", required = false) Long groupId) {
         DataSource dataSource = requireDataSourceContext(id, "datasource.read");
+        ensureDataSourceBelongsToPathGroup(dataSource, groupId);
         return Result.success(dataSource);
     }
 
@@ -89,7 +91,7 @@ public class DataSourceController {
     public Result<Boolean> update(@RequireGroupAuth(Permission.DATASOURCE_WRITE) AuthContextResponse context,
                                   @PathVariable Long id,
                                   @Validated @RequestBody DataSourceSaveDTO dto) {
-        DataSource existing = requireDataSourceContext(id, Permission.DATASOURCE_WRITE.code());
+        DataSource existing = requireDataSourceInCurrentGroup(context, id, Permission.DATASOURCE_WRITE.code());
         validatePluginType(dto.getType());
         DataSource dataSource = new DataSource();
         dataSource.setId(id);
@@ -116,7 +118,7 @@ public class DataSourceController {
     @DeleteMapping("/{id}")
     public Result<Boolean> delete(@RequireGroupAuth(Permission.DATASOURCE_WRITE) AuthContextResponse context,
                                   @PathVariable Long id) {
-        requireDataSourceContext(id, Permission.DATASOURCE_WRITE.code());
+        requireDataSourceInCurrentGroup(context, id, Permission.DATASOURCE_WRITE.code());
         boolean removed = dataSourceService.removeById(id);
         poolManager.invalidate(id);   // close and evict the pool for the deleted data source
         return Result.success(removed);
@@ -127,7 +129,7 @@ public class DataSourceController {
     public Result<Void> updateStatus(@RequireGroupAuth(Permission.DATASOURCE_WRITE) AuthContextResponse context,
                                      @PathVariable Long id,
                                      @Validated @RequestBody DataSourceStatusRequest request) {
-        requireDataSourceContext(id, Permission.DATASOURCE_WRITE.code());
+        requireDataSourceInCurrentGroup(context, id, Permission.DATASOURCE_WRITE.code());
         dataSourceService.updateStatus(id, request.status());
         return Result.success(null);
     }
@@ -143,8 +145,23 @@ public class DataSourceController {
     @PostMapping("/{id}/test")
     public Result<ConnectionTestResult> testExistingConnection(@RequireGroupAuth(Permission.DATASOURCE_READ) AuthContextResponse context,
                                                                @PathVariable Long id) {
-        requireDataSourceContext(id, Permission.DATASOURCE_READ.code());
+        requireDataSourceInCurrentGroup(context, id, Permission.DATASOURCE_READ.code());
         return Result.success(dataSourceService.testConnection(id));
+    }
+
+    private DataSource requireDataSourceInCurrentGroup(AuthContextResponse context, Long dataSourceId, String permission) {
+        DataSource dataSource = requireDataSourceContext(dataSourceId, permission);
+        Long currentGroupId = context.currentGroup().id();
+        if (!currentGroupId.equals(dataSource.getGroupId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "数据源不存在");
+        }
+        return dataSource;
+    }
+
+    private void ensureDataSourceBelongsToPathGroup(DataSource dataSource, Long groupId) {
+        if (groupId != null && !groupId.equals(dataSource.getGroupId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "数据源不存在");
+        }
     }
 
     private DataSource requireDataSourceContext(Long dataSourceId, String permission) {

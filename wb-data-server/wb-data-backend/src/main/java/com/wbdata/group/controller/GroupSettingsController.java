@@ -20,7 +20,7 @@ import java.util.List;
 
 @Tag(name = "成员与设置", description = "项目组信息、成员管理")
 @RestController
-@RequestMapping("/api/v1/group-settings")
+@RequestMapping({"/api/v1/group-settings", "/api/v1/groups/{groupId}/settings"})
 @RequiredArgsConstructor
 public class GroupSettingsController {
 
@@ -81,11 +81,11 @@ public class GroupSettingsController {
 
     @Operation(summary = "修改成员角色")
     @PutMapping("/members/{id}/role")
-    public Result<Void> updateMemberRole(
+        public Result<Void> updateMemberRole(
             @RequireGroupAuth(Permission.MEMBER_MANAGE) AuthContextResponse context,
             @PathVariable Long id,
             @Validated @RequestBody UpdateMemberRoleRequest req) {
-        groupSettingsService.updateMemberRole(id, req, context.user().id());
+        groupSettingsService.updateMemberRole(context.currentGroup().id(), id, req, context.user().id());
         return Result.success(null);
     }
 
@@ -94,7 +94,7 @@ public class GroupSettingsController {
     public Result<Void> removeMember(
             @RequireGroupAuth(Permission.MEMBER_MANAGE) AuthContextResponse context,
             @PathVariable Long id) {
-        groupSettingsService.removeMember(id, context.user().id());
+        groupSettingsService.removeMember(context.currentGroup().id(), id, context.user().id());
         return Result.success(null);
     }
 

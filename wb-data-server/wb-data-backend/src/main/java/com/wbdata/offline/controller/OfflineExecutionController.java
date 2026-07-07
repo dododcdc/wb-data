@@ -34,7 +34,7 @@ import java.util.List;
 
 @Tag(name = "离线开发", description = "Flow 调试执行与执行结果")
 @RestController
-@RequestMapping("/api/v1/offline/executions")
+@RequestMapping({"/api/v1/offline/executions", "/api/v1/groups/{groupId}/offline/executions"})
 @RequiredArgsConstructor
 public class OfflineExecutionController {
 
@@ -46,7 +46,10 @@ public class OfflineExecutionController {
     @PostMapping("/debug")
     public Result<OfflineExecutionResponse> createDebugExecution(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
                                                                  @Valid @RequestBody DebugExecutionRequest request) {
-        return Result.success(offlineExecutionService.createDebugExecution(request, context.user().id()));
+        return Result.success(offlineExecutionService.createDebugExecution(
+                normalizeDebugExecutionRequest(context, request),
+                context.user().id()
+        ));
     }
 
     @Operation(summary = "基于当前已保存文件触发调试执行")
@@ -68,7 +71,18 @@ public class OfflineExecutionController {
     @PostMapping("/debug/document")
     public Result<OfflineExecutionResponse> createDebugExecutionFromDocument(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
                                                                              @Valid @RequestBody DebugDocumentExecutionRequest request) {
-        var compiledDraft = offlineFlowDocumentService.compileFlowDraft(request);
+        DebugDocumentExecutionRequest normalizedDocumentRequest = new DebugDocumentExecutionRequest(
+                context.currentGroup().id(),
+                request.flowPath(),
+                request.documentHash(),
+                request.documentUpdatedAt(),
+                request.stages(),
+                request.edges(),
+                request.layout(),
+                request.selectedTaskIds(),
+                request.mode()
+        );
+        var compiledDraft = offlineFlowDocumentService.compileFlowDraft(normalizedDocumentRequest);
         DebugExecutionRequest resolvedRequest = new DebugExecutionRequest(
                 context.currentGroup().id(),
                 request.flowPath(),
@@ -81,6 +95,16 @@ public class OfflineExecutionController {
                 compiledDraft.namespaceFileContents(),
                 context.user().id()
         ));
+    }
+
+    private DebugExecutionRequest normalizeDebugExecutionRequest(AuthContextResponse context, DebugExecutionRequest request) {
+        return new DebugExecutionRequest(
+                context.currentGroup().id(),
+                request.flowPath(),
+                request.content(),
+                request.selectedTaskIds(),
+                request.mode()
+        );
     }
 
     @Operation(summary = "查询当前 Flow 的执行记录")

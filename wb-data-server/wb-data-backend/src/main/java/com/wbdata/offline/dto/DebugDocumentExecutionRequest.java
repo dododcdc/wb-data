@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 public record DebugDocumentExecutionRequest(
-        @NotNull Long groupId,
+        Long groupId,
         @NotBlank String flowPath,
         String documentHash,
         long documentUpdatedAt,

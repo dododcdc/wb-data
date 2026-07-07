@@ -149,7 +149,7 @@ export function useNodeEditorDataSources(_params: UseNodeEditorDataSourcesParams
         }
 
         const requestId = ++selectedRequestIdRef.current;
-        getDataSourceById(currentDataSourceId)
+        getDataSourceById(currentDataSourceId, groupId)
             .then((dataSource) => {
                 if (requestId !== selectedRequestIdRef.current) {
                     return;
@@ -168,7 +168,7 @@ export function useNodeEditorDataSources(_params: UseNodeEditorDataSourcesParams
                 }
                 console.error('Failed to resolve node editor data source', error);
             });
-    }, [allowedDataSourceTypes, currentDataSourceId, dataSources, kind, open]);
+    }, [allowedDataSourceTypes, currentDataSourceId, dataSources, groupId, kind, open]);
 
     useEffect(() => clearSearchTimer, [clearSearchTimer]);
 

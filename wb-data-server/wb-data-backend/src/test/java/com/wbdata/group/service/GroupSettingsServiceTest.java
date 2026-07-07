@@ -5,6 +5,7 @@ import com.wbdata.auth.enums.SystemRole;
 import com.wbdata.group.dto.AddMemberRequest;
 import com.wbdata.group.dto.AddMembersRequest;
 import com.wbdata.group.dto.AvailableUserResponse;
+import com.wbdata.group.dto.UpdateMemberRoleRequest;
 import com.wbdata.group.entity.WbProjectGroupMember;
 import com.wbdata.group.mapper.WbProjectGroupMapper;
 import com.wbdata.group.mapper.WbProjectGroupMemberMapper;
@@ -128,6 +129,36 @@ class GroupSettingsServiceTest {
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(ex.getReason()).contains("系统管理员");
         verify(memberMapper, never()).insert(any(WbProjectGroupMember.class));
+    }
+
+    @Test
+    void updateMemberRole_rejectsMemberOutsideGroup() {
+        UpdateMemberRoleRequest req = new UpdateMemberRoleRequest();
+        req.setRole(GroupRole.DEVELOPER.name());
+        WbProjectGroupMember member = new WbProjectGroupMember();
+        member.setId(20L);
+        member.setGroupId(99L);
+        member.setUserId(8L);
+        member.setRole(GroupRole.DEVELOPER.name());
+        when(memberMapper.selectById(20L)).thenReturn(member);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> service.updateMemberRole(12L, 20L, req, 99L));
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void removeMember_rejectsMemberOutsideGroup() {
+        WbProjectGroupMember member = new WbProjectGroupMember();
+        member.setId(20L);
+        member.setGroupId(99L);
+        member.setUserId(8L);
+        member.setRole(GroupRole.DEVELOPER.name());
+        when(memberMapper.selectById(20L)).thenReturn(member);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> service.removeMember(12L, 20L, 99L));
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     private static WbUser activeUser(Long id, String username, String displayName, String systemRole) {

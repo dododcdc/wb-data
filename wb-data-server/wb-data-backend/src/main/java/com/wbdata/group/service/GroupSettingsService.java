@@ -146,11 +146,8 @@ public class GroupSettingsService {
 
 
     @Transactional
-    public void updateMemberRole(Long memberId, UpdateMemberRoleRequest req, Long operatorId) {
-        WbProjectGroupMember member = memberMapper.selectById(memberId);
-        if (member == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "成员记录不存在");
-        }
+    public void updateMemberRole(Long groupId, Long memberId, UpdateMemberRoleRequest req, Long operatorId) {
+        WbProjectGroupMember member = requireMemberInGroup(groupId, memberId);
 
         if (Objects.equals(member.getUserId(), operatorId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不可修改自己的角色");
@@ -174,11 +171,8 @@ public class GroupSettingsService {
 
 
     @Transactional
-    public void removeMember(Long memberId, Long operatorId) {
-        WbProjectGroupMember member = memberMapper.selectById(memberId);
-        if (member == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "成员记录不存在");
-        }
+    public void removeMember(Long groupId, Long memberId, Long operatorId) {
+        WbProjectGroupMember member = requireMemberInGroup(groupId, memberId);
 
         if (Objects.equals(member.getUserId(), operatorId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不可移除自己");
@@ -194,6 +188,14 @@ public class GroupSettingsService {
         }
 
         memberMapper.deleteById(memberId);
+    }
+
+    private WbProjectGroupMember requireMemberInGroup(Long groupId, Long memberId) {
+        WbProjectGroupMember member = memberMapper.selectById(memberId);
+        if (member == null || !Objects.equals(member.getGroupId(), groupId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "成员记录不存在");
+        }
+        return member;
     }
 
 

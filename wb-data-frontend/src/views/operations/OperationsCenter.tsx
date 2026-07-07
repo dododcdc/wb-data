@@ -300,7 +300,7 @@ export default function OperationsCenter() {
 
     const executionsQuery = useQuery({
         queryKey: ['operations-executions', groupId, listQueryPayload],
-        queryFn: () => listOperationsExecutions(listQueryPayload ?? undefined),
+        queryFn: () => listOperationsExecutions(listQueryPayload!),
         enabled: listQueryPayload != null && branchInitializedGroupId === groupId,
         placeholderData: (previousData) => previousData,
     });

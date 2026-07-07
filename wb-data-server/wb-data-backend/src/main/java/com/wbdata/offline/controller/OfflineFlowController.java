@@ -31,7 +31,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Tag(name = "离线开发", description = "Flow 内容读写")
 @RestController
-@RequestMapping("/api/v1/offline/flows")
+@RequestMapping({"/api/v1/offline/flows", "/api/v1/groups/{groupId}/offline/flows"})
 @RequiredArgsConstructor
 public class OfflineFlowController {
 

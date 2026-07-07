@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1/git/sync-config")
+@RequestMapping({"/api/v1/git/sync-config", "/api/v1/groups/{groupId}/git/sync-config"})
 @RequiredArgsConstructor
 public class GitSyncConfigController {
 
