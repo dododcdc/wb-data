@@ -31,6 +31,11 @@ java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
 - **Kestra** 实例（默认 `http://localhost:8090`）
 - **Hive**（可选）：`docker compose -f docker-compose.hive.yml up -d`
 
+### 本地环境文档
+
+- 日常开发：`docs/local-development.md`
+- 完整容器集成测试：`docs/local-integration-testing.md`
+
 ## Architecture Overview
 
 ```
