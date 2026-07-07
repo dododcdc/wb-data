@@ -77,14 +77,10 @@ import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
 import { useOfflineTreeMutations } from './useOfflineTreeMutations';
 import { useFlowExecutionAndSchedule } from './useFlowExecutionAndSchedule';
-import { useFlowEditingSession, type OpenFlowDocumentOptions } from './useFlowEditingSession';
+import { useFlowEditingSession } from './useFlowEditingSession';
+import { useOfflineWorkbenchNavigation } from './useOfflineWorkbenchNavigation';
 
 import './OfflineWorkbench.css';
-
-type NavigationBlocker = ReturnType<typeof useBlocker>;
-type PendingNavigationState =
-    | { type: 'flow'; flowPath: string }
-    | { type: 'router'; blocker: NavigationBlocker };
 
 function formatFlowPathDisplayName(flowPath: string) {
     const normalized = flowPath.replace(/\\/g, '/');
@@ -678,8 +674,6 @@ export default function OfflineWorkbench() {
     const loadScheduleSnapshotRef = useRef<((path: string) => Promise<void>) | null>(null);
     const resetExecutionAndScheduleRef = useRef<(() => void) | null>(null);
     const refreshRepoStatusRef = useRef<(() => Promise<void>) | null>(null);
-    const [pendingNavigation, setPendingNavigation] = useState<PendingNavigationState | null>(null);
-    const didDiscardLeaveRef = useRef(false);
 
     const loadScheduleSnapshotBridge = useCallback((path: string) => loadScheduleSnapshotRef.current?.(path) ?? Promise.resolve(), []);
     const resetExecutionAndScheduleBridge = useCallback(() => {
@@ -825,19 +819,6 @@ export default function OfflineWorkbench() {
     loadScheduleSnapshotRef.current = loadScheduleSnapshot;
     resetExecutionAndScheduleRef.current = resetExecutionAndSchedule;
 
-    useBeforeUnloadGuard(isDirty);
-
-    const blocker = useBlocker(
-        ({ currentLocation, nextLocation }) =>
-            isDirty && currentLocation.pathname !== nextLocation.pathname
-    );
-
-    useEffect(() => {
-        if (blocker.state === 'blocked') {
-            setPendingNavigation({ type: 'router', blocker });
-        }
-    }, [blocker]);
-
     const nodeIssues = useMemo(() => {
         if (!flowDocument) return {};
         const issues: Record<string, string | null> = {};
@@ -898,39 +879,43 @@ export default function OfflineWorkbench() {
         ]);
     }, [refreshRepoStatus, refreshRepoTree, refreshRemoteStatus]);
 
-    const openFlowDocument = useCallback(async (pathValue: string, options?: OpenFlowDocumentOptions) => {
-        if (!groupId) return false;
-        const normalizedPath = pathValue.trim();
-        if (!normalizedPath) {
-            return false;
-        }
-
-        const skipLeaveCurrent = didDiscardLeaveRef.current;
-        if (!skipLeaveCurrent && draftSession && draftSession.path !== normalizedPath) {
-            if (!options?.force && !options?.canLeaveDirty && isDirty) {
-                setPendingNavigation({ type: 'flow', flowPath: normalizedPath });
-                return false;
-            }
-        }
-        didDiscardLeaveRef.current = false;
-
-        return openFlowDocumentFromSession(normalizedPath, {
-            ...options,
-            canLeaveDirty: true,
-            skipLeaveCurrent,
-        });
-    }, [draftSession, groupId, isDirty, openFlowDocumentFromSession]);
-
     const resetActiveFlowAfterBranchSwitch = useCallback(() => {
         resetAfterBranchSwitch();
     }, [resetAfterBranchSwitch]);
 
+    const {
+        pendingNavigation,
+        openFlowDocument,
+        markDraftDiscardedForExternalSwitch,
+        confirmLeave: handleConfirmLeave,
+        cancelLeave: handleCancelLeave,
+        setPendingRouterNavigation,
+    } = useOfflineWorkbenchNavigation({
+        groupId,
+        draftSession,
+        isDirty,
+        openFlowDocumentFromSession,
+        saveCurrentFlow: handleSaveFlow,
+        discardCurrentFlowDraft,
+        resetActiveFlow: resetActiveFlowAfterBranchSwitch,
+    });
+
+    useBeforeUnloadGuard(isDirty);
+
+    const blocker = useBlocker(
+        ({ currentLocation, nextLocation }) =>
+            isDirty && currentLocation.pathname !== nextLocation.pathname
+    );
+
+    useEffect(() => {
+        if (blocker.state === 'blocked') {
+            setPendingRouterNavigation(blocker);
+        }
+    }, [blocker, setPendingRouterNavigation]);
+
     const discardActiveDraftForBranchSwitch = useCallback(() => {
-        if (!draftSession) return;
-        didDiscardLeaveRef.current = true;
-        discardCurrentFlowDraft();
-        resetActiveFlowAfterBranchSwitch();
-    }, [discardCurrentFlowDraft, draftSession, resetActiveFlowAfterBranchSwitch]);
+        markDraftDiscardedForExternalSwitch();
+    }, [markDraftDiscardedForExternalSwitch]);
 
     const handleBranchSwitchRequest = useCallback((branchName: string) => {
         requestBranchSwitch(branchName, {
@@ -1178,37 +1163,6 @@ export default function OfflineWorkbench() {
             setCommitting(false);
         }
     }, [groupId, activeFlowPath, commitMessage, isDirty, handleSaveFlow, commitRepository, refreshFlowCommitStatus]);
-
-    const handleConfirmLeave = useCallback(async (action: 'save' | 'discard') => {
-        if (!pendingNavigation) return;
-
-        if (action === 'save') {
-            const saved = await handleSaveFlow();
-            if (!saved) return;
-        } else {
-            if (draftSession) {
-                didDiscardLeaveRef.current = true;
-                discardCurrentFlowDraft();
-            }
-        }
-
-        const target = pendingNavigation;
-        setPendingNavigation(null);
-
-        if (target.type === 'router') {
-            target.blocker.proceed?.();
-        } else if (target.type === 'flow' && target.flowPath) {
-            void openFlowDocument(target.flowPath, { force: true });
-        }
-    }, [pendingNavigation, handleSaveFlow, draftSession, discardCurrentFlowDraft, openFlowDocument]);
-
-    const handleCancelLeave = useCallback(() => {
-        if (!pendingNavigation) return;
-        if (pendingNavigation.type === 'router') {
-            pendingNavigation.blocker.reset?.();
-        }
-        setPendingNavigation(null);
-    }, [pendingNavigation]);
 
     const handleOpenFlowCommitDialog = useCallback(() => {
         if (!groupId || !activeFlowPath || !flowDocument) return;
