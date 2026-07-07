@@ -152,6 +152,18 @@ describe('addFlowNode', () => {
         expect(result.document.documentUpdatedAt).toBe(1);
         expect((result.document as TestOfflineFlowDocument).content).toBe('');
     });
+
+    it('offsets a new node when the requested position is already occupied', () => {
+        const result = expectOk(addFlowNode({
+            document: makeDocument(),
+            kind: 'SHELL',
+            position: { x: 100, y: 200 },
+            selectedTaskIds: [],
+            maxNodes: 20,
+        }));
+
+        expect(result.document.layout.shell_node_3).toEqual({ x: 148, y: 248 });
+    });
 });
 
 describe('applyFlowCanvasNodes', () => {
@@ -184,6 +196,17 @@ describe('applyFlowCanvasEdges and applyFlowCanvasLayout', () => {
         expect(withLayout.layout).toEqual({
             shell_node_2: { x: 20, y: 40 },
             shell_node_1: { x: 10, y: 30 },
+        });
+    });
+
+    it('preserves existing positions when a drag commit only includes moved nodes', () => {
+        const withLayout = applyFlowCanvasLayout(makeDocument(), [
+            canvasNode('shell_node_2', { x: 420, y: 260 }),
+        ]);
+
+        expect(withLayout.layout).toEqual({
+            shell_node_1: { x: 100, y: 200 },
+            shell_node_2: { x: 420, y: 260 },
         });
     });
 });
