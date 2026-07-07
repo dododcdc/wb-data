@@ -8,7 +8,6 @@ import type {
 import {
     applyCanvasStateToDocument,
     buildEdgesFromCanvasEdges,
-    buildLayoutFromCanvasNodes,
 } from './flowCanvasState';
 import {
     getOfflineNodeDefaultScript,
@@ -66,6 +65,8 @@ export interface ApplyFlowCanvasNodesInput {
     selectedTaskIds: string[];
 }
 
+const NEW_NODE_OFFSET = 48;
+
 function cloneFlowDocument(document: OfflineFlowDocument): OfflineFlowDocument {
     return {
         ...document,
@@ -115,6 +116,51 @@ function buildScriptPath(documentPath: string, taskId: string, kind: OfflineFlow
 
 function filterCanvasEdgesToNodeIds(edges: Edge[], nodeIds: Set<string>) {
     return edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target));
+}
+
+function positionsOverlap(left: NodePosition, right: NodePosition) {
+    return Math.abs(left.x - right.x) < 1 && Math.abs(left.y - right.y) < 1;
+}
+
+function resolveAvailableNodePosition(document: OfflineFlowDocument, position: NodePosition): NodePosition {
+    const occupiedPositions = Object.values(document.layout ?? {});
+    let candidate = { ...position };
+
+    for (let attempt = 0; attempt <= occupiedPositions.length; attempt += 1) {
+        if (!occupiedPositions.some((occupied) => positionsOverlap(occupied, candidate))) {
+            return candidate;
+        }
+        candidate = {
+            x: position.x + NEW_NODE_OFFSET * (attempt + 1),
+            y: position.y + NEW_NODE_OFFSET * (attempt + 1),
+        };
+    }
+
+    return candidate;
+}
+
+function mergeCanvasLayout(document: OfflineFlowDocument, nodes: Node[]): Record<string, NodePosition> {
+    const documentNodeIds = new Set(flattenFlowDocumentNodes(document).map((node) => node.taskId));
+    const layout: Record<string, NodePosition> = {};
+
+    for (const nodeId of documentNodeIds) {
+        const currentPosition = document.layout?.[nodeId];
+        if (currentPosition) {
+            layout[nodeId] = { ...currentPosition };
+        }
+    }
+
+    for (const node of nodes) {
+        if (!documentNodeIds.has(node.id)) {
+            continue;
+        }
+        layout[node.id] = {
+            x: node.position.x,
+            y: node.position.y,
+        };
+    }
+
+    return layout;
 }
 
 export function flattenFlowDocumentNodes(document: OfflineFlowDocument | null): OfflineFlowNode[] {
@@ -243,7 +289,7 @@ export function addFlowNode(input: AddFlowNodeInput): AddFlowNodeResult {
     }
     document.layout = {
         ...(document.layout ?? {}),
-        [newTaskId]: { ...input.position },
+        [newTaskId]: resolveAvailableNodePosition(document, input.position),
     };
     const { nextActiveNodeId, nextSelectedTaskIds } = resolveSelectionStateAfterAddingNode({
         currentSelectedTaskIds: input.selectedTaskIds,
@@ -289,7 +335,7 @@ export function applyFlowCanvasEdges(document: OfflineFlowDocument, edges: Edge[
 export function applyFlowCanvasLayout(document: OfflineFlowDocument, nodes: Node[]): OfflineFlowDocument {
     return {
         ...cloneFlowDocument(document),
-        layout: buildLayoutFromCanvasNodes(nodes),
+        layout: mergeCanvasLayout(document, nodes),
     };
 }
 
