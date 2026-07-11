@@ -12,24 +12,9 @@ import {
 } from '../../components/ui/resizable';
 import {
     AlertTriangle,
-    ArrowUpRight,
-    ChevronRight,
-    Database,
-    FileCode2,
-    FolderOpen,
-    FolderPlus,
-    GitBranch,
-    GitCommitHorizontal,
-    History,
     LoaderCircle,
-    Pencil,
-    Play,
-    Plus,
     RefreshCcw,
-    Save,
-    Settings2,
     TerminalSquare,
-    Trash2,
     X,
     Copy,
 } from 'lucide-react';
@@ -37,11 +22,10 @@ import {
     getOfflineRepoTree,
     type OfflineExecutionDetail,
     type OfflineExecutionListItem,
-    type OfflineRepoTreeNode,
+    type OfflineFlowNodeKind,
     type OfflineRepoTreeResponse,
 } from '../../api/offline';
 import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import {
     Dialog,
@@ -61,7 +45,6 @@ import {
     flattenFlowDocumentNodes,
     resolveFlowSelectedTaskIds,
 } from './flowDocumentMutations';
-import { isExecuteButtonDisabled } from './executionToolbarState';
 import { 
     getExecutionPresentation, 
     getExecutionStatusLabel, 
@@ -74,6 +57,9 @@ import {
 } from './nodeEditorDataSourceRules';
 import { SaveConflictDialog } from './SaveConflictDialog';
 import { OfflineCommitDialogs } from './OfflineCommitDialogs';
+import { OfflineWorkbenchSidebar } from './OfflineWorkbenchSidebar';
+import { OfflineCanvasToolbar } from './OfflineCanvasToolbar';
+import { OfflineTreeActionDialogs } from './OfflineTreeActionDialogs';
 import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
 import { useOfflineTreeMutations } from './useOfflineTreeMutations';
@@ -89,16 +75,6 @@ import {
 } from './OfflineWorkbenchLifecycle';
 
 import './OfflineWorkbench.css';
-
-function formatFlowPathDisplayName(flowPath: string) {
-    const normalized = flowPath.replace(/\\/g, '/');
-    const segments = normalized.split('/').filter(Boolean);
-    const flowYamlIndex = segments.lastIndexOf('flow.yaml');
-    if (flowYamlIndex > 0) {
-        return segments[flowYamlIndex - 1];
-    }
-    return segments[segments.length - 1] ?? flowPath;
-}
 
 function formatDateTime(value: string | number | null | undefined) {
     if (!value) return '—';
@@ -123,270 +99,6 @@ function formatDuration(durationMs: number | null) {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.floor(seconds % 60);
     return `${minutes}m ${remainingSeconds}s`;
-}
-
-function collectTreeDirectoryIds(node: OfflineRepoTreeNode): string[] {
-    return node.children.flatMap((child) => {
-        if (child.kind !== 'DIRECTORY') {
-            return [];
-        }
-        return [child.id, ...collectTreeDirectoryIds(child)];
-    });
-}
-
-interface PathPickerNode {
-    id: string;
-    name: string;
-    path: string;
-    kind: 'ROOT' | 'DIRECTORY';
-    children: PathPickerNode[];
-}
-
-function normalizeToPickerNodes(root: OfflineRepoTreeNode): PathPickerNode[] {
-    return root.children
-        .filter((child) => child.kind === 'DIRECTORY' && child.name !== 'scripts')
-        .map((child) => pickerFromRepoNode(child));
-}
-
-function pickerFromRepoNode(node: OfflineRepoTreeNode): PathPickerNode {
-    return {
-        id: node.id,
-        name: node.name,
-        path: node.path,
-        kind: node.kind as 'ROOT' | 'DIRECTORY',
-        children: node.children
-            .filter((child) => child.kind === 'DIRECTORY')
-            .map(pickerFromRepoNode),
-    };
-}
-
-interface PathPickerProps {
-    rootNode: OfflineRepoTreeNode;
-    selectedPath: string;
-    onSelect: (path: string) => void;
-}
-
-interface PathPickerBranchProps {
-    node: PathPickerNode;
-    depth: number;
-    selectedPath: string;
-    onSelect: (path: string) => void;
-}
-
-function PathPicker({ rootNode, selectedPath, onSelect }: PathPickerProps) {
-    const [search, setSearch] = useState('');
-    const [rootExpanded, setRootExpanded] = useState(true);
-
-    const filteredNodes = useMemo(() => {
-        const query = search.trim().toLowerCase();
-        if (!query) return normalizeToPickerNodes(rootNode);
-
-        const flatPaths: { label: string, path: string }[] = [];
-        const extract = (nodes: PathPickerNode[]) => {
-            nodes.forEach(n => {
-                const relative = n.path.replace(/^_flows\/?/, '');
-                if (relative.toLowerCase().includes(query)) {
-                    flatPaths.push({ label: relative, path: relative });
-                }
-                extract(n.children);
-            });
-        };
-        extract(normalizeToPickerNodes(rootNode));
-        return flatPaths;
-    }, [rootNode, search]);
-
-    return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <Input 
-                placeholder="搜索目录..." 
-                value={search} 
-                onChange={(e) => setSearch(e.target.value)} 
-                style={{ height: 32, fontSize: '0.84rem' }}
-            />
-            <div style={{ border: '1px solid var(--color-border)', borderRadius: 6, maxHeight: 200, overflowY: 'auto', background: 'var(--color-surface)', padding: '8px 0' }}>
-                {search ? (
-                    filteredNodes.length > 0 ? (
-                        (filteredNodes as { label: string, path: string }[]).map(item => (
-                            <button
-                                key={item.path}
-                                type="button"
-                                className={`offline-tree-row${selectedPath === item.path ? ' is-active' : ''}`}
-                                style={{ paddingLeft: 12 }}
-                                onClick={() => onSelect(item.path)}
-                            >
-                                <span className="offline-tree-row-icon"><FolderOpen size={13} /></span>
-                                <span className="offline-tree-row-label">{item.label}</span>
-                            </button>
-                        ))
-                    ) : (
-                        <div style={{ padding: '8px 12px', fontSize: '0.8rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>
-                            无匹配的目录
-                        </div>
-                    )
-                ) : (
-                    <div className="offline-tree-root">
-                        <button
-                            type="button"
-                            className={`offline-tree-row${!selectedPath ? ' is-active' : ''}`}
-                            style={{ paddingLeft: 6 }}
-                            onClick={() => { onSelect(''); setRootExpanded(!rootExpanded); }}
-                        >
-                            <span className={`offline-tree-row-caret${rootExpanded ? ' is-expanded' : ''}`}>
-                                <ChevronRight size={14} />
-                            </span>
-                            <span className="offline-tree-row-icon"><FolderOpen size={13} /></span>
-                            <span className="offline-tree-row-label">{rootNode.name}</span>
-                        </button>
-                        {rootExpanded && (
-                            <div className="offline-tree-children">
-                                {(filteredNodes as PathPickerNode[]).map(child => (
-                                    <PathPickerBranch
-                                        key={child.id}
-                                        node={child}
-                                        depth={1}
-                                        selectedPath={selectedPath}
-                                        onSelect={onSelect}
-                                    />
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-}
-
-function PathPickerBranch({ node, depth, selectedPath, onSelect }: PathPickerBranchProps) {
-    const relativePath = node.path.replace(/^_flows\/?/, '');
-    const isSelected = selectedPath === relativePath || (selectedPath === '' && relativePath === '');
-    const hasChildren = node.children.length > 0;
-    const [expanded, setExpanded] = useState(
-        selectedPath !== '' && selectedPath.startsWith(relativePath)
-    );
-    const indentStyle = { paddingLeft: `${depth * 14 + 6}px` };
-
-    return (
-        <div className="offline-tree-branch">
-            <button
-                type="button"
-                className={`offline-tree-row is-directory${isSelected ? ' is-active' : ''}`}
-                style={indentStyle}
-                onClick={() => {
-                    onSelect(relativePath);
-                    if (hasChildren) setExpanded(!expanded);
-                }}
-            >
-                {hasChildren ? (
-                    <span className={`offline-tree-row-caret${expanded ? ' is-expanded' : ''}`}>
-                        <ChevronRight size={14} />
-                    </span>
-                ) : (
-                    <span className="offline-tree-row-spacer" />
-                )}
-                <span className="offline-tree-row-icon">
-                    <FolderOpen size={13} />
-                </span>
-                <span className="offline-tree-row-label">{node.name}</span>
-            </button>
-            {hasChildren && expanded && (
-                <div className="offline-tree-children">
-                    {node.children.map((child) => (
-                        <PathPickerBranch
-                            key={child.id}
-                            node={child}
-                            depth={depth + 1}
-                            selectedPath={selectedPath}
-                            onSelect={onSelect}
-                        />
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-}
-
-interface RepoTreeBranchProps {
-    node: OfflineRepoTreeNode;
-    depth: number;
-    activeFlowPath: string | null;
-    expandedIds: string[];
-    onToggle: (nodeId: string) => void;
-    onOpenFlow: (path: string) => void;
-    onContextMenu: (event: React.MouseEvent, node: OfflineRepoTreeNode) => void;
-}
-
-function GitPushIcon({ dirty }: { dirty: boolean }) {
-    return (
-        <span style={{ position: 'relative', display: 'inline-flex' }}>
-            <ArrowUpRight size={16} />
-            {dirty && <span className="offline-toolbar-dot" />}
-        </span>
-    );
-}
-
-function RepoTreeBranch(props: RepoTreeBranchProps) {
-    const { node, depth, activeFlowPath, expandedIds, onToggle, onOpenFlow, onContextMenu } = props;
-    const hasChildren = node.children.length > 0;
-    const expanded = expandedIds.includes(node.id);
-    const indentStyle = { paddingLeft: `${depth * 14}px` };
-
-    if (node.kind === 'FLOW') {
-        return (
-            <button
-                type="button"
-                className={`offline-tree-row is-flow${node.path === activeFlowPath ? ' is-active' : ''}`}
-                style={indentStyle}
-                onClick={() => onOpenFlow(node.path)}
-                onContextMenu={(e) => onContextMenu(e, node)}
-            >
-                <span className="offline-tree-row-icon">
-                    <FileCode2 size={14} />
-                </span>
-                <span className="offline-tree-row-label">{node.name}</span>
-            </button>
-        );
-    }
-
-    return (
-        <div className="offline-tree-branch">
-            <button
-                type="button"
-                className={`offline-tree-row is-directory${expanded ? ' is-expanded' : ''}`}
-                style={indentStyle}
-                onClick={() => onToggle(node.id)}
-                onContextMenu={(e) => onContextMenu(e, node)}
-            >
-                {hasChildren ? (
-                    <span className={`offline-tree-row-caret${expanded ? ' is-expanded' : ''}`}>
-                        <ChevronRight size={14} />
-                    </span>
-                ) : (
-                    <span className="offline-tree-row-spacer" />
-                )}
-                <span className="offline-tree-row-icon">
-                    <FolderOpen size={14} />
-                </span>
-                <span className="offline-tree-row-label">{node.name}</span>
-            </button>
-            {hasChildren && expanded ? (
-                <div className="offline-tree-children">
-                    {node.children.map((child) => (
-                        <RepoTreeBranch
-                            key={child.id}
-                            node={child}
-                            depth={depth + 1}
-                            activeFlowPath={activeFlowPath}
-                            expandedIds={expandedIds}
-                            onToggle={onToggle}
-                            onOpenFlow={onOpenFlow}
-                            onContextMenu={onContextMenu}
-                        />
-                    ))}
-                </div>
-            ) : null}
-        </div>
-    );
 }
 
 interface ExecutionDialogProps {
@@ -675,9 +387,7 @@ export default function OfflineWorkbench() {
     const [repoCommitDialogOpen, setRepoCommitDialogOpen] = useState(false);
     const [commitMessage, setCommitMessage] = useState('');
     const [committing, setCommitting] = useState(false);
-    const [expandedTreeIds, setExpandedTreeIds] = useState<string[]>([]);
     const canvasBoardRef = useRef<HTMLDivElement>(null);
-    const branchSwitcherRef = useRef<HTMLDivElement>(null);
     const loadScheduleSnapshotRef = useRef<((path: string) => Promise<void>) | null>(null);
     const resetExecutionAndScheduleRef = useRef<(() => void) | null>(null);
     const refreshRepoStatusRef = useRef<(() => Promise<void>) | null>(null);
@@ -851,22 +561,12 @@ export default function OfflineWorkbench() {
         });
         return statuses;
     }, [executionDetail]);
-    const currentBranchFromList = useMemo(
-        () => branches.find((branch) => branch.current) ?? branches.find((branch) => branch.name === branchLabel) ?? null,
-        [branches, branchLabel],
-    );
-    const switchableBranches = useMemo(
-        () => branches.filter((branch) => !branch.current && branch.name !== branchLabel),
-        [branches, branchLabel],
-    );
-
     const refreshRepoTree = useCallback(async () => {
         if (!groupId) return;
         setTreeLoading(true);
         try {
             const nextTree = await getOfflineRepoTree(groupId);
             setRepoTree(nextTree);
-            setExpandedTreeIds([nextTree.root.id, ...collectTreeDirectoryIds(nextTree.root)]);
         } catch (error) {
             showFeedback({
                 tone: 'error',
@@ -1002,32 +702,6 @@ export default function OfflineWorkbench() {
         showFeedback,
     });
 
-    useEffect(() => {
-        if (!branchMenuOpen) return;
-
-        const handleMouseDown = (event: MouseEvent) => {
-            const target = event.target;
-            if (target instanceof Node && branchSwitcherRef.current?.contains(target)) {
-                return;
-            }
-            setBranchMenuOpen(false);
-        };
-
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                setBranchMenuOpen(false);
-            }
-        };
-
-        document.addEventListener('mousedown', handleMouseDown);
-        document.addEventListener('keydown', handleKeyDown);
-        return () => {
-            document.removeEventListener('mousedown', handleMouseDown);
-            document.removeEventListener('keydown', handleKeyDown);
-        };
-    }, [branchMenuOpen, setBranchMenuOpen]);
-
     useOfflineWorkbenchGroupLifecycle({
         groupId,
         leaveCurrentFlow,
@@ -1078,12 +752,6 @@ export default function OfflineWorkbench() {
         setDraftSelectedTaskIds(resolveFlowSelectedTaskIds(flowDocument, taskIds));
     }, [flowDocument, setDraftSelectedTaskIds]);
 
-    const handleToggleTreeNode = useCallback((nodeId: string) => {
-        setExpandedTreeIds((current) => current.includes(nodeId)
-            ? current.filter((item) => item !== nodeId)
-            : [...current, nodeId]);
-        }, []);
-
     const handleNodeEditorTempSave = useCallback((content: string, dataSourceId?: number, dataSourceType?: string) => {
         if (!activeNodeId) return;
         saveNodeEditorDraft(content, dataSourceId, dataSourceType);
@@ -1125,6 +793,24 @@ export default function OfflineWorkbench() {
             void loadScheduleSnapshot(activeFlowPath);
         }
     }, [activeFlowPath, loadScheduleSnapshot, setScheduleDialogOpen]);
+
+    const handleSelectAllNodes = useCallback((selected: boolean) => {
+        setDraftSelectedTaskIds(selected && flowDocument
+            ? flattenFlowDocumentNodes(flowDocument).map((node) => node.taskId)
+            : []);
+    }, [flowDocument, setDraftSelectedTaskIds]);
+
+    const handleAddNodeAtCanvasCenter = useCallback((kind: OfflineFlowNodeKind) => {
+        if (!flowDocument) return;
+        const board = canvasBoardRef.current;
+        const center = board
+            ? {
+                x: board.getBoundingClientRect().width / 2,
+                y: board.getBoundingClientRect().height / 2,
+            }
+            : { x: 300, y: 200 };
+        addNode(kind, center);
+    }, [addNode, flowDocument]);
 
     const handleRepoCommit = useCallback(async (mode: 'save-and-commit' | 'saved-only') => {
         if (!groupId) return;
@@ -1170,280 +856,59 @@ export default function OfflineWorkbench() {
                     maxSize={40}
                     className="offline-rail-panel-container"
                 >
-                    <aside className="offline-rail h-full">
-                        <div className="offline-rail-toolbar">
-                            <div className="offline-branch-switcher" ref={branchSwitcherRef}>
-                                {canSwitchBranch ? (
-                                    <Tooltip open={branchMenuOpen ? false : branchTooltipOpen} onOpenChange={setBranchTooltipOpen}>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="offline-branch-selector offline-branch-selector-button"
-                                                aria-label={`切换分支，当前 ${branchLabel}`}
-                                                aria-expanded={branchMenuOpen}
-                                                onClick={handleBranchMenuToggle}
-                                                disabled={repoLoading || treeLoading || branchSwitching}
-                                            >
-                                                <GitBranch size={14} />
-                                                <span className="offline-branch-selector-value">{branchLabel}</span>
-                                                <ChevronRight size={12} className={`offline-branch-badge-caret ${branchMenuOpen ? 'is-open' : ''}`} />
-                                            </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">
-                                            当前分支：{branchLabel}
-                                        </TooltipContent>
-                                    </Tooltip>
-                                ) : (
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <span className="offline-branch-selector offline-branch-selector-readonly">
-                                                <GitBranch size={14} />
-                                                <span className="offline-branch-selector-value">{branchLabel}</span>
-                                            </span>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">
-                                            当前分支：{branchLabel}。只有项目组管理员可以切换分支
-                                        </TooltipContent>
-                                    </Tooltip>
-                                )}
-
-                                {canSwitchBranch ? (
-                                    <div className={`offline-branch-menu ${branchMenuOpen ? 'open' : ''}`} role="dialog" aria-label="切换分支" aria-hidden={!branchMenuOpen}>
-                                        <div className="offline-branch-menu-inner">
-                                            <div className="offline-branch-menu-surface">
-                                                {branchDirtyState ? (
-                                                    <div className="offline-branch-dirty-warning">
-                                                        <AlertTriangle size={14} />
-                                                        <div>
-                                                            <strong>还有已保存但未提交的 Flow</strong>
-                                                            {branchDirtyState.changedFlowDetails.length > 0 ? (
-                                                                <ul>
-                                                                    {branchDirtyState.changedFlowDetails.slice(0, 5).map((flow) => (
-                                                                        <li key={flow.path}>
-                                                                            {formatFlowPathDisplayName(flow.path)}
-                                                                            {flow.status === 'DELETED' ? <span>已删除</span> : null}
-                                                                        </li>
-                                                                    ))}
-                                                                </ul>
-                                                            ) : (
-                                                                <p>当前仓库有已保存但未提交的改动。</p>
-                                                            )}
-                                                            {branchDirtyState.otherFileCount > 0 ? (
-                                                                <p>还有 {branchDirtyState.otherFileCount} 个仓库文件未提交。</p>
-                                                            ) : null}
-                                                            <button
-                                                                type="button"
-                                                                className="offline-branch-dirty-action"
-                                                                aria-label="打开提交仓库改动"
-                                                                onClick={() => {
-                                                                    setBranchMenuOpen(false);
-                                                                    setRepoCommitDialogOpen(true);
-                                                                }}
-                                                            >
-                                                                提交仓库改动
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                ) : null}
-
-                                                {branchLoading ? (
-                                                    <div className="offline-branch-menu-empty">
-                                                        <LoaderCircle size={14} className="offline-spin" />
-                                                        正在加载分支...
-                                                    </div>
-                                                ) : (
-                                                    <div className="offline-branch-list" aria-label="可切换分支">
-                                                        {currentBranchFromList ? (
-                                                            <div className="offline-branch-row is-current" title={currentBranchFromList.name}>
-                                                                <div>
-                                                                    <strong>{currentBranchFromList.name}</strong>
-                                                                </div>
-                                                            </div>
-                                                        ) : null}
-                                                        {switchableBranches.map((branch) => (
-                                                            <button
-                                                                key={branch.name}
-                                                                type="button"
-                                                                className="offline-branch-row"
-                                                                aria-label={`切换到 ${branch.name}`}
-                                                                title={branch.name}
-                                                                onClick={() => handleBranchSwitchRequest(branch.name)}
-                                                                disabled={branchSwitching}
-                                                            >
-                                                                <div>
-                                                                    <strong>{branch.name}</strong>
-                                                                </div>
-                                                            </button>
-                                                        ))}
-                                                        {!currentBranchFromList && switchableBranches.length === 0 ? (
-                                                            <div className="offline-branch-menu-empty" role="note" aria-label="暂无其他可切换分支">暂无其他可切换分支</div>
-                                                        ) : null}
-                                                        {currentBranchFromList && switchableBranches.length === 0 ? (
-                                                            <div className="offline-branch-menu-empty" role="note" aria-label="暂无其他可切换分支">暂无其他可切换分支</div>
-                                                        ) : null}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : null}
-                            </div>
-                            {canWrite && (
-                                <div className="offline-rail-toolbar-actions">
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <div className="offline-rail-toolbar-btn-wrapper">
-                                                <button
-                                                    type="button"
-                                                    className="offline-rail-toolbar-btn"
-                                                    aria-label="新建"
-                                                    onClick={() => setNewItemMenuOpen(!newItemMenuOpen)}
-                                                    disabled={!groupId || repoLoading || treeLoading || flowLoading}
-                                                >
-                                                    <Plus size={14} />
-                                                </button>
-                                                {newItemMenuOpen && (
-                                                    <div
-                                                        className="offline-new-item-menu animate-in fade-in zoom-in-95"
-                                                        onMouseLeave={() => setNewItemMenuOpen(false)}
-                                                    >
-                                                        <button
-                                                            type="button"
-                                                            className="offline-new-item-menu-item"
-                                                            onClick={() => { setNewItemMenuOpen(false); setNewFlowDialogOpen(true); }}
-                                                        >
-                                                            <FileCode2 size={13} />
-                                                            新建 Flow
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="offline-new-item-menu-item"
-                                                            onClick={() => { setNewItemMenuOpen(false); setNewFolderParentPath(''); setNewFolderName(''); setNewFolderDialogOpen(true); }}
-                                                        >
-                                                            <FolderPlus size={13} />
-                                                            新建文件夹
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">
-                                            新建
-                                        </TooltipContent>
-                                    </Tooltip>
-
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="offline-rail-toolbar-btn"
-                                                aria-label="刷新"
-                                                onClick={() => void refreshWorkspace()}
-                                                disabled={!groupId || repoLoading || treeLoading || flowLoading}
-                                            >
-                                                {repoLoading || treeLoading ? <LoaderCircle size={14} className="offline-spin" /> : <RefreshCcw size={14} />}
-                                            </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">
-                                            刷新
-                                        </TooltipContent>
-                                    </Tooltip>
-
-                                    {isGroupAdmin && (
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="offline-rail-toolbar-btn"
-                                                    aria-label="提交仓库改动"
-                                                    onClick={() => void handleOpenRepoCommitDialog()}
-                                                    disabled={!canCommitRepo || committing || repoLoading || treeLoading}
-                                                >
-                                                    <span className="relative flex">
-                                                        <GitCommitHorizontal size={14} />
-                                                        {(isDirty || repoStatus?.dirty) && <span className="offline-toolbar-dot" />}
-                                                    </span>
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                提交仓库改动
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    )}
-                                    {isGroupAdmin && (
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="offline-rail-toolbar-btn"
-                                                    aria-label="推送"
-                                                    onClick={() => setPushDialogOpen(true)}
-                                                    disabled={!canPush || pushLoading || repoLoading || treeLoading}
-                                                >
-                                                    {pushLoading ? <LoaderCircle size={14} className="offline-spin" /> : <GitPushIcon dirty={!!repoStatus?.ahead} />}
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                推送
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                    <section className="offline-rail-panel offline-rail-panel-grow">
-                        {treeLoading ? (
-                            <div className="offline-rail-empty">正在加载项目树…</div>
-                        ) : !repoTree?.root.children.length ? (
-                            <div className="offline-rail-empty">
-                                {repoTree ? '当前仓库还没有可打开的 Flow。\n点击上方"新建"创建第一个 Flow。' : '当前仓库还没有可打开的 Flow。'}
-                            </div>
-                        ) : (
-                            <div className="offline-tree-shell">
-                                <div className="offline-tree-root">
-                                    <button
-                                        type="button"
-                                        className={`offline-tree-root-label${expandedTreeIds.length === 0 ? ' is-collapsed' : ''}`}
-                                        onClick={() => {
-                                            const allIds = [repoTree.root.id, ...collectTreeDirectoryIds(repoTree.root)];
-                                            if (expandedTreeIds.length > 0) {
-                                                setExpandedTreeIds([]);
-                                            } else {
-                                                setExpandedTreeIds(allIds);
-                                            }
-                                        }}
-                                        onContextMenu={(e) => handleContextMenu(e, repoTree.root)}
-                                    >
-                                        <span className={`offline-tree-row-caret${expandedTreeIds.length > 0 ? ' is-expanded' : ''}`}>
-                                            <ChevronRight size={14} />
-                                        </span>
-                                        <span className="offline-tree-row-icon">
-                                            <FolderOpen size={15} />
-                                        </span>
-                                        <span>{repoTree.root.name}</span>
-                                    </button>
-                                    {expandedTreeIds.length > 0 && (
-                                        <div className="offline-tree-children">
-                                            {repoTree.root.children.map((child) => (
-                                                <RepoTreeBranch
-                                                    key={child.id}
-                                                    node={child}
-                                                    depth={1}
-                                                    activeFlowPath={activeFlowPath}
-                                                    expandedIds={expandedTreeIds}
-                                                    onToggle={handleToggleTreeNode}
-                                                    onOpenFlow={(path) => void openFlowDocument(path)}
-                                                    onContextMenu={handleContextMenu}
-                                                />
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </section>
-                    </aside>
+                    <OfflineWorkbenchSidebar
+                        isGroupAdmin={isGroupAdmin}
+                        branch={{
+                            label: branchLabel,
+                            canSwitch: canSwitchBranch,
+                            menuOpen: branchMenuOpen,
+                            tooltipOpen: branchTooltipOpen,
+                            loading: branchLoading,
+                            switching: branchSwitching,
+                            branches,
+                            dirtyState: branchDirtyState,
+                            onToggleMenu: handleBranchMenuToggle,
+                            onMenuOpenChange: setBranchMenuOpen,
+                            onTooltipOpenChange: setBranchTooltipOpen,
+                            onSwitch: handleBranchSwitchRequest,
+                        }}
+                        repository={{
+                            available: !!groupId,
+                            loading: repoLoading,
+                            committing,
+                            pushLoading,
+                            canCommit: canCommitRepo,
+                            canPush,
+                            dirty: isDirty || !!repoStatus?.dirty,
+                            ahead: !!repoStatus?.ahead,
+                            onRefresh: () => void refreshWorkspace(),
+                            onOpenCommit: handleOpenRepoCommitDialog,
+                            onOpenPush: () => setPushDialogOpen(true),
+                        }}
+                        creation={{
+                            canWrite,
+                            menuOpen: newItemMenuOpen,
+                            onMenuOpenChange: setNewItemMenuOpen,
+                            onOpenNewFlow: () => {
+                                setNewItemMenuOpen(false);
+                                setNewFlowDialogOpen(true);
+                            },
+                            onOpenNewFolder: () => {
+                                setNewItemMenuOpen(false);
+                                setNewFolderParentPath('');
+                                setNewFolderName('');
+                                setNewFolderDialogOpen(true);
+                            },
+                        }}
+                        tree={{
+                            data: repoTree,
+                            loading: treeLoading,
+                            flowLoading,
+                            activeFlowPath,
+                            onOpenFlow: (path) => void openFlowDocument(path),
+                            onContextMenu: handleContextMenu,
+                        }}
+                    />
                 </ResizablePanel>
 
                 <ResizableHandle withHandle />
@@ -1456,188 +921,23 @@ export default function OfflineWorkbench() {
                             </div>
                         ) : (
                             <>
-                                <header className="offline-canvas-toolbar">
-                                    <label className="offline-canvas-toolbar-selectall">
-                                        <input
-                                            type="checkbox"
-                                            checked={nodeCount > 0 && selectedTaskIds.length === nodeCount}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setDraftSelectedTaskIds(flattenFlowDocumentNodes(flowDocument).map((n) => n.taskId));
-                                                } else {
-                                                    setDraftSelectedTaskIds([]);
-                                                }
-                                            }}
-                                            disabled={nodeCount === 0}
-                                        />
-                                        全选
-                                    </label>
-
-                                    <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="offline-canvas-toolbar-btn"
-                                                    disabled={!activeFlowPath || !canWrite || !isDirty || savingFlow}
-                                                    onClick={() => void handleSaveFlow()}
-                                                    aria-label="保存"
-                                                >
-                                                <span className="relative flex">
-                                                    {savingFlow ? <LoaderCircle size={16} className="offline-spin" /> : <Save size={16} />}
-                                                    {isDirty && <span className="offline-toolbar-dot" />}
-                                                </span>
-                                            </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                保存
-                                            </TooltipContent>
-                                        </Tooltip>
-
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="offline-canvas-toolbar-btn"
-                                                    disabled={!activeFlowPath || !canWrite || !(isDirty || flowCommitDirty) || committing}
-                                                    onClick={() => void handleOpenFlowCommitDialog()}
-                                                    aria-label="提交当前 Flow"
-                                                >
-                                                    <span className="relative flex">
-                                                        <GitCommitHorizontal size={16} />
-                                                        {(isDirty || flowCommitDirty) && <span className="offline-toolbar-dot" />}
-                                                    </span>
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                提交当前 Flow
-                                            </TooltipContent>
-                                        </Tooltip>
-
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="offline-canvas-toolbar-btn"
-                                                    disabled={!activeFlowPath || !canWrite}
-                                                    onClick={handleOpenScheduleDialog}
-                                                    aria-label="调度"
-                                                >
-                                                    <Settings2 size={16} />
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                调度
-                                            </TooltipContent>
-                                        </Tooltip>
-
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="offline-canvas-toolbar-btn"
-                                                    disabled={isExecuteButtonDisabled({ activeFlowPath, canWrite })}
-                                                    onClick={() => void handleExecute()}
-                                                    aria-label="执行"
-                                                >
-                                                    <Play size={16} />
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                执行
-                                            </TooltipContent>
-                                        </Tooltip>
-
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="offline-canvas-toolbar-btn"
-                                                    disabled={!activeFlowPath}
-                                                    onClick={() => setExecutionDialogOpen(true)}
-                                                    aria-label="执行结果"
-                                                >
-                                                    <History size={16} />
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                执行结果
-                                            </TooltipContent>
-                                        </Tooltip>
-
-                                        <span className="offline-toolbar-divider" />
-
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="offline-canvas-toolbar-btn"
-                                                    disabled={!activeFlowPath || !canWrite}
-                                                    onClick={() => {
-                                                        if (!flowDocument) return;
-                                                        const board = canvasBoardRef.current;
-                                                        const center = board
-                                                            ? { x: board.getBoundingClientRect().width / 2, y: board.getBoundingClientRect().height / 2 }
-                                                            : { x: 300, y: 200 };
-                                                        addNode('SQL', center);
-                                                    }}
-                                                    aria-label="添加 SQL 节点"
-                                                >
-                                                    <FileCode2 size={16} />
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                添加 SQL 节点
-                                            </TooltipContent>
-                                        </Tooltip>
-
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="offline-canvas-toolbar-btn"
-                                                    disabled={!activeFlowPath || !canWrite}
-                                                    onClick={() => {
-                                                        if (!flowDocument) return;
-                                                        const board = canvasBoardRef.current;
-                                                        const center = board
-                                                            ? { x: board.getBoundingClientRect().width / 2, y: board.getBoundingClientRect().height / 2 }
-                                                            : { x: 300, y: 200 };
-                                                        addNode('HIVE_SQL', center);
-                                                    }}
-                                                    aria-label="添加 HiveSQL 节点"
-                                                >
-                                                    <Database size={16} />
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                添加 HiveSQL 节点
-                                            </TooltipContent>
-                                        </Tooltip>
-
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="offline-canvas-toolbar-btn"
-                                                    disabled={!activeFlowPath || !canWrite}
-                                                    onClick={() => {
-                                                        if (!flowDocument) return;
-                                                        const board = canvasBoardRef.current;
-                                                        const center = board
-                                                            ? { x: board.getBoundingClientRect().width / 2, y: board.getBoundingClientRect().height / 2 }
-                                                            : { x: 300, y: 200 };
-                                                        addNode('SHELL', center);
-                                                    }}
-                                                    aria-label="添加 Shell 节点"
-                                                >
-                                                    <TerminalSquare size={16} />
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                添加 Shell 节点
-                                            </TooltipContent>
-                                        </Tooltip>
-                                </header>
+                                <OfflineCanvasToolbar
+                                    activeFlowPath={activeFlowPath}
+                                    canWrite={canWrite}
+                                    nodeCount={nodeCount}
+                                    selectedNodeCount={selectedTaskIds.length}
+                                    dirty={isDirty}
+                                    saving={savingFlow}
+                                    commitDirty={flowCommitDirty}
+                                    committing={committing}
+                                    onSelectAll={handleSelectAllNodes}
+                                    onSave={() => void handleSaveFlow()}
+                                    onCommit={handleOpenFlowCommitDialog}
+                                    onOpenSchedule={handleOpenScheduleDialog}
+                                    onExecute={() => void handleExecute()}
+                                    onOpenExecutions={() => setExecutionDialogOpen(true)}
+                                    onAddNode={handleAddNodeAtCanvasCenter}
+                                />
 
                                 {staleDraft ? (
                                     <section className="offline-conflict-banner">
@@ -1844,339 +1144,74 @@ export default function OfflineWorkbench() {
                 onDraftChange={handleNodeEditorDraftChange}
             />
 
-            <Dialog open={newFlowDialogOpen} onOpenChange={(open) => {
-                setNewFlowDialogOpen(open);
-                if (!open) { setNewFlowName(''); setNewFlowParentPath(''); }
-            }}>
-                <DialogContent style={{ maxWidth: '520px' }}>
-                    <DialogHeader>
-                        <DialogTitle>新建 Flow</DialogTitle>
-                        <DialogDescription>
-                            输入 Flow 名称，将自动创建空白的 Flow 文件
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="dialog-body">
-                        <div style={{ marginBottom: 16 }}>
-                            <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
-                                Flow 名称
-                            </label>
-                            <Input
-                                value={newFlowName}
-                                onChange={(e) => setNewFlowName(e.target.value)}
-                                placeholder="例如：data_pipeline"
-                                autoFocus
-                                style={{ width: '100%' }}
-                            />
-                        </div>
-                        <div>
-                            <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
-                                存储路径 {newFlowParentPath ? `（已选：${newFlowParentPath.replace('_flows/', '')}）` : `（默认：${repoTree?.root.name ?? '根目录'}）`}
-                            </label>
-                            {repoTree ? (
-                                <PathPicker
-                                    rootNode={repoTree.root}
-                                    selectedPath={newFlowParentPath}
-                                    onSelect={setNewFlowParentPath}
-                                />
-                            ) : (
-                                <div style={{ padding: '12px 12px', color: 'var(--color-text-secondary)', fontSize: '0.84rem' }}>
-                                    加载目录树中...
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => { setNewFlowDialogOpen(false); setNewFlowName(''); setNewFlowParentPath(''); }}
-                            disabled={newFlowCreating}
-                        >
-                            取消
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="default"
-                            size="sm"
-                            onClick={() => void handleCreateFlow()}
-                            disabled={!newFlowName.trim() || newFlowCreating}
-                        >
-                            {newFlowCreating ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                            {newFlowCreating ? '创建中…' : '创建'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            <Dialog open={newFolderDialogOpen} onOpenChange={(open) => {
-                setNewFolderDialogOpen(open);
-                if (!open) {
-                    setNewFolderName('');
-                    setNewFolderParentPath('');
-                }
-            }}>
-                <DialogContent style={{ maxWidth: '460px' }}>
-                    <DialogHeader>
-                        <DialogTitle>新建文件夹</DialogTitle>
-                        <DialogDescription>
-                            输入文件夹名称，将在指定路径下创建文件夹
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="dialog-body">
-                        <div style={{ marginBottom: 16 }}>
-                            <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
-                                文件夹名称
-                            </label>
-                            <Input
-                                value={newFolderName}
-                                onChange={(e) => setNewFolderName(e.target.value)}
-                                placeholder="例如：data_pipeline"
-                                autoFocus
-                                style={{ width: '100%' }}
-                            />
-                        </div>
-                        <div>
-                            <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
-                                存储路径 {newFolderParentPath ? `（已选：${newFolderParentPath.replace('_flows/', '')}）` : `（默认：${repoTree?.root.name ?? '根目录'}）`}
-                            </label>
-                            {repoTree ? (
-                                <PathPicker
-                                    rootNode={repoTree.root}
-                                    selectedPath={newFolderParentPath}
-                                    onSelect={setNewFolderParentPath}
-                                />
-                            ) : (
-                                <div style={{ padding: '12px 12px', color: 'var(--color-text-secondary)', fontSize: '0.84rem' }}>
-                                    加载目录树中...
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => { setNewFolderDialogOpen(false); setNewFolderName(''); setNewFolderParentPath(''); }}
-                            disabled={newFolderCreating}
-                        >
-                            取消
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="default"
-                            size="sm"
-                            onClick={() => void handleCreateFolder()}
-                            disabled={!newFolderName.trim() || newFolderCreating}
-                        >
-                            {newFolderCreating ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                            {newFolderCreating ? '创建中…' : '创建'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            <ConfirmDialog
-                open={deleteFlowDialogOpen}
-                onOpenChange={(nextOpen) => {
-                    if (!deleteFlowLoading) {
-                        setDeleteFlowDialogOpen(nextOpen);
-                    }
+            <OfflineTreeActionDialogs
+                repoTree={repoTree}
+                canWrite={canWrite}
+                createFlow={{
+                    open: newFlowDialogOpen,
+                    name: newFlowName,
+                    parentPath: newFlowParentPath,
+                    pending: newFlowCreating,
+                    onOpenChange: setNewFlowDialogOpen,
+                    onNameChange: setNewFlowName,
+                    onParentPathChange: setNewFlowParentPath,
+                    onSubmit: () => void handleCreateFlow(),
                 }}
-                title="确认删除 Flow"
-                description={`确定要删除 Flow「${deleteFlowName}」吗？此操作不可恢复。`}
-                confirmText="删除"
-                cancelText="取消"
-                variant="destructive"
-                icon="warning"
-                isLoading={deleteFlowLoading}
-                onConfirm={() => void handleDeleteFlow()}
-            />
-
-            <ConfirmDialog
-                open={deleteFolderDialogOpen}
-                onOpenChange={(nextOpen) => {
-                    if (!deleteFolderLoading) {
-                        setDeleteFolderDialogOpen(nextOpen);
-                    }
+                createFolder={{
+                    open: newFolderDialogOpen,
+                    name: newFolderName,
+                    parentPath: newFolderParentPath,
+                    pending: newFolderCreating,
+                    onOpenChange: setNewFolderDialogOpen,
+                    onNameChange: setNewFolderName,
+                    onParentPathChange: setNewFolderParentPath,
+                    onSubmit: () => void handleCreateFolder(),
                 }}
-                title="确认删除文件夹"
-                description={`确定要删除文件夹「${deleteFolderName}」吗？其下所有内容都将被物理删除，此操作不可恢复。`}
-                confirmText="删除"
-                cancelText="取消"
-                variant="destructive"
-                icon="warning"
-                isLoading={deleteFolderLoading}
-                onConfirm={() => void handleDeleteFolder()}
+                deleteFlow={{
+                    open: deleteFlowDialogOpen,
+                    name: deleteFlowName,
+                    pending: deleteFlowLoading,
+                    onOpenChange: setDeleteFlowDialogOpen,
+                    onSubmit: () => void handleDeleteFlow(),
+                }}
+                deleteFolder={{
+                    open: deleteFolderDialogOpen,
+                    name: deleteFolderName,
+                    pending: deleteFolderLoading,
+                    onOpenChange: setDeleteFolderDialogOpen,
+                    onSubmit: () => void handleDeleteFolder(),
+                }}
+                renameFlow={{
+                    open: renameFlowDialogOpen,
+                    name: renameFlowName,
+                    originalName: renameFlowOriginalName,
+                    pending: renameFlowLoading,
+                    onOpenChange: setRenameFlowDialogOpen,
+                    onNameChange: setRenameFlowName,
+                    onSubmit: () => void handleRenameFlow(),
+                }}
+                renameFolder={{
+                    open: renameFolderDialogOpen,
+                    name: renameFolderName,
+                    originalName: renameFolderOriginalName,
+                    pending: renameFolderLoading,
+                    onOpenChange: setRenameFolderDialogOpen,
+                    onNameChange: setRenameFolderName,
+                    onSubmit: () => void handleRenameFolder(),
+                }}
+                contextMenu={{
+                    open: contextMenuOpen,
+                    position: contextMenuPosition,
+                    node: contextMenuNode,
+                    onOpenChange: setContextMenuOpen,
+                    onOpenNewFlow: openNewFlowDialogFromContext,
+                    onOpenNewFolder: openNewFolderDialogFromContext,
+                    onOpenRenameFlow: openRenameFlowDialogFromContext,
+                    onOpenRenameFolder: openRenameFolderDialogFromContext,
+                    onOpenDeleteFlow: openDeleteFlowDialogFromContext,
+                    onOpenDeleteFolder: openDeleteFolderDialogFromContext,
+                }}
             />
-
-            {/* 重命名文件夹对话框 */}
-            <Dialog open={renameFolderDialogOpen} onOpenChange={setRenameFolderDialogOpen}>
-                <DialogContent style={{ maxWidth: '420px' }}>
-                    <DialogHeader>
-                        <DialogTitle>重命名文件夹</DialogTitle>
-                        <DialogDescription>
-                            将文件夹「{renameFolderOriginalName}」重命名为：
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="dialog-body" style={{ marginTop: 12 }}>
-                        <Input
-                            value={renameFolderName}
-                            onChange={(e) => setRenameFolderName(e.target.value)}
-                            placeholder="输入新名称"
-                            autoFocus
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && renameFolderName.trim()) {
-                                    void handleRenameFolder();
-                                }
-                            }}
-                        />
-                    </div>
-                    <DialogFooter>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setRenameFolderDialogOpen(false)}
-                            disabled={renameFolderLoading}
-                        >
-                            取消
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="default"
-                            size="sm"
-                            onClick={() => void handleRenameFolder()}
-                            disabled={!renameFolderName.trim() || renameFolderLoading}
-                        >
-                            {renameFolderLoading ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                            {renameFolderLoading ? '重命名中…' : '重命名'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* 重命名 Flow 对话框 */}
-            <Dialog open={renameFlowDialogOpen} onOpenChange={setRenameFlowDialogOpen}>
-                <DialogContent style={{ maxWidth: '420px' }}>
-                    <DialogHeader>
-                        <DialogTitle>重命名 Flow</DialogTitle>
-                        <DialogDescription>
-                            将「{renameFlowOriginalName}」重命名为：
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="dialog-body" style={{ marginTop: 12 }}>
-                        <Input
-                            value={renameFlowName}
-                            onChange={(e) => setRenameFlowName(e.target.value)}
-                            placeholder="输入新名称"
-                            autoFocus
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && renameFlowName.trim()) {
-                                    void handleRenameFlow();
-                                }
-                            }}
-                        />
-                    </div>
-                    <DialogFooter>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setRenameFlowDialogOpen(false)}
-                            disabled={renameFlowLoading}
-                        >
-                            取消
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="default"
-                            size="sm"
-                            onClick={() => void handleRenameFlow()}
-                            disabled={!renameFlowName.trim() || renameFlowLoading}
-                        >
-                            {renameFlowLoading ? <LoaderCircle size={14} className="offline-spin" /> : null}
-                            {renameFlowLoading ? '重命名中…' : '重命名'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* 右键菜单 */}
-            {contextMenuOpen && contextMenuPosition && (
-                <div
-                    className="offline-context-menu"
-                    style={{
-                        position: 'fixed',
-                        left: contextMenuPosition.x,
-                        top: contextMenuPosition.y,
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    {(contextMenuNode?.kind === 'DIRECTORY' || contextMenuNode?.kind === 'ROOT') && canWrite && (
-                        <>
-                            <button
-                                type="button"
-                                className="offline-context-menu-item"
-                                onClick={() => openNewFlowDialogFromContext(contextMenuNode!)}
-                            >
-                                <FileCode2 size={13} />
-                                新建 Flow
-                            </button>
-                            <button
-                                type="button"
-                                className="offline-context-menu-item"
-                                onClick={() => openNewFolderDialogFromContext(contextMenuNode!)}
-                            >
-                                <FolderPlus size={13} />
-                                新建文件夹
-                            </button>
-                            {contextMenuNode?.kind === 'DIRECTORY' && (
-                                <>
-                                    <div className="offline-context-menu-separator" />
-                                    <button
-                                        type="button"
-                                        className="offline-context-menu-item"
-                                        onClick={() => openRenameFolderDialogFromContext(contextMenuNode!)}
-                                    >
-                                        <Pencil size={13} />
-                                        重命名
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="offline-context-menu-item danger"
-                                        onClick={() => openDeleteFolderDialogFromContext(contextMenuNode!)}
-                                    >
-                                        <Trash2 size={13} />
-                                        删除
-                                    </button>
-                                </>
-                            )}
-                        </>
-                    )}
-                    {contextMenuNode?.kind === 'FLOW' && canWrite && (
-                        <>
-                            <button
-                                type="button"
-                                className="offline-context-menu-item"
-                                onClick={() => openRenameFlowDialogFromContext(contextMenuNode!)}
-                            >
-                                <Pencil size={13} />
-                                重命名
-                            </button>
-                            <button
-                                type="button"
-                                className="offline-context-menu-item danger"
-                                onClick={() => openDeleteFlowDialogFromContext(contextMenuNode!)}
-                            >
-                                <Trash2 size={13} />
-                                删除
-                            </button>
-                        </>
-                    )}
-                </div>
-            )}
 
             <UnsavedChangesDialog
                 open={pendingNavigation !== null}
@@ -2185,14 +1220,6 @@ export default function OfflineWorkbench() {
                 onDiscard={() => void handleConfirmLeave('discard')}
             />
 
-            {/* 点击其他区域关闭右键菜单 */}
-            {contextMenuOpen && (
-                <div
-                    className="offline-context-menu-backdrop"
-                    onClick={() => setContextMenuOpen(false)}
-                    onContextMenu={(e) => { e.preventDefault(); setContextMenuOpen(false); }}
-                />
-            )}
         </section>
     );
 }
