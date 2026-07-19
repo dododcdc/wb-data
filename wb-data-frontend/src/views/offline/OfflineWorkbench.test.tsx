@@ -50,7 +50,10 @@ vi.mock('./FlowCanvas', () => ({
         onNodeLayoutCommit,
         onRenameNode,
     }: {
-        flowDocument: { path: string };
+        flowDocument: {
+            path: string;
+            stages: Array<{ nodes: Array<{ kind: string }> }>;
+        };
         onAddNode: (kind: 'SHELL', position: { x: number; y: number }) => void;
         onEdgesChange: (edges: Array<{ id: string; source: string; target: string }>) => void;
         onNodeLayoutCommit: (nodes: Array<{ id: string; position: { x: number; y: number } }>) => void;
@@ -58,6 +61,9 @@ vi.mock('./FlowCanvas', () => ({
     }) => (
         <div data-testid="flow-canvas">
             {flowDocument.path}
+            <span data-testid="transfer-node-count">
+                {flowDocument.stages.flatMap((stage) => stage.nodes).filter((node) => node.kind === 'TRANSFER').length}
+            </span>
             <button
                 type="button"
                 aria-label="模拟画布修改"
@@ -447,6 +453,21 @@ describe('OfflineWorkbench commit UI', () => {
         expect(screen.getByRole('button', { name: '提交当前 Flow' })).toBeTruthy();
         expect(screen.queryByRole('button', { name: '提交仓库改动' })).toBeNull();
         expect(screen.queryByRole('button', { name: '推送' })).toBeNull();
+    });
+
+    it('adds a transfer node from the toolbar', async () => {
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write'];
+
+        renderOfflineWorkbench();
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        fireEvent.click(screen.getByRole('button', { name: '添加传输节点' }));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('transfer-node-count').textContent).toBe('1');
+        });
     });
 
     it('shows repo commit and push for group admins', async () => {

@@ -104,11 +104,17 @@ function updateScriptPathForRename(scriptPath: string, oldId: string, newId: str
 }
 
 function buildScriptPath(documentPath: string, taskId: string, kind: OfflineFlowNodeKind) {
-    const extension = getOfflineNodeScriptExtension(kind);
     const normalizedPath = documentPath.replace(/\\/g, '/');
     const flowDirectory = normalizedPath.endsWith('/flow.yaml')
         ? normalizedPath.slice(0, -'/flow.yaml'.length)
         : normalizedPath.replace(/\/[^/]*$/, '');
+
+    if (kind === 'TRANSFER') {
+        const flowDirectoryName = flowDirectory.split('/').filter(Boolean).at(-1);
+        return `transfers/${flowDirectoryName}/${taskId}.transfer.json`;
+    }
+
+    const extension = getOfflineNodeScriptExtension(kind);
     const scriptDirectory = flowDirectory.replace(/^_flows\//, 'scripts/');
 
     return `${scriptDirectory}/${taskId}.${extension}`;

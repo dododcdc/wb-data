@@ -124,6 +124,26 @@ describe('renameFlowNode', () => {
 });
 
 describe('addFlowNode', () => {
+    it('adds a transfer node with a sidecar path and preserves existing selections', () => {
+        const result = expectOk(addFlowNode({
+            document: makeDocument(),
+            kind: 'TRANSFER',
+            position: { x: 640, y: 320 },
+            selectedTaskIds: ['shell_node_1', 'shell_node_2'],
+            maxNodes: 20,
+        }));
+
+        expect(result.node).toMatchObject({
+            taskId: 'transfer_node_1',
+            kind: 'TRANSFER',
+            scriptPath: 'transfers/demo/transfer_node_1.transfer.json',
+            scriptContent: '',
+        });
+        expect(result.document.layout.transfer_node_1).toEqual({ x: 640, y: 320 });
+        expect(result.nextActiveNodeId).toBe('transfer_node_1');
+        expect(result.nextSelectedTaskIds).toEqual(['shell_node_1', 'shell_node_2']);
+    });
+
     it('adds a shell node with predictable id, script path, layout, selection, and preserved document fields', () => {
         const position = { x: 640, y: 320 };
         const sourceDocument = makeDocument();
