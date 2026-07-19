@@ -103,7 +103,7 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
                 position={Position.Top}
                 className="flow-canvas-handle"
             />
-            <div className={`flow-canvas-node${rfSelected ? ' is-rf-selected' : ''}${data.selected ? ' is-checked' : ''}${data.status ? ` has-status is-${data.status.toLowerCase()}` : ''}`}>
+            <div className={`flow-canvas-node${data.kind === 'TRANSFER' ? ' is-transfer' : ''}${rfSelected ? ' is-rf-selected' : ''}${data.selected ? ' is-checked' : ''}${data.status ? ` has-status is-${data.status.toLowerCase()}` : ''}`}>
                 <label
                     className="flow-canvas-node-check"
                     onClick={(e) => e.stopPropagation()}

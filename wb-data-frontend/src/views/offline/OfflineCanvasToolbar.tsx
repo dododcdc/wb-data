@@ -8,6 +8,7 @@ import {
     Save,
     Settings2,
     TerminalSquare,
+    Waypoints,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
@@ -141,6 +142,10 @@ export function OfflineCanvasToolbar({
 
             <ToolbarButton label="添加 Shell 节点" disabled={editDisabled} onClick={() => onAddNode('SHELL')}>
                 <TerminalSquare size={16} />
+            </ToolbarButton>
+
+            <ToolbarButton label="添加传输节点" disabled={editDisabled} onClick={() => onAddNode('TRANSFER')}>
+                <Waypoints size={16} />
             </ToolbarButton>
         </header>
     );
