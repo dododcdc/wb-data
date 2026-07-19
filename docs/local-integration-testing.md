@@ -4,6 +4,32 @@ This document defines the production-like local test environment for WB Data. It
 
 Status: this is the environment contract. The compose file and seed scripts should follow this document. StarRocks is intentionally deferred for now because it is heavier than the first integration target needs.
 
+## Transfer Node Environment
+
+Use the dedicated transfer stack for JDBC transfer-node validation. It keeps transfer source and target data separate from the WB-Data metadata database, while the local backend remains responsible for metadata and runtime configuration rendering.
+
+```bash
+DB_PASSWORD=1111 WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
+  mvn spring-boot:run -Dspring-boot.run.fork=false
+
+scripts/dev/transfer-smoke.sh
+```
+
+Run the backend command from `wb-data-server/wb-data-backend`. The smoke script starts the stack, waits for MySQL and HiveServer2, applies the Hive schema, verifies Kestra and the backend proxy, and seeds the local WB-Data metadata database. Override its metadata connection with `WB_DATA_METADATA_MYSQL_HOST`, `WB_DATA_METADATA_MYSQL_PORT`, `WB_DATA_METADATA_MYSQL_DATABASE`, `WB_DATA_METADATA_MYSQL_USER`, and `DB_PASSWORD` when necessary.
+
+| Data source | Type | Host | Port | Database | Tables |
+| --- | --- | --- | --- | --- | --- |
+| `it_transfer_mysql` | `MYSQL` | `wb-data-transfer-mysql` | `3306` | `transfer_demo` | `transfer_orders_source`, `transfer_orders_target` |
+| `it_transfer_hive` | `HIVE` | `wb-data-transfer-hive` | `10000` | `default` | `transfer_orders_source`, `transfer_orders_target`, `transfer_orders_partitioned_target` |
+
+Kestra passes `WB_DATA_INTERNAL_BASE_URL=http://wb-data-transfer-backend-network-alias:8080` and `WB_DATA_INTERNAL_TOKEN=dev-transfer-token` into SeaTunnel task containers. The alias service proxies to the host-run backend, so these data sources and the render endpoint are reachable from the shared `wb-data-integration` Docker network. Do not replace either data source hostname with `127.0.0.1`.
+
+Reset the transfer stack and its seeded service data with:
+
+```bash
+docker compose -f docker-compose.transfer.yml down -v
+```
+
 ## Goals
 
 - Run frontend, backend, Kestra, MySQL, PostgreSQL, and Hive in one Docker network.
