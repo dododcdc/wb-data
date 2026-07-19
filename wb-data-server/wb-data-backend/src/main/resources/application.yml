@@ -32,6 +32,11 @@ wbdata:
   offline:
     repo-base-dir: ${WB_DATA_OFFLINE_REPO_BASE_DIR:/Users/wenbin/Projects/wb-data/output/offline-live/repos}
     repo-dir-prefix: ${WB_DATA_OFFLINE_REPO_DIR_PREFIX:wb-data-}
+    transfer:
+      seatunnel-image: ${WB_DATA_TRANSFER_SEATUNNEL_IMAGE:apache/seatunnel:2.3.13}
+      docker-network: ${WB_DATA_TRANSFER_DOCKER_NETWORK:wb-data-integration}
+      internal-base-url-env: ${WB_DATA_TRANSFER_INTERNAL_BASE_URL_ENV:WB_DATA_INTERNAL_BASE_URL}
+      internal-token-env: ${WB_DATA_TRANSFER_INTERNAL_TOKEN_ENV:WB_DATA_INTERNAL_TOKEN}
     kestra:
       base-url: ${WB_DATA_KESTRA_BASE_URL:http://localhost:8090}
       tenant: ${WB_DATA_KESTRA_TENANT:main}

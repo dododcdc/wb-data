@@ -3,6 +3,7 @@ package com.wbdata.offline.service;
 import com.wbdata.datasource.service.DataSourceService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.offline.config.OfflineProperties;
+import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.dto.NodePosition;
 import com.wbdata.offline.dto.OfflineFlowSchedule;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
@@ -165,7 +166,8 @@ class OfflineFlowDocumentServiceTest {
                 mock(DataSourceService.class),
                 repoLockManager,
                 kestraFlowFileService,
-                new TransferConfigFileService(new ObjectMapper())
+                new TransferConfigFileService(new ObjectMapper()),
+                new OfflineTransferProperties()
         );
     }
 

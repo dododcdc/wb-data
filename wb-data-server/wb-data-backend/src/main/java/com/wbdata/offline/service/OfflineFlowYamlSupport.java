@@ -1,5 +1,6 @@
 package com.wbdata.offline.service;
 
+import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.dto.OfflineFlowSchedule;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -25,12 +26,32 @@ final class OfflineFlowYamlSupport {
             java.util.regex.Pattern.compile("\\{\\{\\s*read\\(\\s*['\"]([^'\"]+)['\"]\\s*\\)\\s*}}");
 
     private final Yaml yaml;
+    private final TransferRuntimeSettings transferRuntimeSettings;
 
     OfflineFlowYamlSupport() {
+        this(new TransferRuntimeSettings(
+                "apache/seatunnel:2.3.13",
+                "wb-data-integration",
+                "WB_DATA_INTERNAL_BASE_URL",
+                "WB_DATA_INTERNAL_TOKEN"
+        ));
+    }
+
+    OfflineFlowYamlSupport(OfflineTransferProperties transferProperties) {
+        this(new TransferRuntimeSettings(
+                transferProperties.getSeatunnelImage(),
+                transferProperties.getDockerNetwork(),
+                transferProperties.getInternalBaseUrlEnv(),
+                transferProperties.getInternalTokenEnv()
+        ));
+    }
+
+    OfflineFlowYamlSupport(TransferRuntimeSettings transferRuntimeSettings) {
         DumperOptions options = new DumperOptions();
         options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
         options.setPrettyFlow(true);
         this.yaml = new Yaml(options);
+        this.transferRuntimeSettings = transferRuntimeSettings;
     }
 
     String buildEmptyFlowYaml(String flowId, String namespace) {
@@ -368,6 +389,31 @@ final class OfflineFlowYamlSupport {
                 nodeInfo.transferConfigPath()
         ));
         task.put("namespaceFiles", buildNamespaceFilesConfig(nodeInfo.transferConfigPath()));
+        task.put("containerImage", transferRuntimeSettings.seatunnelImage());
+        task.put("taskRunner", buildTransferTaskRunner());
+        task.put("commands", buildTransferCommands(nodeInfo.taskId(), nodeInfo.transferConfigPath()));
+    }
+
+    private Map<String, Object> buildTransferTaskRunner() {
+        Map<String, Object> taskRunner = new LinkedHashMap<>();
+        taskRunner.put("type", "io.kestra.plugin.scripts.runner.docker.Docker");
+        taskRunner.put("networkMode", transferRuntimeSettings.dockerNetwork());
+        taskRunner.put("pullPolicy", "IF_NOT_PRESENT");
+        return taskRunner;
+    }
+
+    private List<String> buildTransferCommands(String taskId, String transferConfigPath) {
+        String renderedConfigPath = "/tmp/wb-data-transfer/" + taskId + ".conf";
+        return List.of(
+                "set -euo pipefail",
+                "mkdir -p /tmp/wb-data-transfer",
+                "curl --fail --show-error --silent -H \"X-WB-Data-Internal-Token: ${"
+                        + transferRuntimeSettings.internalTokenEnv() + "}\" -H 'Content-Type: application/json' "
+                        + "--data-binary @" + shellQuote(transferConfigPath) + " \"${"
+                        + transferRuntimeSettings.internalBaseUrlEnv() + "}/api/v1/internal/offline/transfer/render\" "
+                        + "-o " + renderedConfigPath,
+                "./bin/seatunnel.sh --config " + renderedConfigPath + " -m local"
+        );
     }
 
     private void applyShellTask(Map<String, Object> task, FlowNode nodeInfo) {
@@ -476,6 +522,8 @@ final class OfflineFlowYamlSupport {
     private void clearShellTaskFields(Map<String, Object> task) {
         task.remove("namespaceFiles");
         task.remove("commands");
+        task.remove("containerImage");
+        task.remove("taskRunner");
         task.remove("labels");
         cleanupTaskMetadataDescription(task);
     }
@@ -959,6 +1007,14 @@ final class OfflineFlowYamlSupport {
             String cron,
             String timezone,
             boolean enabled
+    ) {
+    }
+
+    record TransferRuntimeSettings(
+            String seatunnelImage,
+            String dockerNetwork,
+            String internalBaseUrlEnv,
+            String internalTokenEnv
     ) {
     }
 }
