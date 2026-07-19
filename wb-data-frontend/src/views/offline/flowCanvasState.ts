@@ -40,6 +40,8 @@ export function buildFlowDocumentSignature(document: OfflineFlowDocument | null)
                 dataSourceId: node.dataSourceId ?? null,
                 dataSourceType: node.dataSourceType ?? null,
                 transfer: node.transfer ?? null,
+                transferDraft: node.transferDraft ?? null,
+                transferDraftValid: node.transferDraftValid ?? null,
             })),
         })),
         edges: buildEdgesFromCanvasEdges(document.edges.map((edge) => ({

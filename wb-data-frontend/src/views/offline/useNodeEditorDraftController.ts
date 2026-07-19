@@ -60,12 +60,16 @@ export function useNodeEditorDraftController({
         dataSourceId?: number,
         dataSourceType?: string,
         transfer?: TransferConfig,
+        transferDraft?: TransferConfig,
+        transferDraftValid?: boolean,
     ): PendingNodeEditorDraft => ({
         taskId,
         scriptContent,
         ...(dataSourceId !== undefined ? { dataSourceId } : {}),
         ...(dataSourceType !== undefined ? { dataSourceType } : {}),
         ...(transfer !== undefined ? { transfer } : {}),
+        ...(transferDraft !== undefined ? { transferDraft } : {}),
+        ...(transferDraftValid !== undefined ? { transferDraftValid } : {}),
     }), []);
 
     const openNodeEditor = useCallback((taskId: string) => {
@@ -81,6 +85,8 @@ export function useNodeEditorDraftController({
             node.dataSourceId,
             node.dataSourceType,
             node.transfer,
+            node.transferDraft,
+            node.transferDraftValid,
         );
         setNodeEditorOpenState(true);
     }, [buildPendingNodeEditorDraft, flowDocument, setSelectedNodeId]);
@@ -103,10 +109,20 @@ export function useNodeEditorDraftController({
         dataSourceId?: number,
         dataSourceType?: string,
         transfer?: TransferConfig,
+        transferDraft?: TransferConfig,
+        transferDraftValid?: boolean,
     ) => {
         const taskId = activeNodeId ?? pendingNodeEditorDraftRef.current?.taskId;
         if (!taskId) return null;
-        const pendingDraft = buildPendingNodeEditorDraft(taskId, content, dataSourceId, dataSourceType, transfer);
+        const pendingDraft = buildPendingNodeEditorDraft(
+            taskId,
+            content,
+            dataSourceId,
+            dataSourceType,
+            transfer,
+            transferDraft,
+            transferDraftValid,
+        );
         pendingNodeEditorDraftRef.current = pendingDraft;
         nodeEditorDraftSchedulerRef.current?.flushNow(pendingDraft);
         return pendingDraft;
@@ -123,6 +139,8 @@ export function useNodeEditorDraftController({
             currentPending?.dataSourceId,
             currentPending?.dataSourceType,
             transfer ?? currentPending?.transfer,
+            currentPending?.transferDraft,
+            currentPending?.transferDraftValid,
         );
         pendingNodeEditorDraftRef.current = pendingDraft;
         nodeEditorDraftSchedulerRef.current?.schedule(pendingDraft);

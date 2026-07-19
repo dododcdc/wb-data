@@ -56,6 +56,7 @@ import {
 } from './recoverySnapshotStore';
 import {
     buildSaveFlowDocumentRequest,
+    findFirstNodeWithInvalidTransferEditorDraft,
     hasPendingNodeEditorDraftChanges,
     isSaveConflictError,
     prepareFlowSessionForSave,
@@ -530,9 +531,19 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         return prepared;
     }, [cancelNodeEditorDraftFlush, clearPendingNodeEditorDraft, pendingNodeEditorDraftRef, setDraftSessionSync]);
 
-    const validateDocumentForAction = useCallback((nodeOverride?: PendingNodeOverrideForSave) => {
-        const currentDocument = draftSessionRef.current?.workingDraft ?? null;
+    const validateDocumentForAction = useCallback((documentForAction?: FlowDraftSession['workingDraft'], nodeOverride?: PendingNodeOverrideForSave) => {
+        const currentDocument = documentForAction ?? draftSessionRef.current?.workingDraft ?? null;
         if (!currentDocument) return true;
+
+        const invalidTransferDraftNode = findFirstNodeWithInvalidTransferEditorDraft(currentDocument, nodeOverride);
+        if (invalidTransferDraftNode) {
+            showFeedback({
+                tone: 'error',
+                title: 'Transfer 配置未完成',
+                detail: `${invalidTransferDraftNode.taskId} 存在未完成的 Transfer 配置，请补齐字段映射后再保存或提交。`,
+            });
+            return false;
+        }
 
         const invalidNode = findFirstNodeWithInvalidDataSource(currentDocument, nodeOverride);
         if (invalidNode) {
@@ -563,7 +574,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         const prepared = prepareCurrentSessionForSave(nodeOverride);
         if (!prepared) return false;
 
-        if (!validateDocumentForAction(prepared.nodeOverride)) {
+        if (!validateDocumentForAction(prepared.sessionForSave.workingDraft, prepared.nodeOverride)) {
             return false;
         }
         const sessionForSave = prepared.sessionForSave;

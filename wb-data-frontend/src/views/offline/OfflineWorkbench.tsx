@@ -16,6 +16,7 @@ import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { useAuthStore } from '../../utils/auth';
 import { NodeEditorDialog } from './NodeEditorDialog';
 import type { TransferConfig } from './transfer/transferTypes';
+import type { TransferNodeDraftState } from './transfer/TransferNodeDialog';
 import { ScheduleDialog } from './ScheduleDialog';
 import { UnsavedChangesDialog } from '../../components/ui/unsaved-changes-dialog';
 import {
@@ -473,8 +474,15 @@ export default function OfflineWorkbench() {
         stageNodeEditorDraft(content, dataSourceId, dataSourceType);
     }, [stageNodeEditorDraft]);
 
-    const handleTransferNodeDraftChange = useCallback((transfer: TransferConfig) => {
-        stageNodeEditorDraft(nodeEditorContent, undefined, undefined, transfer);
+    const handleTransferNodeDraftChange = useCallback((transferDraft: TransferConfig, state: TransferNodeDraftState) => {
+        stageNodeEditorDraft(
+            nodeEditorContent,
+            undefined,
+            undefined,
+            state.valid ? transferDraft : undefined,
+            transferDraft,
+            state.valid,
+        );
     }, [nodeEditorContent, stageNodeEditorDraft]);
 
     const handleFlowCommit = useCallback(async (mode: 'save-and-commit' | 'saved-only') => {

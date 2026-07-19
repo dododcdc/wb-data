@@ -6,6 +6,7 @@ import { TooltipProvider } from '../../components/ui/tooltip';
 import type { DataSourceOption } from '../../components/DataSourceSelect';
 
 const dataSourceSelectPropsSpy = vi.fn();
+const transferNodeDialogPropsSpy = vi.fn();
 
 // Mock the shared SqlEditor to verify SQL nodes use it
 vi.mock('../../components/sql-editor/SqlEditor', () => ({
@@ -57,12 +58,16 @@ vi.mock('./nodeEditorDataSourceRules', () => ({
 }));
 
 vi.mock('./transfer/TransferNodeDialog', () => ({
-    TransferNodeDialog: () => <div data-testid="transfer-node-dialog" />,
+    TransferNodeDialog: (props: unknown) => {
+        transferNodeDialogPropsSpy(props);
+        return <div data-testid="transfer-node-dialog" />;
+    },
 }));
 
 afterEach(() => {
     cleanup();
     dataSourceSelectPropsSpy.mockClear();
+    transferNodeDialogPropsSpy.mockClear();
 });
 
 const makeSqlNode = (overrides?: Partial<OfflineFlowNode>): OfflineFlowNode => ({
@@ -185,6 +190,42 @@ describe('NodeEditorDialog', () => {
 
         expect(screen.getByTestId('transfer-node-dialog')).toBeTruthy();
         expect(screen.queryByTestId('raw-monaco-editor')).toBeNull();
+    });
+
+    it('reopens transfer nodes with a local transfer draft before the last saveable transfer', () => {
+        const saveableTransfer = {
+            source: { dataSourceId: 1, dataSourceType: 'MYSQL' as const, table: 'orders' },
+            target: { dataSourceId: 2, dataSourceType: 'HIVE' as const, table: 'dwd_orders', writeMode: 'append' as const },
+            fieldMappings: [{ target: 'id', kind: 'source_field' as const, source: 'id' }],
+            partitions: [],
+        };
+        const localDraft = {
+            ...saveableTransfer,
+            target: { ...saveableTransfer.target, table: 'dwd_payments' },
+            fieldMappings: [],
+        };
+
+        render(
+            <TooltipProvider>
+            <NodeEditorDialog
+                open
+                groupId={1}
+                activeNode={makeTransferNode({
+                    transfer: saveableTransfer,
+                    transferDraft: localDraft,
+                    transferDraftValid: false,
+                })}
+                content=""
+                onOpenChange={() => {}}
+                onTempSave={() => {}}
+                onContentChange={() => {}}
+            />
+            </TooltipProvider>,
+        );
+
+        expect(transferNodeDialogPropsSpy).toHaveBeenCalledWith(expect.objectContaining({
+            value: localDraft,
+        }));
     });
 
     it('returns null when activeNode is null', () => {

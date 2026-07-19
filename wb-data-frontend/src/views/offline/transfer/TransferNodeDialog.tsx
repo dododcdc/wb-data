@@ -6,7 +6,17 @@ import { validateTransferConfig } from './transferValidation';
 import { useTransferMetadata } from './useTransferMetadata';
 import './TransferNodeDialog.css';
 
-interface TransferNodeDialogProps { groupId: number | null; value?: TransferConfig; onChange: (value: TransferConfig) => void; }
+export interface TransferNodeDraftState {
+    valid: boolean;
+    errors: string[];
+}
+
+interface TransferNodeDialogProps {
+    groupId: number | null;
+    value?: TransferConfig;
+    onChange: (value: TransferConfig) => void;
+    onDraftChange?: (value: TransferConfig, state: TransferNodeDraftState) => void;
+}
 const emptyConfig: TransferConfig = { source: { dataSourceId: 0, dataSourceType: 'MYSQL', table: '' }, target: { dataSourceId: 0, dataSourceType: 'HIVE', table: '', writeMode: 'append' }, fieldMappings: [], partitions: [] };
 
 function MappingRows({ mappings, onChange, sourceColumns }: { mappings: TransferConfig['fieldMappings']; sourceColumns: string[]; onChange: (mappings: TransferConfig['fieldMappings']) => void }) {
@@ -16,7 +26,7 @@ function MappingRows({ mappings, onChange, sourceColumns }: { mappings: Transfer
     })}</>;
 }
 
-export function TransferNodeDialog({ groupId, value, onChange }: TransferNodeDialogProps) {
+export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: TransferNodeDialogProps) {
     const [config, setConfig] = useState<TransferConfig>(value ?? emptyConfig);
     const emittedConfigRef = useRef('');
     const { dataSources, sourceTables, targetTables, sourceMetadata, targetMetadata } = useTransferMetadata(groupId, config.source.dataSourceId || undefined, config.source.database, config.source.table, config.target.dataSourceId || undefined, config.target.database, config.target.table);
@@ -25,17 +35,20 @@ export function TransferNodeDialog({ groupId, value, onChange }: TransferNodeDia
         if (next !== emittedConfigRef.current) setConfig(value ?? emptyConfig);
     }, [value]);
     const sourceColumns = useMemo(() => sourceMetadata?.columns.map((column) => column.name) ?? [], [sourceMetadata]);
-    const columns = targetMetadata?.columns.map((column) => column.name) ?? [];
-    const partitions = targetMetadata?.partitionColumns.map((column) => column.name) ?? [];
-    const validation = validateTransferConfig(config, columns, partitions);
+    const columns = useMemo(() => targetMetadata?.columns.map((column) => column.name) ?? [], [targetMetadata]);
+    const partitions = useMemo(() => targetMetadata?.partitionColumns.map((column) => column.name) ?? [], [targetMetadata]);
+    const validation = useMemo(() => validateTransferConfig(config, columns, partitions), [columns, config, partitions]);
+    const validationKey = validation.errors.join('\n');
+    const saveable = Boolean(targetMetadata) && validation.valid;
     useEffect(() => {
-        if (!targetMetadata || !validation.valid) return;
+        onDraftChange?.(config, { valid: saveable, errors: validation.errors });
+        if (!saveable) return;
         const next = JSON.stringify(config);
         if (next !== emittedConfigRef.current) {
             emittedConfigRef.current = next;
             onChange(config);
         }
-    }, [config, onChange, targetMetadata, validation.valid]);
+    }, [config, onChange, onDraftChange, saveable, validation.errors, validationKey]);
     const patch = (next: Partial<TransferConfig>) => setConfig((current) => ({ ...current, ...next }));
     const selectEndpoint = (side: 'source' | 'target', id: number) => { const source = dataSources.find((item) => item.id === id); patch({ [side]: { ...config[side], dataSourceId: id, dataSourceType: (source?.type ?? 'MYSQL') as TransferConfig['source']['dataSourceType'], table: '' } }); };
     const selectTargetTable = (table: string) => patch({ target: { ...config.target, table } });
