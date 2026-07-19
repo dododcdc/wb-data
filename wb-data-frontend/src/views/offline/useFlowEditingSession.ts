@@ -7,7 +7,6 @@ import {
     type Dispatch,
     type SetStateAction,
 } from 'react';
-import { AxiosError } from 'axios';
 import { flushSync } from 'react-dom';
 import type { Edge, Node } from '@xyflow/react';
 
@@ -58,6 +57,13 @@ import {
     removeRecoverySnapshot,
     writeRecoverySnapshot,
 } from './recoverySnapshotStore';
+import {
+    buildSaveFlowDocumentRequest,
+    hasPendingNodeEditorDraftChanges,
+    isSaveConflictError,
+    prepareFlowSessionForSave,
+    type PendingNodeOverrideForSave,
+} from './flowSaveTransaction';
 
 const EMPTY_SELECTED_TASK_IDS: string[] = [];
 const NODE_EDITOR_DRAFT_FLUSH_DELAY_MS = 180;
@@ -75,18 +81,6 @@ export interface OpenFlowDocumentOptions {
     force?: boolean;
     canLeaveDirty?: boolean;
     skipLeaveCurrent?: boolean;
-}
-
-interface PendingNodeOverrideForSave {
-    taskId: string;
-    content: string;
-    dataSourceId?: number;
-    dataSourceType?: string;
-}
-
-interface FlushPendingNodeEditorDraftForSaveResult {
-    session: FlowDraftSession;
-    nodeOverride?: PendingNodeOverrideForSave;
 }
 
 interface SaveConflictState {
@@ -606,7 +600,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         }
     }, [setDraftSessionSync]);
 
-    const flushPendingNodeEditorDraftForSave = useCallback((): FlushPendingNodeEditorDraftForSaveResult | null => {
+    const prepareCurrentSessionForSave = useCallback((nodeOverride?: PendingNodeOverrideForSave) => {
         nodeEditorDraftSchedulerRef.current?.cancel();
         const currentSession = draftSessionRef.current;
         const pendingDraft = pendingNodeEditorDraftRef.current;
@@ -615,22 +609,16 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             return null;
         }
 
-        if (!pendingDraft) {
-            return { session: currentSession };
-        }
-
-        const nextSession = flushNodeEditorDraft(currentSession, pendingDraft);
+        const prepared = prepareFlowSessionForSave({
+            session: currentSession,
+            pendingDraft,
+            nodeOverride,
+        });
         pendingNodeEditorDraftRef.current = null;
-        setDraftSessionSync(nextSession);
-        return {
-            session: nextSession,
-            nodeOverride: {
-                taskId: pendingDraft.taskId,
-                content: pendingDraft.scriptContent,
-                dataSourceId: pendingDraft.dataSourceId,
-                dataSourceType: pendingDraft.dataSourceType,
-            },
-        };
+        if (pendingDraft) {
+            setDraftSessionSync(prepared.sessionAfterPendingDraft);
+        }
+        return prepared;
     }, [setDraftSessionSync]);
 
     const validateDocumentForAction = useCallback((nodeOverride?: PendingNodeOverrideForSave) => {
@@ -657,47 +645,19 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         if (!groupId) {
             throw new Error('Missing groupId');
         }
-        const draftDocument = sessionForSave.workingDraft;
-        return saveOfflineFlowDocument({
-            groupId,
-            path: sessionForSave.path,
-            documentHash: sessionForSave.baseDocument.documentHash,
-            documentUpdatedAt: sessionForSave.baseDocument.documentUpdatedAt,
-            stages: draftDocument.stages.map((stage) => ({
-                stageId: stage.stageId,
-                nodes: stage.nodes.map((node) => ({
-                    taskId: node.taskId,
-                    scriptContent: node.scriptContent,
-                    kind: node.kind,
-                    scriptPath: node.scriptPath,
-                    dataSourceId: node.dataSourceId,
-                    dataSourceType: node.dataSourceType,
-                })),
-            })),
-            edges: draftDocument.edges,
-            layout: draftDocument.layout,
-            schedule: draftDocument.schedule,
-        });
+        return saveOfflineFlowDocument(buildSaveFlowDocumentRequest(groupId, sessionForSave));
     }, [groupId]);
 
     const saveFlow = useCallback(async (nodeOverride?: PendingNodeOverrideForSave, silent = false) => {
         const currentSession = draftSessionRef.current;
         if (!groupId || !activeFlowPath || !currentSession) return false;
-        const pendingDraftForSave = flushPendingNodeEditorDraftForSave();
-        const sessionForSaveBase = pendingDraftForSave?.session ?? currentSession;
-        const effectiveNodeOverride = nodeOverride ?? pendingDraftForSave?.nodeOverride;
+        const prepared = prepareCurrentSessionForSave(nodeOverride);
+        if (!prepared) return false;
 
-        if (!validateDocumentForAction(effectiveNodeOverride)) {
+        if (!validateDocumentForAction(prepared.nodeOverride)) {
             return false;
         }
-        const sessionForSave = effectiveNodeOverride
-            ? flushNodeEditorDraft(sessionForSaveBase, {
-                taskId: effectiveNodeOverride.taskId,
-                scriptContent: effectiveNodeOverride.content,
-                dataSourceId: effectiveNodeOverride.dataSourceId,
-                dataSourceType: effectiveNodeOverride.dataSourceType,
-            })
-            : sessionForSaveBase;
+        const sessionForSave = prepared.sessionForSave;
         const draftDocument = sessionForSave.workingDraft;
 
         const graphValidation = validateFlowDocumentGraph(draftDocument);
@@ -730,7 +690,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             }
             return true;
         } catch (error) {
-            if (error instanceof AxiosError && error.response?.status === 409) {
+            if (isSaveConflictError(error)) {
                 writeRecoverySnapshot(groupId, sessionForSave.path, buildRecoverySnapshotFromSession(sessionForSave, Date.now()));
                 setSaveConflictState({
                     path: sessionForSave.path,
@@ -749,9 +709,9 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         }
     }, [
         activeFlowPath,
-        flushPendingNodeEditorDraftForSave,
         groupId,
         persistFlowSession,
+        prepareCurrentSessionForSave,
         refreshCurrentFlowCommitStatus,
         refreshRepoStatus,
         setDraftSessionSync,
@@ -767,16 +727,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         try {
             const currentSession = draftSessionRef.current;
             const pendingDraft = pendingNodeEditorDraftRef.current;
-            const pendingDraftChanged = Boolean(
-                pendingDraft
-                && currentSession
-                && flattenFlowDocumentNodes(currentSession.workingDraft).some((node) => node.taskId === pendingDraft.taskId
-                    && (
-                        node.scriptContent !== pendingDraft.scriptContent
-                        || node.dataSourceId !== pendingDraft.dataSourceId
-                        || node.dataSourceType !== pendingDraft.dataSourceType
-                    )),
-            );
+            const pendingDraftChanged = hasPendingNodeEditorDraftChanges(currentSession, pendingDraft);
             if (
                 mode === 'save-and-commit'
                 && currentSession
@@ -868,7 +819,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             });
         } catch (error) {
             if (!isCurrentGroupAction()) return;
-            const detail = error instanceof AxiosError && error.response?.status === 409
+            const detail = isSaveConflictError(error)
                 ? '服务器版本再次发生变化，请确认后重试覆盖保存。'
                 : getErrorMessage(error, '暂时无法基于最新版本覆盖保存，请稍后重试。');
             showFeedback({
@@ -932,7 +883,6 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         updateCanvasNodes,
         updateCanvasEdges,
         commitCanvasLayout,
-        flushPendingNodeEditorDraftForSave,
         saveFlow,
         commitCurrentFlow,
         closeSaveConflict,
