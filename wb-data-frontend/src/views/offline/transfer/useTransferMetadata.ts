@@ -29,6 +29,7 @@ export function useTransferMetadata(groupId: number | null, sourceDataSourceId?:
 
     useEffect(() => {
         if (!groupId || !sourceDataSourceId || !sourceTable) { setSourceMetadata(null); return; }
+        setSourceMetadata(null);
         void getTransferTableMetadata(groupId, sourceDataSourceId, sourceDatabase ?? '', sourceTable)
             .then(setSourceMetadata)
             .catch(() => setSourceMetadata(null));
@@ -43,6 +44,7 @@ export function useTransferMetadata(groupId: number | null, sourceDataSourceId?:
 
     useEffect(() => {
         if (!groupId || !targetDataSourceId || !targetTable) { setTargetMetadata(null); return; }
+        setTargetMetadata(null);
         void getTransferTableMetadata(groupId, targetDataSourceId, targetDatabase ?? '', targetTable)
             .then(setTargetMetadata)
             .catch(() => setTargetMetadata(null));

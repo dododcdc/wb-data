@@ -1,12 +1,31 @@
 import type { TransferFieldMapping, TransferMappingKind, TransferPartitionMapping } from './transferTypes';
 
 export function createDefaultFieldMappings(sourceColumns: string[], targetColumns: string[]): TransferFieldMapping[] {
+    return reconcileTargetMappings([], sourceColumns, targetColumns);
+}
+
+export function reconcileTargetMappings<T extends TransferFieldMapping | TransferPartitionMapping>(
+    currentMappings: T[] | undefined,
+    sourceColumns: string[],
+    targetColumns: string[],
+): T[] {
     const sourceNames = new Set(sourceColumns);
-    return targetColumns.map((target) => ({
-        target,
-        kind: 'source_field',
-        ...(sourceNames.has(target) ? { source: target } : {}),
-    }));
+    const currentByTarget = new Map((currentMappings ?? []).map((mapping) => [mapping.target, mapping]));
+
+    return targetColumns.map((target) => {
+        const current = currentByTarget.get(target);
+        if (current) {
+            if (current.kind === 'source_field' && !current.source && sourceNames.has(target)) {
+                return { ...current, source: target };
+            }
+            return current;
+        }
+        return {
+            target,
+            kind: 'source_field',
+            ...(sourceNames.has(target) ? { source: target } : {}),
+        } as T;
+    });
 }
 
 export function updateMapping(
