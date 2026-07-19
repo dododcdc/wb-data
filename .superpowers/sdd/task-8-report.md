@@ -108,6 +108,32 @@ Fixed the remaining P1 write-mode emission issue narrowly.
 
 No new concerns. Lint was not run because it was not requested.
 
+## P2/P-spec Fix: Transfer Table-list Request Identity
+
+### Status
+
+Fixed the remaining table-list race narrowly.
+
+### Changes
+
+- Added active-request guards to both source and target table-list effects in `useTransferMetadata`.
+- Stale source/target datasource table-list responses no longer overwrite table options after a newer datasource selection.
+- Existing missing-datasource behavior still clears the relevant table list.
+- Added hook regressions for out-of-order source and target table-list responses.
+
+### Verification
+
+- `cd wb-data-frontend && npx vitest run src/views/offline/transfer src/views/offline/NodeEditorDialog.test.tsx src/views/offline/OfflineWorkbench.test.tsx src/views/offline/flowSaveTransaction.test.ts`
+  - Passed: 8 files, 56 tests.
+- `cd wb-data-frontend && npx tsc -b --pretty false`
+  - Passed.
+- `git diff --check`
+  - Passed.
+
+### Concern
+
+No new concerns. Lint was not run because it was not requested.
+
 ## Final Re-review Fix: Transfer Draft Report Stabilization
 
 ### Status

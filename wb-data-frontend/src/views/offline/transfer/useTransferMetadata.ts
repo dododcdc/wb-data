@@ -45,9 +45,11 @@ export function useTransferMetadata(groupId: number | null, sourceDataSourceId?:
 
     useEffect(() => {
         if (!groupId || !sourceDataSourceId) { setSourceTables([]); return; }
+        let active = true;
         void getTransferTables(groupId, sourceDataSourceId, { page: 1, size: 200 })
-            .then((result) => setSourceTables((result.data ?? []).map((table) => table.name)))
-            .catch(() => setSourceTables([]));
+            .then((result) => { if (active) setSourceTables((result.data ?? []).map((table) => table.name)); })
+            .catch(() => { if (active) setSourceTables([]); });
+        return () => { active = false; };
     }, [groupId, sourceDataSourceId]);
 
     useEffect(() => {
@@ -61,9 +63,11 @@ export function useTransferMetadata(groupId: number | null, sourceDataSourceId?:
 
     useEffect(() => {
         if (!groupId || !targetDataSourceId) { setTargetTables([]); return; }
+        let active = true;
         void getTransferTables(groupId, targetDataSourceId, { page: 1, size: 200 })
-            .then((result) => setTargetTables((result.data ?? []).map((table) => table.name)))
-            .catch(() => setTargetTables([]));
+            .then((result) => { if (active) setTargetTables((result.data ?? []).map((table) => table.name)); })
+            .catch(() => { if (active) setTargetTables([]); });
+        return () => { active = false; };
     }, [groupId, targetDataSourceId]);
 
     useEffect(() => {
