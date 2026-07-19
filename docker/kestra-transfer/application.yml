@@ -1,7 +1,8 @@
 kestra:
   server:
     basic-auth:
-      enabled: false
+      username: admin@kestra.io
+      password: Admin1234!
   repository:
     type: h2
   storage:

@@ -30,10 +30,12 @@ WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080 scripts/dev/transfer-smoke.sh
 
 | Data source | Type | Host | Port | Database | Tables |
 | --- | --- | --- | --- | --- | --- |
-| `it_transfer_mysql` | `MYSQL` | `wb-data-transfer-mysql` | `3306` | `transfer_demo` | `transfer_orders_source`, `transfer_orders_target` |
-| `it_transfer_hive` | `HIVE` | `wb-data-transfer-hive` | `10000` | `default` | `transfer_orders_source`, `transfer_orders_target`, `transfer_orders_partitioned_target` |
+| `it_transfer_mysql` | `MYSQL` | `host.docker.internal` | `13306` | `transfer_demo` | `transfer_orders_source`, `transfer_orders_target` |
+| `it_transfer_hive` | `HIVE` | `host.docker.internal` | `11000` | `default` | `transfer_orders_source`, `transfer_orders_target`, `transfer_orders_partitioned_target` |
 
 Kestra passes `WB_DATA_INTERNAL_BASE_URL=http://wb-data-transfer-backend-network-alias:8080` and `WB_DATA_INTERNAL_TOKEN=dev-transfer-token` into SeaTunnel task containers. The alias service proxies to the host-run backend, so these data sources and the render endpoint are reachable from the shared `wb-data-integration` Docker network. Do not replace either data source hostname with `127.0.0.1`.
+
+The transfer seed uses `host.docker.internal` instead of Docker service names because the WB-Data backend runs on the macOS host during this validation path. Docker Desktop also exposes that hostname inside task containers, so SeaTunnel executions can reach the same mapped ports.
 
 Reset the transfer stack and its seeded service data with:
 

@@ -69,9 +69,9 @@ HTTP 401
 { "code": 401, "message": "查询 Kestra 插件列表失败" }
 ```
 
-The current `kestra/kestra:latest` container reports Kestra 1.3.7. Its API returned HTTP 401 for `/api/v1/plugins`, `/api/v1/main/plugins`, `/api/v1/main/flows`, and `/api/v1/main/executions`, including requests with the backend's configured basic-auth values. `docker/kestra-transfer/application.yml` sets `kestra.server.basic-auth.enabled: false`, so the API authentication requirement must be reconciled before execution can continue.
+The current `kestra/kestra:latest` container reports Kestra 1.3.7. Its API returned HTTP 401 for `/api/v1/plugins`, `/api/v1/main/plugins`, `/api/v1/main/flows`, and `/api/v1/main/executions`, including requests with the backend's configured basic-auth values. `docker/kestra-transfer/application.yml` now configures the same username and password as the backend's local defaults; rerun validation after recreating the Kestra container.
 
-There is a second environment concern after authentication is fixed: metadata requests from the host-run backend to the seeded service-name datasource hosts failed (`获取表列表失败` / `获取 Hive 表列表失败`). The Docker service names are reachable from Kestra containers but not from the macOS host process; the runtime configuration needs a host-reachable endpoint that remains reachable from SeaTunnel containers.
+There is a second environment concern after authentication is fixed: metadata requests from the host-run backend to the seeded service-name datasource hosts failed (`获取表列表失败` / `获取 Hive 表列表失败`). The transfer seed now uses `host.docker.internal` with mapped ports so both the host-run backend and Docker task containers can reach the JDBC services.
 
 ## Scenario Evidence
 
