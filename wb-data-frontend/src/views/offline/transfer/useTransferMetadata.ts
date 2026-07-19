@@ -6,12 +6,35 @@ import type { TransferDataSourceType } from './transferTypes';
 
 export const supportedTransferDataSourceTypes: TransferDataSourceType[] = ['MYSQL', 'POSTGRESQL', 'STARROCKS', 'HIVE'];
 
+interface TransferMetadataState {
+    dataSourceId: number;
+    database: string;
+    table: string;
+    metadata: TransferTableMetadataResponse;
+}
+
+function metadataMatchesSelection(
+    state: TransferMetadataState | null,
+    dataSourceId: number | undefined,
+    database: string | undefined,
+    table: string | undefined,
+) {
+    return Boolean(
+        state
+        && dataSourceId
+        && table
+        && state.dataSourceId === dataSourceId
+        && state.database === (database ?? '')
+        && state.table === table,
+    );
+}
+
 export function useTransferMetadata(groupId: number | null, sourceDataSourceId?: number, sourceDatabase?: string, sourceTable?: string, targetDataSourceId?: number, targetDatabase?: string, targetTable?: string) {
     const [dataSources, setDataSources] = useState<DataSource[]>([]);
     const [sourceTables, setSourceTables] = useState<string[]>([]);
     const [targetTables, setTargetTables] = useState<string[]>([]);
-    const [targetMetadata, setTargetMetadata] = useState<TransferTableMetadataResponse | null>(null);
-    const [sourceMetadata, setSourceMetadata] = useState<TransferTableMetadataResponse | null>(null);
+    const [targetMetadataState, setTargetMetadataState] = useState<TransferMetadataState | null>(null);
+    const [sourceMetadataState, setSourceMetadataState] = useState<TransferMetadataState | null>(null);
 
     useEffect(() => {
         if (!groupId) return;
@@ -28,11 +51,12 @@ export function useTransferMetadata(groupId: number | null, sourceDataSourceId?:
     }, [groupId, sourceDataSourceId]);
 
     useEffect(() => {
-        if (!groupId || !sourceDataSourceId || !sourceTable) { setSourceMetadata(null); return; }
-        setSourceMetadata(null);
+        if (!groupId || !sourceDataSourceId || !sourceTable) { setSourceMetadataState(null); return; }
+        const database = sourceDatabase ?? '';
+        setSourceMetadataState(null);
         void getTransferTableMetadata(groupId, sourceDataSourceId, sourceDatabase ?? '', sourceTable)
-            .then(setSourceMetadata)
-            .catch(() => setSourceMetadata(null));
+            .then((metadata) => setSourceMetadataState({ dataSourceId: sourceDataSourceId, database, table: sourceTable, metadata }))
+            .catch(() => setSourceMetadataState(null));
     }, [groupId, sourceDataSourceId, sourceDatabase, sourceTable]);
 
     useEffect(() => {
@@ -43,12 +67,20 @@ export function useTransferMetadata(groupId: number | null, sourceDataSourceId?:
     }, [groupId, targetDataSourceId]);
 
     useEffect(() => {
-        if (!groupId || !targetDataSourceId || !targetTable) { setTargetMetadata(null); return; }
-        setTargetMetadata(null);
+        if (!groupId || !targetDataSourceId || !targetTable) { setTargetMetadataState(null); return; }
+        const database = targetDatabase ?? '';
+        setTargetMetadataState(null);
         void getTransferTableMetadata(groupId, targetDataSourceId, targetDatabase ?? '', targetTable)
-            .then(setTargetMetadata)
-            .catch(() => setTargetMetadata(null));
+            .then((metadata) => setTargetMetadataState({ dataSourceId: targetDataSourceId, database, table: targetTable, metadata }))
+            .catch(() => setTargetMetadataState(null));
     }, [groupId, targetDataSourceId, targetDatabase, targetTable]);
+
+    const sourceMetadata = metadataMatchesSelection(sourceMetadataState, sourceDataSourceId, sourceDatabase, sourceTable)
+        ? sourceMetadataState?.metadata ?? null
+        : null;
+    const targetMetadata = metadataMatchesSelection(targetMetadataState, targetDataSourceId, targetDatabase, targetTable)
+        ? targetMetadataState?.metadata ?? null
+        : null;
 
     return { dataSources, sourceTables, targetTables, sourceMetadata, targetMetadata };
 }

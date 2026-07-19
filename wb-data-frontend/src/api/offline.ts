@@ -77,6 +77,8 @@ export interface OfflineFlowNode {
     dataSourceId?: number;
     dataSourceType?: string;
     transfer?: TransferConfig;
+    transferDraft?: TransferConfig;
+    transferDraftValid?: boolean;
 }
 
 export interface OfflineFlowEdge {

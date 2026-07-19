@@ -52,3 +52,32 @@ Fixed both P1 review findings narrowly.
 ### Concern
 
 No new concerns. Repository-wide lint was not rerun for this fix; the previous report records the unrelated transient Vite timestamp-file lint failure.
+
+## Re-review Fix: Local Transfer Drafts and Metadata Identity
+
+### Status
+
+Fixed both remaining P1 findings narrowly.
+
+### Changes
+
+- Added local-only transfer editor draft state (`transferDraft`, `transferDraftValid`) to frontend draft nodes and pending editor drafts while keeping `transfer` as the only saveable backend payload field.
+- `TransferNodeDialog` now reports every local draft with validity, but only valid metadata-backed configs become saveable transfer config.
+- `NodeEditorDialog` reopens transfer nodes from local `transferDraft` first, falling back to last valid `transfer`.
+- `OfflineWorkbench` stages invalid transfer drafts locally and stages valid drafts as saveable `transfer`.
+- Save validation now blocks save/save-and-commit when any transfer node has an invalid local editor draft.
+- `buildSaveFlowDocumentRequest` continues to serialize only backend fields and omits local-only transfer draft state.
+- `useTransferMetadata` now stores metadata with datasource/database/table identity and returns metadata only when it matches the current selection, preventing stale target metadata from validating a new target table.
+
+### Verification
+
+- `cd wb-data-frontend && npx vitest run src/views/offline/transfer src/views/offline/NodeEditorDialog.test.tsx src/views/offline/flowSaveTransaction.test.ts`
+  - Passed: 7 files, 25 tests.
+- `cd wb-data-frontend && npx tsc -b --pretty false`
+  - Passed.
+- `git diff --check`
+  - Passed.
+
+### Concern
+
+No new concerns. Lint was not run for this re-review fix because it was not requested; the prior report still records the unrelated repository-wide transient Vite timestamp-file lint issue.

@@ -24,6 +24,8 @@ export interface PendingNodeEditorDraft {
     dataSourceId?: number;
     dataSourceType?: string;
     transfer?: TransferConfig;
+    transferDraft?: TransferConfig;
+    transferDraftValid?: boolean;
 }
 
 function cloneDocument(document: OfflineFlowDocument): OfflineFlowDocument {
@@ -93,17 +95,26 @@ export function flushNodeEditorDraft(
 ): FlowDraftSession {
     return updateFlowDraftDocument(session, (draft) => {
         draft.stages.forEach((stage) => {
-            stage.nodes = stage.nodes.map((node) =>
-                node.taskId === input.taskId
-                    ? {
-                          ...node,
-                          scriptContent: input.scriptContent,
-                          ...(input.dataSourceId !== undefined ? { dataSourceId: input.dataSourceId } : {}),
-                          ...(input.dataSourceType !== undefined ? { dataSourceType: input.dataSourceType } : {}),
-                          ...(input.transfer !== undefined ? { transfer: input.transfer } : {}),
-                      }
-                    : node,
-            );
+            stage.nodes = stage.nodes.map((node) => {
+                if (node.taskId !== input.taskId) {
+                    return node;
+                }
+                const nextNode = {
+                    ...node,
+                    scriptContent: input.scriptContent,
+                    ...(input.dataSourceId !== undefined ? { dataSourceId: input.dataSourceId } : {}),
+                    ...(input.dataSourceType !== undefined ? { dataSourceType: input.dataSourceType } : {}),
+                    ...(input.transfer !== undefined ? { transfer: input.transfer } : {}),
+                };
+                if (input.transferDraftValid === true) {
+                    delete nextNode.transferDraft;
+                    delete nextNode.transferDraftValid;
+                } else if (input.transferDraftValid === false) {
+                    nextNode.transferDraft = input.transferDraft;
+                    nextNode.transferDraftValid = false;
+                }
+                return nextNode;
+            });
         });
     });
 }

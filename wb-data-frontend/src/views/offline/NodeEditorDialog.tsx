@@ -14,7 +14,7 @@ import { loadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule
 import { registerSqlEditorTheme } from '../../components/sql-editor/sqlEditorTheme';
 import type { OfflineFlowNode } from '../../api/offline';
 import type { TransferConfig } from './transfer/transferTypes';
-import { TransferNodeDialog } from './transfer/TransferNodeDialog';
+import { TransferNodeDialog, type TransferNodeDraftState } from './transfer/TransferNodeDialog';
 import { DataSourceSelect } from '../../components/DataSourceSelect';
 import { useNodeEditorDataSources } from './useNodeEditorDataSources';
 import {
@@ -41,7 +41,7 @@ export interface NodeEditorDialogProps {
     onTempSave: (content: string, dataSourceId?: number, dataSourceType?: string) => void;
     onContentChange: (content: string) => void;
     onDraftChange?: (content: string, dataSourceId?: number, dataSourceType?: string) => void;
-    onTransferChange?: (transfer: TransferConfig) => void;
+    onTransferChange?: (transferDraft: TransferConfig, state: TransferNodeDraftState) => void;
 }
 
 export function NodeEditorDialog({
@@ -230,8 +230,9 @@ export function NodeEditorDialog({
                     {isTransferNode ? (
                         <TransferNodeDialog
                             groupId={groupId}
-                            value={activeNode.transfer}
-                            onChange={(transfer) => onTransferChange?.(transfer)}
+                            value={activeNode.transferDraft ?? activeNode.transfer}
+                            onChange={() => {}}
+                            onDraftChange={(transferDraft, state) => onTransferChange?.(transferDraft, state)}
                         />
                     ) : isSqlNode ? (
                         <SqlEditor

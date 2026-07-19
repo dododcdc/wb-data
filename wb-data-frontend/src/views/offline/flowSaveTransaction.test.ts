@@ -4,11 +4,12 @@ import { describe, expect, it } from 'vitest';
 import type { OfflineFlowDocument } from '../../api/offline';
 import {
     buildSaveFlowDocumentRequest,
+    findFirstNodeWithInvalidTransferEditorDraft,
     hasPendingNodeEditorDraftChanges,
     isSaveConflictError,
     prepareFlowSessionForSave,
 } from './flowSaveTransaction';
-import { createFlowDraftSession, type PendingNodeEditorDraft } from './flowDraftController';
+import { createFlowDraftSession, flushNodeEditorDraft, type PendingNodeEditorDraft } from './flowDraftController';
 
 function makeFlowDocument(overrides?: Partial<OfflineFlowDocument>): OfflineFlowDocument {
     return {
@@ -145,6 +146,70 @@ describe('flowSaveTransaction', () => {
             kind: 'TRANSFER',
             transfer,
         });
+    });
+
+    it('omits local transfer editor draft fields from the save request', () => {
+        const transfer = {
+            source: { dataSourceId: 11, dataSourceType: 'MYSQL' as const, table: 'orders' },
+            target: { dataSourceId: 12, dataSourceType: 'HIVE' as const, table: 'dwd_orders', writeMode: 'append' as const },
+            fieldMappings: [{ target: 'id', kind: 'source_field' as const, source: 'id' }],
+            partitions: [],
+        };
+        const transferDraft = {
+            ...transfer,
+            target: { ...transfer.target, table: 'dwd_payments' },
+            fieldMappings: [],
+        };
+        const session = makeSession(makeFlowDocument({
+            stages: [{
+                stageId: 'main',
+                parallel: false,
+                nodes: [{
+                    taskId: 'transfer_orders',
+                    kind: 'TRANSFER',
+                    transfer,
+                    transferDraft,
+                    transferDraftValid: false,
+                }],
+            }],
+        }));
+
+        const request = buildSaveFlowDocumentRequest(1, session);
+
+        expect(request.stages[0].nodes[0]).toEqual({
+            taskId: 'transfer_orders',
+            kind: 'TRANSFER',
+            transfer,
+        });
+        expect(request.stages[0].nodes[0]).not.toHaveProperty('transferDraft');
+        expect(request.stages[0].nodes[0]).not.toHaveProperty('transferDraftValid');
+    });
+
+    it('detects invalid local transfer editor drafts before save', () => {
+        const session = makeSession(makeFlowDocument({
+            stages: [{
+                stageId: 'main',
+                parallel: false,
+                nodes: [{ taskId: 'transfer_orders', kind: 'TRANSFER' }],
+            }],
+        }));
+        const nextSession = flushNodeEditorDraft(session, {
+            taskId: 'transfer_orders',
+            scriptContent: '',
+            transferDraft: {
+                source: { dataSourceId: 11, dataSourceType: 'MYSQL', table: 'orders' },
+                target: { dataSourceId: 12, dataSourceType: 'HIVE', table: 'dwd_orders', writeMode: 'append' },
+                fieldMappings: [],
+                partitions: [],
+            },
+            transferDraftValid: false,
+        });
+
+        expect(findFirstNodeWithInvalidTransferEditorDraft(nextSession.workingDraft)).toMatchObject({
+            taskId: 'transfer_orders',
+            kind: 'TRANSFER',
+        });
+        expect(buildSaveFlowDocumentRequest(1, nextSession).stages[0].nodes[0]).not.toHaveProperty('transferDraft');
     });
 
     it('prepares a save session by flushing pending editor draft content', () => {

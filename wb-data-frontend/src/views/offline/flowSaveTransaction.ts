@@ -15,6 +15,8 @@ export interface PendingNodeOverrideForSave {
     dataSourceId?: number;
     dataSourceType?: string;
     transfer?: TransferConfig;
+    transferDraft?: TransferConfig;
+    transferDraftValid?: boolean;
 }
 
 interface PreparedFlowSessionForSave {
@@ -30,6 +32,8 @@ function toNodeOverride(draft: PendingNodeEditorDraft): PendingNodeOverrideForSa
         dataSourceId: draft.dataSourceId,
         dataSourceType: draft.dataSourceType,
         transfer: draft.transfer,
+        transferDraft: draft.transferDraft,
+        transferDraftValid: draft.transferDraftValid,
     };
 }
 
@@ -40,6 +44,8 @@ function toPendingDraft(override: PendingNodeOverrideForSave): PendingNodeEditor
         dataSourceId: override.dataSourceId,
         dataSourceType: override.dataSourceType,
         transfer: override.transfer,
+        transferDraft: override.transferDraft,
+        transferDraftValid: override.transferDraftValid,
     };
 }
 
@@ -106,8 +112,36 @@ export function hasPendingNodeEditorDraftChanges(
                 || node.dataSourceId !== pendingDraft.dataSourceId
                 || node.dataSourceType !== pendingDraft.dataSourceType
                 || JSON.stringify(node.transfer) !== JSON.stringify(pendingDraft.transfer)
+                || JSON.stringify(node.transferDraft) !== JSON.stringify(pendingDraft.transferDraft)
+                || node.transferDraftValid !== pendingDraft.transferDraftValid
             )),
     );
+}
+
+export function findFirstNodeWithInvalidTransferEditorDraft(
+    document: FlowDraftSession['workingDraft'] | null,
+    nodeOverride?: PendingNodeOverrideForSave,
+) {
+    if (!document) {
+        return null;
+    }
+
+    const nodes = flattenFlowDocumentNodes(document).map((node) => {
+        if (!nodeOverride || node.taskId !== nodeOverride.taskId) {
+            return node;
+        }
+        return {
+            ...node,
+            scriptContent: nodeOverride.content,
+            dataSourceId: nodeOverride.dataSourceId,
+            dataSourceType: nodeOverride.dataSourceType,
+            transfer: nodeOverride.transfer,
+            transferDraft: nodeOverride.transferDraft,
+            transferDraftValid: nodeOverride.transferDraftValid,
+        };
+    });
+
+    return nodes.find((node) => node.kind === 'TRANSFER' && node.transferDraftValid === false) ?? null;
 }
 
 export function isSaveConflictError(error: unknown) {
