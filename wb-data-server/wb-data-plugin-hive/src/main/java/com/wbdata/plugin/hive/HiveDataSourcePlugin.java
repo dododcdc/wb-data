@@ -6,7 +6,9 @@ import com.wbdata.plugin.api.DataSourceException;
 import com.wbdata.plugin.api.DataSourceConnectionInfo;
 import com.wbdata.plugin.api.DataSourcePluginDescriptor;
 import com.wbdata.plugin.api.PageResult;
+import com.wbdata.plugin.api.PartitionColumnMetadata;
 import com.wbdata.plugin.api.PluginFieldDescriptor;
+import com.wbdata.plugin.api.TableDetail;
 import com.wbdata.plugin.api.TableSummary;
 
 import java.sql.Connection;
@@ -129,6 +131,65 @@ public final class HiveDataSourcePlugin extends AbstractJdbcDataSourcePlugin {
         return columns;
     }
 
+    @Override
+    public TableDetail getTableDetail(DataSourceConnectionInfo connectionInfo, String databaseName, String tableName) {
+        validateIdentifier(databaseName);
+        validateIdentifier(tableName);
+        String resolvedDatabase = resolveDatabaseName(connectionInfo, databaseName);
+        String sql = "DESCRIBE FORMATTED " + quoteIdentifier(resolvedDatabase) + "." + quoteIdentifier(tableName);
+        List<List<String>> rows = new ArrayList<>();
+
+        try (Connection connection = getConnection(connectionInfo);
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(sql)) {
+            while (resultSet.next()) {
+                rows.add(List.of(
+                        valueOrEmpty(resultSet.getString(1)),
+                        valueOrEmpty(resultSet.getString(2)),
+                        valueOrEmpty(resultSet.getString(3))));
+            }
+        } catch (Exception e) {
+            throw new DataSourceException("获取 Hive 表元数据失败: " + resolvedDatabase + "." + tableName, e);
+        }
+
+        return parseTableDetail(rows);
+    }
+
+    static TableDetail parseTableDetail(List<List<String>> rows) {
+        List<ColumnMetadata> columns = new ArrayList<>();
+        List<PartitionColumnMetadata> partitionColumns = new ArrayList<>();
+        boolean inPartitionSection = false;
+        boolean partitioned = false;
+
+        for (List<String> row : rows) {
+            String name = trimToNull(rowValue(row, 0));
+            if (name == null) {
+                continue;
+            }
+            if ("# Partition Information".equalsIgnoreCase(name)) {
+                inPartitionSection = true;
+                partitioned = true;
+                continue;
+            }
+            if (name.startsWith("#")) {
+                if (name.toLowerCase(Locale.ROOT).contains("detailed table information")) {
+                    break;
+                }
+                continue;
+            }
+
+            String type = valueOrEmpty(trimToNull(rowValue(row, 1)));
+            String remarks = valueOrEmpty(trimToNull(rowValue(row, 2)));
+            if (inPartitionSection) {
+                partitionColumns.add(new PartitionColumnMetadata(name, type, remarks));
+            } else {
+                columns.add(new ColumnMetadata(name, type, 0, true, remarks, false));
+            }
+        }
+
+        return new TableDetail(columns, partitionColumns, partitioned);
+    }
+
     private String resolveDatabaseName(DataSourceConnectionInfo connectionInfo, String databaseName) {
         return defaultDatabase(
                 databaseName == null || databaseName.isBlank() ? connectionInfo.databaseName() : databaseName,
@@ -140,11 +201,19 @@ public final class HiveDataSourcePlugin extends AbstractJdbcDataSourcePlugin {
         return "`" + identifier.replace("`", "``") + "`";
     }
 
-    private String trimToNull(String value) {
+    private static String trimToNull(String value) {
         if (value == null) {
             return null;
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static String rowValue(List<String> row, int index) {
+        return row.size() > index ? row.get(index) : null;
+    }
+
+    private static String valueOrEmpty(String value) {
+        return value == null ? "" : value;
     }
 }

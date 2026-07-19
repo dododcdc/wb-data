@@ -198,6 +198,11 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     }
 
     @Override
+    public TableDetail getTableDetail(DataSourceConnectionInfo connectionInfo, String databaseName, String tableName) {
+        return new TableDetail(getColumns(connectionInfo, databaseName, tableName), java.util.List.of(), false);
+    }
+
+    @Override
     public QueryResult executeQuery(QueryRequest request) {
         long startTime = System.currentTimeMillis();
         DataSourceConnectionInfo connInfo = request.connectionInfo();

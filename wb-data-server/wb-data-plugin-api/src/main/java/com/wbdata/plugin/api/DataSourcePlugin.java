@@ -20,6 +20,10 @@ public interface DataSourcePlugin {
 
     java.util.List<ColumnMetadata> getColumns(DataSourceConnectionInfo connectionInfo, String databaseName, String tableName);
 
+    default TableDetail getTableDetail(DataSourceConnectionInfo connectionInfo, String databaseName, String tableName) {
+        return new TableDetail(getColumns(connectionInfo, databaseName, tableName), java.util.List.of(), false);
+    }
+
     QueryResult executeQuery(QueryRequest request);
 
     /**
