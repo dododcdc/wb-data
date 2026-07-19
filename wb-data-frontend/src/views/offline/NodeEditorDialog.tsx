@@ -133,6 +133,10 @@ export function NodeEditorDialog({
         editor.focus();
     }, []);
 
+    const handleTransferDraftChange = useCallback((transferDraft: TransferConfig, state: TransferNodeDraftState) => {
+        onTransferChange?.(transferDraft, state);
+    }, [onTransferChange]);
+
     if (!activeNode) return null;
     const isSqlNode = isSqlEditorNodeKind(activeNode.kind);
     const isTransferNode = activeNode.kind === 'TRANSFER';
@@ -232,7 +236,7 @@ export function NodeEditorDialog({
                             groupId={groupId}
                             value={activeNode.transferDraft ?? activeNode.transfer}
                             onChange={() => {}}
-                            onDraftChange={(transferDraft, state) => onTransferChange?.(transferDraft, state)}
+                            onDraftChange={handleTransferDraftChange}
                         />
                     ) : isSqlNode ? (
                         <SqlEditor

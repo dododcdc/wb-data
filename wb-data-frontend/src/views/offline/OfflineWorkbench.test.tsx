@@ -9,7 +9,7 @@ import OfflineWorkbench from './OfflineWorkbench';
 import { removeRecoverySnapshot } from './recoverySnapshotStore';
 import type { OfflineFlowNodeKind } from '../../api/offline';
 
-const { authState, feedbackSpy } = vi.hoisted(() => ({
+const { authState, feedbackSpy, flowCanvasRenderSpy } = vi.hoisted(() => ({
     authState: {
         userInfo: { id: 7 },
         systemAdmin: false,
@@ -17,6 +17,7 @@ const { authState, feedbackSpy } = vi.hoisted(() => ({
         permissions: ['offline.write'],
     },
     feedbackSpy: vi.fn(),
+    flowCanvasRenderSpy: vi.fn(),
 }));
 
 const authListeners = new Set<() => void>();
@@ -50,71 +51,82 @@ vi.mock('./FlowCanvas', () => ({
         onEdgesChange,
         onNodeLayoutCommit,
         onRenameNode,
+        onDoubleClickNode,
     }: {
         flowDocument: {
             path: string;
-            stages: Array<{ nodes: Array<{ kind: string }> }>;
+            stages: Array<{ nodes: Array<{ taskId: string; kind: string }> }>;
         };
         onAddNode: (kind: OfflineFlowNodeKind, position: { x: number; y: number }) => void;
         onEdgesChange: (edges: Array<{ id: string; source: string; target: string }>) => void;
         onNodeLayoutCommit: (nodes: Array<{ id: string; position: { x: number; y: number } }>) => void;
         onRenameNode: (oldId: string, newId: string) => void;
-    }) => (
-        <div data-testid="flow-canvas">
-            {flowDocument.path}
-            <span data-testid="transfer-node-count">
-                {flowDocument.stages.flatMap((stage) => stage.nodes).filter((node) => node.kind === 'TRANSFER').length}
-            </span>
-            <button
-                type="button"
-                aria-label="模拟画布修改"
-                onClick={() => onNodeLayoutCommit([{ id: 'node_1', position: { x: 32, y: 48 } }])}
-            >
-                mutate
-            </button>
-            <button
-                type="button"
-                aria-label="模拟连续新增和重命名"
-                onClick={() => {
-                    onAddNode('SHELL', { x: 100, y: 120 });
-                    onEdgesChange([{ id: 'node_1->shell_node_1', source: 'node_1', target: 'shell_node_1' }]);
-                    onRenameNode('node_1', 'renamed_node');
-                }}
-            >
-                add-and-rename
-            </button>
-            <button
-                type="button"
-                aria-label="模拟新增后重命名新增节点"
-                onClick={() => {
-                    onAddNode('SHELL', { x: 100, y: 120 });
-                    onRenameNode('shell_node_1', 'created_node');
-                    onEdgesChange([{ id: 'node_1->created_node', source: 'node_1', target: 'created_node' }]);
-                }}
-            >
-                add-rename-created
-            </button>
-            <button
-                type="button"
-                aria-label="模拟连续新增超过上限"
-                onClick={() => {
-                    onAddNode('SHELL', { x: 100, y: 120 });
-                    onAddNode('SHELL', { x: 140, y: 160 });
-                }}
-            >
-                add-past-limit
-            </button>
-            <button
-                type="button"
-                aria-label="模拟悬空连线"
-                onClick={() => {
-                    onEdgesChange([{ id: 'node_1->missing_node', source: 'node_1', target: 'missing_node' }]);
-                }}
-            >
-                dangling-edge
-            </button>
-        </div>
-    ),
+        onDoubleClickNode: (taskId: string) => void;
+    }) => {
+        flowCanvasRenderSpy(flowDocument);
+        const transferNode = flowDocument.stages.flatMap((stage) => stage.nodes).find((node) => node.kind === 'TRANSFER');
+        return (
+            <div data-testid="flow-canvas">
+                {flowDocument.path}
+                <span data-testid="transfer-node-count">
+                    {flowDocument.stages.flatMap((stage) => stage.nodes).filter((node) => node.kind === 'TRANSFER').length}
+                </span>
+                {transferNode && (
+                    <button type="button" aria-label="打开传输节点" onClick={() => onDoubleClickNode(transferNode.taskId)}>
+                        open-transfer
+                    </button>
+                )}
+                <button
+                    type="button"
+                    aria-label="模拟画布修改"
+                    onClick={() => onNodeLayoutCommit([{ id: 'node_1', position: { x: 32, y: 48 } }])}
+                >
+                    mutate
+                </button>
+                <button
+                    type="button"
+                    aria-label="模拟连续新增和重命名"
+                    onClick={() => {
+                        onAddNode('SHELL', { x: 100, y: 120 });
+                        onEdgesChange([{ id: 'node_1->shell_node_1', source: 'node_1', target: 'shell_node_1' }]);
+                        onRenameNode('node_1', 'renamed_node');
+                    }}
+                >
+                    add-and-rename
+                </button>
+                <button
+                    type="button"
+                    aria-label="模拟新增后重命名新增节点"
+                    onClick={() => {
+                        onAddNode('SHELL', { x: 100, y: 120 });
+                        onRenameNode('shell_node_1', 'created_node');
+                        onEdgesChange([{ id: 'node_1->created_node', source: 'node_1', target: 'created_node' }]);
+                    }}
+                >
+                    add-rename-created
+                </button>
+                <button
+                    type="button"
+                    aria-label="模拟连续新增超过上限"
+                    onClick={() => {
+                        onAddNode('SHELL', { x: 100, y: 120 });
+                        onAddNode('SHELL', { x: 140, y: 160 });
+                    }}
+                >
+                    add-past-limit
+                </button>
+                <button
+                    type="button"
+                    aria-label="模拟悬空连线"
+                    onClick={() => {
+                        onEdgesChange([{ id: 'node_1->missing_node', source: 'node_1', target: 'missing_node' }]);
+                    }}
+                >
+                    dangling-edge
+                </button>
+            </div>
+        );
+    },
 }));
 
 vi.mock('./useNodeEditorDataSources', () => ({
@@ -137,6 +149,20 @@ vi.mock('../../hooks/useOperationFeedback', () => ({
         showFeedback: feedbackSpy,
         dismissFeedback: vi.fn(),
     }),
+}));
+
+vi.mock('../../api/datasource', () => ({
+    getDataSourcePage: vi.fn(() => Promise.resolve({ records: [], total: 0, size: 200, current: 1, pages: 0 })),
+}));
+
+vi.mock('../../api/transfer', () => ({
+    getTransferTables: vi.fn(() => Promise.resolve({ data: [], total: 0, page: 1, size: 200 })),
+    getTransferTableMetadata: vi.fn(() => Promise.resolve({
+        columns: [{ name: 'id', type: 'BIGINT', size: 0, nullable: false, remarks: '', primaryKey: false }],
+        partitionColumns: [],
+        partitioned: false,
+        writeModes: [{ value: 'append', label: 'Append' }],
+    })),
 }));
 
 vi.mock('../../utils/auth', async () => {
@@ -286,6 +312,35 @@ function makeFlowDocumentWithNodeCount(nodeCount: number) {
             node.taskId,
             { x: index * 40, y: 0 },
         ])),
+    };
+}
+
+function makeFlowDocumentWithTransferNode() {
+    return {
+        ...makeFlowDocument(),
+        stages: [
+            {
+                stageId: 'main',
+                parallel: false,
+                nodes: [
+                    {
+                        taskId: 'transfer_orders',
+                        kind: 'TRANSFER' as const,
+                        scriptPath: 'transfers/example/transfer_orders.transfer.json',
+                        scriptContent: '',
+                        transfer: {
+                            source: { dataSourceId: 1, dataSourceType: 'MYSQL' as const, table: 'orders' },
+                            target: { dataSourceId: 2, dataSourceType: 'HIVE' as const, table: 'dwd_orders', writeMode: 'append' as const },
+                            fieldMappings: [{ target: 'id', kind: 'source_field' as const, source: 'id' }],
+                            partitions: [],
+                        },
+                    },
+                ],
+            },
+        ],
+        layout: {
+            transfer_orders: { x: 0, y: 0 },
+        },
     };
 }
 
@@ -469,6 +524,32 @@ describe('OfflineWorkbench commit UI', () => {
         await waitFor(() => {
             expect(screen.getByTestId('transfer-node-count').textContent).toBe('1');
         });
+    });
+
+    it('stabilizes transfer draft reporting when opening a transfer node editor', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write'];
+        vi.mocked(offlineApi.getOfflineFlowDocument).mockResolvedValue(makeFlowDocumentWithTransferNode());
+
+        renderOfflineWorkbench();
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+        flowCanvasRenderSpy.mockClear();
+
+        fireEvent.click(screen.getByRole('button', { name: '打开传输节点' }));
+        await screen.findByTestId('transfer-node-dialog');
+
+        await waitFor(() => {
+            expect(flowCanvasRenderSpy.mock.calls.length).toBeGreaterThan(0);
+        });
+        const renderCountAfterOpen = flowCanvasRenderSpy.mock.calls.length;
+
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(flowCanvasRenderSpy.mock.calls.length).toBe(renderCountAfterOpen);
     });
 
     it('shows repo commit and push for group admins', async () => {

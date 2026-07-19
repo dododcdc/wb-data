@@ -29,6 +29,7 @@ function MappingRows({ mappings, onChange, sourceColumns }: { mappings: Transfer
 export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: TransferNodeDialogProps) {
     const [config, setConfig] = useState<TransferConfig>(value ?? emptyConfig);
     const emittedConfigRef = useRef('');
+    const reportedDraftRef = useRef('');
     const { dataSources, sourceTables, targetTables, sourceMetadata, targetMetadata } = useTransferMetadata(groupId, config.source.dataSourceId || undefined, config.source.database, config.source.table, config.target.dataSourceId || undefined, config.target.database, config.target.table);
     useEffect(() => {
         const next = JSON.stringify(value ?? emptyConfig);
@@ -43,7 +44,11 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: 
     const writeModeValid = writeModes.some((mode) => mode.value === (config.target.writeMode ?? 'append'));
     const saveable = Boolean(targetMetadata) && validation.valid && writeModeValid;
     useEffect(() => {
-        onDraftChange?.(config, { valid: saveable, errors: validation.errors });
+        const draftReport = JSON.stringify({ config, valid: saveable, errors: validation.errors });
+        if (draftReport !== reportedDraftRef.current) {
+            reportedDraftRef.current = draftReport;
+            onDraftChange?.(config, { valid: saveable, errors: validation.errors });
+        }
         if (!saveable) return;
         const next = JSON.stringify(config);
         if (next !== emittedConfigRef.current) {
