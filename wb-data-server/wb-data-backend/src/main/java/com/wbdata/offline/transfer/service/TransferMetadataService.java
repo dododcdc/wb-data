@@ -41,9 +41,7 @@ public class TransferMetadataService {
 
     public TransferTableMetadataResponse getTableMetadata(Long dataSourceId, String databaseName, String tableName) {
         DataSource dataSource = requireSupportedDataSource(dataSourceId);
-        TableDetail detail = pluginRegistry.getPlugin(dataSource.getType())
-                .map(plugin -> plugin.getTableDetail(buildConnectionInfo(dataSource), databaseName, tableName))
-                .orElseThrow(() -> unsupportedType(dataSource.getType()));
+        TableDetail detail = getTableDetail(dataSource, databaseName, tableName);
         List<TransferWriteModeOption> writeModes = "HIVE".equals(dataSource.getType()) && detail.partitioned()
                 ? HIVE_PARTITIONED_WRITE_MODES
                 : NON_PARTITIONED_WRITE_MODES;
@@ -54,7 +52,7 @@ public class TransferMetadataService {
                 writeModes);
     }
 
-    private DataSource requireSupportedDataSource(Long dataSourceId) {
+    public DataSource requireSupportedDataSource(Long dataSourceId) {
         DataSource dataSource = dataSourceService.getById(dataSourceId);
         if (dataSource == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "数据源不存在");
@@ -67,6 +65,12 @@ public class TransferMetadataService {
 
     private ResponseStatusException unsupportedType(String type) {
         return new ResponseStatusException(HttpStatus.BAD_REQUEST, "暂不支持的数据源类型: " + type);
+    }
+
+    public TableDetail getTableDetail(DataSource dataSource, String databaseName, String tableName) {
+        return pluginRegistry.getPlugin(dataSource.getType())
+                .map(plugin -> plugin.getTableDetail(buildConnectionInfo(dataSource), databaseName, tableName))
+                .orElseThrow(() -> unsupportedType(dataSource.getType()));
     }
 
     private DataSourceConnectionInfo buildConnectionInfo(DataSource dataSource) {
