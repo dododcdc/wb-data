@@ -29,6 +29,8 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class OfflineExecutionService {
 
+    private static final String TRANSFER_DOCKER_TASK_RUNNER_TYPE = "io.kestra.plugin.scripts.runner.docker.Docker";
+
     private final KestraClient kestraClient;
     private final OfflineKestraProperties offlineKestraProperties;
     private final OfflineProperties offlineProperties;
@@ -86,7 +88,14 @@ public class OfflineExecutionService {
     private void validateSelectedTaskTypes(DebugExecutionRequest request, Set<String> selectedTaskIds) {
         OfflineFlowYamlSupport.FlowGraph graph = yamlSupport.parseGraph(request.content());
         for (OfflineFlowYamlSupport.FlowNode node : graph.nodes()) {
-            if (!selectedTaskIds.contains(node.taskId()) || !"SQL".equalsIgnoreCase(node.kind())) {
+            if (!selectedTaskIds.contains(node.taskId())) {
+                continue;
+            }
+            if ("TRANSFER".equalsIgnoreCase(node.kind())) {
+                validateTransferTaskRunner(node.taskId());
+                continue;
+            }
+            if (!"SQL".equalsIgnoreCase(node.kind())) {
                 continue;
             }
             if (node.dataSourceType() == null || node.dataSourceType().isBlank()) {
@@ -106,6 +115,15 @@ public class OfflineExecutionService {
                         "当前 Kestra 未安装 " + node.dataSourceType() + " 执行插件，节点 " + node.taskId() + " 暂时无法执行"
                 );
             }
+        }
+    }
+
+    private void validateTransferTaskRunner(String taskId) {
+        if (!kestraClient.supportsTaskType(TRANSFER_DOCKER_TASK_RUNNER_TYPE)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "当前 Kestra 不支持 Docker task runner，传输节点 " + taskId + " 暂时无法执行"
+            );
         }
     }
 

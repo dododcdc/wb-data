@@ -7,12 +7,14 @@ import com.wbdata.offline.dto.OfflineRepoStatusResponse;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -110,6 +112,51 @@ class OfflineExecutionServiceBranchTest {
         verify(kestraClient, never()).killExecution("exec-other");
     }
 
+    @Test
+    void createDebugExecution_rejectsSelectedTransferWhenDockerTaskRunnerIsUnavailable() {
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OfflineExecutionService service = service(kestraClient, repoStatusService("main"));
+        when(kestraClient.supportsTaskType("io.kestra.plugin.scripts.runner.docker.Docker")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.createDebugExecution(transferRequest(), 7L))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(error -> ((ResponseStatusException) error).getStatusCode().value())
+                .isEqualTo(400);
+
+        verify(kestraClient).supportsTaskType("io.kestra.plugin.scripts.runner.docker.Docker");
+        verify(kestraClient, never()).upsertFlow(any());
+    }
+
+    @Test
+    void createDebugExecution_uploadsTransferSidecarAndAllowsSelectedTransfer() {
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OfflineExecutionService service = service(kestraClient, repoStatusService("main"));
+        when(kestraClient.supportsTaskType("io.kestra.plugin.scripts.runner.docker.Docker")).thenReturn(true);
+        when(kestraClient.createExecution(any(), any())).thenReturn(execution(
+                "exec-transfer",
+                "wb-debug-g1-bmain-0d6e4079-u7",
+                "example",
+                "RUNNING",
+                Map.of()
+        ));
+
+        service.createDebugExecution(
+                transferRequest(),
+                Map.of("transfers/example/transfer_orders.transfer.json", "{\"schemaVersion\":1}"),
+                7L
+        );
+
+        verify(kestraClient).supportsTaskType("io.kestra.plugin.scripts.runner.docker.Docker");
+        verify(kestraClient).upsertNamespaceFile(
+                Mockito.matches("wb-debug-g1-bmain-[a-f0-9]{8}-u7"),
+                Mockito.eq("/transfers/example/transfer_orders.transfer.json"),
+                Mockito.eq("{\"schemaVersion\":1}")
+        );
+        ArgumentCaptor<String> flowSource = ArgumentCaptor.forClass(String.class);
+        verify(kestraClient).upsertFlow(flowSource.capture());
+        assertThat(flowSource.getValue()).doesNotContain("disabled: true");
+    }
+
     private static OfflineExecutionService service(KestraClient kestraClient, OfflineRepoStatusService repoStatusService) {
         OfflineProperties offlineProperties = new OfflineProperties();
         OfflineKestraProperties kestraProperties = new OfflineKestraProperties();
@@ -142,6 +189,29 @@ class OfflineExecutionServiceBranchTest {
                 "id: example\nnamespace: pg-1\ntasks: []\n",
                 List.of(),
                 "ALL"
+        );
+    }
+
+    private static DebugExecutionRequest transferRequest() {
+        return new DebugExecutionRequest(
+                1L,
+                "_flows/example/flow.yaml",
+                """
+                        id: example
+                        namespace: pg-1
+                        tasks:
+                          - id: transfer_orders
+                            type: io.kestra.plugin.scripts.shell.Commands
+                            description: "[wbdata-meta] nodeKind=TRANSFER;transferConfigPath=transfers/example/transfer_orders.transfer.json"
+                            namespaceFiles:
+                              enabled: true
+                              include:
+                                - transfers/example/transfer_orders.transfer.json
+                            taskRunner:
+                              type: io.kestra.plugin.scripts.runner.docker.Docker
+                        """,
+                List.of("transfer_orders"),
+                "SELECTED"
         );
     }
 
