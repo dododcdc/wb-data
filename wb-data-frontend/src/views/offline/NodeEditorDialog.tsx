@@ -69,7 +69,23 @@ export function NodeEditorDialog({
         groupId,
         initialDataSourceId: activeNode?.dataSourceId,
     });
+    const currentDS = selectedDataSource;
     const dataSourceSelectOptions = useMemo(() => buildNodeEditorDataSourceOptions(dataSourceOptions), [dataSourceOptions]);
+    const dataSourceSelectValue = currentDataSourceId === undefined ? undefined : String(currentDataSourceId);
+    const selectedDataSourceOption = useMemo(() => {
+        if (currentDS) {
+            return {
+                label: currentDS.name,
+                value: String(currentDS.id),
+                type: currentDS.type,
+                raw: currentDS,
+            };
+        }
+        if (!dataSourceSelectValue) {
+            return null;
+        }
+        return dataSourceSelectOptions.find((option) => option.value === dataSourceSelectValue) ?? null;
+    }, [currentDS, dataSourceSelectOptions, dataSourceSelectValue]);
 
     useEffect(() => {
         latestContentRef.current = content;
@@ -77,8 +93,8 @@ export function NodeEditorDialog({
 
     useEffect(() => {
         if (!open) return;
-        onDraftChange?.(latestContentRef.current, currentDataSourceId, selectedDataSource?.type);
-    }, [currentDataSourceId, onDraftChange, open, selectedDataSource?.type]);
+        onDraftChange?.(latestContentRef.current, currentDataSourceId, selectedDataSourceOption?.type);
+    }, [currentDataSourceId, onDraftChange, open, selectedDataSourceOption?.type]);
 
     useEffect(() => {
         if (!open || !editorRef.current) {
@@ -115,7 +131,6 @@ export function NodeEditorDialog({
 
     if (!activeNode) return null;
     const isSqlNode = isSqlEditorNodeKind(activeNode.kind);
-    const currentDS = selectedDataSource;
 
     const handleAttemptClose = () => onOpenChange(false);
 
@@ -162,14 +177,12 @@ export function NodeEditorDialog({
                                     <DataSourceSelect
                                         options={dataSourceSelectOptions}
                                         menuContainer={dialogEl}
-                                        selectedOption={currentDS ? {
-                                            label: currentDS.name,
-                                            value: String(currentDS.id),
-                                            type: currentDS.type,
-                                            raw: currentDS,
-                                        } : null}
-                                        onChange={(val) => {
-                                            setCurrentDataSourceId(Number(val));
+                                        value={dataSourceSelectValue}
+                                        selectedOption={selectedDataSourceOption}
+                                        onChange={(val, option) => {
+                                            const nextDataSourceId = val ? Number(val) : undefined;
+                                            setCurrentDataSourceId(nextDataSourceId);
+                                            onDraftChange?.(latestContentRef.current, nextDataSourceId, option?.type);
                                         }}
                                         onInputChange={handleSearchKeywordChange}
                                         loading={dataSourcesLoading}
