@@ -7,6 +7,7 @@ import {
 } from 'react';
 
 import type { OfflineFlowDocument } from '../../api/offline';
+import type { TransferConfig } from './transfer/transferTypes';
 import { flattenFlowDocumentNodes } from './flowDocumentMutations';
 import {
     flushNodeEditorDraft,
@@ -58,11 +59,13 @@ export function useNodeEditorDraftController({
         scriptContent: string,
         dataSourceId?: number,
         dataSourceType?: string,
+        transfer?: TransferConfig,
     ): PendingNodeEditorDraft => ({
         taskId,
         scriptContent,
         ...(dataSourceId !== undefined ? { dataSourceId } : {}),
         ...(dataSourceType !== undefined ? { dataSourceType } : {}),
+        ...(transfer !== undefined ? { transfer } : {}),
     }), []);
 
     const openNodeEditor = useCallback((taskId: string) => {
@@ -77,6 +80,7 @@ export function useNodeEditorDraftController({
             scriptContent,
             node.dataSourceId,
             node.dataSourceType,
+            node.transfer,
         );
         setNodeEditorOpenState(true);
     }, [buildPendingNodeEditorDraft, flowDocument, setSelectedNodeId]);
@@ -98,16 +102,17 @@ export function useNodeEditorDraftController({
         content: string,
         dataSourceId?: number,
         dataSourceType?: string,
+        transfer?: TransferConfig,
     ) => {
         const taskId = activeNodeId ?? pendingNodeEditorDraftRef.current?.taskId;
         if (!taskId) return null;
-        const pendingDraft = buildPendingNodeEditorDraft(taskId, content, dataSourceId, dataSourceType);
+        const pendingDraft = buildPendingNodeEditorDraft(taskId, content, dataSourceId, dataSourceType, transfer);
         pendingNodeEditorDraftRef.current = pendingDraft;
         nodeEditorDraftSchedulerRef.current?.flushNow(pendingDraft);
         return pendingDraft;
     }, [activeNodeId, buildPendingNodeEditorDraft]);
 
-    const updateNodeEditorContent = useCallback((content: string) => {
+    const updateNodeEditorContent = useCallback((content: string, transfer?: TransferConfig) => {
         setNodeEditorContent(content);
         const currentPending = pendingNodeEditorDraftRef.current;
         const taskId = activeNodeId ?? currentPending?.taskId;
@@ -117,6 +122,7 @@ export function useNodeEditorDraftController({
             content,
             currentPending?.dataSourceId,
             currentPending?.dataSourceType,
+            transfer ?? currentPending?.transfer,
         );
         pendingNodeEditorDraftRef.current = pendingDraft;
         nodeEditorDraftSchedulerRef.current?.schedule(pendingDraft);

@@ -15,6 +15,7 @@ import {
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { useAuthStore } from '../../utils/auth';
 import { NodeEditorDialog } from './NodeEditorDialog';
+import type { TransferConfig } from './transfer/transferTypes';
 import { ScheduleDialog } from './ScheduleDialog';
 import { UnsavedChangesDialog } from '../../components/ui/unsaved-changes-dialog';
 import {
@@ -472,6 +473,10 @@ export default function OfflineWorkbench() {
         stageNodeEditorDraft(content, dataSourceId, dataSourceType);
     }, [stageNodeEditorDraft]);
 
+    const handleTransferNodeDraftChange = useCallback((transfer: TransferConfig) => {
+        stageNodeEditorDraft(nodeEditorContent, undefined, undefined, transfer);
+    }, [nodeEditorContent, stageNodeEditorDraft]);
+
     const handleFlowCommit = useCallback(async (mode: 'save-and-commit' | 'saved-only') => {
         if (!groupId || !activeFlowPath) return;
         setCommitting(true);
@@ -753,6 +758,7 @@ export default function OfflineWorkbench() {
                 onTempSave={handleNodeEditorTempSave}
                 onContentChange={handleNodeEditorContentChange}
                 onDraftChange={handleNodeEditorDraftChange}
+                onTransferChange={handleTransferNodeDraftChange}
             />
 
             <OfflineTreeActionDialogs

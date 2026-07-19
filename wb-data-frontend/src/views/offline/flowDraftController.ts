@@ -1,4 +1,5 @@
 import type { OfflineFlowDocument, OfflineFlowSchedule } from '../../api/offline';
+import type { TransferConfig } from './transfer/transferTypes';
 
 import { buildFlowDocumentSignature } from './flowCanvasState';
 import type { RecoverySnapshot } from './recoverySnapshotStore';
@@ -22,6 +23,7 @@ export interface PendingNodeEditorDraft {
     scriptContent: string;
     dataSourceId?: number;
     dataSourceType?: string;
+    transfer?: TransferConfig;
 }
 
 function cloneDocument(document: OfflineFlowDocument): OfflineFlowDocument {
@@ -98,6 +100,7 @@ export function flushNodeEditorDraft(
                           scriptContent: input.scriptContent,
                           ...(input.dataSourceId !== undefined ? { dataSourceId: input.dataSourceId } : {}),
                           ...(input.dataSourceType !== undefined ? { dataSourceType: input.dataSourceType } : {}),
+                          ...(input.transfer !== undefined ? { transfer: input.transfer } : {}),
                       }
                     : node,
             );

@@ -56,6 +56,10 @@ vi.mock('./nodeEditorDataSourceRules', () => ({
     buildNodeEditorDataSourceOptions: () => [],
 }));
 
+vi.mock('./transfer/TransferNodeDialog', () => ({
+    TransferNodeDialog: () => <div data-testid="transfer-node-dialog" />,
+}));
+
 afterEach(() => {
     cleanup();
     dataSourceSelectPropsSpy.mockClear();
@@ -73,6 +77,12 @@ const makeShellNode = (overrides?: Partial<OfflineFlowNode>): OfflineFlowNode =>
     taskId: 'shell_1',
     kind: 'SHELL',
     scriptContent: 'echo hello',
+    ...overrides,
+} as OfflineFlowNode);
+
+const makeTransferNode = (overrides?: Partial<OfflineFlowNode>): OfflineFlowNode => ({
+    taskId: 'transfer_1',
+    kind: 'TRANSFER',
     ...overrides,
 } as OfflineFlowNode);
 
@@ -156,6 +166,25 @@ describe('NodeEditorDialog', () => {
 
         // Shell nodes should NOT have the data source label
         expect(screen.queryByText('数据源')).toBeNull();
+    });
+
+    it('routes transfer nodes to the transfer configuration dialog', () => {
+        render(
+            <TooltipProvider>
+            <NodeEditorDialog
+                open
+                groupId={1}
+                activeNode={makeTransferNode()}
+                content=""
+                onOpenChange={() => {}}
+                onTempSave={() => {}}
+                onContentChange={() => {}}
+            />
+            </TooltipProvider>,
+        );
+
+        expect(screen.getByTestId('transfer-node-dialog')).toBeTruthy();
+        expect(screen.queryByTestId('raw-monaco-editor')).toBeNull();
     });
 
     it('returns null when activeNode is null', () => {

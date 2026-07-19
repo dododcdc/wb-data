@@ -1,6 +1,7 @@
 import { AxiosError } from 'axios';
 
 import type { SaveOfflineFlowDocumentRequest } from '../../api/offline';
+import type { TransferConfig } from './transfer/transferTypes';
 import { flattenFlowDocumentNodes } from './flowDocumentMutations';
 import {
     flushNodeEditorDraft,
@@ -13,6 +14,7 @@ export interface PendingNodeOverrideForSave {
     content: string;
     dataSourceId?: number;
     dataSourceType?: string;
+    transfer?: TransferConfig;
 }
 
 interface PreparedFlowSessionForSave {
@@ -27,6 +29,7 @@ function toNodeOverride(draft: PendingNodeEditorDraft): PendingNodeOverrideForSa
         content: draft.scriptContent,
         dataSourceId: draft.dataSourceId,
         dataSourceType: draft.dataSourceType,
+        transfer: draft.transfer,
     };
 }
 
@@ -36,6 +39,7 @@ function toPendingDraft(override: PendingNodeOverrideForSave): PendingNodeEditor
         scriptContent: override.content,
         dataSourceId: override.dataSourceId,
         dataSourceType: override.dataSourceType,
+        transfer: override.transfer,
     };
 }
 
@@ -101,6 +105,7 @@ export function hasPendingNodeEditorDraftChanges(
                 node.scriptContent !== pendingDraft.scriptContent
                 || node.dataSourceId !== pendingDraft.dataSourceId
                 || node.dataSourceType !== pendingDraft.dataSourceType
+                || JSON.stringify(node.transfer) !== JSON.stringify(pendingDraft.transfer)
             )),
     );
 }
