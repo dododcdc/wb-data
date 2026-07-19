@@ -7,6 +7,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 class OfflineKestraPropertiesTest {
 
     @Test
+    void transferRuntimeProperties_haveSafeDefaultNamesAndRuntimeSettings() {
+        OfflineTransferProperties properties = new OfflineTransferProperties();
+
+        assertThat(properties.getSeatunnelImage()).isEqualTo("apache/seatunnel:2.3.13");
+        assertThat(properties.getDockerNetwork()).isEqualTo("wb-data-integration");
+        assertThat(properties.getInternalBaseUrlEnv()).isEqualTo("WB_DATA_INTERNAL_BASE_URL");
+        assertThat(properties.getInternalTokenEnv()).isEqualTo("WB_DATA_INTERNAL_TOKEN");
+    }
+
+    @Test
     void buildDebugNamespace_includesBranchKeyAndStaysWithinKestraLimit() {
         OfflineKestraProperties properties = new OfflineKestraProperties();
         String longBranchName = "feature/" + "very-long-branch-name-with-symbols_".repeat(6);

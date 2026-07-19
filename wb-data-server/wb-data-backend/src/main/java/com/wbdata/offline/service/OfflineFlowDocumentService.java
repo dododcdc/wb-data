@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.datasource.service.DataSourceService;
 import com.wbdata.offline.config.OfflineProperties;
+import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.dto.DebugDocumentExecutionRequest;
 import com.wbdata.offline.dto.NodePosition;
 import com.wbdata.offline.dto.OfflineFlowDocumentResponse;
@@ -18,7 +19,6 @@ import com.wbdata.offline.dto.SaveOfflineFlowNodeRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowStageRequest;
 import com.wbdata.offline.transfer.dto.TransferConfig;
 import com.wbdata.offline.transfer.service.TransferConfigFileService;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -36,7 +36,6 @@ import java.util.Map;
 import java.util.Set;
 
 @Service
-@RequiredArgsConstructor
 public class OfflineFlowDocumentService {
 
     public record CompiledFlowDraft(
@@ -61,8 +60,24 @@ public class OfflineFlowDocumentService {
     private final RepoLockManager repoLockManager;
     private final OfflineKestraFlowFileService kestraFlowFileService;
     private final TransferConfigFileService transferConfigFileService;
-    private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
+    private final OfflineFlowYamlSupport yamlSupport;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public OfflineFlowDocumentService(OfflineProperties offlineProperties,
+                                      OfflineFlowContentService offlineFlowContentService,
+                                      DataSourceService dataSourceService,
+                                      RepoLockManager repoLockManager,
+                                      OfflineKestraFlowFileService kestraFlowFileService,
+                                      TransferConfigFileService transferConfigFileService,
+                                      OfflineTransferProperties transferProperties) {
+        this.offlineProperties = offlineProperties;
+        this.offlineFlowContentService = offlineFlowContentService;
+        this.dataSourceService = dataSourceService;
+        this.repoLockManager = repoLockManager;
+        this.kestraFlowFileService = kestraFlowFileService;
+        this.transferConfigFileService = transferConfigFileService;
+        this.yamlSupport = new OfflineFlowYamlSupport(transferProperties);
+    }
 
     public OfflineFlowDocumentResponse getFlowDocument(Long groupId, String path) {
         return repoLockManager.withLock(groupId, () -> getFlowDocumentUnlocked(groupId, path));
