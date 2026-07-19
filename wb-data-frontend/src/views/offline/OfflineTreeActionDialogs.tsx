@@ -21,6 +21,7 @@ import {
     DialogTitle,
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
+import './OfflineContextMenu.css';
 
 interface CreateAction {
     open: boolean;
