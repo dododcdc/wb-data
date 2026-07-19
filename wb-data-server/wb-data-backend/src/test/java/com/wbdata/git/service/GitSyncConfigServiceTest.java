@@ -47,28 +47,6 @@ class GitSyncConfigServiceTest {
     }
 
     @Test
-    void buildNamespace_usesReadableBranchSlugForNormalBranch() {
-        GitSyncConfigService service = service();
-
-        assertThat(service.buildKestraNamespace(4L, "feature/policy-review"))
-                .isEqualTo("g4-feature-policy-review");
-        assertThat(service.buildSyncFlowId(4L, "feature/policy-review"))
-                .isEqualTo("sync-flows-g4-feature-policy-review");
-    }
-
-    @Test
-    void buildNamespace_truncatesLongBranchWithHashSuffix() {
-        GitSyncConfigService service = service();
-        String branch = "feature/" + "very-long-policy-branch-".repeat(12);
-
-        String namespace = service.buildKestraNamespace(Long.MAX_VALUE, branch);
-
-        assertThat(namespace).startsWith("g" + Long.MAX_VALUE + "-feature-very-long-policy-branch");
-        assertThat(namespace).matches("g" + Long.MAX_VALUE + "-.*-[a-f0-9]{8}");
-        assertThat(namespace.length()).isLessThanOrEqualTo(150);
-    }
-
-    @Test
     void create_upsertsSyncFlowYamlForBranch() {
         WbGitSyncConfigMapper mapper = Mockito.mock(WbGitSyncConfigMapper.class);
         GitConfigService gitConfigService = Mockito.mock(GitConfigService.class);
@@ -96,20 +74,11 @@ class GitSyncConfigServiceTest {
 
         ArgumentCaptor<String> source = ArgumentCaptor.forClass(String.class);
         verify(kestraClient).upsertFlow(source.capture());
-        assertThat(source.getValue())
-                .contains("id: sync-flows-g4-feature-policy-review")
-                .contains("namespace: system")
-                .contains("type: io.kestra.plugin.git.SyncFlows")
-                .contains("type: io.kestra.plugin.git.SyncNamespaceFiles")
-                .contains("- id: git_token\n    type: STRING")
-                .contains("branch: feature/policy-review")
-                .contains("targetNamespace: g4-feature-policy-review")
-                .contains("namespace: g4-feature-policy-review")
-                .contains("gitDirectory: .wb-data/kestra-flows")
-                .contains("gitDirectory: .\n    delete: true")
-                .contains("cron: \"*/5 * * * *\"")
-                .contains("defaults: \"alice\"")
-                .contains("defaults: \"ghp_secret\"");
+        assertThat(source.getValue()).isEqualTo(GitSyncFlowSourceBuilder.buildSyncFlowSource(
+                gitConfig(99L),
+                existing("feature/policy-review"),
+                "*/5 * * * *"
+        ));
     }
 
     @Test

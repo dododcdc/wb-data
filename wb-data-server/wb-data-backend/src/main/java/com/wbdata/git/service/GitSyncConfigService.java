@@ -19,14 +19,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
-import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -34,8 +29,7 @@ import java.util.function.Function;
 @Service
 @RequiredArgsConstructor
 public class GitSyncConfigService {
-    private static final int KESTRA_IDENTIFIER_MAX_LENGTH = 150;
-    private static final String SYSTEM_NAMESPACE = "system";
+    private static final String SYSTEM_NAMESPACE = GitSyncFlowSourceBuilder.SYSTEM_NAMESPACE;
 
     private final WbGitSyncConfigMapper syncConfigMapper;
     private final GitConfigService gitConfigService;
@@ -136,7 +130,7 @@ public class GitSyncConfigService {
 
     public void delete(Long groupId, Long id) {
         WbGitSyncConfig config = requireConfig(groupId, id);
-        kestraClient.deleteFlow(SYSTEM_NAMESPACE, buildSyncFlowId(groupId, config.getBranch()));
+        kestraClient.deleteFlow(SYSTEM_NAMESPACE, GitSyncFlowSourceBuilder.buildSyncFlowId(groupId, config.getBranch()));
         syncConfigMapper.deleteById(id);
     }
 
@@ -145,7 +139,10 @@ public class GitSyncConfigService {
         if (!Boolean.TRUE.equals(config.getEnabled())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "同步配置已停用");
         }
-        KestraExecutionSnapshot execution = kestraClient.createExecution(SYSTEM_NAMESPACE, buildSyncFlowId(groupId, config.getBranch()));
+        KestraExecutionSnapshot execution = kestraClient.createExecution(
+                SYSTEM_NAMESPACE,
+                GitSyncFlowSourceBuilder.buildSyncFlowId(groupId, config.getBranch())
+        );
         LocalDateTime now = LocalDateTime.now();
         config.setLastSyncAt(now);
         config.setLastSyncStatus(execution.status());
@@ -174,76 +171,12 @@ public class GitSyncConfigService {
         triggerBranchAfterPush(event.groupId(), event.branch());
     }
 
-    String buildKestraNamespace(Long groupId, String branch) {
-        return boundedIdentifier("g" + groupId + "-", branch);
-    }
-
-    String buildSyncFlowId(Long groupId, String branch) {
-        return boundedIdentifier("sync-flows-g" + groupId + "-", branch);
-    }
-
-    String buildSyncFlowSource(WbGitConfig gitConfig, WbGitSyncConfig config) {
-        Long groupId = config.getGroupId();
-        String branch = config.getBranch();
-        String namespace = buildKestraNamespace(groupId, branch);
-        String syncFlowId = buildSyncFlowId(groupId, branch);
-        String repositoryUrl = buildRepositoryUrl(gitConfig, groupId);
-        boolean disabled = !Boolean.TRUE.equals(config.getEnabled());
-
-        return """
-                id: %s
-                namespace: system
-                description: "Auto-sync wb-data group %s branch %s"
-                inputs:
-                  - id: git_username
-                    type: STRING
-                    defaults: "%s"
-                  - id: git_token
-                    type: STRING
-                    defaults: "%s"
-                triggers:
-                  - id: schedule
-                    type: io.kestra.plugin.core.trigger.Schedule
-                    cron: "%s"
-                    disabled: %s
-                tasks:
-                  - id: sync_flows
-                    type: io.kestra.plugin.git.SyncFlows
-                    url: "%s"
-                    branch: %s
-                    username: "{{ inputs.git_username }}"
-                    password: "{{ inputs.git_token }}"
-                    targetNamespace: %s
-                    gitDirectory: .wb-data/kestra-flows
-                    delete: true
-                  - id: sync_files
-                    type: io.kestra.plugin.git.SyncNamespaceFiles
-                    url: "%s"
-                    branch: %s
-                    username: "{{ inputs.git_username }}"
-                    password: "{{ inputs.git_token }}"
-                    namespace: %s
-                    gitDirectory: .
-                    delete: true
-                """.formatted(
-                syncFlowId,
-                groupId,
-                yamlDoubleQuoted(branch),
-                yamlDoubleQuoted(gitConfig.getUsername()),
-                yamlDoubleQuoted(gitConfig.getToken()),
-                yamlDoubleQuoted(syncProperties.getSyncCron()),
-                disabled,
-                yamlDoubleQuoted(repositoryUrl),
-                branch,
-                namespace,
-                yamlDoubleQuoted(repositoryUrl),
-                branch,
-                namespace
-        );
-    }
-
     private void upsertSyncFlow(WbGitSyncConfig config, WbGitConfig gitConfig) {
-        kestraClient.upsertFlow(buildSyncFlowSource(gitConfig, config));
+        kestraClient.upsertFlow(GitSyncFlowSourceBuilder.buildSyncFlowSource(
+                gitConfig,
+                config,
+                syncProperties.getSyncCron()
+        ));
     }
 
     private WbGitSyncConfig requireConfig(Long groupId, Long id) {
@@ -271,8 +204,8 @@ public class GitSyncConfigService {
                 config.getId(),
                 config.getGroupId(),
                 config.getBranch(),
-                buildKestraNamespace(config.getGroupId(), config.getBranch()),
-                buildSyncFlowId(config.getGroupId(), config.getBranch()),
+                GitSyncFlowSourceBuilder.buildKestraNamespace(config.getGroupId(), config.getBranch()),
+                GitSyncFlowSourceBuilder.buildSyncFlowId(config.getGroupId(), config.getBranch()),
                 Boolean.TRUE.equals(config.getEnabled()),
                 config.getLastSyncAt(),
                 config.getLastSyncStatus(),
@@ -299,47 +232,4 @@ public class GitSyncConfigService {
         return branch.trim();
     }
 
-    private String boundedIdentifier(String prefix, String branch) {
-        String slug = slugBranch(branch);
-        if ((prefix + slug).length() <= KESTRA_IDENTIFIER_MAX_LENGTH) {
-            return prefix + slug;
-        }
-        String hash = sha256Hex(branch).substring(0, 8);
-        int slugMaxLength = KESTRA_IDENTIFIER_MAX_LENGTH - prefix.length() - hash.length() - 1;
-        if (slugMaxLength <= 0) {
-            throw new IllegalStateException("Kestra 标识前缀过长");
-        }
-        String truncated = slug.substring(0, Math.min(slug.length(), slugMaxLength)).replaceAll("-+$", "");
-        if (truncated.isBlank()) {
-            truncated = "branch";
-        }
-        return prefix + truncated + "-" + hash;
-    }
-
-    private String slugBranch(String branch) {
-        String slug = (branch == null || branch.isBlank() ? "branch" : branch)
-                .toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9]+", "-")
-                .replaceAll("-+", "-")
-                .replaceAll("^-|-$", "");
-        return slug.isBlank() ? "branch" : slug;
-    }
-
-    private String sha256Hex(String value) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("计算分支哈希失败", ex);
-        }
-    }
-
-    private String buildRepositoryUrl(WbGitConfig config, Long groupId) {
-        return config.getBaseUrl().replaceFirst("/$", "") + "/"
-                + config.getUsername() + "/wb-data-" + groupId + ".git";
-    }
-
-    private String yamlDoubleQuoted(String value) {
-        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
 }
