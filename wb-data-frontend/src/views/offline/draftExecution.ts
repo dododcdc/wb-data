@@ -53,6 +53,7 @@ export function buildDraftExecutionRequest({
                 scriptContent: node.scriptContent,
                 dataSourceId: node.dataSourceId,
                 dataSourceType: node.dataSourceType,
+                transfer: node.transfer,
             })),
         })),
         edges: draftDocument.edges,

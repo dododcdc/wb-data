@@ -189,4 +189,51 @@ describe('useFlowExecutionAndSchedule', () => {
         }));
         expect(result.current.executionDialogOpen).toBe(true);
     });
+
+    it('includes saved transfer configuration when debugging a selected transfer node', async () => {
+        const offlineApi = await import('../../api/offline');
+        const transfer = {
+            source: { dataSourceId: 11, dataSourceType: 'MYSQL' as const, table: 'orders' },
+            target: { dataSourceId: 12, dataSourceType: 'HIVE' as const, table: 'dwd_orders', writeMode: 'append' as const },
+            fieldMappings: [{ target: 'order_id', kind: 'source_field' as const, source: 'id' }],
+            partitions: [],
+        };
+        const document = {
+            ...makeDocument(),
+            stages: [{
+                stageId: 'stage_1',
+                parallel: false,
+                nodes: [{ taskId: 'transfer_orders', kind: 'TRANSFER' as const, transfer }],
+            }],
+        };
+        vi.mocked(offlineApi.createOfflineDocumentDebugExecution).mockResolvedValue({
+            executionId: 'exec-transfer',
+            mode: 'DRAFT_SELECTED',
+            flowPath: document.path,
+            sourceRevision: 'draft',
+            status: 'CREATED',
+            createdAt: '2026-07-04T00:00:00Z',
+        });
+        vi.mocked(offlineApi.listOfflineExecutions).mockResolvedValue([]);
+        const { result } = renderExecutionAndSchedule({
+            draftSession: makeSession(document),
+            flowDocument: document,
+            selectedTaskIds: ['transfer_orders'],
+        });
+
+        await act(async () => {
+            await result.current.execute();
+        });
+
+        expect(offlineApi.createOfflineDocumentDebugExecution).toHaveBeenCalledWith(expect.objectContaining({
+            selectedTaskIds: ['transfer_orders'],
+            stages: [expect.objectContaining({
+                nodes: [expect.objectContaining({
+                    taskId: 'transfer_orders',
+                    kind: 'TRANSFER',
+                    transfer,
+                })],
+            })],
+        }));
+    });
 });
