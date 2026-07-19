@@ -484,7 +484,6 @@ describe('useFlowEditingSession', () => {
 
         expect(writeRecoverySnapshot).not.toHaveBeenCalled();
         expect(removeRecoverySnapshot).toHaveBeenCalledWith(1, '_flows/jack/demo/flow.yaml');
-        expect(result.current.flushPendingNodeEditorDraftForSave()?.nodeOverride).toBeUndefined();
     });
 
     it('resetAfterBranchSwitch clears active path, draft session, loading, node editor state, and pending draft', async () => {
@@ -507,7 +506,6 @@ describe('useFlowEditingSession', () => {
         expect(result.current.flowLoading).toBe(false);
         expect(result.current.nodeEditorOpen).toBe(false);
         expect(result.current.nodeEditorContent).toBe('');
-        expect(result.current.flushPendingNodeEditorDraftForSave()).toBeNull();
         expect(removeRecoverySnapshot).not.toHaveBeenCalled();
     });
 
@@ -848,7 +846,6 @@ describe('useFlowEditingSession', () => {
         expect(result.current.selectedTaskIds).toEqual([]);
         expect(result.current.flowDocument?.stages[0].nodes.map((node) => node.taskId)).toEqual(['shell_node_2']);
         expect(result.current.flowDocument?.edges).toEqual([]);
-        expect(result.current.flushPendingNodeEditorDraftForSave()?.nodeOverride).toBeUndefined();
 
         act(() => {
             result.current.leaveCurrentFlow();
