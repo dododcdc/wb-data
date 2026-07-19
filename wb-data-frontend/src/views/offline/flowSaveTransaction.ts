@@ -80,6 +80,7 @@ export function buildSaveFlowDocumentRequest(
                 scriptPath: node.scriptPath,
                 dataSourceId: node.dataSourceId,
                 dataSourceType: node.dataSourceType,
+                transfer: node.transfer,
             })),
         })),
         edges: draftDocument.edges,

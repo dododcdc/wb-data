@@ -2,8 +2,12 @@ import type { OfflineFlowNodeKind } from '../../api/offline';
 
 const SQL_EDITOR_NODE_KINDS: OfflineFlowNodeKind[] = ['SQL', 'HIVE_SQL'];
 
+function assertNever(value: never): never {
+    throw new Error(`Unsupported offline node kind: ${value}`);
+}
+
 export function isOfflineFlowNodeKind(value: string): value is OfflineFlowNodeKind {
-    return value === 'SQL' || value === 'HIVE_SQL' || value === 'SHELL';
+    return value === 'SQL' || value === 'HIVE_SQL' || value === 'SHELL' || value === 'TRANSFER';
 }
 
 export function isSqlEditorNodeKind(kind: OfflineFlowNodeKind) {
@@ -16,8 +20,11 @@ export function getAllowedDataSourceTypes(kind: OfflineFlowNodeKind): string[] {
             return ['MYSQL', 'POSTGRESQL', 'STARROCKS'];
         case 'HIVE_SQL':
             return ['HIVE'];
-        default:
+        case 'SHELL':
+        case 'TRANSFER':
             return [];
+        default:
+            return assertNever(kind);
     }
 }
 
@@ -29,6 +36,10 @@ export function getOfflineNodeKindLabel(kind: OfflineFlowNodeKind) {
             return 'HiveSQL';
         case 'SHELL':
             return 'Shell';
+        case 'TRANSFER':
+            return 'Transfer';
+        default:
+            return assertNever(kind);
     }
 }
 
@@ -40,6 +51,10 @@ export function getOfflineNodeKindDescription(kind: OfflineFlowNodeKind) {
             return 'HiveSQL 节点';
         case 'SHELL':
             return 'Shell 节点';
+        case 'TRANSFER':
+            return '数据传输节点';
+        default:
+            return assertNever(kind);
     }
 }
 
@@ -55,6 +70,10 @@ export function getOfflineNodeScriptExtension(kind: OfflineFlowNodeKind) {
             return 'sql';
         case 'SHELL':
             return 'sh';
+        case 'TRANSFER':
+            return '';
+        default:
+            return assertNever(kind);
     }
 }
 
@@ -66,5 +85,9 @@ export function getOfflineNodeDefaultScript(kind: OfflineFlowNodeKind) {
             return '-- Write your Hive SQL query here\nSELECT 1;\n';
         case 'SHELL':
             return '#!/bin/bash\necho "Hello World"\n';
+        case 'TRANSFER':
+            return '';
+        default:
+            return assertNever(kind);
     }
 }

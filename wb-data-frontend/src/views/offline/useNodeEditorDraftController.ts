@@ -70,10 +70,11 @@ export function useNodeEditorDraftController({
         if (!node) return;
         nodeEditorDraftSchedulerRef.current?.cancel();
         setSelectedNodeId(taskId);
-        setNodeEditorContent(node.scriptContent);
+        const scriptContent = node.scriptContent ?? '';
+        setNodeEditorContent(scriptContent);
         pendingNodeEditorDraftRef.current = buildPendingNodeEditorDraft(
             taskId,
-            node.scriptContent,
+            scriptContent,
             node.dataSourceId,
             node.dataSourceType,
         );

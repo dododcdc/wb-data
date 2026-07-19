@@ -7,6 +7,11 @@ import com.wbdata.offline.dto.OfflineFlowSchedule;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowNodeRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowStageRequest;
+import com.wbdata.offline.transfer.dto.TransferConfig;
+import com.wbdata.offline.transfer.dto.TransferEndpointConfig;
+import com.wbdata.offline.transfer.dto.TransferFieldMapping;
+import com.wbdata.offline.transfer.dto.TransferMappingKind;
+import com.wbdata.offline.transfer.dto.TransferWriteMode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -71,6 +76,65 @@ class OfflineFlowDocumentServiceTest {
                 );
     }
 
+    @Test
+    void saveFlowDocument_persistsAndReopensScriptlessTransferAlongsideScriptNode() throws Exception {
+        OfflineProperties properties = offlineProperties();
+        RepoLockManager repoLockManager = new RepoLockManager();
+        OfflineFlowDocumentService service = service(properties, repoLockManager);
+        TransferConfig transfer = validTransfer();
+
+        service.saveFlowDocument(new SaveOfflineFlowDocumentRequest(
+                1L,
+                "_flows/example/flow.yaml",
+                null,
+                0L,
+                List.of(new SaveOfflineFlowStageRequest(
+                        "main",
+                        List.of(
+                                new SaveOfflineFlowNodeRequest(
+                                        "node_1",
+                                        "echo 1",
+                                        "SHELL",
+                                        "scripts/example/node_1.sh",
+                                        null,
+                                        null
+                                ),
+                                new SaveOfflineFlowNodeRequest(
+                                        "1transfer_orders",
+                                        null,
+                                        "TRANSFER",
+                                        null,
+                                        null,
+                                        null,
+                                        transfer
+                                )
+                        )
+                )),
+                List.of(),
+                Map.of(),
+                null
+        ));
+
+        var reopened = service.getFlowDocument(1L, "_flows/example/flow.yaml");
+        var scriptNode = reopened.stages().getFirst().nodes().getFirst();
+        var transferNode = reopened.stages().getFirst().nodes().get(1);
+
+        assertThat(scriptNode.scriptPath()).isEqualTo("scripts/example/node_1.sh");
+        assertThat(scriptNode.scriptContent()).isEqualTo("echo 1");
+        assertThat(scriptNode.transfer()).isNull();
+        assertThat(transferNode.taskId()).isEqualTo("1transfer_orders");
+        assertThat(transferNode.kind()).isEqualTo("TRANSFER");
+        assertThat(transferNode.scriptPath()).isNull();
+        assertThat(transferNode.scriptContent()).isNull();
+        assertThat(transferNode.transfer()).usingRecursiveComparison().isEqualTo(transfer);
+
+        Path repoPath = properties.resolveRepoPath(1L);
+        assertThat(Files.readString(repoPath.resolve("scripts/example/node_1.sh"))).isEqualTo("echo 1");
+        assertThat(repoPath.resolve("transfers/example/1transfer_orders.transfer.json")).isRegularFile();
+        assertThat(service.resolveManagedFiles(1L, "_flows/example/flow.yaml"))
+                .contains("scripts/example/node_1.sh", "transfers/example/1transfer_orders.transfer.json");
+    }
+
     private OfflineProperties offlineProperties() {
         OfflineProperties properties = new OfflineProperties();
         properties.setRepoBaseDir(tempDir.toString());
@@ -109,6 +173,21 @@ class OfflineFlowDocumentServiceTest {
                 List.of(),
                 Map.of("node_1", new NodePosition(10, 20)),
                 schedule
+        );
+    }
+
+    private TransferConfig validTransfer() {
+        return new TransferConfig(
+                new TransferEndpointConfig(1L, "MYSQL", "source_db", "orders", "id > 0", null),
+                new TransferEndpointConfig(2L, "HIVE", "target_db", "dwd_orders", null,
+                        TransferWriteMode.APPEND),
+                List.of(new TransferFieldMapping(
+                        "order_id",
+                        TransferMappingKind.SOURCE_FIELD,
+                        "id",
+                        null
+                )),
+                List.of()
         );
     }
 }

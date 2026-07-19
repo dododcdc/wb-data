@@ -16,6 +16,7 @@ import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowEdgeRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowNodeRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowStageRequest;
+import com.wbdata.offline.transfer.dto.TransferConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -152,7 +153,7 @@ public class OfflineFlowDocumentService {
                 files.add(repoPath.relativize(kestraFlowFile).toString().replace('\\', '/'));
             }
 
-            for (Path taskFile : snapshot.taskFiles().values()) {
+            for (Path taskFile : snapshot.managedNodeFiles()) {
                 files.add(repoPath.relativize(taskFile).toString().replace('\\', '/'));
             }
             return List.copyOf(files);
@@ -176,6 +177,7 @@ public class OfflineFlowDocumentService {
 
             GraphDraft draft = prepareGraphDraft(
                     request.groupId(),
+                    request.flowPath(),
                     request.stages(),
                     request.edges()
             );
@@ -203,7 +205,12 @@ public class OfflineFlowDocumentService {
 
     private void saveWithGraph(SaveOfflineFlowDocumentRequest request, String flowSource) throws IOException {
         Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
-        GraphDraft graphDraft = prepareGraphDraft(request.groupId(), request.stages(), request.edges());
+        GraphDraft graphDraft = prepareGraphDraft(
+                request.groupId(),
+                request.path(),
+                request.stages(),
+                request.edges()
+        );
 
         // SQL / HiveSQL 节点必须绑定数据源
         for (var node : graphDraft.nodes()) {
@@ -221,7 +228,7 @@ public class OfflineFlowDocumentService {
                 graphDraft.dataSourceMap()
         );
 
-        writeGraphScripts(repoPath, graphDraft);
+        writeGraphFiles(repoPath, graphDraft);
 
         Path flowFile = resolveRepoFile(repoPath, request.path());
         Files.createDirectories(flowFile.getParent());
@@ -234,7 +241,7 @@ public class OfflineFlowDocumentService {
         Files.writeString(flowFile, yamlSupport.applySchedule(current, schedule), StandardCharsets.UTF_8);
     }
 
-    private void writeGraphScripts(Path repoPath, GraphDraft graphDraft) throws IOException {
+    private void writeGraphFiles(Path repoPath, GraphDraft graphDraft) throws IOException {
         for (Map.Entry<String, String> entry : graphDraft.namespaceFileContents().entrySet()) {
             Path scriptFile = resolveRepoFile(repoPath, entry.getKey());
             Files.createDirectories(scriptFile.getParent());
@@ -243,6 +250,7 @@ public class OfflineFlowDocumentService {
     }
 
     private GraphDraft prepareGraphDraft(Long groupId,
+                                         String flowPath,
                                          List<SaveOfflineFlowStageRequest> stages,
                                          List<SaveOfflineFlowEdgeRequest> requestEdges) throws IOException {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
@@ -252,18 +260,30 @@ public class OfflineFlowDocumentService {
 
         for (SaveOfflineFlowStageRequest stage : stages) {
             for (SaveOfflineFlowNodeRequest nodeReq : stage.nodes()) {
+                boolean transferNode = "TRANSFER".equalsIgnoreCase(nodeReq.kind());
+                String transferConfigPath = transferNode
+                        ? buildTransferConfigPath(flowPath, nodeReq.taskId())
+                        : null;
                 nodes.add(new OfflineFlowYamlSupport.FlowNode(
                         nodeReq.taskId(),
                         nodeReq.kind(),
                         nodeReq.scriptPath(),
                         nodeReq.dataSourceId(),
-                        nodeReq.dataSourceType()
+                        nodeReq.dataSourceType(),
+                        transferConfigPath
                 ));
                 if (nodeReq.dataSourceId() != null) {
                     dataSourceIds.add(nodeReq.dataSourceId());
                 }
 
-                namespaceFileContents.put(nodeReq.scriptPath(), nodeReq.scriptContent());
+                if (transferNode) {
+                    namespaceFileContents.put(
+                            transferConfigPath,
+                            objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(nodeReq.transfer())
+                    );
+                } else {
+                    namespaceFileContents.put(nodeReq.scriptPath(), nodeReq.scriptContent());
+                }
             }
         }
 
@@ -322,6 +342,7 @@ public class OfflineFlowDocumentService {
 
         List<OfflineFlowStageResponse> stages = new ArrayList<>();
         Map<String, Path> taskFiles = new LinkedHashMap<>();
+        Set<Path> managedNodeFiles = new LinkedHashSet<>();
         Set<String> seenTaskIds = new LinkedHashSet<>();
         List<String> stageKeys = new ArrayList<>();
         List<String> taskOrder = new ArrayList<>();
@@ -338,28 +359,59 @@ public class OfflineFlowDocumentService {
                 if (!seenTaskIds.add(node.taskId())) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow YAML 中存在重复 taskId");
                 }
-                Path scriptFile = resolveRepoFile(repoPath, node.scriptPath());
-                if (!Files.isRegularFile(scriptFile)) {
-                    throw new ResponseStatusException(HttpStatus.NOT_FOUND, "脚本文件不存在: " + node.scriptPath());
-                }
-                String scriptContent = Files.readString(scriptFile, StandardCharsets.UTF_8);
-                updatedAt = Math.max(updatedAt, Files.getLastModifiedTime(scriptFile).toMillis());
-                signature.append('\n')
-                        .append(node.taskId())
-                        .append('\n')
-                        .append(node.scriptPath())
-                        .append('\n')
-                        .append(scriptContent);
-                taskFiles.put(node.taskId(), scriptFile);
                 taskOrder.add(node.taskId());
-                nodes.add(new OfflineFlowNodeResponse(
-                        node.taskId(),
-                        node.kind(),
-                        node.scriptPath(),
-                        scriptContent,
-                        node.dataSourceId(),
-                        node.dataSourceType()
-                ));
+                if ("TRANSFER".equalsIgnoreCase(node.kind())) {
+                    Path transferFile = resolveRepoFile(repoPath, node.transferConfigPath());
+                    if (!Files.isRegularFile(transferFile)) {
+                        throw new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "传输配置文件不存在: " + node.transferConfigPath()
+                        );
+                    }
+                    String transferContent = Files.readString(transferFile, StandardCharsets.UTF_8);
+                    TransferConfig transfer = objectMapper.readValue(transferContent, TransferConfig.class);
+                    updatedAt = Math.max(updatedAt, Files.getLastModifiedTime(transferFile).toMillis());
+                    signature.append('\n')
+                            .append(node.taskId())
+                            .append('\n')
+                            .append(node.transferConfigPath())
+                            .append('\n')
+                            .append(transferContent);
+                    managedNodeFiles.add(transferFile);
+                    nodes.add(new OfflineFlowNodeResponse(
+                            node.taskId(),
+                            node.kind(),
+                            null,
+                            null,
+                            null,
+                            null,
+                            transfer
+                    ));
+                } else {
+                    Path scriptFile = resolveRepoFile(repoPath, node.scriptPath());
+                    if (!Files.isRegularFile(scriptFile)) {
+                        throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                                "脚本文件不存在: " + node.scriptPath());
+                    }
+                    String scriptContent = Files.readString(scriptFile, StandardCharsets.UTF_8);
+                    updatedAt = Math.max(updatedAt, Files.getLastModifiedTime(scriptFile).toMillis());
+                    signature.append('\n')
+                            .append(node.taskId())
+                            .append('\n')
+                            .append(node.scriptPath())
+                            .append('\n')
+                            .append(scriptContent);
+                    taskFiles.put(node.taskId(), scriptFile);
+                    managedNodeFiles.add(scriptFile);
+                    nodes.add(new OfflineFlowNodeResponse(
+                            node.taskId(),
+                            node.kind(),
+                            node.scriptPath(),
+                            scriptContent,
+                            node.dataSourceId(),
+                            node.dataSourceType()
+                    ));
+                }
             }
             stages.add(new OfflineFlowStageResponse(stage.stageId(), stage.parallel(), nodes));
         }
@@ -386,6 +438,7 @@ public class OfflineFlowDocumentService {
                         schedule
                 ),
                 taskFiles,
+                managedNodeFiles,
                 stageKeys,
                 taskOrder
         );
@@ -453,6 +506,10 @@ public class OfflineFlowDocumentService {
         return nodes;
     }
 
+    private String buildTransferConfigPath(String flowPath, String taskId) {
+        return "transfers/" + extractFlowId(flowPath) + "/" + taskId + ".transfer.json";
+    }
+
     private Path resolveRepoFile(Path repoPath, String path) {
         if (path == null || path.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "脚本文件路径不能为空");
@@ -472,6 +529,7 @@ public class OfflineFlowDocumentService {
     private record DocumentSnapshot(
             OfflineFlowDocumentResponse response,
             Map<String, Path> taskFiles,
+            Set<Path> managedNodeFiles,
             List<String> stageOrder,
             List<String> taskOrder
     ) {
