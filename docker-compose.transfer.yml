@@ -35,11 +35,11 @@ services:
       - wb-data-integration
 
   wb-data-transfer-backend-network-alias:
-    image: alpine/socat:1.8.0.3-r0
+    image: alpine/socat:latest
     container_name: wb-data-transfer-backend-network-alias
     command:
       - TCP-LISTEN:8080,fork,reuseaddr
-      - TCP:host.docker.internal:8080
+      - TCP:host.docker.internal:${WB_DATA_TRANSFER_BACKEND_HOST_PORT:-8080}
     extra_hosts:
       - host.docker.internal:host-gateway
     networks:
