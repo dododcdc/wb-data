@@ -199,4 +199,43 @@ describe('TransferNodeDialog', () => {
         });
         expect(screen.queryByText('目标字段 id 尚未配置映射')).toBeNull();
     });
+
+    it('does not emit overwrite_table for partitioned Hive metadata before write mode reconciliation', async () => {
+        metadata = {
+            ...metadata,
+            targetMetadata: {
+                columns: [{ name: 'id' }],
+                partitionColumns: [{ name: 'dayno' }],
+                partitioned: true,
+                writeModes: [
+                    { value: 'append', label: 'Append' },
+                    { value: 'overwrite_table', label: 'Overwrite table' },
+                    { value: 'overwrite_partition', label: 'Overwrite partition' },
+                ],
+            },
+        };
+        const onChange = vi.fn();
+
+        render(
+            <TransferNodeDialog
+                groupId={1}
+                value={{
+                    source: { dataSourceId: 1, dataSourceType: 'MYSQL', table: 'orders' },
+                    target: { dataSourceId: 2, dataSourceType: 'HIVE', table: 'dwd_orders', writeMode: 'overwrite_table' },
+                    fieldMappings: [{ target: 'id', kind: 'source_field', source: 'id' }],
+                    partitions: [{ target: 'dayno', kind: 'static_value', value: '20260720' }],
+                }}
+                onChange={onChange}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+                target: expect.objectContaining({ writeMode: 'append' }),
+            }));
+        });
+        expect(onChange.mock.calls).not.toEqual(expect.arrayContaining([
+            [expect.objectContaining({ target: expect.objectContaining({ writeMode: 'overwrite_table' }) })],
+        ]));
+    });
 });

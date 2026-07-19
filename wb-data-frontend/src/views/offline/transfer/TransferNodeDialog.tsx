@@ -37,9 +37,11 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: 
     const sourceColumns = useMemo(() => sourceMetadata?.columns.map((column) => column.name) ?? [], [sourceMetadata]);
     const columns = useMemo(() => targetMetadata?.columns.map((column) => column.name) ?? [], [targetMetadata]);
     const partitions = useMemo(() => targetMetadata?.partitionColumns.map((column) => column.name) ?? [], [targetMetadata]);
+    const writeModes = useMemo(() => targetMetadata?.writeModes.filter((mode) => !(targetMetadata.partitioned && mode.value === 'overwrite_table')) ?? [], [targetMetadata]);
     const validation = useMemo(() => validateTransferConfig(config, columns, partitions), [columns, config, partitions]);
     const validationKey = validation.errors.join('\n');
-    const saveable = Boolean(targetMetadata) && validation.valid;
+    const writeModeValid = writeModes.some((mode) => mode.value === (config.target.writeMode ?? 'append'));
+    const saveable = Boolean(targetMetadata) && validation.valid && writeModeValid;
     useEffect(() => {
         onDraftChange?.(config, { valid: saveable, errors: validation.errors });
         if (!saveable) return;
@@ -60,13 +62,12 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: 
             partitions: reconcileTargetMappings(current.partitions, sourceColumns, targetMetadata.partitionColumns.map((column) => column.name)) as TransferPartitionMapping[],
             target: {
                 ...current.target,
-                writeMode: targetMetadata.writeModes.some((mode) => mode.value === current.target.writeMode)
+                writeMode: writeModes.some((mode) => mode.value === current.target.writeMode)
                     ? current.target.writeMode
-                    : targetMetadata.writeModes[0]?.value ?? 'append',
+                    : writeModes[0]?.value ?? 'append',
             },
         }));
-    }, [targetMetadata, sourceColumns]);
-    const writeModes = targetMetadata?.writeModes.filter((mode) => !(targetMetadata.partitioned && mode.value === 'overwrite_table')) ?? [];
+    }, [targetMetadata, sourceColumns, writeModes]);
     return (
         <div className="transfer-node-dialog" data-testid="transfer-node-dialog">
             <div className="transfer-node-grid">
