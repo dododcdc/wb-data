@@ -43,14 +43,11 @@ import {
     replaceFlowDraftWorkingDocument,
     resolveDraftConflict,
     type FlowDraftSession,
-    type PendingNodeEditorDraft,
 } from './flowDraftController';
-import { finalizeNodeEditorDraftOnClose } from './nodeEditorCloseDraftState';
 import {
     findFirstNodeWithInvalidDataSource,
     validateSqlNodeDataSourceRequirement,
 } from './nodeEditorDataSourceRules';
-import { createNodeEditorDraftScheduler } from './nodeEditorDraftScheduler';
 import { resolvePendingNodeEditorDraftAfterDocumentChange } from './pendingNodeEditorDraftState';
 import {
     readRecoverySnapshot,
@@ -64,9 +61,9 @@ import {
     prepareFlowSessionForSave,
     type PendingNodeOverrideForSave,
 } from './flowSaveTransaction';
+import { useNodeEditorDraftController } from './useNodeEditorDraftController';
 
 const EMPTY_SELECTED_TASK_IDS: string[] = [];
-const NODE_EDITOR_DRAFT_FLUSH_DELAY_MS = 180;
 
 export interface UseFlowEditingSessionParams {
     groupId: number | null;
@@ -121,20 +118,16 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
     const [activeFlowPath, setActiveFlowPath] = useState<string | null>(null);
     const [flowLoading, setFlowLoading] = useState(false);
     const [draftSession, setDraftSession] = useState<FlowDraftSession | null>(null);
-    const [nodeEditorOpen, setNodeEditorOpenState] = useState(false);
-    const [nodeEditorContent, setNodeEditorContent] = useState('');
     const [savingFlow, setSavingFlow] = useState(false);
     const [flowCommitDirty, setFlowCommitDirty] = useState(false);
     const [saveConflictState, setSaveConflictState] = useState<SaveConflictState | null>(null);
     const [saveConflictPending, setSaveConflictPending] = useState(false);
     const currentGroupIdRef = useRef<number | null>(groupId);
     const groupActionVersionRef = useRef(0);
-    const pendingNodeEditorDraftRef = useRef<PendingNodeEditorDraft | null>(null);
     const draftSessionRef = useRef<FlowDraftSession | null>(null);
     const activeFlowPathRef = useRef<string | null>(null);
     const canvasNodesRef = useRef<Node[]>([]);
     const canvasEdgesRef = useRef<Edge[]>([]);
-    const nodeEditorDraftSchedulerRef = useRef<ReturnType<typeof createNodeEditorDraftScheduler> | null>(null);
 
     const setDraftSessionSync = useCallback((nextValue: SetStateAction<FlowDraftSession | null>) => {
         const nextSession = typeof nextValue === 'function'
@@ -148,17 +141,6 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
     if (currentGroupIdRef.current !== groupId) {
         currentGroupIdRef.current = groupId;
         groupActionVersionRef.current += 1;
-    }
-
-    if (!nodeEditorDraftSchedulerRef.current) {
-        nodeEditorDraftSchedulerRef.current = createNodeEditorDraftScheduler({
-            delayMs: NODE_EDITOR_DRAFT_FLUSH_DELAY_MS,
-            onFlush: (draft) => {
-                setDraftSessionSync((current) => current
-                    ? flushNodeEditorDraft(current, draft)
-                    : current);
-            },
-        });
     }
 
     const flowDocument = draftSession?.workingDraft ?? null;
@@ -180,10 +162,6 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         activeFlowPathRef.current = activeFlowPath;
     }, [activeFlowPath]);
 
-    useEffect(() => () => {
-        nodeEditorDraftSchedulerRef.current?.cancel();
-    }, []);
-
     const captureGroupActionGuard = useCallback((expectedGroupId: number | null) => {
         const version = groupActionVersionRef.current;
         return () => currentGroupIdRef.current === expectedGroupId && groupActionVersionRef.current === version;
@@ -204,6 +182,25 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         });
     }, [setDraftSessionSync]);
 
+    const {
+        nodeEditorOpen,
+        nodeEditorContent,
+        pendingNodeEditorDraftRef,
+        openNodeEditor,
+        setNodeEditorOpen,
+        updateNodeEditorContent,
+        stageNodeEditorDraft,
+        saveNodeEditorDraft,
+        resetNodeEditorState,
+        cancelNodeEditorDraftFlush,
+        clearPendingNodeEditorDraft,
+    } = useNodeEditorDraftController({
+        flowDocument,
+        activeNodeId,
+        setSelectedNodeId,
+        setDraftSessionSync,
+    });
+
     const syncCanvasRefsFromDocument = useCallback((document: OfflineFlowDocument) => {
         canvasNodesRef.current = buildCanvasNodesFromFlowDocument(document);
         canvasEdgesRef.current = buildCanvasEdgesFromFlowDocument(document);
@@ -222,11 +219,11 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             serverDocument: payload,
             snapshot,
         });
-        pendingNodeEditorDraftRef.current = null;
+        clearPendingNodeEditorDraft();
         syncCanvasRefsFromDocument(nextSession.workingDraft);
         setActiveFlowPath(path);
         setDraftSessionSync(nextSession);
-    }, [groupId, setDraftSessionSync, syncCanvasRefsFromDocument]);
+    }, [clearPendingNodeEditorDraft, groupId, setDraftSessionSync, syncCanvasRefsFromDocument]);
 
     const leaveCurrentFlow = useCallback((
         session?: FlowDraftSession | null,
@@ -234,10 +231,10 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
     ) => {
         const sessionToLeave = session === undefined ? draftSessionRef.current : session;
         if (!groupOverride || !sessionToLeave) return null;
-        nodeEditorDraftSchedulerRef.current?.cancel();
+        cancelNodeEditorDraftFlush();
         const result = prepareSessionForLeave(sessionToLeave, pendingNodeEditorDraftRef.current, Date.now());
         setDraftSessionSync(result.nextSession);
-        pendingNodeEditorDraftRef.current = null;
+        clearPendingNodeEditorDraft();
         if (result.snapshot) {
             writeRecoverySnapshot(groupOverride, sessionToLeave.path, result.snapshot);
         } else if (sessionToLeave.conflict) {
@@ -246,18 +243,18 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             removeRecoverySnapshot(groupOverride, sessionToLeave.path);
         }
         return result;
-    }, [groupId, setDraftSessionSync]);
+    }, [cancelNodeEditorDraftFlush, clearPendingNodeEditorDraft, groupId, pendingNodeEditorDraftRef, setDraftSessionSync]);
 
     const discardCurrentFlowDraft = useCallback((groupOverride: number | null = groupId) => {
         const sessionToDiscard = draftSessionRef.current;
         if (!groupOverride || !sessionToDiscard) return null;
-        nodeEditorDraftSchedulerRef.current?.cancel();
+        cancelNodeEditorDraftFlush();
         const result = prepareSessionForLeave(sessionToDiscard, pendingNodeEditorDraftRef.current, Date.now());
         setDraftSessionSync(result.nextSession);
-        pendingNodeEditorDraftRef.current = null;
+        clearPendingNodeEditorDraft();
         removeRecoverySnapshot(groupOverride, sessionToDiscard.path);
         return result;
-    }, [groupId, setDraftSessionSync]);
+    }, [cancelNodeEditorDraftFlush, clearPendingNodeEditorDraft, groupId, pendingNodeEditorDraftRef, setDraftSessionSync]);
 
     const openFlowDocument = useCallback(async (pathValue: string, options?: OpenFlowDocumentOptions) => {
         if (!groupId) return false;
@@ -311,21 +308,22 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
     ]);
 
     const resetAfterBranchSwitch = useCallback(() => {
-        nodeEditorDraftSchedulerRef.current?.cancel();
-        pendingNodeEditorDraftRef.current = null;
         canvasNodesRef.current = [];
         canvasEdgesRef.current = [];
         setActiveFlowPath(null);
         setFlowLoading(false);
         setDraftSessionSync(null);
-        setNodeEditorOpenState(false);
-        setNodeEditorContent('');
+        resetNodeEditorState();
         setSavingFlow(false);
         setFlowCommitDirty(false);
         setSaveConflictState(null);
         setSaveConflictPending(false);
         resetExecutionAndSchedule?.();
-    }, [resetExecutionAndSchedule, setDraftSessionSync]);
+    }, [
+        resetExecutionAndSchedule,
+        resetNodeEditorState,
+        setDraftSessionSync,
+    ]);
 
     const refreshCurrentFlowCommitStatus = useCallback(async () => {
         if (!groupId || !activeFlowPath) {
@@ -353,95 +351,6 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
     useEffect(() => {
         void refreshCurrentFlowCommitStatus();
     }, [refreshCurrentFlowCommitStatus]);
-
-    const buildPendingNodeEditorDraft = useCallback((
-        taskId: string,
-        scriptContent: string,
-        dataSourceId?: number,
-        dataSourceType?: string,
-    ): PendingNodeEditorDraft => ({
-        taskId,
-        scriptContent,
-        ...(dataSourceId !== undefined ? { dataSourceId } : {}),
-        ...(dataSourceType !== undefined ? { dataSourceType } : {}),
-    }), []);
-
-    const openNodeEditor = useCallback((taskId: string) => {
-        const node = flattenFlowDocumentNodes(flowDocument).find((n) => n.taskId === taskId);
-        if (!node) return;
-        nodeEditorDraftSchedulerRef.current?.cancel();
-        setSelectedNodeId(taskId);
-        setNodeEditorContent(node.scriptContent);
-        pendingNodeEditorDraftRef.current = buildPendingNodeEditorDraft(
-            taskId,
-            node.scriptContent,
-            node.dataSourceId,
-            node.dataSourceType,
-        );
-        setNodeEditorOpenState(true);
-    }, [buildPendingNodeEditorDraft, flowDocument, setSelectedNodeId]);
-
-    const setNodeEditorOpen = useCallback((open: boolean) => {
-        setNodeEditorOpenState(open);
-        if (!open) {
-            pendingNodeEditorDraftRef.current = finalizeNodeEditorDraftOnClose({
-                pendingDraft: pendingNodeEditorDraftRef.current,
-                flushNow: (draft) => nodeEditorDraftSchedulerRef.current?.flushNow(draft),
-                cancel: () => nodeEditorDraftSchedulerRef.current?.cancel(),
-            });
-            const currentNode = flattenFlowDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null;
-            setNodeEditorContent(currentNode?.scriptContent ?? '');
-        }
-    }, [activeNodeId, flowDocument]);
-
-    const stageNodeEditorDraft = useCallback((
-        content: string,
-        dataSourceId?: number,
-        dataSourceType?: string,
-    ) => {
-        const taskId = activeNodeId ?? pendingNodeEditorDraftRef.current?.taskId;
-        if (!taskId) return null;
-        const pendingDraft = buildPendingNodeEditorDraft(taskId, content, dataSourceId, dataSourceType);
-        pendingNodeEditorDraftRef.current = pendingDraft;
-        nodeEditorDraftSchedulerRef.current?.flushNow(pendingDraft);
-        return pendingDraft;
-    }, [activeNodeId, buildPendingNodeEditorDraft]);
-
-    const updateNodeEditorContent = useCallback((content: string) => {
-        setNodeEditorContent(content);
-        const currentPending = pendingNodeEditorDraftRef.current;
-        const taskId = activeNodeId ?? currentPending?.taskId;
-        if (!taskId) return;
-        const pendingDraft = buildPendingNodeEditorDraft(
-            taskId,
-            content,
-            currentPending?.dataSourceId,
-            currentPending?.dataSourceType,
-        );
-        pendingNodeEditorDraftRef.current = pendingDraft;
-        nodeEditorDraftSchedulerRef.current?.schedule(pendingDraft);
-    }, [activeNodeId, buildPendingNodeEditorDraft]);
-
-    const saveNodeEditorDraft = useCallback((
-        content: string,
-        dataSourceId?: number,
-        dataSourceType?: string,
-    ) => {
-        const pendingDraft = stageNodeEditorDraft(content, dataSourceId, dataSourceType);
-        setNodeEditorOpen(false);
-        return pendingDraft;
-    }, [setNodeEditorOpen, stageNodeEditorDraft]);
-
-    const resetNodeEditorState = useCallback(() => {
-        nodeEditorDraftSchedulerRef.current?.cancel();
-        pendingNodeEditorDraftRef.current = null;
-        setNodeEditorOpenState(false);
-        setNodeEditorContent('');
-    }, []);
-
-    const cancelNodeEditorDraftFlush = useCallback(() => {
-        nodeEditorDraftSchedulerRef.current?.cancel();
-    }, []);
 
     const renameNode = useCallback((oldId: string, newId: string) => {
         let failureReason: RenameFlowNodeFailureReason | null = null;
@@ -564,7 +473,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         if (shouldResetNodeEditor) {
             resetNodeEditorState();
         }
-    }, [resetNodeEditorState, setDraftSessionSync]);
+    }, [pendingNodeEditorDraftRef, resetNodeEditorState, setDraftSessionSync]);
 
     const updateCanvasEdges = useCallback((edges: Edge[]) => {
         canvasEdgesRef.current = edges;
@@ -601,11 +510,11 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
     }, [setDraftSessionSync]);
 
     const prepareCurrentSessionForSave = useCallback((nodeOverride?: PendingNodeOverrideForSave) => {
-        nodeEditorDraftSchedulerRef.current?.cancel();
+        cancelNodeEditorDraftFlush();
         const currentSession = draftSessionRef.current;
         const pendingDraft = pendingNodeEditorDraftRef.current;
         if (!currentSession) {
-            pendingNodeEditorDraftRef.current = null;
+            clearPendingNodeEditorDraft();
             return null;
         }
 
@@ -614,12 +523,12 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             pendingDraft,
             nodeOverride,
         });
-        pendingNodeEditorDraftRef.current = null;
+        clearPendingNodeEditorDraft();
         if (pendingDraft) {
             setDraftSessionSync(prepared.sessionAfterPendingDraft);
         }
         return prepared;
-    }, [setDraftSessionSync]);
+    }, [cancelNodeEditorDraftFlush, clearPendingNodeEditorDraft, pendingNodeEditorDraftRef, setDraftSessionSync]);
 
     const validateDocumentForAction = useCallback((nodeOverride?: PendingNodeOverrideForSave) => {
         const currentDocument = draftSessionRef.current?.workingDraft ?? null;
@@ -746,7 +655,15 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             showFeedback({ tone: 'error', title: '当前 Flow 提交失败', detail: '' });
             return false;
         }
-    }, [activeFlowPath, groupId, refreshCurrentFlowCommitStatus, refreshRepoStatus, saveFlow, showFeedback]);
+    }, [
+        activeFlowPath,
+        groupId,
+        pendingNodeEditorDraftRef,
+        refreshCurrentFlowCommitStatus,
+        refreshRepoStatus,
+        saveFlow,
+        showFeedback,
+    ]);
 
     const restoreStaleDraft = useCallback(() => {
         if (!draftSessionRef.current?.conflict) return;
