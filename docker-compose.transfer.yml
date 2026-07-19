@@ -1,6 +1,6 @@
 services:
   wb-data-transfer-mysql:
-    image: mysql:8.4
+    image: ${WB_DATA_TRANSFER_MYSQL_IMAGE:-mysql:8.0}
     container_name: wb-data-transfer-mysql
     environment:
       MYSQL_DATABASE: transfer_demo
@@ -21,7 +21,7 @@ services:
       - wb-data-integration
 
   wb-data-transfer-hive:
-    image: apache/hive:4.0.0
+    image: ${WB_DATA_TRANSFER_HIVE_IMAGE:-apache/hive:4.0.0}
     container_name: wb-data-transfer-hive
     environment:
       SERVICE_NAME: hiveserver2
@@ -35,7 +35,7 @@ services:
       - wb-data-integration
 
   wb-data-transfer-backend-network-alias:
-    image: alpine/socat:latest
+    image: ${WB_DATA_TRANSFER_SOCAT_IMAGE:-alpine/socat:latest}
     container_name: wb-data-transfer-backend-network-alias
     command:
       - TCP-LISTEN:8080,fork,reuseaddr
@@ -46,7 +46,7 @@ services:
       - wb-data-integration
 
   wb-data-transfer-kestra:
-    image: kestra/kestra:v1.3.28
+    image: ${WB_DATA_TRANSFER_KESTRA_IMAGE:-kestra/kestra:latest}
     container_name: wb-data-transfer-kestra
     user: root
     command: server standalone --config /etc/config/application.yml

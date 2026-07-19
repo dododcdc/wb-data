@@ -60,7 +60,7 @@ failed to do request: Head "https://registry-1.docker.io/v2/kestra/kestra/manife
 
 Three retries did not leave either `mysql:8.4` or `kestra/kestra:v1.3.28` locally available. The required MySQL, Hive, Kestra, and backend-alias services were therefore never started. `scripts/dev/transfer-smoke.sh` was not run because its first operation is the same blocked compose startup.
 
-After the compose correction, `WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080 docker compose -f docker-compose.transfer.yml up -d` passed the `alpine/socat` step and began pulling MySQL and Kestra. It was stopped after several minutes because the Kestra layer `ed31fb0e67b1` had reached only about `49.28MB/2.926GB`; no transfer containers had been created at that point.
+After the first compose correction, `WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080 docker compose -f docker-compose.transfer.yml up -d` passed the `alpine/socat` step and began pulling MySQL and Kestra. It was stopped after several minutes because the Kestra layer `ed31fb0e67b1` had reached only about `49.28MB/2.926GB`; no transfer containers had been created at that point. The compose file was then changed to default to locally available images (`mysql:8.0`, `kestra/kestra:latest`, `apache/hive:4.0.0`, `alpine/socat:latest`) while allowing env-var overrides for pinned images.
 
 ## Scenario Evidence
 
@@ -104,4 +104,4 @@ npm run test -- --run \
 
 ## Required Follow-up
 
-Restore Docker Hub access or provide the pinned `mysql:8.4` and `kestra/kestra:v1.3.28` images locally, then rerun `scripts/dev/transfer-smoke.sh`, create `gogo/transfer-smoke/` through the authenticated product APIs/UI, and fill the scenario table with real execution IDs and target-table counts. If host port `8080` is still occupied, start the backend with `SERVER_PORT=18080` and run the smoke script with `WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080`.
+Rerun `scripts/dev/transfer-smoke.sh`, create `gogo/transfer-smoke/` through the authenticated product APIs/UI, and fill the scenario table with real execution IDs and target-table counts. If host port `8080` is still occupied, start the backend with `SERVER_PORT=18080` and run the smoke script with `WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080`. If your machine does not have the default images, either restore Docker Hub access or set the `WB_DATA_TRANSFER_*_IMAGE` overrides documented in `docs/local-integration-testing.md`.

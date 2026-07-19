@@ -17,6 +17,8 @@ scripts/dev/transfer-smoke.sh
 
 Run the backend command from `wb-data-server/wb-data-backend`. The smoke script starts the stack, waits for MySQL and HiveServer2, applies the Hive schema, verifies Kestra and the backend proxy, and seeds the local WB-Data metadata database. Override its metadata connection with `WB_DATA_METADATA_MYSQL_HOST`, `WB_DATA_METADATA_MYSQL_PORT`, `WB_DATA_METADATA_MYSQL_DATABASE`, `WB_DATA_METADATA_MYSQL_USER`, and `DB_PASSWORD` when necessary.
 
+The transfer compose defaults to locally common image tags: `mysql:8.0`, `apache/hive:4.0.0`, `kestra/kestra:latest`, and `alpine/socat:latest`. Override them with `WB_DATA_TRANSFER_MYSQL_IMAGE`, `WB_DATA_TRANSFER_HIVE_IMAGE`, `WB_DATA_TRANSFER_KESTRA_IMAGE`, and `WB_DATA_TRANSFER_SOCAT_IMAGE` if your machine uses pinned local images.
+
 If host port `8080` is already occupied, start the backend on another port and point the transfer backend alias at that port:
 
 ```bash
