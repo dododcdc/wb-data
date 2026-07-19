@@ -1,21 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getErrorMessage } from '../../utils/error';
-import { ReactFlowProvider } from '@xyflow/react';
 import { useBlocker, useSearchParams } from 'react-router-dom';
-import FlowCanvas from './FlowCanvas';
 import '../core/RouteSkeletons.css';
 import {
     ResizableHandle,
     ResizablePanel,
     ResizablePanelGroup,
 } from '../../components/ui/resizable';
-import { AlertTriangle } from 'lucide-react';
 import {
     getOfflineRepoTree,
     type OfflineFlowNodeKind,
     type OfflineRepoTreeResponse,
 } from '../../api/offline';
-import { Button } from '../../components/ui/button';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { useAuthStore } from '../../utils/auth';
 import { NodeEditorDialog } from './NodeEditorDialog';
@@ -31,10 +27,10 @@ import {
 import { SaveConflictDialog } from './SaveConflictDialog';
 import { OfflineCommitDialogs } from './OfflineCommitDialogs';
 import { OfflineWorkbenchSidebar } from './OfflineWorkbenchSidebar';
-import { OfflineCanvasToolbar } from './OfflineCanvasToolbar';
 import { OfflineTreeActionDialogs } from './OfflineTreeActionDialogs';
 import { OfflineExecutionDialog } from './OfflineExecutionDialog';
 import { OfflineRepositoryDialogs } from './OfflineRepositoryDialogs';
+import { OfflineWorkbenchMainPanel } from './OfflineWorkbenchMainPanel';
 import { resolveViewportCenterFlowPosition } from './flowCanvasViewport';
 import { preloadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
@@ -72,7 +68,7 @@ export default function OfflineWorkbench() {
     const [repoCommitDialogOpen, setRepoCommitDialogOpen] = useState(false);
     const [commitMessage, setCommitMessage] = useState('');
     const [committing, setCommitting] = useState(false);
-    const canvasBoardRef = useRef<HTMLDivElement>(null);
+    const canvasBoardRef = useRef<HTMLElement | null>(null);
     const loadScheduleSnapshotRef = useRef<((path: string) => Promise<void>) | null>(null);
     const resetExecutionAndScheduleRef = useRef<(() => void) | null>(null);
     const refreshRepoStatusRef = useRef<(() => Promise<void>) | null>(null);
@@ -82,6 +78,9 @@ export default function OfflineWorkbench() {
         resetExecutionAndScheduleRef.current?.();
     }, []);
     const refreshRepoStatusBridge = useCallback(() => refreshRepoStatusRef.current?.() ?? Promise.resolve(), []);
+    const setCanvasBoardElement = useCallback((element: HTMLElement | null) => {
+        canvasBoardRef.current = element;
+    }, []);
 
     useEffect(() => {
         if (!groupId) return;
@@ -620,74 +619,40 @@ export default function OfflineWorkbench() {
                 <ResizableHandle withHandle />
 
                 <ResizablePanel id="main" order={2} defaultSize={80}>
-                    <main className="offline-main-panel h-full animate-enter animate-enter-delay-1">
-                        {!activeFlowPath || !flowDocument ? (
-                            <div className="offline-empty-state">
-                                <p>从左侧项目树选择一个 Flow</p>
-                            </div>
-                        ) : (
-                            <>
-                                <OfflineCanvasToolbar
-                                    activeFlowPath={activeFlowPath}
-                                    canWrite={canWrite}
-                                    nodeCount={nodeCount}
-                                    selectedNodeCount={selectedTaskIds.length}
-                                    dirty={isDirty}
-                                    saving={savingFlow}
-                                    commitDirty={flowCommitDirty}
-                                    committing={committing}
-                                    onSelectAll={handleSelectAllNodes}
-                                    onSave={() => void handleSaveFlow()}
-                                    onCommit={handleOpenFlowCommitDialog}
-                                    onOpenSchedule={handleOpenScheduleDialog}
-                                    onExecute={() => void handleExecute()}
-                                    onOpenExecutions={() => setExecutionDialogOpen(true)}
-                                    onAddNode={handleAddNodeAtCanvasCenter}
-                                />
-
-                                {staleDraft ? (
-                                    <section className="offline-conflict-banner">
-                                        <div className="offline-conflict-copy">
-                                            <AlertTriangle size={16} />
-                                            <div>
-                                                <strong>发现未保存的本地恢复稿</strong>
-                                                <p>当前文件也有更新。你可以继续恢复稿，或加载仓库最新内容。</p>
-                                            </div>
-                                        </div>
-                                        <div className="offline-conflict-actions">
-                                            <Button type="button" variant="outline" size="sm" onClick={handleDiscardStaleDraft}>
-                                                加载最新内容
-                                            </Button>
-                                            <Button type="button" size="sm" onClick={handleRestoreStaleDraft}>
-                                                继续恢复稿
-                                            </Button>
-                                        </div>
-                                    </section>
-                                ) : null}
-
-                                <section className="offline-canvas-board" ref={canvasBoardRef}>
-                                    <ReactFlowProvider key={activeFlowPath}>
-                                        <FlowCanvas
-                                            flowDocument={flowDocument}
-                                            selectedTaskIds={selectedTaskIds}
-                                            activeNodeId={activeNodeId}
-                                            nodeIssues={nodeIssues}
-                                            nodeStatuses={nodeStatuses}
-                                            onNodesChange={updateCanvasNodes}
-                                            onEdgesChange={updateCanvasEdges}
-                                            onNodeLayoutCommit={commitCanvasLayout}
-                                            onSelectNode={setDraftSelectedNodeId}
-                                            onToggleTaskSelection={handleToggleTaskSelection}
-                                            onReplaceTaskSelection={handleReplaceTaskSelection}
-                                            onDoubleClickNode={handleOpenNodeEditor}
-                                            onAddNode={addNode}
-                                            onRenameNode={renameNode}
-                                        />
-                                    </ReactFlowProvider>
-                                </section>
-                            </>
-                        )}
-                    </main>
+                    <OfflineWorkbenchMainPanel
+                        activeFlowPath={activeFlowPath}
+                        flowDocument={flowDocument}
+                        canWrite={canWrite}
+                        nodeCount={nodeCount}
+                        selectedTaskIds={selectedTaskIds}
+                        activeNodeId={activeNodeId}
+                        nodeIssues={nodeIssues}
+                        nodeStatuses={nodeStatuses}
+                        dirty={isDirty}
+                        saving={savingFlow}
+                        commitDirty={flowCommitDirty}
+                        committing={committing}
+                        staleDraft={!!staleDraft}
+                        canvasBoardRef={setCanvasBoardElement}
+                        onSelectAllNodes={handleSelectAllNodes}
+                        onSaveFlow={() => void handleSaveFlow()}
+                        onOpenFlowCommitDialog={handleOpenFlowCommitDialog}
+                        onOpenScheduleDialog={handleOpenScheduleDialog}
+                        onExecute={() => void handleExecute()}
+                        onOpenExecutionDialog={() => setExecutionDialogOpen(true)}
+                        onAddNodeAtCanvasCenter={handleAddNodeAtCanvasCenter}
+                        onDiscardStaleDraft={handleDiscardStaleDraft}
+                        onRestoreStaleDraft={handleRestoreStaleDraft}
+                        onNodesChange={updateCanvasNodes}
+                        onEdgesChange={updateCanvasEdges}
+                        onNodeLayoutCommit={commitCanvasLayout}
+                        onSelectNode={setDraftSelectedNodeId}
+                        onToggleTaskSelection={handleToggleTaskSelection}
+                        onReplaceTaskSelection={handleReplaceTaskSelection}
+                        onDoubleClickNode={handleOpenNodeEditor}
+                        onAddNode={addNode}
+                        onRenameNode={renameNode}
+                    />
                 </ResizablePanel>
             </ResizablePanelGroup>
 
