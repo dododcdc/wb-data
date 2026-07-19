@@ -36,9 +36,11 @@ import { OfflineTreeActionDialogs } from './OfflineTreeActionDialogs';
 import { OfflineExecutionDialog } from './OfflineExecutionDialog';
 import { OfflineRepositoryDialogs } from './OfflineRepositoryDialogs';
 import { resolveViewportCenterFlowPosition } from './flowCanvasViewport';
+import { preloadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
 import { useOfflineTreeMutations } from './useOfflineTreeMutations';
+import { prefetchNodeEditorDataSources } from './useNodeEditorDataSources';
 import { useFlowExecutionAndSchedule } from './useFlowExecutionAndSchedule';
 import { useFlowEditingSession } from './useFlowEditingSession';
 import { useOfflineWorkbenchNavigation } from './useOfflineWorkbenchNavigation';
@@ -80,6 +82,22 @@ export default function OfflineWorkbench() {
         resetExecutionAndScheduleRef.current?.();
     }, []);
     const refreshRepoStatusBridge = useCallback(() => refreshRepoStatusRef.current?.() ?? Promise.resolve(), []);
+
+    useEffect(() => {
+        if (!groupId) return;
+
+        let cancelled = false;
+        const timer = window.setTimeout(() => {
+            if (cancelled) return;
+            void preloadSqlEditorModule().catch(() => undefined);
+            void prefetchNodeEditorDataSources(groupId).catch(() => undefined);
+        }, 200);
+
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timer);
+        };
+    }, [groupId]);
 
     const flowEditing = useFlowEditingSession({
         groupId,

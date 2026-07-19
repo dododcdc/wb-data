@@ -111,6 +111,7 @@ vi.mock('./FlowCanvas', () => ({
 }));
 
 vi.mock('./useNodeEditorDataSources', () => ({
+    prefetchNodeEditorDataSources: vi.fn(() => Promise.resolve()),
     useNodeEditorDataSources: () => ({
         currentDataSourceId: undefined,
         selectedDataSource: null,

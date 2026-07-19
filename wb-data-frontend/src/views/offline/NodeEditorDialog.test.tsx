@@ -23,6 +23,7 @@ vi.mock('../../components/sql-editor/sqlEditorTheme', () => ({
 
 // Mock data source hook
 vi.mock('./useNodeEditorDataSources', () => ({
+    prefetchNodeEditorDataSources: vi.fn(() => Promise.resolve()),
     useNodeEditorDataSources: () => ({
         currentDataSourceId: undefined,
         selectedDataSource: null,
