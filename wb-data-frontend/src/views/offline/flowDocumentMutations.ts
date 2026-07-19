@@ -110,7 +110,8 @@ function buildScriptPath(documentPath: string, taskId: string, kind: OfflineFlow
         : normalizedPath.replace(/\/[^/]*$/, '');
 
     if (kind === 'TRANSFER') {
-        const flowDirectoryName = flowDirectory.split('/').filter(Boolean).at(-1);
+        const flowDirectoryParts = flowDirectory.split('/').filter(Boolean);
+        const flowDirectoryName = flowDirectoryParts[flowDirectoryParts.length - 1];
         return `transfers/${flowDirectoryName}/${taskId}.transfer.json`;
     }
 
