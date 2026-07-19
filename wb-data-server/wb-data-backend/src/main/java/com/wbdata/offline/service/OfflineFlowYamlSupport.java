@@ -346,7 +346,9 @@ final class OfflineFlowYamlSupport {
             }
         }
 
-        if ("SQL".equalsIgnoreCase(nodeInfo.kind())) {
+        if ("TRANSFER".equalsIgnoreCase(nodeInfo.kind())) {
+            applyTransferTask(task, nodeInfo);
+        } else if ("SQL".equalsIgnoreCase(nodeInfo.kind())) {
             applyDataSourceToTask(task, nodeInfo, dataSourceMap);
         } else if ("HIVE_SQL".equalsIgnoreCase(nodeInfo.kind())) {
             applyHiveSqlTask(task, nodeInfo, dataSourceMap);
@@ -355,6 +357,17 @@ final class OfflineFlowYamlSupport {
         }
 
         return task;
+    }
+
+    private void applyTransferTask(Map<String, Object> task, FlowNode nodeInfo) {
+        clearJdbcTaskFields(task);
+        clearShellTaskFields(task);
+        task.put("type", SHELL_COMMANDS_TASK_TYPE);
+        task.put("description", mergeTransferTaskMetadataDescription(
+                readOptionalString(task, "description"),
+                nodeInfo.transferConfigPath()
+        ));
+        task.put("namespaceFiles", buildNamespaceFilesConfig(nodeInfo.transferConfigPath()));
     }
 
     private void applyShellTask(Map<String, Object> task, FlowNode nodeInfo) {
@@ -500,7 +513,7 @@ final class OfflineFlowYamlSupport {
 
     private ParsedTaskMetadata parseTaskMetadata(String description) {
         if (description == null || description.isBlank()) {
-            return new ParsedTaskMetadata(null, null, null);
+            return new ParsedTaskMetadata(null, null, null, null);
         }
 
         String metadataLine = null;
@@ -510,12 +523,13 @@ final class OfflineFlowYamlSupport {
             }
         }
         if (metadataLine == null) {
-            return new ParsedTaskMetadata(null, null, null);
+            return new ParsedTaskMetadata(null, null, null, null);
         }
 
         Long dataSourceId = null;
         String dataSourceType = null;
         String nodeKind = null;
+        String transferConfigPath = null;
         String payload = metadataLine.substring(WB_DATA_META_PREFIX.length()).trim();
         for (String entry : payload.split(";")) {
             String trimmed = entry.trim();
@@ -538,9 +552,11 @@ final class OfflineFlowYamlSupport {
                 dataSourceType = value;
             } else if ("nodeKind".equals(key) && !value.isBlank()) {
                 nodeKind = value;
+            } else if ("transferConfigPath".equals(key) && !value.isBlank()) {
+                transferConfigPath = value;
             }
         }
-        return new ParsedTaskMetadata(dataSourceId, dataSourceType, nodeKind);
+        return new ParsedTaskMetadata(dataSourceId, dataSourceType, nodeKind, transferConfigPath);
     }
 
     private String mergeTaskMetadataDescription(String existingDescription, Long dataSourceId, String dataSourceType, String nodeKind) {
@@ -553,6 +569,16 @@ final class OfflineFlowYamlSupport {
         }
         if (cleaned == null || cleaned.isBlank()) {
             return metadata.toString();
+        }
+        return cleaned + "\n" + metadata;
+    }
+
+    private String mergeTransferTaskMetadataDescription(String existingDescription, String transferConfigPath) {
+        String cleaned = stripTaskMetadataDescription(existingDescription);
+        String metadata = WB_DATA_META_PREFIX
+                + " nodeKind=TRANSFER;transferConfigPath=" + transferConfigPath;
+        if (cleaned == null || cleaned.isBlank()) {
+            return metadata;
         }
         return cleaned + "\n" + metadata;
     }
@@ -748,12 +774,11 @@ final class OfflineFlowYamlSupport {
 
     private FlowNode parseLeafNode(Map<String, Object> task) {
         String taskId = requiredString(task, "id");
-        String scriptPath = readScriptPath(task);
-
         ParsedTaskMetadata metadata = parseTaskMetadata(readOptionalString(task, "description"));
         Long dataSourceId = metadata.dataSourceId();
         String dataSourceType = metadata.dataSourceType();
         String nodeKind = metadata.nodeKind();
+        String scriptPath = "TRANSFER".equalsIgnoreCase(nodeKind) ? null : readScriptPath(task);
 
         // Backward compatibility for older YAML that stored datasource metadata on labels.
         if (dataSourceId == null) {
@@ -795,7 +820,8 @@ final class OfflineFlowYamlSupport {
                 nodeKind,
                 scriptPath,
                 dataSourceId,
-                dataSourceType
+                dataSourceType,
+                metadata.transferConfigPath()
         );
     }
 
@@ -896,7 +922,8 @@ final class OfflineFlowYamlSupport {
             String kind,
             String scriptPath,
             Long dataSourceId,
-            String dataSourceType
+            String dataSourceType,
+            String transferConfigPath
     ) {
     }
 
@@ -909,7 +936,8 @@ final class OfflineFlowYamlSupport {
     private record ParsedTaskMetadata(
             Long dataSourceId,
             String dataSourceType,
-            String nodeKind
+            String nodeKind,
+            String transferConfigPath
     ) {
     }
 

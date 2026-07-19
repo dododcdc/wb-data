@@ -222,7 +222,9 @@ export function renameFlowNode(input: RenameFlowNodeInput): RenameFlowNodeResult
             return {
                 ...node,
                 taskId: cleanNewId,
-                scriptPath: updateScriptPathForRename(node.scriptPath, input.oldId, cleanNewId),
+                ...(node.scriptPath
+                    ? { scriptPath: updateScriptPathForRename(node.scriptPath, input.oldId, cleanNewId) }
+                    : {}),
             };
         }),
     }));

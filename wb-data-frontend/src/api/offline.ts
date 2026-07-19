@@ -1,6 +1,7 @@
 import request from '../utils/request';
 import { groupScopedPath, omitGroupId } from './groupScoped';
 import { buildExecutionListSearchParams } from '../views/offline/executionFilters';
+import type { TransferConfig } from '../views/offline/transfer/transferTypes';
 
 function offlinePath(groupId: number, path: string) {
     return groupScopedPath(groupId, `/offline${path}`);
@@ -66,15 +67,16 @@ export interface OfflineFlowContent {
     fileUpdatedAt: number;
 }
 
-export type OfflineFlowNodeKind = 'SQL' | 'HIVE_SQL' | 'SHELL';
+export type OfflineFlowNodeKind = 'SQL' | 'HIVE_SQL' | 'SHELL' | 'TRANSFER';
 
 export interface OfflineFlowNode {
     taskId: string;
     kind: OfflineFlowNodeKind;
-    scriptPath: string;
-    scriptContent: string;
+    scriptPath?: string;
+    scriptContent?: string;
     dataSourceId?: number;
     dataSourceType?: string;
+    transfer?: TransferConfig;
 }
 
 export interface OfflineFlowEdge {
@@ -122,11 +124,12 @@ export interface SaveOfflineFlowRequest {
 
 export interface SaveOfflineFlowNodeRequest {
     taskId: string;
-    scriptContent: string;
+    scriptContent?: string;
     kind: OfflineFlowNodeKind;
-    scriptPath: string;
+    scriptPath?: string;
     dataSourceId?: number;
     dataSourceType?: string;
+    transfer?: TransferConfig;
 }
 
 export interface SaveOfflineFlowStageRequest {

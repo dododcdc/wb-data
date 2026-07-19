@@ -110,6 +110,43 @@ describe('flowSaveTransaction', () => {
         });
     });
 
+    it('preserves transfer configuration when serializing a transfer node', () => {
+        const transfer = {
+            source: {
+                dataSourceId: 11,
+                dataSourceType: 'MYSQL' as const,
+                table: 'orders',
+            },
+            target: {
+                dataSourceId: 12,
+                dataSourceType: 'HIVE' as const,
+                table: 'dwd_orders',
+                writeMode: 'overwrite_partition' as const,
+            },
+            fieldMappings: [
+                { target: 'order_id', kind: 'source_field' as const, source: 'id' },
+            ],
+            partitions: [
+                { target: 'dt', kind: 'static_value' as const, value: '2026-07-19' },
+            ],
+        };
+        const session = makeSession(makeFlowDocument({
+            stages: [{
+                stageId: 'main',
+                parallel: false,
+                nodes: [{ taskId: 'transfer_orders', kind: 'TRANSFER', transfer }],
+            }],
+        }));
+
+        const request = buildSaveFlowDocumentRequest(1, session);
+
+        expect(request.stages[0].nodes[0]).toMatchObject({
+            taskId: 'transfer_orders',
+            kind: 'TRANSFER',
+            transfer,
+        });
+    });
+
     it('prepares a save session by flushing pending editor draft content', () => {
         const pendingDraft: PendingNodeEditorDraft = {
             taskId: 'shell_node_1',
