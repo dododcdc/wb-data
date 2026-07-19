@@ -51,7 +51,7 @@ It could not pull the pinned images from Docker Hub. First, the source image ref
 failed to resolve reference "docker.io/alpine/socat:1.8.0.3-r0": docker.io/alpine/socat:1.8.0.3-r0: not found
 ```
 
-After pulling `alpine/socat:latest` and adding a local compatibility tag, the stack next failed while fetching Kestra:
+The compose file was later corrected to use the available `alpine/socat:latest` image and to allow `WB_DATA_TRANSFER_BACKEND_HOST_PORT` for host backend port conflicts. After pulling `alpine/socat:latest` and adding a local compatibility tag during the first attempt, the stack next failed while fetching Kestra:
 
 ```text
 failed to resolve reference "docker.io/kestra/kestra:v1.3.28":
@@ -59,6 +59,8 @@ failed to do request: Head "https://registry-1.docker.io/v2/kestra/kestra/manife
 ```
 
 Three retries did not leave either `mysql:8.4` or `kestra/kestra:v1.3.28` locally available. The required MySQL, Hive, Kestra, and backend-alias services were therefore never started. `scripts/dev/transfer-smoke.sh` was not run because its first operation is the same blocked compose startup.
+
+After the compose correction, `WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080 docker compose -f docker-compose.transfer.yml up -d` passed the `alpine/socat` step and began pulling MySQL and Kestra. It was stopped after several minutes because the Kestra layer `ed31fb0e67b1` had reached only about `49.28MB/2.926GB`; no transfer containers had been created at that point.
 
 ## Scenario Evidence
 
@@ -102,4 +104,4 @@ npm run test -- --run \
 
 ## Required Follow-up
 
-Restore Docker Hub access or provide the pinned `mysql:8.4` and `kestra/kestra:v1.3.28` images locally, then rerun `scripts/dev/transfer-smoke.sh`, create `gogo/transfer-smoke/` through the authenticated product APIs/UI, and fill the scenario table with real execution IDs and target-table counts. The compose file's pinned `alpine/socat:1.8.0.3-r0` image must also be replaced with an available tag or supplied as a compatible local image before a clean setup can succeed.
+Restore Docker Hub access or provide the pinned `mysql:8.4` and `kestra/kestra:v1.3.28` images locally, then rerun `scripts/dev/transfer-smoke.sh`, create `gogo/transfer-smoke/` through the authenticated product APIs/UI, and fill the scenario table with real execution IDs and target-table counts. If host port `8080` is still occupied, start the backend with `SERVER_PORT=18080` and run the smoke script with `WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080`.

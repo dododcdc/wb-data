@@ -17,6 +17,15 @@ scripts/dev/transfer-smoke.sh
 
 Run the backend command from `wb-data-server/wb-data-backend`. The smoke script starts the stack, waits for MySQL and HiveServer2, applies the Hive schema, verifies Kestra and the backend proxy, and seeds the local WB-Data metadata database. Override its metadata connection with `WB_DATA_METADATA_MYSQL_HOST`, `WB_DATA_METADATA_MYSQL_PORT`, `WB_DATA_METADATA_MYSQL_DATABASE`, `WB_DATA_METADATA_MYSQL_USER`, and `DB_PASSWORD` when necessary.
 
+If host port `8080` is already occupied, start the backend on another port and point the transfer backend alias at that port:
+
+```bash
+DB_PASSWORD=1111 WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token SERVER_PORT=18080 \
+  mvn spring-boot:run -Dspring-boot.run.fork=false
+
+WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080 scripts/dev/transfer-smoke.sh
+```
+
 | Data source | Type | Host | Port | Database | Tables |
 | --- | --- | --- | --- | --- | --- |
 | `it_transfer_mysql` | `MYSQL` | `wb-data-transfer-mysql` | `3306` | `transfer_demo` | `transfer_orders_source`, `transfer_orders_target` |
