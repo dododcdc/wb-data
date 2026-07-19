@@ -81,3 +81,29 @@ Fixed both remaining P1 findings narrowly.
 ### Concern
 
 No new concerns. Lint was not run for this re-review fix because it was not requested; the prior report still records the unrelated repository-wide transient Vite timestamp-file lint issue.
+
+## Final Re-review Fix: Partitioned Hive Write Mode Gate
+
+### Status
+
+Fixed the remaining P1 write-mode emission issue narrowly.
+
+### Changes
+
+- `TransferNodeDialog` now computes allowed write modes from target metadata after filtering out `overwrite_table` for partitioned Hive targets.
+- Saveable emission now requires the current `config.target.writeMode` to be in that filtered allowed list, preventing transient `overwrite_table` emission.
+- The existing reconciliation effect now uses the same filtered allowed list, so stale `overwrite_table` is reconciled to an allowed mode before any saveable config is emitted.
+- Added a regression test covering a previous `overwrite_table` config with partitioned Hive metadata; `onChange` only receives the reconciled allowed mode.
+
+### Verification
+
+- `cd wb-data-frontend && npx vitest run src/views/offline/transfer src/views/offline/NodeEditorDialog.test.tsx src/views/offline/flowSaveTransaction.test.ts`
+  - Passed: 7 files, 26 tests.
+- `cd wb-data-frontend && npx tsc -b --pretty false`
+  - Passed.
+- `git diff --check`
+  - Passed.
+
+### Concern
+
+No new concerns. Lint was not run because it was not requested.
