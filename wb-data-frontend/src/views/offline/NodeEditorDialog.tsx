@@ -13,6 +13,8 @@ import { SqlEditor } from '../../components/sql-editor/SqlEditor';
 import { loadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import { registerSqlEditorTheme } from '../../components/sql-editor/sqlEditorTheme';
 import type { OfflineFlowNode } from '../../api/offline';
+import type { TransferConfig } from './transfer/transferTypes';
+import { TransferNodeDialog } from './transfer/TransferNodeDialog';
 import { DataSourceSelect } from '../../components/DataSourceSelect';
 import { useNodeEditorDataSources } from './useNodeEditorDataSources';
 import {
@@ -39,6 +41,7 @@ export interface NodeEditorDialogProps {
     onTempSave: (content: string, dataSourceId?: number, dataSourceType?: string) => void;
     onContentChange: (content: string) => void;
     onDraftChange?: (content: string, dataSourceId?: number, dataSourceType?: string) => void;
+    onTransferChange?: (transfer: TransferConfig) => void;
 }
 
 export function NodeEditorDialog({
@@ -49,6 +52,7 @@ export function NodeEditorDialog({
     onOpenChange,
     onContentChange,
     onDraftChange,
+    onTransferChange,
 }: NodeEditorDialogProps) {
     const latestContentRef = useRef(content);
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -131,6 +135,7 @@ export function NodeEditorDialog({
 
     if (!activeNode) return null;
     const isSqlNode = isSqlEditorNodeKind(activeNode.kind);
+    const isTransferNode = activeNode.kind === 'TRANSFER';
 
     const handleAttemptClose = () => onOpenChange(false);
 
@@ -222,7 +227,13 @@ export function NodeEditorDialog({
                         event.nativeEvent.stopImmediatePropagation?.();
                     }}
                 >
-                    {isSqlNode ? (
+                    {isTransferNode ? (
+                        <TransferNodeDialog
+                            groupId={groupId}
+                            value={activeNode.transfer}
+                            onChange={(transfer) => onTransferChange?.(transfer)}
+                        />
+                    ) : isSqlNode ? (
                         <SqlEditor
                             value={content}
                             onChange={(value) => onContentChange(value ?? '')}
