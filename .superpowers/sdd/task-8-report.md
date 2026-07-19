@@ -107,3 +107,29 @@ Fixed the remaining P1 write-mode emission issue narrowly.
 ### Concern
 
 No new concerns. Lint was not run because it was not requested.
+
+## Final Re-review Fix: Transfer Draft Report Stabilization
+
+### Status
+
+Fixed the remaining P1 rerender/draft flush loop risk narrowly.
+
+### Changes
+
+- `NodeEditorDialog` now memoizes the transfer draft callback passed to `TransferNodeDialog`.
+- `TransferNodeDialog` now deduplicates identical local draft reports, so callback identity changes cannot repeatedly stage the same draft state.
+- Existing semantics are preserved: distinct local drafts are still reported, valid drafts still update saveable `transfer`, and invalid drafts remain local-only.
+- Added an OfflineWorkbench integration regression that opens a real transfer editor through the workbench/FlowCanvas/editor/draft-controller path and verifies render/draft reporting stabilizes.
+
+### Verification
+
+- `cd wb-data-frontend && npx vitest run src/views/offline/transfer src/views/offline/NodeEditorDialog.test.tsx src/views/offline/OfflineWorkbench.test.tsx src/views/offline/flowSaveTransaction.test.ts`
+  - Passed: 8 files, 54 tests.
+- `cd wb-data-frontend && npx tsc -b --pretty false`
+  - Passed.
+- `git diff --check`
+  - Passed.
+
+### Concern
+
+No new concerns. Lint was not run because it was not requested.
