@@ -24,6 +24,7 @@ import { FlowCanvasNode, type FlowCanvasNodeData } from './FlowCanvasNode';
 import { wouldCreateCycle, autoLayout } from './dagUtils';
 import type { OfflineFlowDocument, OfflineFlowNode, OfflineFlowNodeKind } from '../../api/offline';
 import { isOfflineFlowNodeKind } from './offlineNodeKinds';
+import './OfflineContextMenu.css';
 
 /**
  * 根据节点数量动态计算 fitView 的 padding 值

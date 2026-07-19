@@ -194,3 +194,87 @@
     pointer-events: none;
 }
 
+/* Switch toggle */
+.offline-switch {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    border: none;
+    background: #d4d4d4;
+    cursor: pointer;
+    transition: background 0.2s;
+    padding: 0;
+    flex-shrink: 0;
+    margin-right: 24px;
+    margin-top: 2px;
+}
+
+.offline-switch[aria-checked="true"] {
+    background: #22c55e;
+}
+
+.offline-switch:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.offline-switch-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: white;
+    transition: transform 0.2s;
+    display: block;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.offline-switch[aria-checked="true"] .offline-switch-thumb {
+    transform: translateX(18px);
+}
+
+.offline-field-hint {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    margin-top: 4px;
+    display: block;
+}
+
+.offline-combobox-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.offline-combobox-wrapper [data-slot="combobox-trigger"] {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    padding-right: 8px;
+    pointer-events: none;
+}
+
+.offline-combobox-wrapper input {
+    padding-right: 28px;
+}
+
+.offline-tz-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.offline-tz-offset {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--color-text-muted);
+    margin-left: 8px;
+}
+

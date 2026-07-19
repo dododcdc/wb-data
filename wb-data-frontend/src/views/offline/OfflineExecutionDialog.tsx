@@ -20,6 +20,7 @@ import {
     isRunningStatus,
     isStoppable,
 } from './executionPresentation';
+import './OfflineExecutionDialog.css';
 
 function formatDateTime(value: string | number | null | undefined) {
     if (!value) return '—';
