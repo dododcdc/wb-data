@@ -666,8 +666,13 @@ final class OfflineFlowYamlSupport {
 
     private void collectNamespaceFiles(List<Map<String, Object>> tasks, Set<String> files) {
         for (Map<String, Object> task : tasks) {
-            files.addAll(readNamespaceIncludePathsFromTask(task));
-            Object childTasks = task.get("tasks");
+            Map<String, Object> actualTask = task;
+            Object wrappedTask = task.get("task");
+            if (wrappedTask instanceof Map<?, ?> innerTask) {
+                actualTask = (Map<String, Object>) innerTask;
+            }
+            files.addAll(readNamespaceIncludePathsFromTask(actualTask));
+            Object childTasks = actualTask.get("tasks");
             if (childTasks instanceof List<?> rawChildTasks && !rawChildTasks.isEmpty()) {
                 collectNamespaceFiles(castTaskList(rawChildTasks), files);
             }
