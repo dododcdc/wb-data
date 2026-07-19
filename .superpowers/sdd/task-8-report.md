@@ -108,6 +108,34 @@ Fixed the remaining P1 write-mode emission issue narrowly.
 
 No new concerns. Lint was not run because it was not requested.
 
+## Metadata Hook Race Fix: Active Guards and Immediate Table Clearing
+
+### Status
+
+Fixed the remaining metadata hook issues narrowly in `useTransferMetadata`.
+
+### Changes
+
+- Added active-request guards to both source and target metadata effects so stale A -> B -> A responses cannot be accepted just because their selection identity matches again.
+- Cleared `sourceTables` and `targetTables` at table-list request start, so options from the previous datasource are not shown while the next datasource list is pending.
+- Added hook regressions for source and target stale metadata after A -> B -> A changes.
+- Added hook regressions for immediate source and target table option clearing while the next datasource list is pending.
+
+### Verification
+
+- `cd wb-data-frontend && npx vitest run src/views/offline/transfer/useTransferMetadata.test.tsx`
+  - Passed: 1 file, 7 tests.
+- `cd wb-data-frontend && npx vitest run src/views/offline/transfer src/views/offline/NodeEditorDialog.test.tsx src/views/offline/OfflineWorkbench.test.tsx src/views/offline/flowSaveTransaction.test.ts`
+  - Passed: 8 files, 60 tests.
+- `cd wb-data-frontend && npx tsc -b --pretty false`
+  - Passed.
+- `git diff --check`
+  - Passed.
+
+### Concern
+
+No new concerns. Lint was not run because it was not requested.
+
 ## P2/P-spec Fix: Transfer Table-list Request Identity
 
 ### Status
