@@ -17,6 +17,7 @@ import com.wbdata.offline.dto.SaveOfflineFlowEdgeRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowNodeRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowStageRequest;
 import com.wbdata.offline.transfer.dto.TransferConfig;
+import com.wbdata.offline.transfer.service.TransferConfigFileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -48,6 +49,8 @@ public class OfflineFlowDocumentService {
             List<OfflineFlowYamlSupport.FlowNode> nodes,
             List<OfflineFlowYamlSupport.FlowEdge> edges,
             Map<Long, DataSource> dataSourceMap,
+            Map<String, String> scriptFileContents,
+            Map<String, TransferConfig> transferConfigs,
             Map<String, String> namespaceFileContents
     ) {
     }
@@ -57,6 +60,7 @@ public class OfflineFlowDocumentService {
     private final DataSourceService dataSourceService;
     private final RepoLockManager repoLockManager;
     private final OfflineKestraFlowFileService kestraFlowFileService;
+    private final TransferConfigFileService transferConfigFileService;
     private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -228,7 +232,7 @@ public class OfflineFlowDocumentService {
                 graphDraft.dataSourceMap()
         );
 
-        writeGraphFiles(repoPath, graphDraft);
+        writeGraphFiles(repoPath, request.groupId(), request.path(), graphDraft);
 
         Path flowFile = resolveRepoFile(repoPath, request.path());
         Files.createDirectories(flowFile.getParent());
@@ -241,12 +245,20 @@ public class OfflineFlowDocumentService {
         Files.writeString(flowFile, yamlSupport.applySchedule(current, schedule), StandardCharsets.UTF_8);
     }
 
-    private void writeGraphFiles(Path repoPath, GraphDraft graphDraft) throws IOException {
-        for (Map.Entry<String, String> entry : graphDraft.namespaceFileContents().entrySet()) {
+    private void writeGraphFiles(Path repoPath, Long groupId, String flowPath, GraphDraft graphDraft) throws IOException {
+        for (Map.Entry<String, String> entry : graphDraft.scriptFileContents().entrySet()) {
             Path scriptFile = resolveRepoFile(repoPath, entry.getKey());
             Files.createDirectories(scriptFile.getParent());
             Files.writeString(scriptFile, entry.getValue(), StandardCharsets.UTF_8);
         }
+        for (Map.Entry<String, TransferConfig> entry : graphDraft.transferConfigs().entrySet()) {
+            transferConfigFileService.write(repoPath, groupId, flowPath, entry.getKey(), entry.getValue());
+        }
+        List<String> activeTransferPaths = graphDraft.nodes().stream()
+                .filter(node -> "TRANSFER".equalsIgnoreCase(node.kind()))
+                .map(OfflineFlowYamlSupport.FlowNode::transferConfigPath)
+                .toList();
+        transferConfigFileService.deleteStaleForFlow(repoPath, flowPath, activeTransferPaths);
     }
 
     private GraphDraft prepareGraphDraft(Long groupId,
@@ -257,12 +269,14 @@ public class OfflineFlowDocumentService {
         List<OfflineFlowYamlSupport.FlowNode> nodes = new ArrayList<>();
         Set<Long> dataSourceIds = new LinkedHashSet<>();
         Map<String, String> namespaceFileContents = new LinkedHashMap<>();
+        Map<String, String> scriptFileContents = new LinkedHashMap<>();
+        Map<String, TransferConfig> transferConfigs = new LinkedHashMap<>();
 
         for (SaveOfflineFlowStageRequest stage : stages) {
             for (SaveOfflineFlowNodeRequest nodeReq : stage.nodes()) {
                 boolean transferNode = "TRANSFER".equalsIgnoreCase(nodeReq.kind());
                 String transferConfigPath = transferNode
-                        ? buildTransferConfigPath(flowPath, nodeReq.taskId())
+                        ? transferConfigFileService.buildPath(flowPath, nodeReq.taskId())
                         : null;
                 nodes.add(new OfflineFlowYamlSupport.FlowNode(
                         nodeReq.taskId(),
@@ -277,11 +291,11 @@ public class OfflineFlowDocumentService {
                 }
 
                 if (transferNode) {
-                    namespaceFileContents.put(
-                            transferConfigPath,
-                            objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(nodeReq.transfer())
-                    );
+                    transferConfigs.put(nodeReq.taskId(), nodeReq.transfer());
+                    namespaceFileContents.put(transferConfigPath,
+                            transferConfigFileService.serialize(groupId, flowPath, nodeReq.taskId(), nodeReq.transfer()));
                 } else {
+                    scriptFileContents.put(nodeReq.scriptPath(), nodeReq.scriptContent());
                     namespaceFileContents.put(nodeReq.scriptPath(), nodeReq.scriptContent());
                 }
             }
@@ -299,7 +313,7 @@ public class OfflineFlowDocumentService {
                 .map(e -> new OfflineFlowYamlSupport.FlowEdge(e.source(), e.target()))
                 .toList();
 
-        return new GraphDraft(nodes, edges, dataSourceMap, namespaceFileContents);
+        return new GraphDraft(nodes, edges, dataSourceMap, scriptFileContents, transferConfigs, namespaceFileContents);
     }
 
     private void saveWithStages(SaveOfflineFlowDocumentRequest request, DocumentSnapshot current) throws IOException {
@@ -361,15 +375,9 @@ public class OfflineFlowDocumentService {
                 }
                 taskOrder.add(node.taskId());
                 if ("TRANSFER".equalsIgnoreCase(node.kind())) {
+                    TransferConfig transfer = transferConfigFileService.read(repoPath, node.transferConfigPath());
                     Path transferFile = resolveRepoFile(repoPath, node.transferConfigPath());
-                    if (!Files.isRegularFile(transferFile)) {
-                        throw new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "传输配置文件不存在: " + node.transferConfigPath()
-                        );
-                    }
                     String transferContent = Files.readString(transferFile, StandardCharsets.UTF_8);
-                    TransferConfig transfer = objectMapper.readValue(transferContent, TransferConfig.class);
                     updatedAt = Math.max(updatedAt, Files.getLastModifiedTime(transferFile).toMillis());
                     signature.append('\n')
                             .append(node.taskId())
@@ -504,10 +512,6 @@ public class OfflineFlowDocumentService {
             }
         }
         return nodes;
-    }
-
-    private String buildTransferConfigPath(String flowPath, String taskId) {
-        return "transfers/" + extractFlowId(flowPath) + "/" + taskId + ".transfer.json";
     }
 
     private Path resolveRepoFile(Path repoPath, String path) {

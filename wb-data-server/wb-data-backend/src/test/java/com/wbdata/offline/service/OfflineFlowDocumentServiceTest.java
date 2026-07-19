@@ -1,6 +1,7 @@
 package com.wbdata.offline.service;
 
 import com.wbdata.datasource.service.DataSourceService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.dto.NodePosition;
 import com.wbdata.offline.dto.OfflineFlowSchedule;
@@ -12,6 +13,7 @@ import com.wbdata.offline.transfer.dto.TransferEndpointConfig;
 import com.wbdata.offline.transfer.dto.TransferFieldMapping;
 import com.wbdata.offline.transfer.dto.TransferMappingKind;
 import com.wbdata.offline.transfer.dto.TransferWriteMode;
+import com.wbdata.offline.transfer.service.TransferConfigFileService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -135,6 +137,19 @@ class OfflineFlowDocumentServiceTest {
                 .contains("scripts/example/node_1.sh", "transfers/example/1transfer_orders.transfer.json");
     }
 
+    @Test
+    void saveFlowDocument_deletesTransferSidecarForRemovedTransferNode() {
+        OfflineProperties properties = offlineProperties();
+        RepoLockManager repoLockManager = new RepoLockManager();
+        OfflineFlowDocumentService service = service(properties, repoLockManager);
+
+        service.saveFlowDocument(transferOnlyRequest("transfer_1"));
+        service.saveFlowDocument(scriptOnlyRequest());
+
+        assertThat(properties.resolveRepoPath(1L)
+                .resolve("transfers/example/transfer_1.transfer.json")).doesNotExist();
+    }
+
     private OfflineProperties offlineProperties() {
         OfflineProperties properties = new OfflineProperties();
         properties.setRepoBaseDir(tempDir.toString());
@@ -149,7 +164,8 @@ class OfflineFlowDocumentServiceTest {
                 new OfflineFlowContentService(properties, repoLockManager, kestraFlowFileService),
                 mock(DataSourceService.class),
                 repoLockManager,
-                kestraFlowFileService
+                kestraFlowFileService,
+                new TransferConfigFileService(new ObjectMapper())
         );
     }
 
@@ -173,6 +189,26 @@ class OfflineFlowDocumentServiceTest {
                 List.of(),
                 Map.of("node_1", new NodePosition(10, 20)),
                 schedule
+        );
+    }
+
+    private SaveOfflineFlowDocumentRequest transferOnlyRequest(String taskId) {
+        return new SaveOfflineFlowDocumentRequest(
+                1L, "_flows/example/flow.yaml", null, 0L,
+                List.of(new SaveOfflineFlowStageRequest("main", List.of(new SaveOfflineFlowNodeRequest(
+                        taskId, null, "TRANSFER", null, null, null, validTransfer()
+                )))),
+                List.of(), Map.of(), null
+        );
+    }
+
+    private SaveOfflineFlowDocumentRequest scriptOnlyRequest() {
+        return new SaveOfflineFlowDocumentRequest(
+                1L, "_flows/example/flow.yaml", null, 0L,
+                List.of(new SaveOfflineFlowStageRequest("main", List.of(new SaveOfflineFlowNodeRequest(
+                        "node_1", "echo 1", "SHELL", "scripts/example/node_1.sh", null, null
+                )))),
+                List.of(), Map.of(), null
         );
     }
 
