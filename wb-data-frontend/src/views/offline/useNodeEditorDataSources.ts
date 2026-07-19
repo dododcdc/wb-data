@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getDataSourceById, getDataSourcePage, type DataSource } from '../../api/datasource';
+import { getDataSourceById, getDataSourcePage, type DataSource, type PageResult } from '../../api/datasource';
 import type { OfflineFlowNodeKind } from '../../api/offline';
 import { DS_PAGE_SIZE } from '../query/queryConstants';
 import { getAllowedDataSourceTypes, isSqlEditorNodeKind } from './offlineNodeKinds';
@@ -28,6 +28,79 @@ interface UseNodeEditorDataSourcesResult {
     handleSearchKeywordChange: (keyword: string) => void;
     loadMore: () => void;
     setCurrentDataSourceId: (nextId?: number) => void;
+}
+
+interface CachedDataSourcePageParams {
+    groupId: number;
+    page: number;
+    keyword: string;
+    allowedDataSourceTypes: string[];
+}
+
+const dataSourcePageCache = new Map<string, PageResult<DataSource>>();
+const dataSourcePageRequests = new Map<string, Promise<PageResult<DataSource>>>();
+
+function buildDataSourcePageCacheKey({
+    groupId,
+    page,
+    keyword,
+    allowedDataSourceTypes,
+}: CachedDataSourcePageParams) {
+    return [
+        groupId,
+        page,
+        keyword.trim(),
+        allowedDataSourceTypes.join(','),
+    ].join('|');
+}
+
+function getCachedDataSourcePage(params: CachedDataSourcePageParams) {
+    const key = buildDataSourcePageCacheKey(params);
+    const cached = dataSourcePageCache.get(key);
+    if (cached) {
+        return Promise.resolve(cached);
+    }
+
+    const inflight = dataSourcePageRequests.get(key);
+    if (inflight) {
+        return inflight;
+    }
+
+    const request = getDataSourcePage({
+        groupId: params.groupId,
+        keyword: params.keyword,
+        page: params.page,
+        size: DS_PAGE_SIZE,
+        status: 'ENABLED',
+        type: params.allowedDataSourceTypes.join(','),
+    }).then((result) => {
+        dataSourcePageCache.set(key, result);
+        dataSourcePageRequests.delete(key);
+        return result;
+    }).catch((error) => {
+        dataSourcePageRequests.delete(key);
+        throw error;
+    });
+
+    dataSourcePageRequests.set(key, request);
+    return request;
+}
+
+export function prefetchNodeEditorDataSources(groupId: number) {
+    return Promise.all([
+        getCachedDataSourcePage({
+            groupId,
+            page: 1,
+            keyword: '',
+            allowedDataSourceTypes: getAllowedDataSourceTypes('SQL'),
+        }),
+        getCachedDataSourcePage({
+            groupId,
+            page: 1,
+            keyword: '',
+            allowedDataSourceTypes: getAllowedDataSourceTypes('HIVE_SQL'),
+        }),
+    ]).then(() => undefined);
 }
 
 export function useNodeEditorDataSources(_params: UseNodeEditorDataSourcesParams): UseNodeEditorDataSourcesResult {
@@ -73,13 +146,11 @@ export function useNodeEditorDataSources(_params: UseNodeEditorDataSourcesParams
         }
 
         try {
-            const result = await getDataSourcePage({
+            const result = await getCachedDataSourcePage({
                 groupId,
                 keyword,
                 page: nextPage,
-                size: DS_PAGE_SIZE,
-                status: 'ENABLED',
-                type: allowedDataSourceTypes.join(','),
+                allowedDataSourceTypes,
             });
 
             if (requestId !== listRequestIdRef.current) {
