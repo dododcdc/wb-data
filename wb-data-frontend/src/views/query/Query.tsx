@@ -78,7 +78,7 @@ export default function Query() {
         } else {
             panel.collapse();
         }
-    }, []);
+    }, [sidebarPanelRef]);
 
     const handleToggleResultPanel = useCallback(() => {
         const panel = resultPanelRef.current;
@@ -88,7 +88,7 @@ export default function Query() {
         } else {
             panel.collapse();
         }
-    }, []);
+    }, [resultPanelRef]);
 
     // Sync React state when panel collapses/expands via drag
     const handleSidebarResize = useCallback(() => {
@@ -98,7 +98,7 @@ export default function Query() {
         } else if (!isCollapsed && sidebarCollapsed) {
             toggleSidebar();
         }
-    }, [sidebarCollapsed, toggleSidebar]);
+    }, [sidebarCollapsed, sidebarPanelRef, toggleSidebar]);
 
     const handleResultResize = useCallback(() => {
         const isCollapsed = resultPanelRef.current?.isCollapsed();
@@ -107,7 +107,7 @@ export default function Query() {
         } else if (!isCollapsed && resultCollapsed) {
             setResultPanelState(false);
         }
-    }, [resultCollapsed, setResultPanelState]);
+    }, [resultCollapsed, resultPanelRef, setResultPanelState]);
 
     // ---- SQL editor state ----
     const {
