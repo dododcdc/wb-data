@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { TransferConfig, TransferMappingKind, TransferPartitionMapping } from './transferTypes';
-import { createDefaultFieldMappings, updateMapping } from './transferMapping';
+import { reconcileTargetMappings, updateMapping } from './transferMapping';
 import { validateTransferConfig } from './transferValidation';
 import { useTransferMetadata } from './useTransferMetadata';
 import './TransferNodeDialog.css';
@@ -24,21 +24,35 @@ export function TransferNodeDialog({ groupId, value, onChange }: TransferNodeDia
         const next = JSON.stringify(value ?? emptyConfig);
         if (next !== emittedConfigRef.current) setConfig(value ?? emptyConfig);
     }, [value]);
+    const sourceColumns = useMemo(() => sourceMetadata?.columns.map((column) => column.name) ?? [], [sourceMetadata]);
+    const columns = targetMetadata?.columns.map((column) => column.name) ?? [];
+    const partitions = targetMetadata?.partitionColumns.map((column) => column.name) ?? [];
+    const validation = validateTransferConfig(config, columns, partitions);
     useEffect(() => {
+        if (!targetMetadata || !validation.valid) return;
         const next = JSON.stringify(config);
         if (next !== emittedConfigRef.current) {
             emittedConfigRef.current = next;
             onChange(config);
         }
-    }, [config, onChange]);
-    const sourceColumns = useMemo(() => sourceMetadata?.columns.map((column) => column.name) ?? [], [sourceMetadata]);
-    const columns = targetMetadata?.columns.map((column) => column.name) ?? [];
-    const partitions = targetMetadata?.partitionColumns.map((column) => column.name) ?? [];
-    const validation = validateTransferConfig(config, columns, partitions);
+    }, [config, onChange, targetMetadata, validation.valid]);
     const patch = (next: Partial<TransferConfig>) => setConfig((current) => ({ ...current, ...next }));
     const selectEndpoint = (side: 'source' | 'target', id: number) => { const source = dataSources.find((item) => item.id === id); patch({ [side]: { ...config[side], dataSourceId: id, dataSourceType: (source?.type ?? 'MYSQL') as TransferConfig['source']['dataSourceType'], table: '' } }); };
     const selectTargetTable = (table: string) => patch({ target: { ...config.target, table } });
-    useEffect(() => { if (!targetMetadata) return; const nextMappings = createDefaultFieldMappings(sourceColumns, targetMetadata.columns.map((column) => column.name)); const nextPartitions: TransferPartitionMapping[] = targetMetadata.partitionColumns.map((column) => ({ target: column.name, kind: 'source_field' })); setConfig((current) => ({ ...current, fieldMappings: current.fieldMappings?.length ? current.fieldMappings : nextMappings, partitions: current.partitions?.length ? current.partitions : nextPartitions, target: { ...current.target, writeMode: targetMetadata.writeModes.some((mode) => mode.value === current.target.writeMode) ? current.target.writeMode : targetMetadata.writeModes[0]?.value ?? 'append' } })); }, [targetMetadata, sourceColumns]);
+    useEffect(() => {
+        if (!targetMetadata) return;
+        setConfig((current) => ({
+            ...current,
+            fieldMappings: reconcileTargetMappings(current.fieldMappings, sourceColumns, targetMetadata.columns.map((column) => column.name)),
+            partitions: reconcileTargetMappings(current.partitions, sourceColumns, targetMetadata.partitionColumns.map((column) => column.name)) as TransferPartitionMapping[],
+            target: {
+                ...current.target,
+                writeMode: targetMetadata.writeModes.some((mode) => mode.value === current.target.writeMode)
+                    ? current.target.writeMode
+                    : targetMetadata.writeModes[0]?.value ?? 'append',
+            },
+        }));
+    }, [targetMetadata, sourceColumns]);
     const writeModes = targetMetadata?.writeModes.filter((mode) => !(targetMetadata.partitioned && mode.value === 'overwrite_table')) ?? [];
     return (
         <div className="transfer-node-dialog" data-testid="transfer-node-dialog">
