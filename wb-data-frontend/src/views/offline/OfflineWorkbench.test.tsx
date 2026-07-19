@@ -7,6 +7,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 import OfflineWorkbench from './OfflineWorkbench';
 import { removeRecoverySnapshot } from './recoverySnapshotStore';
+import type { OfflineFlowNodeKind } from '../../api/offline';
 
 const { authState, feedbackSpy } = vi.hoisted(() => ({
     authState: {
@@ -54,7 +55,7 @@ vi.mock('./FlowCanvas', () => ({
             path: string;
             stages: Array<{ nodes: Array<{ kind: string }> }>;
         };
-        onAddNode: (kind: 'SHELL', position: { x: number; y: number }) => void;
+        onAddNode: (kind: OfflineFlowNodeKind, position: { x: number; y: number }) => void;
         onEdgesChange: (edges: Array<{ id: string; source: string; target: string }>) => void;
         onNodeLayoutCommit: (nodes: Array<{ id: string; position: { x: number; y: number } }>) => void;
         onRenameNode: (oldId: string, newId: string) => void;
