@@ -426,14 +426,14 @@ final class OfflineFlowYamlSupport {
     private List<String> buildTransferCommands(String taskId, String transferConfigPath) {
         String renderedConfigPath = "/tmp/wb-data-transfer/" + taskId + ".conf";
         return List.of(
-                "set -euo pipefail",
+                "set -eu",
                 "mkdir -p /tmp/wb-data-transfer",
                 "curl --fail --show-error --silent -H \"X-WB-Data-Internal-Token: ${"
                         + transferRuntimeSettings.internalTokenEnv() + "}\" -H 'Content-Type: application/json' "
                         + "--data-binary @" + shellQuote(transferConfigPath) + " \"${"
                         + transferRuntimeSettings.internalBaseUrlEnv() + "}/api/v1/internal/offline/transfer/render\" "
                         + "-o " + renderedConfigPath,
-                "./bin/seatunnel.sh --config " + renderedConfigPath + " -m local"
+                "/opt/seatunnel/bin/seatunnel.sh --config " + renderedConfigPath + " -m local"
         );
     }
 

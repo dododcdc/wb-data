@@ -12,10 +12,12 @@ public final class TransferSeatunnelConfigBuilder {
     private final JdbcDriverCatalog driverCatalog = new JdbcDriverCatalog();
 
     public String build(TransferRenderInput input) {
-        if (input == null || input.transferConfig() == null || input.targetTableDetail() == null) {
+        if (input == null || input.transferConfig() == null || input.sourceTableDetail() == null
+                || input.targetTableDetail() == null) {
             throw new IllegalArgumentException("Transfer render input is required");
         }
-        String sourceQuery = sqlBuilder.buildSourceSql(input.transferConfig(), input.targetTableDetail());
+        String sourceQuery = sqlBuilder.buildSourceSql(input.transferConfig(),
+                input.sourceTableDetail(), input.targetTableDetail());
         JdbcDriverCatalog.JdbcConnection source = driverCatalog.resolve(
                 input.sourceDataSource(), input.transferConfig().source().database());
         StringBuilder config = new StringBuilder("""

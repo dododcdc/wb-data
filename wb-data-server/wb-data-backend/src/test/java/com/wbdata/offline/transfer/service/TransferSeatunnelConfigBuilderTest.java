@@ -183,6 +183,20 @@ class TransferSeatunnelConfigBuilderTest {
     }
 
     @Test
+    void rewritesLoopbackJdbcHostsForDockerRuntime() {
+        assertThat(builder.build(input(
+                new TransferEndpointConfig(1L, "MYSQL", "sales", "orders", "status = 'paid'", null),
+                new TransferEndpointConfig(2L, "MYSQL", "warehouse", "dwd_orders", null, TransferWriteMode.APPEND),
+                dataSource("MYSQL", "localhost", "source_default", "source_user", "source-password"),
+                dataSource("MYSQL", "127.0.0.1", "target_default", "target_user", "target-password"),
+                false
+        ))).contains(
+                "url = \"jdbc:mysql://host.docker.internal:3306/sales\"",
+                "url = \"jdbc:mysql://host.docker.internal:3306/warehouse\""
+        );
+    }
+
+    @Test
     void rejectsHivePartitionMappingNotPresentInTargetMetadata() {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> builder.build(input("MYSQL", "HIVE", TransferWriteMode.APPEND,
@@ -205,6 +219,25 @@ class TransferSeatunnelConfigBuilderTest {
                 partitions);
         return new TransferRenderInput(config, dataSource(sourceType, "source-db", "source_default", "source_user", "source-password"),
                 dataSource(targetType, "target-db", "target_default", "target_user", "target-password"),
+                new TableDetail(List.of(column("id"), column("amount"), column("order_day")), List.of(), false),
+                new TableDetail(List.of(column("order_id"), column("amount")),
+                        partitioned ? List.of(new PartitionColumnMetadata("dt", "string", "")) : List.of(), partitioned));
+    }
+
+    private TransferRenderInput input(TransferEndpointConfig source,
+                                      TransferEndpointConfig target,
+                                      DataSource sourceDataSource,
+                                      DataSource targetDataSource,
+                                      boolean partitioned) {
+        TransferConfig config = new TransferConfig(
+                source,
+                target,
+                List.of(
+                        new TransferFieldMapping("order_id", TransferMappingKind.SOURCE_FIELD, "id", null),
+                        new TransferFieldMapping("amount", TransferMappingKind.SOURCE_FIELD, "amount", null)),
+                List.of());
+        return new TransferRenderInput(config, sourceDataSource, targetDataSource,
+                new TableDetail(List.of(column("id"), column("amount")), List.of(), false),
                 new TableDetail(List.of(column("order_id"), column("amount")),
                         partitioned ? List.of(new PartitionColumnMetadata("dt", "string", "")) : List.of(), partitioned));
     }

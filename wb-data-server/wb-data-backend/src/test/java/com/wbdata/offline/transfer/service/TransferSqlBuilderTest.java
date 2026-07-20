@@ -61,6 +61,16 @@ class TransferSqlBuilderTest {
     }
 
     @Test
+    void defaultsMissingMappingsToSameNamedSourceColumnsWhenSourceMetadataHasThem() {
+        TransferConfig config = config(
+                List.of(new TransferFieldMapping("order_id", TransferMappingKind.SOURCE_FIELD, "id", null)),
+                List.of(), TransferWriteMode.APPEND);
+
+        assertThat(builder.buildSourceSql(config, sourceDetail("id", "amount"), detail(false)))
+                .isEqualTo("select `id` as `order_id`, `amount` as `amount` from `orders` where status = 'paid'");
+    }
+
+    @Test
     void createsStaticHivePartitionAssignmentInWriteSql() {
         TransferConfig config = config(
                 List.of(
@@ -155,6 +165,13 @@ class TransferSqlBuilderTest {
                 List.of(column("order_id"), column("amount")),
                 partitioned ? List.of(new PartitionColumnMetadata("dt", "string", "")) : List.of(),
                 partitioned);
+    }
+
+    private TableDetail sourceDetail(String... columns) {
+        return new TableDetail(
+                java.util.Arrays.stream(columns).map(this::column).toList(),
+                List.of(),
+                false);
     }
 
     private ColumnMetadata column(String name) {

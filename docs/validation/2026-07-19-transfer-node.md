@@ -4,7 +4,7 @@ Date: 2026-07-20 (Asia/Singapore)
 
 ## Result
 
-Partial validation. The backend, bootstrap script, persisted Flow, commit/push path, schedule path, and Kestra debug execution creation all ran successfully. Full SeaTunnel transfer execution and post-transfer row counts still need to be rerun after regenerating the Flow with the reused `wb-data-kestra` runtime settings.
+Partial validation. The backend, bootstrap script, persisted Flow, commit/push path, schedule path, Kestra debug execution creation, and MySQL SeaTunnel transfer execution all ran successfully. Hive sink execution still needs a standalone Hive metastore endpoint in the reused local Hive stack.
 
 ## Environment And Commands
 
@@ -12,7 +12,9 @@ The task brief used `WB_DATA_INTERNAL_TOKEN` for backend startup. The backend pr
 
 ```bash
 cd wb-data-server/wb-data-backend
-SERVER_PORT=18080 DB_PASSWORD=1111 WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
+SERVER_PORT=18080 DB_PASSWORD=1111 \
+  WB_DATA_PLUGIN_DIR=/Users/wenbin/Projects/wb-data/.worktrees/codex-transfer-node/plugins \
+  WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
   WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:18080 \
   WB_DATA_KESTRA_BASE_URL=http://localhost:8090 \
   mvn spring-boot:run -Dspring-boot.run.fork=false
@@ -72,21 +74,23 @@ status=CREATED
 
 The current `kestra/kestra:latest` container exposes Docker support as `plugin-docker` rather than as a task-runner class in the plugin list. `KestraHttpClient` now maps that plugin to `io.kestra.plugin.scripts.runner.docker.Docker`, so transfer nodes can pass the backend capability check.
 
-The transfer seed now uses `host.docker.internal` with mapped ports so both the host-run backend and Docker task containers can reach the JDBC services. Generated transfer tasks now carry `WB_DATA_INTERNAL_BASE_URL` and `WB_DATA_INTERNAL_TOKEN` in task `env`, so they no longer require a dedicated Kestra container with global transfer environment variables.
+The transfer seed now uses `localhost` for backend-side metadata reads. Rendered SeaTunnel JDBC URLs rewrite loopback hosts to `host.docker.internal` so Docker task containers can reach the same mapped ports. Generated transfer tasks carry `WB_DATA_INTERNAL_BASE_URL` and `WB_DATA_INTERNAL_TOKEN` in task `env`, so they no longer require a dedicated Kestra container with global transfer environment variables.
+
+The backend was restarted with `WB_DATA_PLUGIN_DIR` pointing at freshly rebuilt worktree plugin JARs. Without this, the backend loaded stale Hive plugin JARs from the main checkout and failed to detect Hive partition metadata.
 
 ## Scenario Evidence
 
 | Scenario | Execution ID | Target row-count command/result | Status |
 | --- | --- | --- | --- |
-| MySQL -> MySQL `append` | `3xD9jKHrPUOyxucOGgx3Us` | Baseline target count: 1; execution created, final SeaTunnel result not yet recorded | Partial |
-| MySQL -> MySQL `overwrite_table` | None | Baseline target count: 1; not rerun after environment simplification | Pending |
-| MySQL -> Hive `overwrite_partition`, static `dayno` | None | Baseline partitioned target count: 1; not rerun after environment simplification | Pending |
+| MySQL -> MySQL `append` | `1pRO6494HeEhHvKkfzhiq` | `transfer_orders_source=3`, `transfer_orders_target=4` after append | Success |
+| MySQL -> MySQL `overwrite_table` | `3FMl85lsTZWu1aslIDCASo` | `transfer_orders_source=3`, `transfer_orders_target=3` after overwrite | Success |
+| MySQL -> Hive `overwrite_partition`, static `dayno` | `6kt42ybQbmPNnz558yWE9t` | Render initially failed with stale Hive plugin metadata; after plugin rebuild render succeeds, but execution still needs standalone Hive metastore | Blocked |
 | MySQL -> Hive `overwrite_partition`, source field `dayno` | None | Baseline partitioned target count: 1; not rerun after environment simplification | Pending |
 | MySQL -> Hive `overwrite_partition`, expression `date_format(date_key, '%Y%m%d')` | None | Baseline partitioned target count: 1; not rerun after environment simplification | Pending |
 | Hive -> MySQL `append` | None | Baseline target count: 1; not rerun after environment simplification | Pending |
 | Save, commit, push, enable schedule, Operations Center | None | Save, two commits, two pushes, and schedule enable succeeded; Operations query needs rerun after execution completes | Partial |
 
-No post-transfer row-count query is reported yet because the SeaTunnel execution result has not been rerun to terminal state.
+The successful MySQL executions prove the current reused Kestra container can run the SeaTunnel image through the Docker task runner, render runtime credentials from WB-Data, and reach the transfer MySQL service from inside Docker.
 
 ## Commit, Push, Schedule, And Operations Evidence
 
@@ -129,4 +133,4 @@ npm run test -- --run \
 
 ## Required Follow-up
 
-Regenerate the saved Flow with the reused `wb-data-kestra` runtime settings, rerun each selected-node debug scenario to terminal state, and record execution IDs plus post-transfer target counts.
+Extend the existing Hive compose stack with a metastore thrift endpoint, then rerun the three Hive partition scenarios and the Hive-to-MySQL scenario to terminal state.

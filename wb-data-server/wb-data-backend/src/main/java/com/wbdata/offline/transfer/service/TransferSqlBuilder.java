@@ -17,10 +17,17 @@ public final class TransferSqlBuilder {
     private final SqlIdentifierQuoter identifierQuoter = new SqlIdentifierQuoter();
 
     public String buildSourceSql(TransferConfig config, TableDetail targetTableDetail) {
+        return buildSourceSql(config, null, targetTableDetail);
+    }
+
+    public String buildSourceSql(TransferConfig config, TableDetail sourceTableDetail, TableDetail targetTableDetail) {
         validateHiveWriteMode(config, targetTableDetail);
         List<String> selections = new ArrayList<>();
         for (ColumnMetadata column : targetTableDetail.columns()) {
             TransferFieldMapping mapping = findFieldMapping(config, column.name());
+            if (mapping == null) {
+                mapping = defaultSameNameMapping(sourceTableDetail, column.name());
+            }
             if (mapping == null) {
                 throw new IllegalArgumentException("Missing mapping for target field: " + column.name());
             }
@@ -93,6 +100,18 @@ public final class TransferSqlBuilder {
         return config.fieldMappings() == null ? null : config.fieldMappings().stream()
                 .filter(mapping -> target.equals(mapping.target()))
                 .findFirst().orElse(null);
+    }
+
+    private TransferFieldMapping defaultSameNameMapping(TableDetail sourceTableDetail, String target) {
+        if (sourceTableDetail == null || sourceTableDetail.columns() == null) {
+            return null;
+        }
+        return sourceTableDetail.columns().stream()
+                .map(ColumnMetadata::name)
+                .filter(target::equals)
+                .findFirst()
+                .map(source -> new TransferFieldMapping(target, TransferMappingKind.SOURCE_FIELD, source, null))
+                .orElse(null);
     }
 
     private TransferPartitionMapping findPartitionMapping(TransferConfig config, String target) {
