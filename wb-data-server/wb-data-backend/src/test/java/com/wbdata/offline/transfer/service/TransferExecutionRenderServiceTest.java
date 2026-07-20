@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -73,6 +74,42 @@ class TransferExecutionRenderServiceTest {
         verify(metadataService).getTableDetail(target, "warehouse", "dwd_orders");
     }
 
+    @Test
+    void hiveTargetWithoutMetastoreUriIsRejectedBeforeRendering() {
+        TransferMetadataService metadataService = mock(TransferMetadataService.class);
+        DataSource source = dataSource(1L, 4L, "source-password");
+        DataSource target = dataSource(2L, 4L, "target-password");
+        target.setType("HIVE");
+        target.setConnectionParams(Map.of());
+        when(metadataService.requireSupportedDataSource(1L)).thenReturn(source);
+        when(metadataService.requireSupportedDataSource(2L)).thenReturn(target);
+        when(metadataService.getTableDetail(eq(source), eq("sales"), eq("orders"))).thenReturn(table("order_id"));
+        when(metadataService.getTableDetail(eq(target), eq("warehouse"), eq("dwd_orders"))).thenReturn(table("order_id"));
+        TransferExecutionRenderService service = service(metadataService);
+
+        assertThatThrownBy(() -> service.render("internal-token", hiveTargetRequest()))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void hiveTargetWithMetastoreUriRendersConfig() {
+        TransferMetadataService metadataService = mock(TransferMetadataService.class);
+        DataSource source = dataSource(1L, 4L, "source-password");
+        DataSource target = dataSource(2L, 4L, "target-password");
+        target.setType("HIVE");
+        target.setConnectionParams(Map.of("metastoreUri", "thrift://host.docker.internal:9083"));
+        when(metadataService.requireSupportedDataSource(1L)).thenReturn(source);
+        when(metadataService.requireSupportedDataSource(2L)).thenReturn(target);
+        when(metadataService.getTableDetail(eq(source), eq("sales"), eq("orders"))).thenReturn(table("order_id"));
+        when(metadataService.getTableDetail(eq(target), eq("warehouse"), eq("dwd_orders"))).thenReturn(table("order_id"));
+        TransferExecutionRenderService service = service(metadataService);
+
+        assertThat(service.render("internal-token", hiveTargetRequest()))
+                .contains("metastore_uri = \"thrift://host.docker.internal:9083\"");
+    }
+
     private TransferExecutionRenderService service(TransferMetadataService metadataService) {
         TransferInternalProperties properties = new TransferInternalProperties();
         properties.setInternalToken("internal-token");
@@ -85,6 +122,15 @@ class TransferExecutionRenderServiceTest {
                 new TransferEndpointConfig(1L, "MYSQL", "sales", "orders", null, null),
                 new TransferEndpointConfig(2L, "MYSQL", "warehouse", "dwd_orders", null, TransferWriteMode.APPEND),
                 List.of(new TransferFieldMapping("order_id", TransferMappingKind.SOURCE_FIELD, "id", null)),
+                List.of());
+        return new TransferRenderRequest(4L, config.source(), config.target(), config.fieldMappings(), config.partitions());
+    }
+
+    private TransferRenderRequest hiveTargetRequest() {
+        TransferConfig config = new TransferConfig(
+                new TransferEndpointConfig(1L, "MYSQL", "sales", "orders", null, null),
+                new TransferEndpointConfig(2L, "HIVE", "warehouse", "dwd_orders", null, TransferWriteMode.APPEND),
+                List.of(new TransferFieldMapping("order_id", TransferMappingKind.SOURCE_FIELD, "order_id", null)),
                 List.of());
         return new TransferRenderRequest(4L, config.source(), config.target(), config.fieldMappings(), config.partitions());
     }

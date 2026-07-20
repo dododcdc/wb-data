@@ -37,6 +37,7 @@ public class TransferExecutionRenderService {
         requireGroup(target, request.groupId());
         requireConfiguredType(source, config.source().dataSourceType());
         requireConfiguredType(target, config.target().dataSourceType());
+        requireHiveTargetMetastore(target);
 
         TableDetail sourceTable = metadataService.getTableDetail(source, config.source().database(), config.source().table());
         TableDetail targetTable = metadataService.getTableDetail(target, config.target().database(), config.target().table());
@@ -71,6 +72,21 @@ public class TransferExecutionRenderService {
     private void requireConfiguredType(DataSource dataSource, String configuredType) {
         if (!dataSource.getType().equals(configuredType)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "传输配置中的数据源类型不匹配");
+        }
+    }
+
+    private void requireHiveTargetMetastore(DataSource target) {
+        if (!"HIVE".equals(target.getType())) {
+            return;
+        }
+        Object metastoreUri = target.getConnectionParams() == null
+                ? null
+                : target.getConnectionParams().get("metastoreUri");
+        if (!(metastoreUri instanceof String uri) || uri.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Hive target data source requires connectionParams.metastoreUri"
+            );
         }
     }
 }
