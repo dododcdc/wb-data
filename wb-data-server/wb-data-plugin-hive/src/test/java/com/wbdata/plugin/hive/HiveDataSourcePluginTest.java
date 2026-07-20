@@ -10,6 +10,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 class HiveDataSourcePluginTest {
 
     @Test
+    void descriptorExposesHiveMetastoreUriConnectionParam() {
+        HiveDataSourcePlugin plugin = new HiveDataSourcePlugin();
+
+        assertThat(plugin.descriptor().fields())
+                .anySatisfy(field -> {
+                    assertThat(field.key()).isEqualTo("metastoreUri");
+                    assertThat(field.section()).isEqualTo("connectionParams");
+                    assertThat(field.label()).isEqualTo("Hive Metastore URI");
+                    assertThat(field.placeholder()).isEqualTo("thrift://host.docker.internal:9083");
+                    assertThat(field.required()).isFalse();
+                });
+    }
+
+    @Test
     void parseTableDetailSeparatesHivePartitionColumns() {
         TableDetail detail = HiveDataSourcePlugin.parseTableDetail(List.of(
                 List.of("order_id", "bigint", ""),
