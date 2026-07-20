@@ -7,9 +7,11 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "wbdata.offline.transfer")
 public class OfflineTransferProperties {
     private String seatunnelImage = "apache/seatunnel:2.3.13";
-    private String dockerNetwork = "wb-data-integration";
+    private String dockerNetwork = "wb-data_default";
     private String internalBaseUrlEnv = "WB_DATA_INTERNAL_BASE_URL";
     private String internalTokenEnv = "WB_DATA_INTERNAL_TOKEN";
+    private String internalBaseUrl;
+    private String internalToken;
 
     public String getSeatunnelImage() {
         return seatunnelImage;
@@ -41,5 +43,21 @@ public class OfflineTransferProperties {
 
     public void setInternalTokenEnv(String internalTokenEnv) {
         this.internalTokenEnv = internalTokenEnv;
+    }
+
+    public String getInternalBaseUrl() {
+        return internalBaseUrl;
+    }
+
+    public void setInternalBaseUrl(String internalBaseUrl) {
+        this.internalBaseUrl = internalBaseUrl;
+    }
+
+    public String getInternalToken() {
+        return internalToken;
+    }
+
+    public void setInternalToken(String internalToken) {
+        this.internalToken = internalToken;
     }
 }

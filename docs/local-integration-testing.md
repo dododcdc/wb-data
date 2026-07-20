@@ -6,23 +6,30 @@ Status: this is the environment contract. The compose file and seed scripts shou
 
 ## Transfer Node Environment
 
-Use the dedicated transfer stack for JDBC transfer-node validation. It keeps transfer source and target data separate from the WB-Data metadata database, while the local backend remains responsible for metadata and runtime configuration rendering.
+Use the transfer smoke setup for JDBC transfer-node validation. It reuses the existing WB-Data Kestra and HiveServer2 containers, and starts only a small transfer-specific MySQL container so source/target MySQL data stays separate from the WB-Data metadata database.
 
 ```bash
-DB_PASSWORD=1111 WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
+DB_PASSWORD=1111 \
+  WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
+  WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:8080 \
+  WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default \
   mvn spring-boot:run -Dspring-boot.run.fork=false
 
 scripts/dev/transfer-smoke.sh
 ```
 
-Run the backend command from `wb-data-server/wb-data-backend`. The smoke script starts the stack, waits for MySQL and HiveServer2, applies the Hive schema, verifies Kestra and the backend proxy, and seeds the local WB-Data metadata database. Override its metadata connection with `WB_DATA_METADATA_MYSQL_HOST`, `WB_DATA_METADATA_MYSQL_PORT`, `WB_DATA_METADATA_MYSQL_DATABASE`, `WB_DATA_METADATA_MYSQL_USER`, and `DB_PASSWORD` when necessary.
+Run the backend command from `wb-data-server/wb-data-backend`. The smoke script starts `wb-data-transfer-mysql`, starts or verifies the existing `wb-data-hiveserver2` and `wb-data-kestra` containers, applies the Hive schema, checks the Kestra API, and seeds the local WB-Data metadata database. Override its metadata connection with `WB_DATA_METADATA_MYSQL_HOST`, `WB_DATA_METADATA_MYSQL_PORT`, `WB_DATA_METADATA_MYSQL_DATABASE`, `WB_DATA_METADATA_MYSQL_USER`, and `DB_PASSWORD` when necessary.
 
-The transfer compose defaults to locally common image tags: `mysql:8.0`, `apache/hive:4.0.0`, `kestra/kestra:latest`, and `alpine/socat:latest`. Override them with `WB_DATA_TRANSFER_MYSQL_IMAGE`, `WB_DATA_TRANSFER_HIVE_IMAGE`, `WB_DATA_TRANSFER_KESTRA_IMAGE`, and `WB_DATA_TRANSFER_SOCAT_IMAGE` if your machine uses pinned local images.
+The transfer compose starts only `mysql:8.0` by default. Override it with `WB_DATA_TRANSFER_MYSQL_IMAGE` if your machine uses a pinned local image. The existing Kestra container must expose `http://localhost:8090`, use the local basic-auth credentials, and have Docker socket access for Docker task runner execution.
 
-If host port `8080` is already occupied, start the backend on another port and point the transfer backend alias at that port:
+If host port `8080` is already occupied, start the backend on another port and set the internal URL to that port:
 
 ```bash
-DB_PASSWORD=1111 WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token SERVER_PORT=18080 \
+DB_PASSWORD=1111 \
+  WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
+  WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:18080 \
+  WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default \
+  SERVER_PORT=18080 \
   mvn spring-boot:run -Dspring-boot.run.fork=false
 
 WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080 scripts/dev/transfer-smoke.sh
@@ -31,13 +38,13 @@ WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080 scripts/dev/transfer-smoke.sh
 | Data source | Type | Host | Port | Database | Tables |
 | --- | --- | --- | --- | --- | --- |
 | `it_transfer_mysql` | `MYSQL` | `host.docker.internal` | `13306` | `transfer_demo` | `transfer_orders_source`, `transfer_orders_target` |
-| `it_transfer_hive` | `HIVE` | `host.docker.internal` | `11000` | `default` | `transfer_orders_source`, `transfer_orders_target`, `transfer_orders_partitioned_target` |
+| `it_transfer_hive` | `HIVE` | `host.docker.internal` | `10000` | `default` | `transfer_orders_source`, `transfer_orders_target`, `transfer_orders_partitioned_target` |
 
-Kestra passes `WB_DATA_INTERNAL_BASE_URL=http://wb-data-transfer-backend-network-alias:8080` and `WB_DATA_INTERNAL_TOKEN=dev-transfer-token` into SeaTunnel task containers. The alias service proxies to the host-run backend, so these data sources and the render endpoint are reachable from the shared `wb-data-integration` Docker network. Do not replace either data source hostname with `127.0.0.1`.
+WB-Data writes `WB_DATA_INTERNAL_BASE_URL` and `WB_DATA_INTERNAL_TOKEN` into each generated transfer task. This lets the existing Kestra container run SeaTunnel on the `wb-data_default` network without relying on Kestra container-wide environment variables.
 
 The transfer seed uses `host.docker.internal` instead of Docker service names because the WB-Data backend runs on the macOS host during this validation path. Docker Desktop also exposes that hostname inside task containers, so SeaTunnel executions can reach the same mapped ports.
 
-Reset the transfer stack and its seeded service data with:
+Reset the transfer MySQL data with:
 
 ```bash
 docker compose -f docker-compose.transfer.yml down -v

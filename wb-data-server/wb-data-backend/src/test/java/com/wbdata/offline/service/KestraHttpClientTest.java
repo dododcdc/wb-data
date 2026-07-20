@@ -57,6 +57,47 @@ class KestraHttpClientTest {
         assertThat(request.uri()).isEqualTo(URI.create("http://localhost:8090/api/v1/main/flows/system/sync-flows-g4-main"));
     }
 
+    @Test
+    void supportsTaskType_mapsDockerPluginToDockerTaskRunner() throws Exception {
+        HttpClient httpClient = Mockito.mock(HttpClient.class);
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response(200, """
+                        [
+                          {
+                            "name": "plugin-docker",
+                            "group": "io.kestra.plugin.docker",
+                            "tasks": [
+                              {"cls": "io.kestra.plugin.docker.Run"}
+                            ],
+                            "taskRunners": []
+                          }
+                        ]
+                        """));
+        KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
+
+        assertThat(client.supportsTaskType("io.kestra.plugin.scripts.runner.docker.Docker")).isTrue();
+    }
+
+    @Test
+    void supportsTaskType_readsTaskRunnerClassesWhenKestraExposesThem() throws Exception {
+        HttpClient httpClient = Mockito.mock(HttpClient.class);
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response(200, """
+                        [
+                          {
+                            "name": "plugin-script-shell",
+                            "tasks": [],
+                            "taskRunners": [
+                              {"cls": "io.kestra.plugin.scripts.runner.docker.Docker"}
+                            ]
+                          }
+                        ]
+                        """));
+        KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
+
+        assertThat(client.supportsTaskType("io.kestra.plugin.scripts.runner.docker.Docker")).isTrue();
+    }
+
     private OfflineKestraProperties properties() {
         OfflineKestraProperties properties = new OfflineKestraProperties();
         properties.setBaseUrl("http://localhost:8090");
