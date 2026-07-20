@@ -43,6 +43,7 @@ class OfflineFlowYamlSupportTest {
         transferProperties.setInternalTokenEnv("TRANSFER_BACKEND_TOKEN");
         transferProperties.setInternalBaseUrl("http://host.docker.internal:18080");
         transferProperties.setInternalToken("dev-transfer-token");
+        transferProperties.setDockerVolumes(List.of("wb-data_hive-warehouse:/opt/hive/data/warehouse"));
         OfflineFlowYamlSupport support = new OfflineFlowYamlSupport(transferProperties);
         String transferPath = "transfers/orders/transfer_1.transfer.json";
 
@@ -61,7 +62,8 @@ class OfflineFlowYamlSupportTest {
         assertThat(task).containsEntry("taskRunner", Map.of(
                 "type", "io.kestra.plugin.scripts.runner.docker.Docker",
                 "networkMode", "transfer-network",
-                "pullPolicy", "IF_NOT_PRESENT"
+                "pullPolicy", "IF_NOT_PRESENT",
+                "volumes", List.of("wb-data_hive-warehouse:/opt/hive/data/warehouse")
         ));
         assertThat((List<String>) task.get("commands")).containsExactly(
                 "set -eu",
@@ -72,6 +74,42 @@ class OfflineFlowYamlSupportTest {
                         + "-o /tmp/wb-data-transfer/transfer_1.conf",
                 "/opt/seatunnel/bin/seatunnel.sh --config /tmp/wb-data-transfer/transfer_1.conf -m local"
         );
+    }
+
+    @Test
+    void compileGraph_doesNotUseYamlAnchorsForTransferRunnerVolumes() {
+        OfflineTransferProperties transferProperties = new OfflineTransferProperties();
+        transferProperties.setDockerVolumes(List.of("wb-data_hive-warehouse:/opt/hive/data/warehouse"));
+        OfflineFlowYamlSupport support = new OfflineFlowYamlSupport(transferProperties);
+
+        String yaml = support.compileGraph(
+                support.buildEmptyFlowYaml("orders", "pg-1"),
+                List.of(
+                        new OfflineFlowYamlSupport.FlowNode(
+                                "transfer_1", "TRANSFER", null, null, null, "transfers/orders/transfer_1.transfer.json"
+                        ),
+                        new OfflineFlowYamlSupport.FlowNode(
+                                "transfer_2", "TRANSFER", null, null, null, "transfers/orders/transfer_2.transfer.json"
+                        )
+                ),
+                List.of(),
+                Map.of()
+        );
+
+        assertThat(yaml).doesNotContain("&id", "*id");
+        assertThat(yaml).contains("volumes:\n        - wb-data_hive-warehouse:/opt/hive/data/warehouse");
+    }
+
+    @Test
+    void compileGraph_omitsTransferRunnerVolumesWhenUnset() {
+        OfflineFlowYamlSupport support = new OfflineFlowYamlSupport();
+
+        Map<String, Object> task = compiledTask(support, new OfflineFlowYamlSupport.FlowNode(
+                "transfer_1", "TRANSFER", null, null, null, "transfers/orders/transfer_1.transfer.json"
+        ), Map.of());
+
+        Map<String, Object> taskRunner = (Map<String, Object>) task.get("taskRunner");
+        assertThat(taskRunner).doesNotContainKey("volumes");
     }
 
     @Test

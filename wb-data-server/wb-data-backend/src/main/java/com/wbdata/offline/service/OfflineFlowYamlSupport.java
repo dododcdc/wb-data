@@ -35,7 +35,8 @@ final class OfflineFlowYamlSupport {
                 "WB_DATA_INTERNAL_BASE_URL",
                 "WB_DATA_INTERNAL_TOKEN",
                 null,
-                null
+                null,
+                List.of()
         ));
     }
 
@@ -46,7 +47,8 @@ final class OfflineFlowYamlSupport {
                 transferProperties.getInternalBaseUrlEnv(),
                 transferProperties.getInternalTokenEnv(),
                 transferProperties.getInternalBaseUrl(),
-                transferProperties.getInternalToken()
+                transferProperties.getInternalToken(),
+                transferProperties.getDockerVolumes()
         ));
     }
 
@@ -420,6 +422,14 @@ final class OfflineFlowYamlSupport {
         taskRunner.put("type", "io.kestra.plugin.scripts.runner.docker.Docker");
         taskRunner.put("networkMode", transferRuntimeSettings.dockerNetwork());
         taskRunner.put("pullPolicy", "IF_NOT_PRESENT");
+        List<String> dockerVolumes = transferRuntimeSettings.dockerVolumes() == null
+                ? List.of()
+                : transferRuntimeSettings.dockerVolumes().stream()
+                .filter(volume -> volume != null && !volume.isBlank())
+                .toList();
+        if (!dockerVolumes.isEmpty()) {
+            taskRunner.put("volumes", new ArrayList<>(dockerVolumes));
+        }
         return taskRunner;
     }
 
@@ -1037,7 +1047,8 @@ final class OfflineFlowYamlSupport {
             String internalBaseUrlEnv,
             String internalTokenEnv,
             String internalBaseUrl,
-            String internalToken
+            String internalToken,
+            List<String> dockerVolumes
     ) {
     }
 }

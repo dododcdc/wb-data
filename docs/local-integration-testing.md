@@ -14,6 +14,7 @@ DB_PASSWORD=1111 \
   WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
   WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:8080 \
   WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default \
+  WB_DATA_TRANSFER_DOCKER_VOLUMES=wb-data_hive-warehouse:/opt/hive/data/warehouse \
   mvn spring-boot:run -Dspring-boot.run.fork=false
 
 scripts/dev/transfer-smoke.sh
@@ -25,6 +26,17 @@ The transfer compose starts only `mysql:8.0` by default. Override it with `WB_DA
 
 Hive transfer validation reuses `docker-compose.hive.yml`. That stack contains `wb-data-hiveserver2` on `10000` for HiveServer2/JDBC metadata reads and `wb-data-hive-metastore` on `9083` for SeaTunnel Hive sink metadata. The smoke seed stores the HiveServer2 endpoint in the normal data source fields and stores the metastore endpoint in `connection_params.metastoreUri`.
 
+SeaTunnel Hive sink writes files under the Hive warehouse path. The Kestra Docker runner must allow volume mounts and each transfer task mounts `wb-data_hive-warehouse:/opt/hive/data/warehouse`; otherwise a SeaTunnel execution can report success while writing to the task container's private filesystem. In local Kestra, enable:
+
+```yaml
+kestra:
+  plugins:
+    configurations:
+      - type: io.kestra.plugin.scripts.runner.docker.Docker
+        values:
+          volume-enabled: true
+```
+
 If host port `8080` is already occupied, start the backend on another port and set the internal URL to that port:
 
 ```bash
@@ -33,6 +45,7 @@ DB_PASSWORD=1111 \
   WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
   WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:18080 \
   WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default \
+  WB_DATA_TRANSFER_DOCKER_VOLUMES=wb-data_hive-warehouse:/opt/hive/data/warehouse \
   SERVER_PORT=18080 \
   mvn spring-boot:run -Dspring-boot.run.fork=false
 

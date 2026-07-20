@@ -3,6 +3,9 @@ package com.wbdata.offline.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Component
 @ConfigurationProperties(prefix = "wbdata.offline.transfer")
 public class OfflineTransferProperties {
@@ -12,6 +15,7 @@ public class OfflineTransferProperties {
     private String internalTokenEnv = "WB_DATA_INTERNAL_TOKEN";
     private String internalBaseUrl;
     private String internalToken;
+    private List<String> dockerVolumes = new ArrayList<>();
 
     public String getSeatunnelImage() {
         return seatunnelImage;
@@ -59,5 +63,13 @@ public class OfflineTransferProperties {
 
     public void setInternalToken(String internalToken) {
         this.internalToken = internalToken;
+    }
+
+    public List<String> getDockerVolumes() {
+        return dockerVolumes;
+    }
+
+    public void setDockerVolumes(List<String> dockerVolumes) {
+        this.dockerVolumes = dockerVolumes == null ? new ArrayList<>() : dockerVolumes;
     }
 }
