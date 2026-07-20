@@ -41,6 +41,8 @@ class OfflineFlowYamlSupportTest {
         transferProperties.setDockerNetwork("transfer-network");
         transferProperties.setInternalBaseUrlEnv("TRANSFER_BACKEND_URL");
         transferProperties.setInternalTokenEnv("TRANSFER_BACKEND_TOKEN");
+        transferProperties.setInternalBaseUrl("http://host.docker.internal:18080");
+        transferProperties.setInternalToken("dev-transfer-token");
         OfflineFlowYamlSupport support = new OfflineFlowYamlSupport(transferProperties);
         String transferPath = "transfers/orders/transfer_1.transfer.json";
 
@@ -52,6 +54,10 @@ class OfflineFlowYamlSupportTest {
         assertThat(task).containsEntry("containerImage", "registry.example/seatunnel:custom");
         assertThat(task).containsEntry("namespaceFiles", Map.of("enabled", true, "include", List.of(transferPath)));
         assertThat(task).containsEntry("description", "[wbdata-meta] nodeKind=TRANSFER;transferConfigPath=" + transferPath);
+        assertThat(task).containsEntry("env", Map.of(
+                "TRANSFER_BACKEND_URL", "http://host.docker.internal:18080",
+                "TRANSFER_BACKEND_TOKEN", "dev-transfer-token"
+        ));
         assertThat(task).containsEntry("taskRunner", Map.of(
                 "type", "io.kestra.plugin.scripts.runner.docker.Docker",
                 "networkMode", "transfer-network",

@@ -17,65 +17,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
-    networks:
-      - wb-data-integration
-
-  wb-data-transfer-hive:
-    image: ${WB_DATA_TRANSFER_HIVE_IMAGE:-apache/hive:4.0.0}
-    container_name: wb-data-transfer-hive
-    environment:
-      SERVICE_NAME: hiveserver2
-    ports:
-      - "11000:10000"
-      - "11002:10002"
-    volumes:
-      - wb-data-transfer-hive-warehouse:/opt/hive/data/warehouse
-      - ./scripts/dev/init/transfer/hive/001_schema.sql:/opt/hive/scripts/001_schema.sql:ro
-    networks:
-      - wb-data-integration
-
-  wb-data-transfer-backend-network-alias:
-    image: ${WB_DATA_TRANSFER_SOCAT_IMAGE:-alpine/socat:latest}
-    container_name: wb-data-transfer-backend-network-alias
-    command:
-      - TCP-LISTEN:8080,fork,reuseaddr
-      - TCP:host.docker.internal:${WB_DATA_TRANSFER_BACKEND_HOST_PORT:-8080}
-    extra_hosts:
-      - host.docker.internal:host-gateway
-    networks:
-      - wb-data-integration
-
-  wb-data-transfer-kestra:
-    image: ${WB_DATA_TRANSFER_KESTRA_IMAGE:-kestra/kestra:latest}
-    container_name: wb-data-transfer-kestra
-    user: root
-    command: server standalone --config /etc/config/application.yml
-    environment:
-      WB_DATA_INTERNAL_BASE_URL: http://wb-data-transfer-backend-network-alias:8080
-      WB_DATA_INTERNAL_TOKEN: dev-transfer-token
-    ports:
-      - "18090:8080"
-    volumes:
-      - ./docker/kestra-transfer/application.yml:/etc/config/application.yml:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-      - wb-data-transfer-kestra-storage:/app/storage
-      - wb-data-transfer-kestra-tmp:/tmp/kestra-wd/tmp
-    depends_on:
-      wb-data-transfer-mysql:
-        condition: service_healthy
-      wb-data-transfer-hive:
-        condition: service_started
-      wb-data-transfer-backend-network-alias:
-        condition: service_started
-    networks:
-      - wb-data-integration
-
-networks:
-  wb-data-integration:
-    name: wb-data-integration
 
 volumes:
   wb-data-transfer-mysql-data:
-  wb-data-transfer-hive-warehouse:
-  wb-data-transfer-kestra-storage:
-  wb-data-transfer-kestra-tmp:

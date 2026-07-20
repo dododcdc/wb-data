@@ -40,7 +40,7 @@ SELECT
     'HIVE',
     'Local JDBC transfer Hive source and target tables',
     'host.docker.internal',
-    11000,
+    10000,
     'default',
     'hive',
     '',

@@ -4,7 +4,7 @@ Date: 2026-07-20 (Asia/Singapore)
 
 ## Result
 
-Partial validation. The transfer stack, backend, bootstrap script, persisted Flow, commit/push path, and schedule path all ran successfully. Runtime execution remains blocked before Kestra creates an execution, so this document intentionally does not invent execution IDs or transfer result counts.
+Partial validation. The backend, bootstrap script, persisted Flow, commit/push path, schedule path, and Kestra debug execution creation all ran successfully. Full SeaTunnel transfer execution and post-transfer row counts still need to be rerun after regenerating the Flow with the reused `wb-data-kestra` runtime settings.
 
 ## Environment And Commands
 
@@ -13,11 +13,12 @@ The task brief used `WB_DATA_INTERNAL_TOKEN` for backend startup. The backend pr
 ```bash
 cd wb-data-server/wb-data-backend
 SERVER_PORT=18080 DB_PASSWORD=1111 WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
-  WB_DATA_KESTRA_BASE_URL=http://localhost:18090 \
+  WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:18080 \
+  WB_DATA_KESTRA_BASE_URL=http://localhost:8090 \
   mvn spring-boot:run -Dspring-boot.run.fork=false
 ```
 
-Maven resolved the `spring-boot` plugin and the backend started successfully on port 18080. The non-default port is passed to the Docker alias by the bootstrap command below.
+Maven resolved the `spring-boot` plugin and the backend started successfully on port 18080. The non-default port is passed to generated transfer tasks through `WB_DATA_TRANSFER_INTERNAL_BASE_URL`.
 
 The required compose configuration parses successfully:
 
@@ -27,13 +28,13 @@ docker compose -f docker-compose.transfer.yml config
 
 ## Transfer Bootstrap
 
-The repaired compose stack was running with MySQL on host port 13306, HiveServer2 on 11000, Kestra on 18090, and the backend alias proxying to host port 18080. Bootstrap succeeded with:
+The transfer smoke setup now starts only `wb-data-transfer-mysql`, reuses `wb-data-hiveserver2` on host port 10000, and reuses `wb-data-kestra` on host port 8090. Bootstrap succeeded with:
 
 ```bash
 WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080 scripts/dev/transfer-smoke.sh
 ```
 
-The script confirmed MySQL health, ran `SELECT 1` through HiveServer2, reapplied the Hive fixtures, checked Kestra and the backend alias, and seeded the two transfer data sources into group 4 (`policy`).
+The script confirmed MySQL health, ran `SELECT 1` through HiveServer2, reapplied the Hive fixtures, checked the existing Kestra API, and seeded the two transfer data sources into group 4 (`policy`).
 
 Seed baseline row counts were:
 
@@ -48,7 +49,7 @@ Commands:
 ```bash
 docker exec wb-data-transfer-mysql mysql -uwbdata -pwbdata123 -D transfer_demo -Nse \
   "SELECT 'source',COUNT(*) FROM transfer_orders_source UNION ALL SELECT 'target',COUNT(*) FROM transfer_orders_target"
-docker exec wb-data-transfer-hive beeline -u 'jdbc:hive2://localhost:10000/default' \
+docker exec wb-data-hiveserver2 beeline -u 'jdbc:hive2://localhost:10000/default' \
   --silent=true --outputformat=tsv2 -e \
   "SELECT 'source',COUNT(*) FROM transfer_orders_source UNION ALL SELECT 'target',COUNT(*) FROM transfer_orders_target UNION ALL SELECT 'partitioned',COUNT(*) FROM transfer_orders_partitioned_target"
 ```
@@ -62,30 +63,30 @@ flowId=transfer-smoke
 documentHash=b97aa379e7fb222734675562699ca87e8b418ab0ea7c19516989fc741634ec07
 ```
 
-The Flow contains the six required source/target/write-mode configurations. A selected-node debug attempt for `mysql_append` used `POST /api/v1/groups/4/offline/executions/debug/current`, but Kestra capability validation failed before flow upload or execution creation:
+The Flow contains the six required source/target/write-mode configurations. After fixing Kestra capability detection, a selected-node debug attempt for `mysql_append` used `POST /api/v1/groups/4/offline/executions/debug/current` and created a Kestra execution:
 
 ```text
-HTTP 401
-{ "code": 401, "message": "查询 Kestra 插件列表失败" }
+executionId=3xD9jKHrPUOyxucOGgx3Us
+status=CREATED
 ```
 
-The current `kestra/kestra:latest` container reports Kestra 1.3.7. Its API returned HTTP 401 for `/api/v1/plugins`, `/api/v1/main/plugins`, `/api/v1/main/flows`, and `/api/v1/main/executions`, including requests with the backend's configured basic-auth values. `docker/kestra-transfer/application.yml` now configures the same username and password as the backend's local defaults; rerun validation after recreating the Kestra container.
+The current `kestra/kestra:latest` container exposes Docker support as `plugin-docker` rather than as a task-runner class in the plugin list. `KestraHttpClient` now maps that plugin to `io.kestra.plugin.scripts.runner.docker.Docker`, so transfer nodes can pass the backend capability check.
 
-There is a second environment concern after authentication is fixed: metadata requests from the host-run backend to the seeded service-name datasource hosts failed (`获取表列表失败` / `获取 Hive 表列表失败`). The transfer seed now uses `host.docker.internal` with mapped ports so both the host-run backend and Docker task containers can reach the JDBC services.
+The transfer seed now uses `host.docker.internal` with mapped ports so both the host-run backend and Docker task containers can reach the JDBC services. Generated transfer tasks now carry `WB_DATA_INTERNAL_BASE_URL` and `WB_DATA_INTERNAL_TOKEN` in task `env`, so they no longer require a dedicated Kestra container with global transfer environment variables.
 
 ## Scenario Evidence
 
 | Scenario | Execution ID | Target row-count command/result | Status |
 | --- | --- | --- | --- |
-| MySQL -> MySQL `append` | None | Baseline target count: 1; debug blocked by Kestra HTTP 401 | Pending |
-| MySQL -> MySQL `overwrite_table` | None | Baseline target count: 1; debug blocked by Kestra HTTP 401 | Pending |
-| MySQL -> Hive `overwrite_partition`, static `dayno` | None | Baseline partitioned target count: 1; debug blocked by Kestra HTTP 401 | Pending |
-| MySQL -> Hive `overwrite_partition`, source field `dayno` | None | Baseline partitioned target count: 1; debug blocked by Kestra HTTP 401 | Pending |
-| MySQL -> Hive `overwrite_partition`, expression `date_format(date_key, '%Y%m%d')` | None | Baseline partitioned target count: 1; debug blocked by Kestra HTTP 401 | Pending |
-| Hive -> MySQL `append` | None | Baseline target count: 1; debug blocked by Kestra HTTP 401 | Pending |
-| Save, commit, push, enable schedule, Operations Center | None | Save, two commits, two pushes, and schedule enable succeeded; Operations query blocked by Kestra HTTP 401 | Partial |
+| MySQL -> MySQL `append` | `3xD9jKHrPUOyxucOGgx3Us` | Baseline target count: 1; execution created, final SeaTunnel result not yet recorded | Partial |
+| MySQL -> MySQL `overwrite_table` | None | Baseline target count: 1; not rerun after environment simplification | Pending |
+| MySQL -> Hive `overwrite_partition`, static `dayno` | None | Baseline partitioned target count: 1; not rerun after environment simplification | Pending |
+| MySQL -> Hive `overwrite_partition`, source field `dayno` | None | Baseline partitioned target count: 1; not rerun after environment simplification | Pending |
+| MySQL -> Hive `overwrite_partition`, expression `date_format(date_key, '%Y%m%d')` | None | Baseline partitioned target count: 1; not rerun after environment simplification | Pending |
+| Hive -> MySQL `append` | None | Baseline target count: 1; not rerun after environment simplification | Pending |
+| Save, commit, push, enable schedule, Operations Center | None | Save, two commits, two pushes, and schedule enable succeeded; Operations query needs rerun after execution completes | Partial |
 
-No post-transfer row-count query can be reported because Kestra did not create a transfer execution.
+No post-transfer row-count query is reported yet because the SeaTunnel execution result has not been rerun to terminal state.
 
 ## Commit, Push, Schedule, And Operations Evidence
 
@@ -98,7 +99,7 @@ timezone=Asia/Singapore
 enabled=true
 ```
 
-The Operations Center backing endpoint `GET /api/v1/groups/4/offline/executions?flowPath=_flows/gogo/transfer-smoke/flow.yaml` returned HTTP 401 (`查询执行列表失败`) from Kestra, so it cannot provide execution records until the Kestra API authentication issue is fixed.
+The Operations Center backing endpoint should be rerun after a transfer execution reaches terminal state.
 
 ## Automated Evidence
 
@@ -128,4 +129,4 @@ npm run test -- --run \
 
 ## Required Follow-up
 
-Configure Kestra 1.3.7 API authentication so the backend can query plugins, upsert debug flows, create executions, and list Operations records. Then resolve host-to-Docker datasource reachability for the host-run backend and rerun each selected-node debug scenario, recording execution IDs and post-transfer target counts.
+Regenerate the saved Flow with the reused `wb-data-kestra` runtime settings, rerun each selected-node debug scenario to terminal state, and record execution IDs plus post-transfer target counts.

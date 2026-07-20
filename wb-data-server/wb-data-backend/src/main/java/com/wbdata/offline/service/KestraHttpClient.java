@@ -37,6 +37,8 @@ import java.util.UUID;
 @Service
 public class KestraHttpClient implements KestraClient {
 
+    private static final String DOCKER_TASK_RUNNER_TYPE = "io.kestra.plugin.scripts.runner.docker.Docker";
+
     private final OfflineKestraProperties properties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
@@ -420,6 +422,18 @@ public class KestraHttpClient implements KestraClient {
                                 }
                             }
                         }
+                        JsonNode taskRunners = plugin.path("taskRunners");
+                        if (taskRunners.isArray()) {
+                            for (JsonNode taskRunner : taskRunners) {
+                                String cls = readText(taskRunner.path("cls"));
+                                if (cls != null && !cls.isBlank()) {
+                                    taskTypes.add(cls);
+                                }
+                            }
+                        }
+                        if (isDockerPlugin(plugin)) {
+                            taskTypes.add(DOCKER_TASK_RUNNER_TYPE);
+                        }
                     }
                 }
                 cachedTaskTypes = Set.copyOf(taskTypes);
@@ -428,6 +442,12 @@ public class KestraHttpClient implements KestraClient {
                 throw new IllegalStateException("解析 Kestra 插件列表失败", ex);
             }
         }
+    }
+
+    private boolean isDockerPlugin(JsonNode plugin) {
+        return "plugin-docker".equals(readText(plugin.path("name")))
+                || "io.kestra.plugin.docker".equals(readText(plugin.path("group")))
+                || "io.kestra.plugin.docker".equals(readText(plugin.path("manifest").path("X-Kestra-Group")));
     }
 
     private ResponseStatusException toKestraException(HttpResponse<byte[]> response, String defaultMessage) {

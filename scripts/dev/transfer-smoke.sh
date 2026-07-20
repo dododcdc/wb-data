@@ -3,19 +3,40 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 compose_file="$repo_root/docker-compose.transfer.yml"
+hive_compose_file="$repo_root/docker-compose.hive.yml"
 metadata_mysql_host="${WB_DATA_METADATA_MYSQL_HOST:-127.0.0.1}"
 metadata_mysql_port="${WB_DATA_METADATA_MYSQL_PORT:-3306}"
 metadata_mysql_database="${WB_DATA_METADATA_MYSQL_DATABASE:-wb_data}"
 metadata_mysql_user="${WB_DATA_METADATA_MYSQL_USER:-root}"
 metadata_mysql_password="${DB_PASSWORD:-1111}"
 backend_host_port="${WB_DATA_TRANSFER_BACKEND_HOST_PORT:-8080}"
+backend_internal_base_url="${WB_DATA_TRANSFER_INTERNAL_BASE_URL:-http://host.docker.internal:$backend_host_port}"
+kestra_url="${WB_DATA_KESTRA_BASE_URL:-http://localhost:8090}"
+kestra_username="${WB_DATA_KESTRA_USERNAME:-admin@kestra.io}"
+kestra_password="${WB_DATA_KESTRA_PASSWORD:-Admin1234!}"
 
 compose() {
   docker compose -f "$compose_file" "$@"
 }
 
-echo "Starting transfer integration services..."
-compose up -d
+echo "Starting transfer MySQL..."
+compose up -d wb-data-transfer-mysql
+
+echo "Starting existing HiveServer2..."
+if docker container inspect wb-data-hiveserver2 >/dev/null 2>&1; then
+  docker start wb-data-hiveserver2 >/dev/null
+else
+  docker compose -f "$hive_compose_file" up -d
+fi
+
+echo "Starting existing Kestra..."
+if docker container inspect wb-data-kestra >/dev/null 2>&1; then
+  docker start wb-data-kestra-postgres >/dev/null 2>&1 || true
+  docker start wb-data-kestra >/dev/null
+else
+  echo "Container wb-data-kestra does not exist. Start the existing WB-Data Kestra stack before running transfer validation." >&2
+  exit 1
+fi
 
 echo "Waiting for MySQL..."
 for _ in $(seq 1 30); do
@@ -28,25 +49,26 @@ compose exec -T wb-data-transfer-mysql mysqladmin ping -h localhost -uroot -pwbd
 
 echo "Waiting for HiveServer2..."
 for _ in $(seq 1 45); do
-  if compose exec -T wb-data-transfer-hive beeline -u 'jdbc:hive2://localhost:10000/default' -e 'SELECT 1' >/dev/null 2>&1; then
+  if docker exec wb-data-hiveserver2 beeline -u 'jdbc:hive2://localhost:10000/default' -e 'SELECT 1' >/dev/null 2>&1; then
     break
   fi
   sleep 2
 done
-compose exec -T wb-data-transfer-hive beeline -u 'jdbc:hive2://localhost:10000/default' -e 'SELECT 1' >/dev/null
+docker exec wb-data-hiveserver2 beeline -u 'jdbc:hive2://localhost:10000/default' -e 'SELECT 1' >/dev/null
 
 echo "Applying Hive transfer schema..."
-compose exec -T wb-data-transfer-hive beeline -u 'jdbc:hive2://localhost:10000/default' -f /opt/hive/scripts/001_schema.sql
+docker exec -i wb-data-hiveserver2 beeline -u 'jdbc:hive2://localhost:10000/default' -f /dev/stdin \
+  < "$repo_root/scripts/dev/init/transfer/hive/001_schema.sql"
 
-echo "Checking Kestra and backend proxy containers..."
-for service in wb-data-transfer-kestra wb-data-transfer-backend-network-alias; do
-  if [ "$(compose ps --status running --services "$service")" != "$service" ]; then
-    echo "Service is not running: $service" >&2
-    compose ps >&2
-    exit 1
+echo "Waiting for Kestra..."
+for _ in $(seq 1 45); do
+  if curl -sS -o /dev/null -u "$kestra_username:$kestra_password" "$kestra_url/api/v1/plugins"; then
+    break
   fi
+  sleep 2
 done
-echo "Backend proxy targets host.docker.internal:$backend_host_port"
+curl -sS -o /dev/null -u "$kestra_username:$kestra_password" "$kestra_url/api/v1/plugins"
+echo "Transfer tasks will call backend at $backend_internal_base_url"
 
 if ! mysql --protocol=TCP -h "$metadata_mysql_host" -P "$metadata_mysql_port" \
   -u "$metadata_mysql_user" -p"$metadata_mysql_password" -Nse \
@@ -65,9 +87,10 @@ cat <<'EOF'
 Transfer environment is ready.
 
 Manual validation:
-1. Start WB-Data with WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token.
-   If host port 8080 is occupied, start the backend with SERVER_PORT=18080
-   and run this script with WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080.
+1. Start WB-Data with:
+   WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token
+   WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:<backend-port>
+   WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default
 2. Open project group policy and confirm it_transfer_mysql and it_transfer_hive.
 3. Create a transfer node using transfer_orders_source and transfer_orders_target.
 4. Verify append and overwrite_table for MySQL, then overwrite_partition for Hive.

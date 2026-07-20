@@ -31,9 +31,11 @@ final class OfflineFlowYamlSupport {
     OfflineFlowYamlSupport() {
         this(new TransferRuntimeSettings(
                 "apache/seatunnel:2.3.13",
-                "wb-data-integration",
+                "wb-data_default",
                 "WB_DATA_INTERNAL_BASE_URL",
-                "WB_DATA_INTERNAL_TOKEN"
+                "WB_DATA_INTERNAL_TOKEN",
+                null,
+                null
         ));
     }
 
@@ -42,7 +44,9 @@ final class OfflineFlowYamlSupport {
                 transferProperties.getSeatunnelImage(),
                 transferProperties.getDockerNetwork(),
                 transferProperties.getInternalBaseUrlEnv(),
-                transferProperties.getInternalTokenEnv()
+                transferProperties.getInternalTokenEnv(),
+                transferProperties.getInternalBaseUrl(),
+                transferProperties.getInternalToken()
         ));
     }
 
@@ -390,8 +394,25 @@ final class OfflineFlowYamlSupport {
         ));
         task.put("namespaceFiles", buildNamespaceFilesConfig(nodeInfo.transferConfigPath()));
         task.put("containerImage", transferRuntimeSettings.seatunnelImage());
+        Map<String, String> env = buildTransferEnv();
+        if (!env.isEmpty()) {
+            task.put("env", env);
+        }
         task.put("taskRunner", buildTransferTaskRunner());
         task.put("commands", buildTransferCommands(nodeInfo.taskId(), nodeInfo.transferConfigPath()));
+    }
+
+    private Map<String, String> buildTransferEnv() {
+        Map<String, String> env = new LinkedHashMap<>();
+        putIfPresent(env, transferRuntimeSettings.internalBaseUrlEnv(), transferRuntimeSettings.internalBaseUrl());
+        putIfPresent(env, transferRuntimeSettings.internalTokenEnv(), transferRuntimeSettings.internalToken());
+        return env;
+    }
+
+    private void putIfPresent(Map<String, String> env, String name, String value) {
+        if (name != null && !name.isBlank() && value != null && !value.isBlank()) {
+            env.put(name, value);
+        }
     }
 
     private Map<String, Object> buildTransferTaskRunner() {
@@ -1014,7 +1035,9 @@ final class OfflineFlowYamlSupport {
             String seatunnelImage,
             String dockerNetwork,
             String internalBaseUrlEnv,
-            String internalTokenEnv
+            String internalTokenEnv,
+            String internalBaseUrl,
+            String internalToken
     ) {
     }
 }
