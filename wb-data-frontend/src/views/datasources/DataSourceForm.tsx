@@ -60,7 +60,8 @@ type FormState = {
     connectionParams: Record<string, unknown>;
 };
 
-type FormField = 'name' | 'type' | PluginEditableField;
+type ConnectionParamField = `connectionParams.${string}`;
+type FormField = 'name' | 'type' | PluginEditableField | ConnectionParamField;
 
 const PLUGIN_EDITABLE_FIELDS = ['host', 'port', 'databaseName', 'username', 'password'] as const;
 type PluginEditableField = (typeof PLUGIN_EDITABLE_FIELDS)[number];
@@ -93,6 +94,10 @@ function normalizeConnectionParams(params: Record<string, unknown>) {
     return Object.fromEntries(
         Object.entries(params).filter(([, value]) => value !== '' && value !== null && value !== undefined),
     );
+}
+
+function connectionParamFieldKey(key: string): ConnectionParamField {
+    return `connectionParams.${key}`;
 }
 
 function getPluginField(
@@ -136,6 +141,29 @@ function applyPluginDefaults(
                 changed = true;
             }
         }
+    }
+
+    const nextConnectionParamFields = nextDescriptor.fields.filter((field) => field.section === 'connectionParams');
+    const previousConnectionParamFields = previousDescriptor?.fields.filter((field) => field.section === 'connectionParams') ?? [];
+    const nextConnectionParams: Record<string, unknown> = {};
+
+    for (const field of nextConnectionParamFields) {
+        const currentValue = nextState.connectionParams[field.key];
+        const previousDefault = previousConnectionParamFields.find((previousField) => previousField.key === field.key)?.defaultValue ?? '';
+        const nextDefault = field.defaultValue ?? '';
+        if (currentValue === undefined || currentValue === previousDefault) {
+            if (nextDefault !== '') {
+                nextConnectionParams[field.key] = nextDefault;
+            }
+            continue;
+        }
+
+        nextConnectionParams[field.key] = currentValue;
+    }
+
+    if (JSON.stringify(nextConnectionParams) !== JSON.stringify(nextState.connectionParams)) {
+        nextState.connectionParams = nextConnectionParams;
+        changed = true;
     }
 
     return changed ? nextState : previousState;
@@ -199,6 +227,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
 
     const supportsConnectionTest = selectedPlugin?.supportsConnectionTest ?? false;
     const connectionFields = selectedPlugin?.fields.filter((field) => field.section === 'connection') ?? [];
+    const connectionParamFields = selectedPlugin?.fields.filter((field) => field.section === 'connectionParams') ?? [];
     const authenticationFields = selectedPlugin?.fields.filter((field) => field.section === 'authentication') ?? [];
     const pluginError = pluginQuery.error as Error | null;
     const testingIndicatorVisible = useDelayedBusy(testing, { delayMs: 0, minVisibleMs: 420 });
@@ -312,6 +341,29 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
         handleChange(field, value);
     };
 
+    const handleConnectionParamFieldChange = (field: PluginFieldDescriptor, value: string) => {
+        const errorKey = connectionParamFieldKey(field.key);
+        setTestResult('none');
+        setTestMessage('');
+        setSaveError('');
+        setFieldErrors((previousErrors) => {
+            if (!previousErrors[errorKey]) {
+                return previousErrors;
+            }
+
+            const nextErrors = { ...previousErrors };
+            delete nextErrors[errorKey];
+            return nextErrors;
+        });
+        setFormData((previousState) => ({
+            ...previousState,
+            connectionParams: {
+                ...previousState.connectionParams,
+                [field.key]: value,
+            },
+        }));
+    };
+
     const handleTypeChange = (nextType: string) => {
         setTestResult('none');
         setTestMessage('');
@@ -350,7 +402,19 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
         }
 
         for (const field of selectedPlugin.fields) {
-            if (!isPluginEditableField(field.key) || !field.required) {
+            if (!field.required) {
+                continue;
+            }
+
+            if (field.section === 'connectionParams') {
+                const value = String(formData.connectionParams[field.key] ?? '').trim();
+                if (!value) {
+                    nextErrors[connectionParamFieldKey(field.key)] = true;
+                }
+                continue;
+            }
+
+            if (!isPluginEditableField(field.key)) {
                 continue;
             }
 
@@ -572,6 +636,26 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                                         value={formData[fieldKey]}
                                                         onChange={(event) => handlePluginFieldChange(fieldKey, event.target.value)}
                                                         placeholder={getFieldPlaceholder(field, isEdit)}
+                                                    />
+                                                    {typeof fieldErrors[fieldKey] === 'string' ? <span className="form-input-error">{fieldErrors[fieldKey]}</span> : null}
+                                                </div>
+                                            );
+                                        })}
+                                        {connectionParamFields.map((field) => {
+                                            const fieldKey = connectionParamFieldKey(field.key);
+
+                                            return (
+                                                <div key={field.key} className={`${getFieldLayoutClass(field)} ${fieldErrors[fieldKey] ? 'has-error' : ''}`}>
+                                                    <label htmlFor={`ds-conn-param-${field.key}`}>
+                                                        {field.label}
+                                                        {field.required ? <span className="required">*</span> : null}
+                                                    </label>
+                                                    <input
+                                                        id={`ds-conn-param-${field.key}`}
+                                                        type={field.inputType === 'password' ? 'password' : 'text'}
+                                                        value={String(formData.connectionParams[field.key] ?? '')}
+                                                        onChange={(event) => handleConnectionParamFieldChange(field, event.target.value)}
+                                                        placeholder={field.placeholder}
                                                     />
                                                     {typeof fieldErrors[fieldKey] === 'string' ? <span className="form-input-error">{fieldErrors[fieldKey]}</span> : null}
                                                 </div>
