@@ -23,6 +23,8 @@ Run the backend command from `wb-data-server/wb-data-backend`. The smoke script 
 
 The transfer compose starts only `mysql:8.0` by default. Override it with `WB_DATA_TRANSFER_MYSQL_IMAGE` if your machine uses a pinned local image. The existing Kestra container must expose `http://localhost:8090`, use the local basic-auth credentials, and have Docker socket access for Docker task runner execution.
 
+Hive transfer validation reuses `docker-compose.hive.yml`. That stack contains `wb-data-hiveserver2` on `10000` for HiveServer2/JDBC metadata reads and `wb-data-hive-metastore` on `9083` for SeaTunnel Hive sink metadata. The smoke seed stores the HiveServer2 endpoint in the normal data source fields and stores the metastore endpoint in `connection_params.metastoreUri`.
+
 If host port `8080` is already occupied, start the backend on another port and set the internal URL to that port:
 
 ```bash
@@ -40,7 +42,7 @@ WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080 scripts/dev/transfer-smoke.sh
 | Data source | Type | Host | Port | Database | Tables |
 | --- | --- | --- | --- | --- | --- |
 | `it_transfer_mysql` | `MYSQL` | `localhost` | `13306` | `transfer_demo` | `transfer_orders_source`, `transfer_orders_target` |
-| `it_transfer_hive` | `HIVE` | `localhost` | `10000` | `default` | `transfer_orders_source`, `transfer_orders_target`, `transfer_orders_partitioned_target` |
+| `it_transfer_hive` | `HIVE` | `localhost` | `10000` | `default` | `transfer_orders_source`, `transfer_orders_target`, `transfer_orders_partitioned_target`; `connection_params.metastoreUri=thrift://host.docker.internal:9083` |
 
 WB-Data writes `WB_DATA_INTERNAL_BASE_URL` and `WB_DATA_INTERNAL_TOKEN` into each generated transfer task. This lets the existing Kestra container run SeaTunnel on the `wb-data_default` network without relying on Kestra container-wide environment variables.
 
@@ -48,7 +50,7 @@ The transfer seed uses `localhost` because the WB-Data backend runs on the macOS
 
 Run `bash scripts/prepare-plugins.sh` before backend startup and point `WB_DATA_PLUGIN_DIR` at the generated `plugins/` directory when validating from a worktree. Otherwise the backend may load stale plugin JARs from the main checkout.
 
-Hive transfer writes need a real Hive metastore thrift endpoint for SeaTunnel's Hive sink. The reused `wb-data-hiveserver2` container exposes HiveServer2 on `10000`, but it does not expose a standalone metastore on `9083`; MySQL transfer scenarios can be fully validated with the current reused stack, while Hive sink validation requires extending the existing Hive stack with a metastore service.
+Hive transfer writes need the metastore thrift endpoint because SeaTunnel's Hive sink resolves table, partition, and storage metadata through Hive Metastore rather than HiveServer2. Keep `metastoreUri` on the Hive data source instead of entering it on each transfer node.
 
 Reset the transfer MySQL data with:
 

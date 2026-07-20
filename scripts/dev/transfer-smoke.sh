@@ -22,12 +22,8 @@ compose() {
 echo "Starting transfer MySQL..."
 compose up -d wb-data-transfer-mysql
 
-echo "Starting existing HiveServer2..."
-if docker container inspect wb-data-hiveserver2 >/dev/null 2>&1; then
-  docker start wb-data-hiveserver2 >/dev/null
-else
-  docker compose -f "$hive_compose_file" up -d
-fi
+echo "Starting existing Hive stack..."
+docker compose -f "$hive_compose_file" up -d
 
 echo "Starting existing Kestra..."
 if docker container inspect wb-data-kestra >/dev/null 2>&1; then
@@ -46,6 +42,15 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 compose exec -T wb-data-transfer-mysql mysqladmin ping -h localhost -uroot -pwbdata-root-dev --silent
+
+echo "Waiting for Hive Metastore..."
+for _ in $(seq 1 45); do
+  if docker exec wb-data-hive-metastore bash -lc 'echo >/dev/tcp/localhost/9083' >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+docker exec wb-data-hive-metastore bash -lc 'echo >/dev/tcp/localhost/9083'
 
 echo "Waiting for HiveServer2..."
 for _ in $(seq 1 45); do

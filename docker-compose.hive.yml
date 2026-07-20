@@ -1,16 +1,32 @@
+name: wb-data
+
 services:
+  metastore:
+    image: apache/hive:4.0.0
+    container_name: wb-data-hive-metastore
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: metastore
+    ports:
+      - "9083:9083"
+    volumes:
+      - hive-warehouse:/opt/hive/data/warehouse
+
   hiveserver2:
     image: apache/hive:4.0.0
     container_name: wb-data-hiveserver2
     restart: unless-stopped
     environment:
       SERVICE_NAME: hiveserver2
+      SERVICE_OPTS: "-Dhive.metastore.uris=thrift://metastore:9083"
+    depends_on:
+      - metastore
     ports:
       - "10000:10000"
       - "10002:10002"
     volumes:
-      # Keep warehouse files on the host. This setup still uses the image's
-      # embedded Derby metastore, so treat it as disposable local test infra.
+      # Keep warehouse files on the host. The metastore remains local test infra,
+      # but it is exposed so SeaTunnel Hive sink can resolve table metadata.
       - hive-warehouse:/opt/hive/data/warehouse
 
 volumes:
