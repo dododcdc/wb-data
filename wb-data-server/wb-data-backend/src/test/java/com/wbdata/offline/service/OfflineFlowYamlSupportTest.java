@@ -64,13 +64,13 @@ class OfflineFlowYamlSupportTest {
                 "pullPolicy", "IF_NOT_PRESENT"
         ));
         assertThat((List<String>) task.get("commands")).containsExactly(
-                "set -euo pipefail",
+                "set -eu",
                 "mkdir -p /tmp/wb-data-transfer",
                 "curl --fail --show-error --silent -H \"X-WB-Data-Internal-Token: ${TRANSFER_BACKEND_TOKEN}\" "
                         + "-H 'Content-Type: application/json' --data-binary @'" + transferPath + "' "
                         + "\"${TRANSFER_BACKEND_URL}/api/v1/internal/offline/transfer/render\" "
                         + "-o /tmp/wb-data-transfer/transfer_1.conf",
-                "./bin/seatunnel.sh --config /tmp/wb-data-transfer/transfer_1.conf -m local"
+                "/opt/seatunnel/bin/seatunnel.sh --config /tmp/wb-data-transfer/transfer_1.conf -m local"
         );
     }
 

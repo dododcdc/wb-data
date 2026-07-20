@@ -8,6 +8,7 @@ public record TransferRenderInput(
         TransferConfig transferConfig,
         DataSource sourceDataSource,
         DataSource targetDataSource,
+        TableDetail sourceTableDetail,
         TableDetail targetTableDetail
 ) {
 }

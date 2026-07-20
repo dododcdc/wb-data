@@ -38,9 +38,9 @@ public class TransferExecutionRenderService {
         requireConfiguredType(source, config.source().dataSourceType());
         requireConfiguredType(target, config.target().dataSourceType());
 
-        metadataService.getTableDetail(source, config.source().database(), config.source().table());
+        TableDetail sourceTable = metadataService.getTableDetail(source, config.source().database(), config.source().table());
         TableDetail targetTable = metadataService.getTableDetail(target, config.target().database(), config.target().table());
-        return configBuilder.build(new TransferRenderInput(config, source, target, targetTable));
+        return configBuilder.build(new TransferRenderInput(config, source, target, sourceTable, targetTable));
     }
 
     private void authenticate(String providedToken) {

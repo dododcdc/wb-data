@@ -27,11 +27,20 @@ public final class JdbcDriverCatalog {
         if (dataSource.getHost() == null || dataSource.getHost().isBlank() || dataSource.getPort() == null) {
             throw new IllegalArgumentException("Data source host and port are required");
         }
-        return new JdbcConnection(prefix + dataSource.getHost() + ":" + dataSource.getPort() + database, driver);
+        return new JdbcConnection(prefix + resolveDockerReachableHost(dataSource.getHost()) + ":"
+                + dataSource.getPort() + database, driver);
     }
 
     private String normalize(String type) {
         return type == null ? "" : type.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private String resolveDockerReachableHost(String host) {
+        String normalized = host.trim().toLowerCase(Locale.ROOT);
+        if ("localhost".equals(normalized) || "127.0.0.1".equals(normalized) || "::1".equals(normalized)) {
+            return "host.docker.internal";
+        }
+        return host;
     }
 
     public record JdbcConnection(String url, String driver) {

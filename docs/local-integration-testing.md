@@ -10,6 +10,7 @@ Use the transfer smoke setup for JDBC transfer-node validation. It reuses the ex
 
 ```bash
 DB_PASSWORD=1111 \
+  WB_DATA_PLUGIN_DIR=/absolute/path/to/wb-data/plugins \
   WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
   WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:8080 \
   WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default \
@@ -26,6 +27,7 @@ If host port `8080` is already occupied, start the backend on another port and s
 
 ```bash
 DB_PASSWORD=1111 \
+  WB_DATA_PLUGIN_DIR=/absolute/path/to/wb-data/plugins \
   WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
   WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:18080 \
   WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default \
@@ -37,12 +39,16 @@ WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080 scripts/dev/transfer-smoke.sh
 
 | Data source | Type | Host | Port | Database | Tables |
 | --- | --- | --- | --- | --- | --- |
-| `it_transfer_mysql` | `MYSQL` | `host.docker.internal` | `13306` | `transfer_demo` | `transfer_orders_source`, `transfer_orders_target` |
-| `it_transfer_hive` | `HIVE` | `host.docker.internal` | `10000` | `default` | `transfer_orders_source`, `transfer_orders_target`, `transfer_orders_partitioned_target` |
+| `it_transfer_mysql` | `MYSQL` | `localhost` | `13306` | `transfer_demo` | `transfer_orders_source`, `transfer_orders_target` |
+| `it_transfer_hive` | `HIVE` | `localhost` | `10000` | `default` | `transfer_orders_source`, `transfer_orders_target`, `transfer_orders_partitioned_target` |
 
 WB-Data writes `WB_DATA_INTERNAL_BASE_URL` and `WB_DATA_INTERNAL_TOKEN` into each generated transfer task. This lets the existing Kestra container run SeaTunnel on the `wb-data_default` network without relying on Kestra container-wide environment variables.
 
-The transfer seed uses `host.docker.internal` instead of Docker service names because the WB-Data backend runs on the macOS host during this validation path. Docker Desktop also exposes that hostname inside task containers, so SeaTunnel executions can reach the same mapped ports.
+The transfer seed uses `localhost` because the WB-Data backend runs on the macOS host and must read source/target metadata before rendering the SeaTunnel config. When WB-Data renders a SeaTunnel JDBC URL for Docker execution, it rewrites loopback hosts (`localhost`, `127.0.0.1`, `::1`) to `host.docker.internal` so the SeaTunnel container can reach the same mapped ports.
+
+Run `bash scripts/prepare-plugins.sh` before backend startup and point `WB_DATA_PLUGIN_DIR` at the generated `plugins/` directory when validating from a worktree. Otherwise the backend may load stale plugin JARs from the main checkout.
+
+Hive transfer writes need a real Hive metastore thrift endpoint for SeaTunnel's Hive sink. The reused `wb-data-hiveserver2` container exposes HiveServer2 on `10000`, but it does not expose a standalone metastore on `9083`; MySQL transfer scenarios can be fully validated with the current reused stack, while Hive sink validation requires extending the existing Hive stack with a metastore service.
 
 Reset the transfer MySQL data with:
 
