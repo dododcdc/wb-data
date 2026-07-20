@@ -4,7 +4,7 @@ Date: 2026-07-20 (Asia/Singapore)
 
 ## Result
 
-Partial validation. The backend, bootstrap script, persisted Flow, commit/push path, schedule path, Kestra debug execution creation, and MySQL SeaTunnel transfer execution all ran successfully. Hive sink execution still needs a standalone Hive metastore endpoint in the reused local Hive stack.
+Partial validation. The backend, bootstrap script, persisted Flow, commit/push path, schedule path, Kestra debug execution creation, MySQL SeaTunnel transfer execution, and MySQL-to-Hive partition transfer execution all ran successfully. Hive-to-MySQL still needs a SeaTunnel runtime image that contains the Hive JDBC driver.
 
 ## Environment And Commands
 
@@ -16,6 +16,8 @@ SERVER_PORT=18080 DB_PASSWORD=1111 \
   WB_DATA_PLUGIN_DIR=/Users/wenbin/Projects/wb-data/.worktrees/codex-transfer-node/plugins \
   WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
   WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:18080 \
+  WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default \
+  WB_DATA_TRANSFER_DOCKER_VOLUMES=wb-data_hive-warehouse:/opt/hive/data/warehouse \
   WB_DATA_KESTRA_BASE_URL=http://localhost:8090 \
   mvn spring-boot:run -Dspring-boot.run.fork=false
 ```
@@ -30,13 +32,17 @@ docker compose -f docker-compose.transfer.yml config
 
 ## Transfer Bootstrap
 
-The transfer smoke setup now starts only `wb-data-transfer-mysql`, reuses `wb-data-hiveserver2` on host port 10000, and reuses `wb-data-kestra` on host port 8090. Bootstrap succeeded with:
+The transfer smoke setup now starts only `wb-data-transfer-mysql`, reuses `wb-data-hiveserver2` on host port 10000, reuses `wb-data-hive-metastore` on host port 9083, and reuses `wb-data-kestra` on host port 8090. Bootstrap succeeded with:
 
 ```bash
 WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080 scripts/dev/transfer-smoke.sh
 ```
 
-The script confirmed MySQL health, ran `SELECT 1` through HiveServer2, reapplied the Hive fixtures, checked the existing Kestra API, and seeded the two transfer data sources into group 4 (`policy`).
+The script confirmed MySQL health, confirmed Hive Metastore thrift connectivity, ran `SELECT 1` through HiveServer2, reapplied the Hive fixtures, checked the existing Kestra API, and seeded the two transfer data sources into group 4 (`policy`). The Hive data source now stores:
+
+```text
+connection_params.metastoreUri=thrift://host.docker.internal:9083
+```
 
 Seed baseline row counts were:
 
@@ -78,19 +84,36 @@ The transfer seed now uses `localhost` for backend-side metadata reads. Rendered
 
 The backend was restarted with `WB_DATA_PLUGIN_DIR` pointing at freshly rebuilt worktree plugin JARs. Without this, the backend loaded stale Hive plugin JARs from the main checkout and failed to detect Hive partition metadata.
 
+Kestra was reconfigured to allow Docker runner volume mounts. Generated transfer tasks now mount `wb-data_hive-warehouse:/opt/hive/data/warehouse`. Without this, SeaTunnel Hive sink can report success but write files into the short-lived task container filesystem instead of the HiveServer2 warehouse volume.
+
 ## Scenario Evidence
 
 | Scenario | Execution ID | Target row-count command/result | Status |
 | --- | --- | --- | --- |
 | MySQL -> MySQL `append` | `1pRO6494HeEhHvKkfzhiq` | `transfer_orders_source=3`, `transfer_orders_target=4` after append | Success |
 | MySQL -> MySQL `overwrite_table` | `3FMl85lsTZWu1aslIDCASo` | `transfer_orders_source=3`, `transfer_orders_target=3` after overwrite | Success |
-| MySQL -> Hive `overwrite_partition`, static `dayno` | `6kt42ybQbmPNnz558yWE9t` | Render initially failed with stale Hive plugin metadata; after plugin rebuild render succeeds, but execution still needs standalone Hive metastore | Blocked |
-| MySQL -> Hive `overwrite_partition`, source field `dayno` | None | Baseline partitioned target count: 1; not rerun after environment simplification | Pending |
-| MySQL -> Hive `overwrite_partition`, expression `date_format(date_key, '%Y%m%d')` | None | Baseline partitioned target count: 1; not rerun after environment simplification | Pending |
-| Hive -> MySQL `append` | None | Baseline target count: 1; not rerun after environment simplification | Pending |
+| MySQL -> Hive `overwrite_partition`, static `dayno` | `5hQWT0n9Cu4UTKsIHjVXNL` | Execution `SUCCESS`; direct render includes `partition_by = ["dayno"]` and `metastore_uri = "thrift://host.docker.internal:9083"` | Success |
+| MySQL -> Hive `overwrite_partition`, source field `dayno` | `4YR276oIt7atBTaP7tfar6` | Execution `SUCCESS`; Hive query after subsequent expression scenario: `20260701=2`, `20260702=1` | Success |
+| MySQL -> Hive `overwrite_partition`, expression `date_format(date_key, '%Y%m%d')` | `pkboVpDXYgK2my60yQ7Pk` | Execution `SUCCESS`; Hive query: `20260701=2`, `20260702=1` | Success |
+| Hive -> MySQL `append` | `34VsiOTTyHWFP8hwNop00g` | Execution `FAILED`; SeaTunnel image lacks `org.apache.hive.jdbc.HiveDriver` for JDBC Hive source | Runtime image limitation |
 | Save, commit, push, enable schedule, Operations Center | None | Save, two commits, two pushes, and schedule enable succeeded; Operations query needs rerun after execution completes | Partial |
 
-The successful MySQL executions prove the current reused Kestra container can run the SeaTunnel image through the Docker task runner, render runtime credentials from WB-Data, and reach the transfer MySQL service from inside Docker.
+The successful MySQL and MySQL-to-Hive executions prove the current reused Kestra container can run the SeaTunnel image through the Docker task runner, render runtime credentials from WB-Data, mount the shared Hive warehouse volume, and reach the transfer MySQL/Hive services from inside Docker.
+
+Final Hive partition count after the expression scenario:
+
+```text
+dayno     count
+20260701  2
+20260702  1
+```
+
+The remaining Hive-to-MySQL failure is:
+
+```text
+Failed to load JDBC driver org.apache.hive.jdbc.HiveDriver
+java.lang.ClassNotFoundException: org.apache.hive.jdbc.HiveDriver
+```
 
 ## Commit, Push, Schedule, And Operations Evidence
 
@@ -133,4 +156,4 @@ npm run test -- --run \
 
 ## Required Follow-up
 
-Extend the existing Hive compose stack with a metastore thrift endpoint, then rerun the three Hive partition scenarios and the Hive-to-MySQL scenario to terminal state.
+Build or select a SeaTunnel runtime image that includes the Hive JDBC driver before treating Hive as a JDBC source for Hive-to-MySQL transfers.
