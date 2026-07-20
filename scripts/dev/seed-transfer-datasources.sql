@@ -32,7 +32,7 @@ ON DUPLICATE KEY UPDATE
 
 INSERT INTO datasource (
     group_id, name, type, description, host, port, database_name,
-    username, password, status, owner, created_by, updated_by
+    username, password, connection_params, status, owner, created_by, updated_by
 )
 SELECT
     project_group.id,
@@ -44,6 +44,7 @@ SELECT
     'default',
     'hive',
     '',
+    JSON_OBJECT('metastoreUri', 'thrift://host.docker.internal:9083'),
     'ENABLED',
     'admin',
     admin_user.id,
@@ -59,5 +60,6 @@ ON DUPLICATE KEY UPDATE
     database_name = VALUES(database_name),
     username = VALUES(username),
     password = VALUES(password),
+    connection_params = VALUES(connection_params),
     status = VALUES(status),
     updated_by = VALUES(updated_by);
