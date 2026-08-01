@@ -156,6 +156,7 @@ vi.mock('../../api/datasource', () => ({
 }));
 
 vi.mock('../../api/transfer', () => ({
+    getTransferDatabases: vi.fn(() => Promise.resolve([])),
     getTransferTables: vi.fn(() => Promise.resolve({ data: [], total: 0, page: 1, size: 200 })),
     getTransferTableMetadata: vi.fn(() => Promise.resolve({
         columns: [{ name: 'id', type: 'BIGINT', size: 0, nullable: false, remarks: '', primaryKey: false }],
