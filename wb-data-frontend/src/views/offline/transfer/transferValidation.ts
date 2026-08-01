@@ -7,7 +7,9 @@ function isMapped(mapping: TransferFieldMapping | TransferPartitionMapping | und
 export function validateTransferConfig(config: TransferConfig, targetColumns: string[], partitionColumns: string[]) {
     const errors: string[] = [];
     if (!config.source.dataSourceId || !config.source.table) errors.push('请选择来源数据源和表');
+    if (!config.source.database) errors.push('请选择来源数据库');
     if (!config.target.dataSourceId || !config.target.table) errors.push('请选择目标数据源和表');
+    if (!config.target.database) errors.push('请选择目标数据库');
     targetColumns.forEach((target) => {
         if (!isMapped(config.fieldMappings?.find((item) => item.target === target))) {
             errors.push(`目标字段 ${target} 尚未配置映射`);

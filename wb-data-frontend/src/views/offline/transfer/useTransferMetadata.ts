@@ -189,13 +189,5 @@ export function useTransferMetadata(
         targetTable,
     );
 
-    return {
-        dataSources,
-        source,
-        target,
-        sourceTables: source.tables.data,
-        targetTables: target.tables.data,
-        sourceMetadata: source.metadata.data,
-        targetMetadata: target.metadata.data,
-    };
+    return { dataSources, source, target };
 }
