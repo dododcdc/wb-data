@@ -21,6 +21,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
+
 @Tag(name = "离线开发", description = "Transfer 节点元数据")
 @RestController
 @RequestMapping("/api/v1/groups/{groupId}/offline/transfer/datasources/{dataSourceId}")
@@ -29,6 +31,16 @@ public class TransferMetadataController {
 
     private final TransferMetadataService transferMetadataService;
     private final AuthorizedDataSourceService authorizedDataSourceService;
+
+    @Operation(summary = "获取 Transfer 数据源数据库列表")
+    @GetMapping("/databases")
+    public Result<List<String>> getDatabases(
+            @RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
+            @PathVariable Long groupId,
+            @PathVariable Long dataSourceId) {
+        requireDataSourceInGroup(dataSourceId, groupId);
+        return Result.success(transferMetadataService.getDatabases(dataSourceId));
+    }
 
     @Operation(summary = "获取 Transfer 数据源表列表")
     @GetMapping("/tables")
