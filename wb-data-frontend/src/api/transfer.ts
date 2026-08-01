@@ -27,6 +27,12 @@ export interface TransferTableQuery {
     size?: number;
 }
 
+export const getTransferDatabases = (groupId: number, dataSourceId: number) => {
+    return request.get<unknown, string[]>(
+        groupScopedPath(groupId, `/offline/transfer/datasources/${dataSourceId}/databases`),
+    );
+};
+
 export const getTransferTables = (groupId: number, dataSourceId: number, params: TransferTableQuery) => {
     return request.get<unknown, PageResult<TableSummary>>(
         groupScopedPath(groupId, `/offline/transfer/datasources/${dataSourceId}/tables`),
