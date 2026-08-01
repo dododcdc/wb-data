@@ -3,6 +3,19 @@ import { describe, expect, it } from 'vitest';
 import { validateTransferConfig } from './transferValidation';
 
 describe('validateTransferConfig', () => {
+    it('requires source and target databases', () => {
+        const config = {
+            source: { dataSourceId: 1, dataSourceType: 'MYSQL' as const, table: 'orders' },
+            target: { dataSourceId: 2, dataSourceType: 'HIVE' as const, table: 'dwd_orders', writeMode: 'append' as const },
+            fieldMappings: [{ target: 'id', kind: 'source_field' as const, source: 'id' }],
+        };
+
+        const result = validateTransferConfig(config, ['id'], []);
+
+        expect(result.errors).toContain('请选择来源数据库');
+        expect(result.errors).toContain('请选择目标数据库');
+    });
+
     it('blocks a target column without a mapping', () => {
         const result = validateTransferConfig({
             source: { dataSourceId: 1, dataSourceType: 'MYSQL', table: 'orders' },
