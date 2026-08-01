@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getDataSourcePage } from '../../../api/datasource';
-import { getTransferTableMetadata, getTransferTables } from '../../../api/transfer';
+import { getTransferDatabases, getTransferTableMetadata, getTransferTables } from '../../../api/transfer';
 import { useTransferMetadata } from './useTransferMetadata';
 
 function createDeferred<T>() {
@@ -38,6 +38,7 @@ vi.mock('../../../api/datasource', () => ({
 }));
 
 vi.mock('../../../api/transfer', () => ({
+    getTransferDatabases: vi.fn(),
     getTransferTables: vi.fn(),
     getTransferTableMetadata: vi.fn(),
 }));
@@ -46,31 +47,52 @@ describe('useTransferMetadata', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.mocked(getDataSourcePage).mockResolvedValue({ records: [], total: 0, size: 200, current: 1, pages: 0 });
-        vi.mocked(getTransferTables).mockResolvedValue({ data: [], total: 0, page: 1, size: 200 });
+        vi.mocked(getTransferDatabases).mockResolvedValue([]);
+        vi.mocked(getTransferTables).mockResolvedValue(makeTablePage([]));
+    });
+
+    it('loads databases but waits for a database before loading tables', async () => {
+        vi.mocked(getTransferDatabases).mockResolvedValue(['transfer_demo', 'archive']);
+
+        const { result } = renderHook(() => useTransferMetadata(1, 11));
+
+        await waitFor(() => {
+            expect(result.current.source.databases.data).toEqual(['transfer_demo', 'archive']);
+        });
+        expect(getTransferDatabases).toHaveBeenCalledWith(1, 11);
+        expect(getTransferTables).not.toHaveBeenCalled();
+    });
+
+    it('passes the selected database when loading tables', async () => {
+        renderHook(() => useTransferMetadata(1, 11, 'transfer_demo'));
+
+        await waitFor(() => {
+            expect(getTransferTables).toHaveBeenCalledWith(1, 11, {
+                databaseName: 'transfer_demo',
+                page: 1,
+                size: 200,
+            });
+        });
     });
 
     it('does not expose previous target metadata after the selected target table changes', async () => {
         vi.mocked(getTransferTableMetadata)
-            .mockResolvedValueOnce({
-                columns: [{ name: 'id', type: 'BIGINT', size: 0, nullable: false, remarks: '', primaryKey: false }],
-                partitionColumns: [],
-                partitioned: false,
-                writeModes: [{ value: 'append', label: 'Append' }],
-            })
+            .mockResolvedValueOnce(makeMetadata('id'))
             .mockImplementationOnce(() => new Promise(() => {}));
 
         const { result, rerender } = renderHook(
-            ({ targetTable }) => useTransferMetadata(1, undefined, undefined, undefined, 2, undefined, targetTable),
+            ({ targetTable }) => useTransferMetadata(1, undefined, undefined, undefined, 2, 'default', targetTable),
             { initialProps: { targetTable: 'dwd_orders' } },
         );
 
         await waitFor(() => {
-            expect(result.current.targetMetadata?.columns[0]?.name).toBe('id');
+            expect(result.current.target.metadata.data?.columns[0]?.name).toBe('id');
         });
 
         rerender({ targetTable: 'dwd_payments' });
 
-        expect(result.current.targetMetadata).toBeNull();
+        expect(result.current.target.metadata.data).toBeNull();
+        expect(result.current.target.metadata.loading).toBe(true);
     });
 
     it('keeps source table options scoped to the latest selected datasource', async () => {
@@ -81,7 +103,7 @@ describe('useTransferMetadata', () => {
             .mockReturnValueOnce(secondSourceTables.promise);
 
         const { result, rerender } = renderHook(
-            ({ sourceDataSourceId }) => useTransferMetadata(1, sourceDataSourceId),
+            ({ sourceDataSourceId }) => useTransferMetadata(1, sourceDataSourceId, 'app'),
             { initialProps: { sourceDataSourceId: 11 } },
         );
 
@@ -90,14 +112,14 @@ describe('useTransferMetadata', () => {
             secondSourceTables.resolve(makeTablePage(['new_source_table']));
         });
         await waitFor(() => {
-            expect(result.current.sourceTables).toEqual(['new_source_table']);
+            expect(result.current.source.tables.data).toEqual(['new_source_table']);
         });
 
         await act(async () => {
             firstSourceTables.resolve(makeTablePage(['old_source_table']));
         });
 
-        expect(result.current.sourceTables).toEqual(['new_source_table']);
+        expect(result.current.source.tables.data).toEqual(['new_source_table']);
     });
 
     it('clears source table options immediately while the next datasource list is pending', async () => {
@@ -108,7 +130,7 @@ describe('useTransferMetadata', () => {
             .mockReturnValueOnce(secondSourceTables.promise);
 
         const { result, rerender } = renderHook(
-            ({ sourceDataSourceId }) => useTransferMetadata(1, sourceDataSourceId),
+            ({ sourceDataSourceId }) => useTransferMetadata(1, sourceDataSourceId, 'app'),
             { initialProps: { sourceDataSourceId: 11 } },
         );
 
@@ -116,63 +138,55 @@ describe('useTransferMetadata', () => {
             firstSourceTables.resolve(makeTablePage(['old_source_table']));
         });
         await waitFor(() => {
-            expect(result.current.sourceTables).toEqual(['old_source_table']);
+            expect(result.current.source.tables.data).toEqual(['old_source_table']);
         });
 
         rerender({ sourceDataSourceId: 12 });
 
-        expect(result.current.sourceTables).toEqual([]);
+        expect(result.current.source.tables.data).toEqual([]);
+        expect(result.current.source.tables.loading).toBe(true);
     });
 
-    it('keeps target table options scoped to the latest selected datasource', async () => {
-        const firstTargetTables = createDeferred<ReturnType<typeof makeTablePage>>();
-        const secondTargetTables = createDeferred<ReturnType<typeof makeTablePage>>();
-        vi.mocked(getTransferTables)
-            .mockReturnValueOnce(firstTargetTables.promise)
-            .mockReturnValueOnce(secondTargetTables.promise);
+    it('exposes a database error and retries the request', async () => {
+        vi.mocked(getTransferDatabases)
+            .mockRejectedValueOnce(new Error('offline'))
+            .mockResolvedValueOnce(['default']);
 
-        const { result, rerender } = renderHook(
-            ({ targetDataSourceId }) => useTransferMetadata(1, undefined, undefined, undefined, targetDataSourceId),
-            { initialProps: { targetDataSourceId: 21 } },
-        );
+        const { result } = renderHook(() => useTransferMetadata(1, 11));
 
-        rerender({ targetDataSourceId: 22 });
-        await act(async () => {
-            secondTargetTables.resolve(makeTablePage(['new_target_table']));
-        });
         await waitFor(() => {
-            expect(result.current.targetTables).toEqual(['new_target_table']);
+            expect(result.current.source.databases.error).toBe('数据库加载失败');
         });
 
-        await act(async () => {
-            firstTargetTables.resolve(makeTablePage(['old_target_table']));
-        });
+        act(() => result.current.source.databases.retry());
 
-        expect(result.current.targetTables).toEqual(['new_target_table']);
+        await waitFor(() => {
+            expect(result.current.source.databases.data).toEqual(['default']);
+        });
+        expect(getTransferDatabases).toHaveBeenCalledTimes(2);
     });
 
-    it('clears target table options immediately while the next datasource list is pending', async () => {
-        const firstTargetTables = createDeferred<ReturnType<typeof makeTablePage>>();
-        const secondTargetTables = createDeferred<ReturnType<typeof makeTablePage>>();
+    it('exposes a table error and retries with the selected database', async () => {
         vi.mocked(getTransferTables)
-            .mockReturnValueOnce(firstTargetTables.promise)
-            .mockReturnValueOnce(secondTargetTables.promise);
+            .mockRejectedValueOnce(new Error('offline'))
+            .mockResolvedValueOnce(makeTablePage(['orders']));
 
-        const { result, rerender } = renderHook(
-            ({ targetDataSourceId }) => useTransferMetadata(1, undefined, undefined, undefined, targetDataSourceId),
-            { initialProps: { targetDataSourceId: 21 } },
-        );
+        const { result } = renderHook(() => useTransferMetadata(1, 11, 'transfer_demo'));
 
-        await act(async () => {
-            firstTargetTables.resolve(makeTablePage(['old_target_table']));
-        });
         await waitFor(() => {
-            expect(result.current.targetTables).toEqual(['old_target_table']);
+            expect(result.current.source.tables.error).toBe('表加载失败');
         });
 
-        rerender({ targetDataSourceId: 22 });
+        act(() => result.current.source.tables.retry());
 
-        expect(result.current.targetTables).toEqual([]);
+        await waitFor(() => {
+            expect(result.current.source.tables.data).toEqual(['orders']);
+        });
+        expect(getTransferTables).toHaveBeenLastCalledWith(1, 11, {
+            databaseName: 'transfer_demo',
+            page: 1,
+            size: 200,
+        });
     });
 
     it('ignores stale source metadata from an earlier matching selection after A-B-A changes', async () => {
@@ -185,7 +199,7 @@ describe('useTransferMetadata', () => {
             .mockReturnValueOnce(latestSourceA.promise);
 
         const { result, rerender } = renderHook(
-            ({ sourceTable }) => useTransferMetadata(1, 11, undefined, sourceTable),
+            ({ sourceTable }) => useTransferMetadata(1, 11, 'app', sourceTable),
             { initialProps: { sourceTable: 'orders_a' } },
         );
 
@@ -196,20 +210,20 @@ describe('useTransferMetadata', () => {
             firstSourceA.resolve(makeMetadata('stale_source_a'));
         });
 
-        expect(result.current.sourceMetadata).toBeNull();
+        expect(result.current.source.metadata.data).toBeNull();
 
         await act(async () => {
             latestSourceA.resolve(makeMetadata('latest_source_a'));
         });
         await waitFor(() => {
-            expect(result.current.sourceMetadata?.columns[0]?.name).toBe('latest_source_a');
+            expect(result.current.source.metadata.data?.columns[0]?.name).toBe('latest_source_a');
         });
 
         await act(async () => {
             sourceB.resolve(makeMetadata('source_b'));
         });
 
-        expect(result.current.sourceMetadata?.columns[0]?.name).toBe('latest_source_a');
+        expect(result.current.source.metadata.data?.columns[0]?.name).toBe('latest_source_a');
     });
 
     it('ignores stale target metadata from an earlier matching selection after A-B-A changes', async () => {
@@ -222,7 +236,7 @@ describe('useTransferMetadata', () => {
             .mockReturnValueOnce(latestTargetA.promise);
 
         const { result, rerender } = renderHook(
-            ({ targetTable }) => useTransferMetadata(1, undefined, undefined, undefined, 21, undefined, targetTable),
+            ({ targetTable }) => useTransferMetadata(1, undefined, undefined, undefined, 21, 'warehouse', targetTable),
             { initialProps: { targetTable: 'orders_a' } },
         );
 
@@ -233,19 +247,19 @@ describe('useTransferMetadata', () => {
             firstTargetA.resolve(makeMetadata('stale_target_a'));
         });
 
-        expect(result.current.targetMetadata).toBeNull();
+        expect(result.current.target.metadata.data).toBeNull();
 
         await act(async () => {
             latestTargetA.resolve(makeMetadata('latest_target_a'));
         });
         await waitFor(() => {
-            expect(result.current.targetMetadata?.columns[0]?.name).toBe('latest_target_a');
+            expect(result.current.target.metadata.data?.columns[0]?.name).toBe('latest_target_a');
         });
 
         await act(async () => {
             targetB.resolve(makeMetadata('target_b'));
         });
 
-        expect(result.current.targetMetadata?.columns[0]?.name).toBe('latest_target_a');
+        expect(result.current.target.metadata.data?.columns[0]?.name).toBe('latest_target_a');
     });
 });
