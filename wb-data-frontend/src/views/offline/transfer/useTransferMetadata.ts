@@ -1,104 +1,201 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { getDataSourcePage, type DataSource } from '../../../api/datasource';
-import { getTransferTableMetadata, getTransferTables, type TransferTableMetadataResponse } from '../../../api/transfer';
+import {
+    getTransferDatabases,
+    getTransferTableMetadata,
+    getTransferTables,
+    type TransferTableMetadataResponse,
+} from '../../../api/transfer';
 import type { TransferDataSourceType } from './transferTypes';
 
 export const supportedTransferDataSourceTypes: TransferDataSourceType[] = ['MYSQL', 'POSTGRESQL', 'STARROCKS', 'HIVE'];
 
-interface TransferMetadataState {
-    dataSourceId: number;
-    database: string;
-    table: string;
-    metadata: TransferTableMetadataResponse;
+export interface TransferAsyncResource<T> {
+    data: T;
+    loading: boolean;
+    error: string | null;
+    retry: () => void;
 }
 
-function metadataMatchesSelection(
-    state: TransferMetadataState | null,
-    dataSourceId: number | undefined,
-    database: string | undefined,
-    table: string | undefined,
-) {
-    return Boolean(
-        state
-        && dataSourceId
-        && table
-        && state.dataSourceId === dataSourceId
-        && state.database === (database ?? '')
-        && state.table === table,
-    );
+export interface TransferEndpointMetadataState {
+    databases: TransferAsyncResource<string[]>;
+    tables: TransferAsyncResource<string[]>;
+    metadata: TransferAsyncResource<TransferTableMetadataResponse | null>;
 }
 
-export function useTransferMetadata(groupId: number | null, sourceDataSourceId?: number, sourceDatabase?: string, sourceTable?: string, targetDataSourceId?: number, targetDatabase?: string, targetTable?: string) {
-    const [dataSources, setDataSources] = useState<DataSource[]>([]);
-    const [sourceTables, setSourceTables] = useState<string[]>([]);
-    const [targetTables, setTargetTables] = useState<string[]>([]);
-    const [targetMetadataState, setTargetMetadataState] = useState<TransferMetadataState | null>(null);
-    const [sourceMetadataState, setSourceMetadataState] = useState<TransferMetadataState | null>(null);
+interface AsyncState<T> {
+    data: T;
+    loading: boolean;
+    error: string | null;
+}
+
+const emptyListState = (): AsyncState<string[]> => ({ data: [], loading: false, error: null });
+const emptyMetadataState = (): AsyncState<TransferTableMetadataResponse | null> => ({
+    data: null,
+    loading: false,
+    error: null,
+});
+
+function useTransferDatabasesResource(
+    groupId: number | null,
+    dataSourceId?: number,
+): TransferAsyncResource<string[]> {
+    const [state, setState] = useState<AsyncState<string[]>>(emptyListState);
+    const [retryKey, setRetryKey] = useState(0);
+    const retry = useCallback(() => setRetryKey((current) => current + 1), []);
 
     useEffect(() => {
-        if (!groupId) return;
-        void getDataSourcePage({ groupId, page: 1, size: 200, status: 'ENABLED', type: supportedTransferDataSourceTypes.join(',') })
-            .then((result) => setDataSources(result.records ?? []))
-            .catch(() => setDataSources([]));
+        if (!groupId || !dataSourceId) {
+            setState(emptyListState());
+            return;
+        }
+        let active = true;
+        setState({ data: [], loading: true, error: null });
+        void getTransferDatabases(groupId, dataSourceId)
+            .then((databases) => {
+                if (active) setState({ data: databases ?? [], loading: false, error: null });
+            })
+            .catch(() => {
+                if (active) setState({ data: [], loading: false, error: '数据库加载失败' });
+            });
+        return () => { active = false; };
+    }, [dataSourceId, groupId, retryKey]);
+
+    return { ...state, retry };
+}
+
+function useTransferTablesResource(
+    groupId: number | null,
+    dataSourceId?: number,
+    database?: string,
+): TransferAsyncResource<string[]> {
+    const [state, setState] = useState<AsyncState<string[]>>(emptyListState);
+    const [retryKey, setRetryKey] = useState(0);
+    const retry = useCallback(() => setRetryKey((current) => current + 1), []);
+
+    useEffect(() => {
+        if (!groupId || !dataSourceId || !database) {
+            setState(emptyListState());
+            return;
+        }
+        let active = true;
+        setState({ data: [], loading: true, error: null });
+        void getTransferTables(groupId, dataSourceId, { databaseName: database, page: 1, size: 200 })
+            .then((result) => {
+                if (active) {
+                    setState({
+                        data: (result.data ?? []).map((table) => table.name),
+                        loading: false,
+                        error: null,
+                    });
+                }
+            })
+            .catch(() => {
+                if (active) setState({ data: [], loading: false, error: '表加载失败' });
+            });
+        return () => { active = false; };
+    }, [dataSourceId, database, groupId, retryKey]);
+
+    return { ...state, retry };
+}
+
+function useTransferTableMetadataResource(
+    groupId: number | null,
+    dataSourceId?: number,
+    database?: string,
+    table?: string,
+): TransferAsyncResource<TransferTableMetadataResponse | null> {
+    const [state, setState] = useState<AsyncState<TransferTableMetadataResponse | null>>(emptyMetadataState);
+    const [retryKey, setRetryKey] = useState(0);
+    const retry = useCallback(() => setRetryKey((current) => current + 1), []);
+
+    useEffect(() => {
+        if (!groupId || !dataSourceId || !database || !table) {
+            setState(emptyMetadataState());
+            return;
+        }
+        let active = true;
+        setState({ data: null, loading: true, error: null });
+        void getTransferTableMetadata(groupId, dataSourceId, database, table)
+            .then((metadata) => {
+                if (active) setState({ data: metadata, loading: false, error: null });
+            })
+            .catch(() => {
+                if (active) setState({ data: null, loading: false, error: '字段元数据加载失败' });
+            });
+        return () => { active = false; };
+    }, [dataSourceId, database, groupId, retryKey, table]);
+
+    return { ...state, retry };
+}
+
+function useTransferEndpointMetadata(
+    groupId: number | null,
+    dataSourceId?: number,
+    database?: string,
+    table?: string,
+): TransferEndpointMetadataState {
+    return {
+        databases: useTransferDatabasesResource(groupId, dataSourceId),
+        tables: useTransferTablesResource(groupId, dataSourceId, database),
+        metadata: useTransferTableMetadataResource(groupId, dataSourceId, database, table),
+    };
+}
+
+export function useTransferMetadata(
+    groupId: number | null,
+    sourceDataSourceId?: number,
+    sourceDatabase?: string,
+    sourceTable?: string,
+    targetDataSourceId?: number,
+    targetDatabase?: string,
+    targetTable?: string,
+) {
+    const [dataSources, setDataSources] = useState<DataSource[]>([]);
+
+    useEffect(() => {
+        if (!groupId) {
+            setDataSources([]);
+            return;
+        }
+        let active = true;
+        void getDataSourcePage({
+            groupId,
+            page: 1,
+            size: 200,
+            status: 'ENABLED',
+            type: supportedTransferDataSourceTypes.join(','),
+        })
+            .then((result) => {
+                if (active) setDataSources(result.records ?? []);
+            })
+            .catch(() => {
+                if (active) setDataSources([]);
+            });
+        return () => { active = false; };
     }, [groupId]);
 
-    useEffect(() => {
-        if (!groupId || !sourceDataSourceId) { setSourceTables([]); return; }
-        let active = true;
-        setSourceTables([]);
-        void getTransferTables(groupId, sourceDataSourceId, { page: 1, size: 200 })
-            .then((result) => { if (active) setSourceTables((result.data ?? []).map((table) => table.name)); })
-            .catch(() => { if (active) setSourceTables([]); });
-        return () => { active = false; };
-    }, [groupId, sourceDataSourceId]);
+    const source = useTransferEndpointMetadata(
+        groupId,
+        sourceDataSourceId,
+        sourceDatabase,
+        sourceTable,
+    );
+    const target = useTransferEndpointMetadata(
+        groupId,
+        targetDataSourceId,
+        targetDatabase,
+        targetTable,
+    );
 
-    useEffect(() => {
-        if (!groupId || !sourceDataSourceId || !sourceTable) { setSourceMetadataState(null); return; }
-        let active = true;
-        const database = sourceDatabase ?? '';
-        setSourceMetadataState(null);
-        void getTransferTableMetadata(groupId, sourceDataSourceId, sourceDatabase ?? '', sourceTable)
-            .then((metadata) => {
-                if (active) setSourceMetadataState({ dataSourceId: sourceDataSourceId, database, table: sourceTable, metadata });
-            })
-            .catch(() => {
-                if (active) setSourceMetadataState(null);
-            });
-        return () => { active = false; };
-    }, [groupId, sourceDataSourceId, sourceDatabase, sourceTable]);
-
-    useEffect(() => {
-        if (!groupId || !targetDataSourceId) { setTargetTables([]); return; }
-        let active = true;
-        setTargetTables([]);
-        void getTransferTables(groupId, targetDataSourceId, { page: 1, size: 200 })
-            .then((result) => { if (active) setTargetTables((result.data ?? []).map((table) => table.name)); })
-            .catch(() => { if (active) setTargetTables([]); });
-        return () => { active = false; };
-    }, [groupId, targetDataSourceId]);
-
-    useEffect(() => {
-        if (!groupId || !targetDataSourceId || !targetTable) { setTargetMetadataState(null); return; }
-        let active = true;
-        const database = targetDatabase ?? '';
-        setTargetMetadataState(null);
-        void getTransferTableMetadata(groupId, targetDataSourceId, targetDatabase ?? '', targetTable)
-            .then((metadata) => {
-                if (active) setTargetMetadataState({ dataSourceId: targetDataSourceId, database, table: targetTable, metadata });
-            })
-            .catch(() => {
-                if (active) setTargetMetadataState(null);
-            });
-        return () => { active = false; };
-    }, [groupId, targetDataSourceId, targetDatabase, targetTable]);
-
-    const sourceMetadata = metadataMatchesSelection(sourceMetadataState, sourceDataSourceId, sourceDatabase, sourceTable)
-        ? sourceMetadataState?.metadata ?? null
-        : null;
-    const targetMetadata = metadataMatchesSelection(targetMetadataState, targetDataSourceId, targetDatabase, targetTable)
-        ? targetMetadataState?.metadata ?? null
-        : null;
-
-    return { dataSources, sourceTables, targetTables, sourceMetadata, targetMetadata };
+    return {
+        dataSources,
+        source,
+        target,
+        sourceTables: source.tables.data,
+        targetTables: target.tables.data,
+        sourceMetadata: source.metadata.data,
+        targetMetadata: target.metadata.data,
+    };
 }
