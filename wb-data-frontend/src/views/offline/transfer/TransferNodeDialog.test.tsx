@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { DataSource } from '../../../api/datasource';
@@ -84,9 +85,10 @@ function makeMetadata(): MockTransferMetadata {
 }
 
 let metadata = makeMetadata();
+let resolveMetadata: ((args: unknown[]) => MockTransferMetadata) | null = null;
 
 vi.mock('./useTransferMetadata', () => ({
-    useTransferMetadata: () => metadata,
+    useTransferMetadata: (...args: unknown[]) => resolveMetadata?.(args) ?? metadata,
 }));
 
 const validTransfer: TransferConfig = {
@@ -111,6 +113,7 @@ const validTransfer: TransferConfig = {
 afterEach(() => {
     cleanup();
     metadata = makeMetadata();
+    resolveMetadata = null;
 });
 
 describe('TransferNodeDialog', () => {
@@ -148,6 +151,43 @@ describe('TransferNodeDialog', () => {
                 }),
                 expect.any(Object),
             );
+        });
+    });
+
+    it('keeps reconciled mappings when the parent echoes draft updates', async () => {
+        const legacyTransfer: TransferConfig = {
+            source: { dataSourceId: 1, dataSourceType: 'MYSQL', table: 'orders' },
+            target: { dataSourceId: 2, dataSourceType: 'HIVE', table: 'dwd_orders', writeMode: 'append' },
+            fieldMappings: [],
+            partitions: [],
+        };
+        const metadataBeforeDatabaseSelection: MockTransferMetadata = {
+            ...metadata,
+            source: { ...metadata.source, metadata: resource(null) },
+            target: { ...metadata.target, metadata: resource(null) },
+        };
+        resolveMetadata = (args) => args[2] && args[5]
+            ? metadata
+            : metadataBeforeDatabaseSelection;
+
+        function EchoingParent() {
+            const [value, setValue] = useState(legacyTransfer);
+            return (
+                <TransferNodeDialog
+                    groupId={1}
+                    value={value}
+                    onChange={vi.fn()}
+                    onDraftChange={(draft) => setValue(draft)}
+                />
+            );
+        }
+
+        render(<EchoingParent />);
+
+        await waitFor(() => {
+            expect(screen.getByLabelText('id 源字段')).toHaveProperty('value', 'id');
+            expect(screen.getAllByLabelText('数据库')[0]).toHaveProperty('value', 'transfer_demo');
+            expect(screen.getAllByLabelText('数据库')[1]).toHaveProperty('value', 'default');
         });
     });
 

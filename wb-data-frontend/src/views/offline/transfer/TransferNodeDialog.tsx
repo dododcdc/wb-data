@@ -241,6 +241,8 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: 
     const [config, setConfig] = useState<TransferConfig>(value ?? emptyConfig);
     const emittedConfigRef = useRef('');
     const reportedDraftRef = useRef('');
+    const reportedConfigRef = useRef('');
+    const previousValueRef = useRef(JSON.stringify(value ?? emptyConfig));
     const { dataSources, source, target } = useTransferMetadata(
         groupId,
         config.source.dataSourceId || undefined,
@@ -253,7 +255,9 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: 
 
     useEffect(() => {
         const next = JSON.stringify(value ?? emptyConfig);
-        if (next !== emittedConfigRef.current) setConfig(value ?? emptyConfig);
+        if (next === previousValueRef.current) return;
+        previousValueRef.current = next;
+        if (next !== reportedConfigRef.current) setConfig(value ?? emptyConfig);
     }, [value]);
 
     const sourceDataSource = dataSources.find((item) => item.id === config.source.dataSourceId);
@@ -380,6 +384,7 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: 
         const draftReport = JSON.stringify({ config, valid: saveable, errors: validationErrors });
         if (draftReport !== reportedDraftRef.current) {
             reportedDraftRef.current = draftReport;
+            reportedConfigRef.current = JSON.stringify(config);
             onDraftChange?.(config, { valid: saveable, errors: validationErrors });
         }
         if (!saveable) return;
