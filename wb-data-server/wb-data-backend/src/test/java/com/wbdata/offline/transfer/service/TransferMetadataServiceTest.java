@@ -14,10 +14,38 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class TransferMetadataServiceTest {
+
+    @Test
+    void returnsDatabasesFromSupportedDatasourcePlugin() {
+        DataSourceService dataSourceService = mock(DataSourceService.class);
+        DataSourcePluginRegistry pluginRegistry = mock(DataSourcePluginRegistry.class);
+        DataSourcePlugin plugin = mock(DataSourcePlugin.class);
+        DataSource source = dataSource(11L, "MYSQL");
+        when(dataSourceService.getById(11L)).thenReturn(source);
+        when(pluginRegistry.getPlugin("MYSQL")).thenReturn(Optional.of(plugin));
+        when(plugin.getDatabases(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(List.of("transfer_demo", "archive"));
+
+        TransferMetadataService service = new TransferMetadataService(dataSourceService, pluginRegistry);
+
+        assertThat(service.getDatabases(11L)).containsExactly("transfer_demo", "archive");
+    }
+
+    @Test
+    void rejectsDatabaseListingForUnsupportedDatasourceType() {
+        DataSourceService dataSourceService = mock(DataSourceService.class);
+        DataSourcePluginRegistry pluginRegistry = mock(DataSourcePluginRegistry.class);
+        when(dataSourceService.getById(12L)).thenReturn(dataSource(12L, "ORACLE"));
+        TransferMetadataService service = new TransferMetadataService(dataSourceService, pluginRegistry);
+
+        assertThatThrownBy(() -> service.getDatabases(12L))
+                .hasMessageContaining("暂不支持的数据源类型: ORACLE");
+    }
 
     @Test
     void hivePartitionedTargetReturnsDetectedPartitionsAndPartitionWriteMode() {

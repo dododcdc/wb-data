@@ -32,6 +32,13 @@ public class TransferMetadataService {
     private final DataSourceService dataSourceService;
     private final DataSourcePluginRegistry pluginRegistry;
 
+    public List<String> getDatabases(Long dataSourceId) {
+        DataSource dataSource = requireSupportedDataSource(dataSourceId);
+        return pluginRegistry.getPlugin(dataSource.getType())
+                .map(plugin -> plugin.getDatabases(buildConnectionInfo(dataSource)))
+                .orElseThrow(() -> unsupportedType(dataSource.getType()));
+    }
+
     public PageResult<TableSummary> getTables(Long dataSourceId, String databaseName, String keyword, int page, int size) {
         DataSource dataSource = requireSupportedDataSource(dataSourceId);
         return pluginRegistry.getPlugin(dataSource.getType())
