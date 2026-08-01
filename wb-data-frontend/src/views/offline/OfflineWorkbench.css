@@ -433,16 +433,6 @@ button.offline-tree-row {
     border-color: rgba(217, 119, 87, 0.85);
 }
 
-.flow-canvas-node.is-transfer {
-    width: 220px;
-    min-width: 220px;
-    max-width: 220px;
-    padding: 9px 11px;
-    gap: 8px;
-    border-color: rgba(56, 137, 125, 0.42);
-    background: rgba(240, 250, 247, 0.96);
-}
-
 .flow-canvas-node-check {
     display: inline-flex;
     align-items: center;
