@@ -20,9 +20,15 @@ DB_PASSWORD=1111 \
 scripts/dev/transfer-smoke.sh
 ```
 
-Run the backend command from `wb-data-server/wb-data-backend`. The smoke script starts `wb-data-transfer-mysql`, starts or verifies the existing `wb-data-hiveserver2` and `wb-data-kestra` containers, applies the Hive schema, checks the Kestra API, and seeds the local WB-Data metadata database. Override its metadata connection with `WB_DATA_METADATA_MYSQL_HOST`, `WB_DATA_METADATA_MYSQL_PORT`, `WB_DATA_METADATA_MYSQL_DATABASE`, `WB_DATA_METADATA_MYSQL_USER`, and `DB_PASSWORD` when necessary.
+Run the backend command from `wb-data-server/wb-data-backend`. The smoke script builds `wb-data-seatunnel:2.3.13`, starts `wb-data-transfer-mysql`, starts or verifies the existing `wb-data-hiveserver2` and `wb-data-kestra` containers, applies the Hive schema, checks the Kestra API, and seeds the local WB-Data metadata database. Override its metadata connection with `WB_DATA_METADATA_MYSQL_HOST`, `WB_DATA_METADATA_MYSQL_PORT`, `WB_DATA_METADATA_MYSQL_DATABASE`, `WB_DATA_METADATA_MYSQL_USER`, and `DB_PASSWORD` when necessary.
 
-The transfer compose starts only `mysql:8.0` by default. Override it with `WB_DATA_TRANSFER_MYSQL_IMAGE` if your machine uses a pinned local image. The existing Kestra container must expose `http://localhost:8090`, use the local basic-auth credentials, and have Docker socket access for Docker task runner execution.
+The transfer compose starts only `mysql:8.0` by default. Override it with `WB_DATA_TRANSFER_MYSQL_IMAGE` if your machine uses a pinned local image. The build-only `wb-data-seatunnel` service creates the local SeaTunnel runtime image used by generated transfer tasks; it is based on `apache/seatunnel:2.3.13`, adds `hive-jdbc-3.1.3.jar` so Hive can be used as a JDBC source, and runs as uid/gid `1000:1000` to match the local Hive containers when writing mounted warehouse files. The existing Kestra container must expose `http://localhost:8090`, use the local basic-auth credentials, and have Docker socket access for Docker task runner execution.
+
+If you only need to rebuild the SeaTunnel runtime image, run:
+
+```bash
+docker compose -f docker-compose.transfer.yml build wb-data-seatunnel
+```
 
 Hive transfer validation reuses `docker-compose.hive.yml`. That stack contains `wb-data-hiveserver2` on `10000` for HiveServer2/JDBC metadata reads and `wb-data-hive-metastore` on `9083` for SeaTunnel Hive sink metadata. The smoke seed stores the HiveServer2 endpoint in the normal data source fields and stores the metastore endpoint in `connection_params.metastoreUri`.
 
@@ -58,6 +64,8 @@ WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080 scripts/dev/transfer-smoke.sh
 | `it_transfer_hive` | `HIVE` | `localhost` | `10000` | `default` | `transfer_orders_source`, `transfer_orders_target`, `transfer_orders_partitioned_target`; `connection_params.metastoreUri=thrift://host.docker.internal:9083` |
 
 WB-Data writes `WB_DATA_INTERNAL_BASE_URL` and `WB_DATA_INTERNAL_TOKEN` into each generated transfer task. This lets the existing Kestra container run SeaTunnel on the `wb-data_default` network without relying on Kestra container-wide environment variables.
+
+By default, transfer tasks use `WB_DATA_TRANSFER_SEATUNNEL_IMAGE=wb-data-seatunnel:2.3.13`. Keep that image available in the same Docker daemon used by Kestra's Docker task runner.
 
 The transfer seed uses `localhost` because the WB-Data backend runs on the macOS host and must read source/target metadata before rendering the SeaTunnel config. When WB-Data renders a SeaTunnel JDBC URL for Docker execution, it rewrites loopback hosts (`localhost`, `127.0.0.1`, `::1`) to `host.docker.internal` so the SeaTunnel container can reach the same mapped ports.
 

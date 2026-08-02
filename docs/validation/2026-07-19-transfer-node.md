@@ -4,7 +4,7 @@ Date: 2026-07-20 (Asia/Singapore)
 
 ## Result
 
-Partial validation. The backend, bootstrap script, persisted Flow, commit/push path, schedule path, Kestra debug execution creation, MySQL SeaTunnel transfer execution, and MySQL-to-Hive partition transfer execution all ran successfully. Hive-to-MySQL still needs a SeaTunnel runtime image that contains the Hive JDBC driver.
+Runtime validation is complete for the local transfer scenarios. The backend, bootstrap script, persisted Flow, commit/push path, schedule path, Kestra debug execution creation, MySQL SeaTunnel transfer execution, MySQL-to-Hive partition transfer execution, and Hive-to-MySQL append execution all ran successfully after switching transfer tasks to `wb-data-seatunnel:2.3.13`. Operations Center terminal-state readback and the multi-database selector scenario remain follow-up product-flow checks.
 
 ## Environment And Commands
 
@@ -62,7 +62,7 @@ docker exec wb-data-hiveserver2 beeline -u 'jdbc:hive2://localhost:10000/default
   "SELECT 'source',COUNT(*) FROM transfer_orders_source UNION ALL SELECT 'target',COUNT(*) FROM transfer_orders_target UNION ALL SELECT 'partitioned',COUNT(*) FROM transfer_orders_partitioned_target"
 ```
 
-## Product Flow And Runtime Blocker
+## Product Flow And Runtime Configuration
 
 An authenticated system-admin session saved a six-node Flow through `PUT /api/v1/groups/4/offline/flows/document` at `_flows/gogo/transfer-smoke/flow.yaml`. Its persisted document identity was:
 
@@ -88,6 +88,23 @@ Kestra was reconfigured to allow Docker runner volume mounts. Generated transfer
 
 ## Scenario Evidence
 
+### 2026-08-01 Regression Rerun
+
+Backend and frontend were restarted on the main checkout. The backend loaded freshly rebuilt plugin JARs from `/Users/wenbin/Projects/wb-data/plugins`. The rerun found and fixed one MySQL metadata issue: the MySQL plugin default JDBC URL now includes `allowPublicKeyRetrieval=true`, which is required by the local MySQL 8 transfer fixture during backend-side metadata reads.
+
+The transfer smoke script was also made repeatable for MySQL fixtures by applying `scripts/dev/init/transfer/mysql/001_schema.sql` on each run, not only during first container initialization.
+
+The current frontend follow-up adds searchable, paged selectors for data sources and tables and a richer mapping matrix. This is newer than the 2026-08-01 design's ordinary-select scope and should remain a separate UX commit from the database-selection contract and runtime fixes.
+
+| Scenario | Execution ID | Target verification | Status |
+| --- | --- | --- | --- |
+| MySQL -> MySQL `append` | `2ipyfExM26U7jHk0nO3cRA` | MySQL target count `4`; IDs `1001,1002,1003,9999` | Success |
+| MySQL -> MySQL `overwrite_table` | `wFKOggtoo7C2dDxxOYFIR` | MySQL target count `3`; IDs `1001,1002,1003` | Success |
+| MySQL -> Hive `overwrite_partition`, static `dayno` | `2XKjOpGAfMuu9eJTz52MmN` | Hive partition count `20260701=3` | Success |
+| MySQL -> Hive `overwrite_partition`, source field `dayno` | `21GirK0leufvJytndmEGX3` | Hive partition counts `20260701=2`, `20260702=1` | Success |
+| MySQL -> Hive `overwrite_partition`, expression `date_format(date_key, '%Y%m%d')` | `8kaBkp1XlOHXCqmLtGdmS` | Hive partition counts `20260701=2`, `20260702=1` | Success |
+| Hive -> MySQL `append` | `4YoJsnP1yy5GXQkqCy8yju` | MySQL target count `5`; IDs `1001,1002,1003,2001,2002` | Success |
+
 | Scenario | Execution ID | Target row-count command/result | Status |
 | --- | --- | --- | --- |
 | MySQL -> MySQL `append` | `1pRO6494HeEhHvKkfzhiq` | `transfer_orders_source=3`, `transfer_orders_target=4` after append | Success |
@@ -95,8 +112,10 @@ Kestra was reconfigured to allow Docker runner volume mounts. Generated transfer
 | MySQL -> Hive `overwrite_partition`, static `dayno` | `5hQWT0n9Cu4UTKsIHjVXNL` | Execution `SUCCESS`; direct render includes `partition_by = ["dayno"]` and `metastore_uri = "thrift://host.docker.internal:9083"` | Success |
 | MySQL -> Hive `overwrite_partition`, source field `dayno` | `4YR276oIt7atBTaP7tfar6` | Execution `SUCCESS`; Hive query after subsequent expression scenario: `20260701=2`, `20260702=1` | Success |
 | MySQL -> Hive `overwrite_partition`, expression `date_format(date_key, '%Y%m%d')` | `pkboVpDXYgK2my60yQ7Pk` | Execution `SUCCESS`; Hive query: `20260701=2`, `20260702=1` | Success |
-| Hive -> MySQL `append` | `34VsiOTTyHWFP8hwNop00g` | Execution `FAILED`; SeaTunnel image lacks `org.apache.hive.jdbc.HiveDriver` for JDBC Hive source | Runtime image limitation |
-| Save, commit, push, enable schedule, Operations Center | None | Save, two commits, two pushes, and schedule enable succeeded; Operations query needs rerun after execution completes | Partial |
+| Hive -> MySQL `append` | `3RMTnKYQ4bdQffhAXg1BdW` | Execution `SUCCESS`; MySQL `transfer_orders_target` row count changed from 1 to 3 with Hive rows `2001`, `2002` appended | Success |
+| MySQL -> Hive `overwrite_partition`, static `dayno`, rerun with `wb-data-seatunnel:2.3.13` | `2AVjcanCe3xPQrwVgPZLzd` | Execution `SUCCESS`; Hive `transfer_orders_partitioned_target` returned `20260701=3`; warehouse files are owned by `hive:hive` | Success |
+| Save, commit, push, enable schedule | None | Save, two commits, two pushes, and schedule enable succeeded | Success |
+| Operations Center terminal-state readback | None | Operations query needs rerun after a transfer execution completes | Pending |
 
 The successful MySQL and MySQL-to-Hive executions prove the current reused Kestra container can run the SeaTunnel image through the Docker task runner, render runtime credentials from WB-Data, mount the shared Hive warehouse volume, and reach the transfer MySQL/Hive services from inside Docker.
 
@@ -108,7 +127,7 @@ dayno     count
 20260702  1
 ```
 
-The remaining Hive-to-MySQL failure is:
+The earlier stock-image Hive-to-MySQL failure was:
 
 ```text
 Failed to load JDBC driver org.apache.hive.jdbc.HiveDriver
@@ -126,7 +145,7 @@ timezone=Asia/Singapore
 enabled=true
 ```
 
-The Operations Center backing endpoint should be rerun after a transfer execution reaches terminal state.
+The Operations Center backing endpoint still needs to be rerun after a transfer execution reaches terminal state.
 
 ## Automated Evidence
 
@@ -156,4 +175,6 @@ npm run test -- --run \
 
 ## Required Follow-up
 
-Build or select a SeaTunnel runtime image that includes the Hive JDBC driver before treating Hive as a JDBC source for Hive-to-MySQL transfers.
+- Regenerate any older saved transfer Flow YAML before running it again if it still references `apache/seatunnel:2.3.13` or an obsolete `WB_DATA_INTERNAL_BASE_URL`.
+- Capture Operations Center readback after a transfer execution reaches terminal state.
+- Verify that selecting a second database on a multi-database source replaces the table and column options.

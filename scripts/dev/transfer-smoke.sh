@@ -19,6 +19,9 @@ compose() {
   docker compose -f "$compose_file" "$@"
 }
 
+echo "Building WB-Data SeaTunnel image..."
+compose build wb-data-seatunnel
+
 echo "Starting transfer MySQL..."
 compose up -d wb-data-transfer-mysql
 
@@ -43,6 +46,10 @@ for _ in $(seq 1 30); do
 done
 compose exec -T wb-data-transfer-mysql mysqladmin ping -h localhost -uroot -pwbdata-root-dev --silent
 
+echo "Applying MySQL transfer schema..."
+compose exec -T wb-data-transfer-mysql mysql -uroot -pwbdata-root-dev transfer_demo \
+  < "$repo_root/scripts/dev/init/transfer/mysql/001_schema.sql"
+
 echo "Waiting for Hive Metastore..."
 for _ in $(seq 1 45); do
   if docker exec wb-data-hive-metastore bash -lc 'echo >/dev/tcp/localhost/9083' >/dev/null 2>&1; then
@@ -60,6 +67,19 @@ for _ in $(seq 1 45); do
   sleep 2
 done
 docker exec wb-data-hiveserver2 beeline -u 'jdbc:hive2://localhost:10000/default' -e 'SELECT 1' >/dev/null
+
+echo "Normalizing Hive transfer warehouse ownership..."
+docker exec --user root wb-data-hiveserver2 bash -lc '
+  for table_dir in \
+    /opt/hive/data/warehouse/transfer_orders_source \
+    /opt/hive/data/warehouse/transfer_orders_target \
+    /opt/hive/data/warehouse/transfer_orders_partitioned_target
+  do
+    if [ -e "$table_dir" ]; then
+      chown -R hive:hive "$table_dir"
+    fi
+  done
+'
 
 echo "Applying Hive transfer schema..."
 docker exec -i wb-data-hiveserver2 beeline -u 'jdbc:hive2://localhost:10000/default' -f /dev/stdin \
@@ -96,6 +116,7 @@ Manual validation:
    WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token
    WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:<backend-port>
    WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default
+   WB_DATA_TRANSFER_DOCKER_VOLUMES=wb-data_hive-warehouse:/opt/hive/data/warehouse
 2. Open project group policy and confirm it_transfer_mysql and it_transfer_hive.
 3. Create a transfer node using transfer_orders_source and transfer_orders_target.
 4. Verify append and overwrite_table for MySQL, then overwrite_partition for Hive.
