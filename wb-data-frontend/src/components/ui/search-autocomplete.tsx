@@ -39,8 +39,10 @@ export interface SearchAutocompleteProps<T extends SearchAutocompleteOption> {
     theme?: 'light' | 'dark';
     className?: string;
     triggerClassName?: string;
+    contentClassName?: string;
     menuContainer?: HTMLElement | null;
     ariaLabel?: string;
+    clearInputOnOpen?: boolean;
     disableClientFilter?: boolean;
     onChange?: (value: string, option: T | null) => void;
     onInputChange?: (value: string) => void;
@@ -69,7 +71,9 @@ export function SearchAutocomplete<T extends SearchAutocompleteOption>(props: Se
         theme = 'light',
         className,
         triggerClassName,
+        contentClassName,
         ariaLabel,
+        clearInputOnOpen = false,
         onChange,
         onInputChange,
         onLoadMore,
@@ -77,42 +81,47 @@ export function SearchAutocomplete<T extends SearchAutocompleteOption>(props: Se
         renderItem,
         hideChevron,
         menuContainer,
+        disableClientFilter,
     } = props;
 
     const isComposingRef = useRef(false);
     const [inputValue, setInputValue] = useState('');
+    const [filterValue, setFilterValue] = useState('');
     const [open, setOpen] = useState(false);
     const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
 
-    // Track the current value as a simple string ID for maximum stability
-    const activeValue = propValue || selectedOption?.value || '';
+    const activeOption = selectedOption
+        ?? options.find((option) => option.value === propValue)
+        ?? null;
+    const normalizedFilter = filterValue.trim().toLocaleLowerCase();
+    const displayedOptions = disableClientFilter || !normalizedFilter
+        ? options
+        : options.filter((option) => option.label.toLocaleLowerCase().includes(normalizedFilter));
 
-    // Synchronize inputValue with the selected option only when not open or when selectedOption changes
+    // Keep the selected label visible whenever the menu is closed.
     useEffect(() => {
         if (!open) {
             const currentLabel = selectedOption?.label || options.find(o => o.value === propValue)?.label || '';
             setInputValue(currentLabel);
         }
-    }, [open, selectedOption, propValue, options]);
+    }, [open, options, propValue, selectedOption]);
 
-    const handleValueChange = (newValue: string | null) => {
-        if (!newValue) {
+    const handleValueChange = (option: T | null) => {
+        if (!option) {
             onChange?.('', null);
             return;
         }
-        // Find the full option object corresponding to the string ID
-        const option = options.find(o => o.value === newValue) || (selectedOption?.value === newValue ? selectedOption : null);
-        if (option) {
-            setInputValue(option.label);
-            onChange?.(option.value, option);
-        }
+        setFilterValue('');
+        setInputValue(option.label);
+        onChange?.(option.value, option);
     };
 
     const handleInputChangeInternal = (nextValue: string, details?: { reason?: string }) => {
         if (isComposingRef.current) return;
-        
+
         // Only trigger search when the user is actually typing
         if (details?.reason === 'input-change' || details?.reason === 'input-clear' || !details?.reason) {
+            setFilterValue(nextValue);
             setInputValue(nextValue);
             onInputChange?.(nextValue);
         } else if (details?.reason === 'option-select') {
@@ -122,6 +131,10 @@ export function SearchAutocomplete<T extends SearchAutocompleteOption>(props: Se
     };
 
     const handleOpenChangeInternal = (nextOpen: boolean) => {
+        if (clearInputOnOpen) {
+            setFilterValue('');
+            if (nextOpen) setInputValue('');
+        }
         setOpen(nextOpen);
         onOpenChange?.(nextOpen);
     };
@@ -134,20 +147,26 @@ export function SearchAutocomplete<T extends SearchAutocompleteOption>(props: Se
     };
 
     const virtualizer = useVirtualizer({
-        count: options.length,
+        count: displayedOptions.length,
         getScrollElement: () => scrollElement,
         estimateSize: () => virtualItemSize,
         overscan: 6,
     });
 
     return (
-        <Combobox<string>
-            value={activeValue}
+        <Combobox<T>
+            items={options}
+            filteredItems={displayedOptions}
+            value={activeOption}
             onValueChange={handleValueChange}
             onInputValueChange={handleInputChangeInternal}
             inputValue={inputValue}
+            open={open}
             onOpenChange={handleOpenChangeInternal}
             disabled={disabled}
+            itemToStringLabel={(option) => option.label}
+            itemToStringValue={(option) => option.value}
+            isItemEqualToValue={(option, selected) => option.value === selected.value}
         >
             <div className={cn(
                 "relative flex items-center !h-[38px] !bg-transparent border border-input rounded-md overflow-hidden focus-within:ring-1 focus-within:ring-ring transition-shadow",
@@ -162,6 +181,13 @@ export function SearchAutocomplete<T extends SearchAutocompleteOption>(props: Se
                         "!h-full w-full !pl-9 !pr-8 !m-0 !bg-transparent text-sm !border-0 focus-visible:ring-0 !shadow-none outline-none",
                         triggerClassName
                     )}
+                    onChange={(event) => {
+                        if (isComposingRef.current) return;
+                        const nextValue = event.currentTarget.value;
+                        setFilterValue(nextValue);
+                        setInputValue(nextValue);
+                        onInputChange?.(nextValue);
+                    }}
                     onCompositionStart={() => { isComposingRef.current = true }}
                     onCompositionEnd={(e) => {
                         isComposingRef.current = false;
@@ -171,7 +197,12 @@ export function SearchAutocomplete<T extends SearchAutocompleteOption>(props: Se
                     }}
                 />
                 {!hideChevron && (
-                    <ComboboxTrigger className="absolute right-0 top-0 bottom-0 w-8 border-l border-transparent flex items-center justify-center hover:bg-muted/50 transition-colors">
+                    <ComboboxTrigger
+                        className="absolute right-0 top-0 bottom-0 w-8 border-l border-transparent flex items-center justify-center hover:bg-muted/50 transition-colors"
+                        onClick={() => {
+                            if (!open) setFilterValue('');
+                        }}
+                    >
                         <ChevronDown size={14} className="text-muted-foreground" />
                     </ComboboxTrigger>
                 )}
@@ -180,7 +211,7 @@ export function SearchAutocomplete<T extends SearchAutocompleteOption>(props: Se
             <ComboboxContent
                 sideOffset={4}
                 align="start"
-                className="w-[var(--anchor-width)] max-h-[300px]"
+                className={cn("w-[var(--anchor-width)] max-h-[300px]", contentClassName)}
                 onScroll={handleScroll}
                 ref={setScrollElement}
                 container={menuContainer}
@@ -190,21 +221,21 @@ export function SearchAutocomplete<T extends SearchAutocompleteOption>(props: Se
                         <Loader2 className="animate-spin size-4" />
                         <span>{loadingText}</span>
                     </div>
-                ) : options.length === 0 ? (
+                ) : displayedOptions.length === 0 ? (
                     <ComboboxEmpty>{emptyText}</ComboboxEmpty>
                 ) : (
                     <div className="p-1">
                         {virtualize ? (
                             <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
                                 {virtualizer.getVirtualItems().map((virtualRow) => {
-                                    const item = options[virtualRow.index];
+                                    const item = displayedOptions[virtualRow.index];
                                     return (
                                         <div
                                             key={item.value}
                                             className="absolute left-0 top-0 w-full"
                                             style={{ transform: `translateY(${virtualRow.start}px)` }}
                                         >
-                                            <ComboboxItem value={item.value}>
+                                            <ComboboxItem value={item}>
                                                 {renderItem ? renderItem(item) : (
                                                     <div className="flex items-center gap-2 overflow-hidden">
                                                         {item.icon}
@@ -223,8 +254,8 @@ export function SearchAutocomplete<T extends SearchAutocompleteOption>(props: Se
                                 })}
                             </div>
                         ) : (
-                            options.map((item) => (
-                                <ComboboxItem key={item.value} value={item.value}>
+                            displayedOptions.map((item) => (
+                                <ComboboxItem key={item.value} value={item}>
                                     {renderItem ? renderItem(item) : (
                                         <div className="flex items-center gap-2 overflow-hidden">
                                             {item.icon}
