@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon } from "lucide-react"
 
 const Combobox = ComboboxPrimitive.Root
+const ComboboxCollection = ComboboxPrimitive.Collection
 
 function ComboboxInput({
   className,
@@ -116,7 +117,7 @@ function ComboboxItem({
     <ComboboxPrimitive.Item
       data-slot="combobox-item"
       className={cn(
-        "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-8 min-h-[32px] text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        "relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pl-2 pr-8 min-h-[32px] text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[selected]:font-medium data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         className
       )}
       {...props}
@@ -147,6 +148,7 @@ function ComboboxEmpty({
 
 export {
   Combobox,
+  ComboboxCollection,
   ComboboxInput,
   ComboboxTrigger,
   ComboboxContent,
