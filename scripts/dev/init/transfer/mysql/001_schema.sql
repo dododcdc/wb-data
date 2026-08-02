@@ -1,3 +1,6 @@
+DROP TABLE IF EXISTS transfer_orders_target;
+DROP TABLE IF EXISTS transfer_orders_source;
+
 CREATE TABLE transfer_orders_source (
     order_id BIGINT NOT NULL,
     customer_name VARCHAR(100) NOT NULL,
