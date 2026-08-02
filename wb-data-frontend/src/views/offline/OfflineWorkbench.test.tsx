@@ -152,6 +152,7 @@ vi.mock('../../hooks/useOperationFeedback', () => ({
 }));
 
 vi.mock('../../api/datasource', () => ({
+    getDataSourceById: vi.fn(() => Promise.reject(new Error('not found'))),
     getDataSourcePage: vi.fn(() => Promise.resolve({ records: [], total: 0, size: 200, current: 1, pages: 0 })),
 }));
 

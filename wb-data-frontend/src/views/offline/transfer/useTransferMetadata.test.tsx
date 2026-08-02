@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getDataSourcePage } from '../../../api/datasource';
+import { getDataSourceById, getDataSourcePage, type DataSource } from '../../../api/datasource';
 import { getTransferDatabases, getTransferTableMetadata, getTransferTables } from '../../../api/transfer';
 import { useTransferMetadata } from './useTransferMetadata';
 
@@ -33,7 +33,23 @@ function makeMetadata(columnName: string) {
     };
 }
 
+function makeDataSource(id: number, databaseName: string): DataSource {
+    return {
+        id,
+        name: `datasource_${id}`,
+        type: 'MYSQL',
+        description: '',
+        databaseName,
+        connectionParams: {},
+        status: 'ENABLED',
+        owner: 'tester',
+        createdAt: '',
+        updatedAt: '',
+    };
+}
+
 vi.mock('../../../api/datasource', () => ({
+    getDataSourceById: vi.fn(),
     getDataSourcePage: vi.fn(),
 }));
 
@@ -47,6 +63,7 @@ describe('useTransferMetadata', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.mocked(getDataSourcePage).mockResolvedValue({ records: [], total: 0, size: 200, current: 1, pages: 0 });
+        vi.mocked(getDataSourceById).mockRejectedValue(new Error('not found'));
         vi.mocked(getTransferDatabases).mockResolvedValue([]);
         vi.mocked(getTransferTables).mockResolvedValue(makeTablePage([]));
     });
@@ -70,9 +87,88 @@ describe('useTransferMetadata', () => {
             expect(getTransferTables).toHaveBeenCalledWith(1, 11, {
                 databaseName: 'transfer_demo',
                 page: 1,
-                size: 200,
+                size: 50,
             });
         });
+    });
+
+    it('searches datasource options on the server after a debounce', async () => {
+        vi.useFakeTimers();
+        try {
+            const { result } = renderHook(() => useTransferMetadata(1));
+
+            await act(async () => {
+                await Promise.resolve();
+            });
+            act(() => result.current.dataSourceSearch.search('hive'));
+            await act(async () => {
+                vi.advanceTimersByTime(300);
+                await Promise.resolve();
+            });
+
+            expect(getDataSourcePage).toHaveBeenLastCalledWith(expect.objectContaining({
+                groupId: 1,
+                keyword: 'hive',
+                page: 1,
+                size: 50,
+            }));
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('loads saved datasources that are outside the first search page', async () => {
+        const savedSource = makeDataSource(99, 'archive');
+        vi.mocked(getDataSourceById).mockResolvedValue(savedSource);
+
+        const { result } = renderHook(() => useTransferMetadata(1, 99));
+
+        await waitFor(() => {
+            expect(result.current.dataSources).toContainEqual(savedSource);
+        });
+        expect(getDataSourceById).toHaveBeenCalledWith(99, 1);
+    });
+
+    it('searches table options on the server after a debounce', async () => {
+        vi.useFakeTimers();
+        try {
+            const { result } = renderHook(() => useTransferMetadata(1, 11, 'transfer_demo'));
+
+            await act(async () => {
+                await Promise.resolve();
+            });
+            act(() => result.current.source.tables.search('order'));
+            await act(async () => {
+                vi.advanceTimersByTime(300);
+                await Promise.resolve();
+            });
+
+            expect(getTransferTables).toHaveBeenLastCalledWith(1, 11, {
+                databaseName: 'transfer_demo',
+                keyword: 'order',
+                page: 1,
+                size: 50,
+            });
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does not offer another table page when the first page exactly covers the total', async () => {
+        const names = Array.from({ length: 50 }, (_, index) => `table_${index}`);
+        vi.mocked(getTransferTables).mockResolvedValue({
+            data: names.map((name) => ({ name, type: 'TABLE', remarks: '' })),
+            total: 50,
+            page: 1,
+            size: 50,
+        });
+
+        const { result } = renderHook(() => useTransferMetadata(1, 11, 'transfer_demo'));
+
+        await waitFor(() => {
+            expect(result.current.source.tables.data).toHaveLength(50);
+        });
+        expect(result.current.source.tables.hasMore).toBe(false);
     });
 
     it('does not expose previous target metadata after the selected target table changes', async () => {
@@ -185,7 +281,7 @@ describe('useTransferMetadata', () => {
         expect(getTransferTables).toHaveBeenLastCalledWith(1, 11, {
             databaseName: 'transfer_demo',
             page: 1,
-            size: 200,
+            size: 50,
         });
     });
 

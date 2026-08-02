@@ -12,7 +12,7 @@ describe('createDefaultFieldMappings', () => {
 });
 
 describe('reconcileTargetMappings', () => {
-    it('fills late same-name source metadata and drops stale target columns', () => {
+    it('fills late same-name source metadata and preserves stale target mappings for review', () => {
         expect(reconcileTargetMappings(
             [
                 { target: 'id', kind: 'source_field' },
@@ -25,6 +25,7 @@ describe('reconcileTargetMappings', () => {
             { target: 'id', kind: 'source_field', source: 'id' },
             { target: 'new_amount', kind: 'source_field' },
             { target: 'kept_expression', kind: 'source_expression', expression: 'price * qty' },
+            { target: 'old_amount', kind: 'source_field', source: 'old_amount' },
         ]);
     });
 });

@@ -1,7 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { ArrowRight, Maximize2, Minimize2, RefreshCw, Trash2 } from 'lucide-react';
 
 import type { DataSource } from '../../../api/datasource';
-import type { TransferEndpointMetadataState } from './useTransferMetadata';
+import type { ColumnMetadata } from '../../../api/query';
+import type { PartitionColumnMetadata } from '../../../api/transfer';
+import {
+    SearchAutocomplete,
+    type SearchAutocompleteOption,
+} from '../../../components/ui/search-autocomplete';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+} from '../../../components/ui/select';
+import type { TransferEndpointMetadataState, TransferPagedResource } from './useTransferMetadata';
 import { resolveTransferDatabaseSelection } from './transferDatabaseSelection';
 import { reconcileTargetMappings, updateMapping } from './transferMapping';
 import type {
@@ -10,6 +23,7 @@ import type {
     TransferFieldMapping,
     TransferMappingKind,
     TransferPartitionMapping,
+    TransferWriteMode,
 } from './transferTypes';
 import { validateTransferConfig } from './transferValidation';
 import { useTransferMetadata } from './useTransferMetadata';
@@ -25,13 +39,27 @@ interface TransferNodeDialogProps {
     value?: TransferConfig;
     onChange: (value: TransferConfig) => void;
     onDraftChange?: (value: TransferConfig, state: TransferNodeDraftState) => void;
+    menuContainer?: HTMLElement | null;
 }
 
 interface MappingRowsProps {
     mappings: Array<TransferFieldMapping | TransferPartitionMapping> | undefined;
-    sourceColumns: string[];
-    errorPrefix: '目标字段' | '分区字段';
+    sourceFields: TransferSchemaField[];
+    targetFields: TransferSchemaField[];
+    targetLabel: '目标字段' | '分区字段';
+    menuContainer?: HTMLElement | null;
     onChange: (mappings: Array<TransferFieldMapping | TransferPartitionMapping>) => void;
+    onRemove: (target: string) => void;
+}
+
+interface TransferSchemaField {
+    name: string;
+    type: string;
+    remarks: string;
+    size?: number;
+    nullable?: boolean;
+    primaryKey?: boolean;
+    partition?: boolean;
 }
 
 interface EndpointFieldsProps {
@@ -39,13 +67,33 @@ interface EndpointFieldsProps {
     title: string;
     config: TransferConfig;
     dataSources: DataSource[];
+    dataSourceSearch: TransferPagedResource<DataSource>;
     metadata: TransferEndpointMetadataState;
     databaseUnavailable: boolean;
     onSelectDataSource: (id: number) => void;
     onSelectDatabase: (database: string) => void;
     onSelectTable: (table: string) => void;
     onPatch: (next: Partial<TransferConfig>) => void;
-    writeModes: Array<{ value: TransferConfig['target']['writeMode']; label: string }>;
+    writeModes: Array<{ value: TransferWriteMode; label: string }>;
+    menuContainer?: HTMLElement | null;
+}
+
+interface TransferSearchSelectProps {
+    ariaLabel: string;
+    value: string;
+    options: SearchAutocompleteOption[];
+    placeholder: string;
+    disabled?: boolean;
+    loading?: boolean;
+    loadingMore?: boolean;
+    hasMore?: boolean;
+    emptyText?: string;
+    virtualize?: boolean;
+    menuContainer?: HTMLElement | null;
+    contentClassName?: string;
+    onChange: (value: string) => void;
+    onSearch?: (keyword: string) => void;
+    onLoadMore?: () => void;
 }
 
 const emptyConfig: TransferConfig = {
@@ -55,58 +103,268 @@ const emptyConfig: TransferConfig = {
     partitions: [],
 };
 
-function MappingRows({ mappings, sourceColumns, errorPrefix, onChange }: MappingRowsProps) {
-    return <>{(mappings ?? []).map((mapping) => {
-        const value = mapping.source ?? mapping.value ?? mapping.expression ?? '';
-        const error = value ? null : `${errorPrefix} ${mapping.target} 尚未配置映射`;
-        return (
-            <div className={`transfer-node-mapping${error ? ' is-invalid' : ''}`} key={mapping.target}>
-                <strong>{mapping.target}</strong>
-                <select
-                    aria-label={`${mapping.target} 映射类型`}
-                    value={mapping.kind}
-                    onChange={(event) => onChange(updateMapping(
-                        mappings ?? [],
-                        mapping.target,
-                        event.target.value as TransferMappingKind,
-                        value,
-                    ))}
+const mappingKindOptions: Array<{ value: TransferMappingKind; label: string }> = [
+    { value: 'source_field', label: '源字段' },
+    { value: 'static_value', label: '固定值' },
+    { value: 'source_expression', label: 'SQL 表达式' },
+];
+
+function normalizeColumn(field: ColumnMetadata): TransferSchemaField {
+    return field;
+}
+
+function normalizePartitionColumn(field: PartitionColumnMetadata): TransferSchemaField {
+    return { ...field, partition: true };
+}
+
+function schemaFingerprint(fields: TransferSchemaField[]) {
+    return JSON.stringify(fields.map((field) => [field.name, field.type, field.remarks]));
+}
+
+function TransferSearchSelect({
+    ariaLabel,
+    value,
+    options,
+    placeholder,
+    disabled,
+    loading,
+    loadingMore,
+    hasMore,
+    emptyText,
+    virtualize,
+    menuContainer,
+    contentClassName,
+    onChange,
+    onSearch,
+    onLoadMore,
+}: TransferSearchSelectProps) {
+    const selectedOption = useMemo(
+        () => options.find((option) => option.value === value)
+            ?? (value ? { label: value, value } : null),
+        [options, value],
+    );
+
+    return (
+        <SearchAutocomplete
+            ariaLabel={ariaLabel}
+            className="transfer-node-search-select"
+            contentClassName={contentClassName}
+            options={options}
+            value={value || undefined}
+            selectedOption={selectedOption}
+            placeholder={placeholder}
+            clearInputOnOpen
+            disabled={disabled}
+            loading={loading}
+            loadingMore={loadingMore}
+            hasMore={hasMore}
+            emptyText={emptyText}
+            virtualize={virtualize}
+            virtualItemSize={32}
+            menuContainer={menuContainer}
+            onChange={(nextValue) => {
+                onSearch?.('');
+                onChange(nextValue);
+            }}
+            onInputChange={onSearch}
+            onLoadMore={onLoadMore}
+            onOpenChange={(open) => {
+                if (!open) onSearch?.('');
+            }}
+        />
+    );
+}
+
+function FieldDetails({ field, side }: { field: TransferSchemaField; side: 'source' | 'target' }) {
+    const description = field.remarks || '无描述';
+    return (
+        <div className={`transfer-node-field-details transfer-node-field-details--${side}`}>
+            {side === 'target' && <strong>{field.name}</strong>}
+            <span className="transfer-node-field-type">{field.type || '未知类型'}</span>
+            <span className="transfer-node-field-flag-slot">
+                {field.primaryKey && <span className="transfer-node-field-flag">主键</span>}
+            </span>
+            <span className="transfer-node-field-flag-slot">
+                {field.partition && <span className="transfer-node-field-flag">分区</span>}
+            </span>
+            {side === 'target' && (
+                <span className="transfer-node-field-flag-slot">
+                    {field.nullable === false && <span className="transfer-node-field-flag">非空</span>}
+                </span>
+            )}
+            <span className="transfer-node-field-description" title={description}>
+                {description}
+            </span>
+        </div>
+    );
+}
+
+function MappingRows({
+    mappings,
+    sourceFields,
+    targetFields,
+    targetLabel,
+    menuContainer,
+    onChange,
+    onRemove,
+}: MappingRowsProps) {
+    const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
+    const sourceOptions = useMemo<SearchAutocompleteOption[]>(() => sourceFields.map((field) => ({
+        value: field.name,
+        label: field.name,
+        secondaryLabel: field.type,
+        raw: field,
+    })), [sourceFields]);
+    const sourceByName = useMemo(
+        () => new Map(sourceFields.map((field) => [field.name, field])),
+        [sourceFields],
+    );
+    const targetByName = useMemo(
+        () => new Map(targetFields.map((field) => [field.name, field])),
+        [targetFields],
+    );
+
+    return <div className="transfer-node-mapping-matrix">
+        <div className="transfer-node-mapping-columns" aria-hidden="true">
+            <span>来源字段 / 配置值</span>
+            <span>映射方式</span>
+            <span>{targetLabel}</span>
+        </div>
+        {(mappings ?? []).map((mapping) => {
+            const value = mapping.source ?? mapping.value ?? mapping.expression ?? '';
+            const sourceField = mapping.kind === 'source_field' ? sourceByName.get(value) : undefined;
+            const targetField = targetByName.get(mapping.target);
+            const staleTarget = !targetField;
+            const error = staleTarget
+                ? `${targetLabel}已不存在`
+                : mapping.kind === 'source_field' && !value
+                    ? '请选择来源字段'
+                    : mapping.kind === 'source_field' && !sourceField
+                        ? `来源字段 ${value} 已不存在`
+                        : !value
+                            ? `请输入${mapping.kind === 'static_value' ? '固定值' : 'SQL 表达式'}`
+                            : null;
+            const isTouched = Boolean(touchedFields[mapping.target]);
+            const showInvalid = Boolean(
+                staleTarget
+                || (mapping.kind === 'source_field' && (!value || !sourceField))
+                || ((mapping.kind === 'static_value' || mapping.kind === 'source_expression') && !value && isTouched),
+            );
+            const selectedSourceOption = sourceOptions.find((option) => option.value === value)
+                ?? (value ? { value, label: `${value}（已不存在）` } : null);
+            return (
+                <div
+                    className={`transfer-node-mapping${showInvalid ? ' is-invalid' : ''}`}
+                    data-target-field={mapping.target}
+                    key={mapping.target}
                 >
-                    <option value="source_field">源字段</option>
-                    <option value="static_value">静态值</option>
-                    <option value="source_expression">源表达式</option>
-                </select>
-                {mapping.kind === 'source_field' ? (
-                    <select
-                        aria-label={`${mapping.target} 源字段`}
-                        value={value}
-                        onChange={(event) => onChange(updateMapping(
-                            mappings ?? [],
-                            mapping.target,
-                            mapping.kind,
-                            event.target.value,
-                        ))}
+                <div className="transfer-node-mapping-source">
+                    {mapping.kind === 'source_field' ? (
+                        <>
+                            <SearchAutocomplete
+                                ariaLabel={`${mapping.target} 源字段`}
+                                className="transfer-node-mapping-source-select"
+                                contentClassName="min-w-[320px] max-w-[calc(100vw-32px)]"
+                                options={sourceOptions}
+                                value={value || undefined}
+                                selectedOption={selectedSourceOption}
+                                placeholder="选择来源字段"
+                                clearInputOnOpen
+                                menuContainer={menuContainer}
+                                onChange={(nextValue) => onChange(updateMapping(
+                                    mappings ?? [],
+                                    mapping.target,
+                                    mapping.kind,
+                                    nextValue,
+                                ))}
+                                renderItem={(option) => {
+                                    const field = option.raw as TransferSchemaField;
+                                    return (
+                                        <div className="transfer-node-field-option">
+                                            <span><strong>{field.name}</strong><small>{field.type}</small></span>
+                                            {field.remarks && <small>{field.remarks}</small>}
+                                        </div>
+                                    );
+                                }}
+                            />
+                            {sourceField && <FieldDetails field={sourceField} side="source" />}
+                        </>
+                    ) : (
+                        <input
+                            aria-label={`${mapping.target} 映射值`}
+                            value={value}
+                            aria-invalid={showInvalid}
+                            onBlur={() => setTouchedFields((prev) => ({ ...prev, [mapping.target]: true }))}
+                            onChange={(event) => onChange(updateMapping(
+                                mappings ?? [],
+                                mapping.target,
+                                mapping.kind,
+                                event.target.value,
+                            ))}
+                            placeholder={
+                                mapping.kind === 'static_value'
+                                    ? "例如: 100 或 'ACTIVE'"
+                                    : "例如: CONCAT(col, '_ext')"
+                            }
+                        />
+                    )}
+                    {error && !staleTarget && (mapping.kind === 'source_field' || Boolean(value) || isTouched) && (
+                        <span className="transfer-node-mapping-error">{error}</span>
+                    )}
+                </div>
+                <div className="transfer-node-mapping-kind">
+                    <Select
+                        value={mapping.kind}
+                        onValueChange={(nextKind) => {
+                            if (!nextKind) return;
+                            setTouchedFields((prev) => ({ ...prev, [mapping.target]: false }));
+                            onChange(updateMapping(
+                                mappings ?? [],
+                                mapping.target,
+                                nextKind as TransferMappingKind,
+                                nextKind === mapping.kind ? value : '',
+                            ));
+                        }}
                     >
-                        <option value="">选择字段</option>
-                        {sourceColumns.map((column) => <option key={column} value={column}>{column}</option>)}
-                    </select>
-                ) : (
-                    <input
-                        aria-label={`${mapping.target} 映射值`}
-                        value={value}
-                        onChange={(event) => onChange(updateMapping(
-                            mappings ?? [],
-                            mapping.target,
-                            mapping.kind,
-                            event.target.value,
-                        ))}
-                        placeholder={mapping.kind === 'static_value' ? '静态值' : '源端表达式'}
-                    />
-                )}
-                {error && <span className="transfer-node-mapping-error">{error}</span>}
-            </div>
-        );
-    })}</>;
+                        <SelectTrigger
+                            aria-label={`${mapping.target} 映射类型`}
+                            aria-invalid={Boolean(staleTarget || (mapping.kind === 'source_field' && (!value || !sourceField)))}
+                            className="transfer-node-mapping-kind-trigger"
+                        >
+                            <span data-slot="select-value" className="flex flex-1 text-left">
+                                {mappingKindOptions.find((option) => option.value === mapping.kind)?.label}
+                            </span>
+                        </SelectTrigger>
+                        <SelectContent side="bottom" align="start" sideOffset={4} container={menuContainer}>
+                            {mappingKindOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <ArrowRight size={15} aria-hidden="true" />
+                </div>
+                <div className="transfer-node-mapping-target">
+                    {targetField ? <FieldDetails field={targetField} side="target" /> : (
+                        <div className="transfer-node-stale-target">
+                            <div>
+                                <strong>{mapping.target}</strong>
+                                <span className="transfer-node-mapping-error">{targetLabel}已不存在</span>
+                            </div>
+                            <button
+                                type="button"
+                                aria-label={`移除 ${mapping.target} 失效映射`}
+                                title="移除失效映射"
+                                onClick={() => onRemove(mapping.target)}
+                            >
+                                <Trash2 size={15} />
+                            </button>
+                        </div>
+                    )}
+                </div>
+                </div>
+            );
+        })}
+    </div>;
 }
 
 function ResourceError({ message, retryLabel, onRetry }: { message: string; retryLabel: string; onRetry: () => void }) {
@@ -123,6 +381,7 @@ function EndpointFields({
     title,
     config,
     dataSources,
+    dataSourceSearch,
     metadata,
     databaseUnavailable,
     onSelectDataSource,
@@ -130,120 +389,210 @@ function EndpointFields({
     onSelectTable,
     onPatch,
     writeModes,
+    menuContainer,
 }: EndpointFieldsProps) {
     const endpoint = config[side];
+    const whereInputId = useId();
+    const [whereExpanded, setWhereExpanded] = useState(false);
+    const [whereTouched, setWhereTouched] = useState(false);
+    const whereValue = config.source.where ?? '';
+    const whereHasPrefix = /^\s*where\b/i.test(whereValue);
     const sideLabel = side === 'source' ? '来源' : '目标';
     const tableDisabled = !endpoint.dataSourceId
         || !endpoint.database
         || metadata.databases.loading
         || Boolean(metadata.databases.error)
         || metadata.tables.loading;
+    const dataSourceOptions = useMemo(
+        () => dataSources.map((dataSource) => ({
+            value: String(dataSource.id),
+            label: `${dataSource.name} (${dataSource.type})`,
+        })),
+        [dataSources],
+    );
+    const databaseOptions = useMemo(() => {
+        const options = metadata.databases.data.map((database) => ({ value: database, label: database }));
+        if (!databaseUnavailable || !endpoint.database) return options;
+        return [
+            { value: endpoint.database, label: `${endpoint.database}（不可用）` },
+            ...options,
+        ];
+    }, [databaseUnavailable, endpoint.database, metadata.databases.data]);
+    const tableOptions = useMemo(
+        () => {
+            const options = metadata.tables.data.map((table) => ({ value: table, label: table }));
+            if (!endpoint.table || options.some((option) => option.value === endpoint.table)) return options;
+            return [{ value: endpoint.table, label: endpoint.table }, ...options];
+        },
+        [endpoint.table, metadata.tables.data],
+    );
 
     return (
-        <section className="transfer-node-panel">
+        <section className="transfer-node-panel transfer-node-endpoint-panel">
             <h3>{title}</h3>
-            <label className="transfer-node-field">
-                数据源
-                <select
-                    value={endpoint.dataSourceId || ''}
-                    onChange={(event) => onSelectDataSource(Number(event.target.value))}
-                >
-                    <option value="">选择数据源</option>
-                    {dataSources.map((dataSource) => (
-                        <option key={dataSource.id} value={dataSource.id}>
-                            {dataSource.name} ({dataSource.type})
-                        </option>
-                    ))}
-                </select>
-            </label>
-            <label className="transfer-node-field">
-                数据库
-                <select
-                    value={endpoint.database ?? ''}
-                    disabled={!endpoint.dataSourceId || metadata.databases.loading}
-                    onChange={(event) => onSelectDatabase(event.target.value)}
-                >
-                    <option value="">选择数据库</option>
-                    {databaseUnavailable && endpoint.database && (
-                        <option value={endpoint.database}>{endpoint.database}（不可用）</option>
-                    )}
-                    {metadata.databases.data.map((database) => (
-                        <option key={database} value={database}>{database}</option>
-                    ))}
-                </select>
-            </label>
-            {metadata.databases.error && (
-                <ResourceError
-                    message={`${sideLabel}${metadata.databases.error}`}
-                    retryLabel={`重试${sideLabel}数据库`}
-                    onRetry={metadata.databases.retry}
-                />
-            )}
-            {databaseUnavailable && (
-                <div className="transfer-node-inline-error">
-                    已保存的{sideLabel}数据库不可用，请重新选择
+            <div className="transfer-node-connection-fields">
+                <div className="transfer-node-control-group transfer-node-control-group--data-source">
+                    <label className="transfer-node-field">
+                        数据源
+                        <TransferSearchSelect
+                            ariaLabel="数据源"
+                            value={endpoint.dataSourceId ? String(endpoint.dataSourceId) : ''}
+                            options={dataSourceOptions}
+                            placeholder="选择数据源"
+                            loading={dataSourceSearch.loading}
+                            loadingMore={dataSourceSearch.loadingMore}
+                            hasMore={dataSourceSearch.hasMore}
+                            menuContainer={menuContainer}
+                            contentClassName="min-w-[280px] max-w-[calc(100vw-32px)]"
+                            onChange={(nextValue) => onSelectDataSource(Number(nextValue))}
+                            onSearch={dataSourceSearch.search}
+                            onLoadMore={dataSourceSearch.loadMore}
+                        />
+                    </label>
                 </div>
-            )}
-            <label className="transfer-node-field">
-                表
-                <select
-                    value={endpoint.table}
-                    disabled={tableDisabled}
-                    onChange={(event) => onSelectTable(event.target.value)}
-                >
-                    <option value="">选择表</option>
-                    {metadata.tables.data.map((table) => <option key={table} value={table}>{table}</option>)}
-                </select>
-            </label>
-            {metadata.tables.error && (
-                <ResourceError
-                    message={`${sideLabel}${metadata.tables.error}`}
-                    retryLabel={`重试${sideLabel}表`}
-                    onRetry={metadata.tables.retry}
-                />
-            )}
-            {side === 'source' ? (
-                <label className="transfer-node-field">
-                    筛选条件（谓词片段）
-                    <input
-                        value={config.source.where ?? ''}
-                        onChange={(event) => onPatch({
-                            source: { ...config.source, where: event.target.value },
-                        })}
-                        placeholder="status = 'ACTIVE'"
-                    />
-                </label>
-            ) : (
-                <label className="transfer-node-field">
-                    写入方式
-                    <select
-                        value={config.target.writeMode ?? 'append'}
-                        disabled={!metadata.metadata.data || metadata.metadata.loading}
-                        onChange={(event) => onPatch({
-                            target: {
-                                ...config.target,
-                                writeMode: event.target.value as TransferConfig['target']['writeMode'],
-                            },
-                        })}
-                    >
-                        {writeModes.map((mode) => (
-                            <option key={mode.value} value={mode.value}>{mode.label}</option>
-                        ))}
-                        {!writeModes.length && <option value="append">加载目标表后可选择</option>}
-                    </select>
-                </label>
-            )}
+                <div className="transfer-node-control-group">
+                    <label className="transfer-node-field">
+                        数据库
+                        <TransferSearchSelect
+                            ariaLabel="数据库"
+                            value={endpoint.database ?? ''}
+                            options={databaseOptions}
+                            placeholder="选择数据库"
+                            disabled={!endpoint.dataSourceId || metadata.databases.loading}
+                            loading={metadata.databases.loading}
+                            menuContainer={menuContainer}
+                            contentClassName="min-w-[180px] max-w-[calc(100vw-32px)]"
+                            onChange={onSelectDatabase}
+                        />
+                    </label>
+                    {metadata.databases.error && (
+                        <ResourceError
+                            message={`${sideLabel}${metadata.databases.error}`}
+                            retryLabel={`重试${sideLabel}数据库`}
+                            onRetry={metadata.databases.retry}
+                        />
+                    )}
+                    {databaseUnavailable && (
+                        <div className="transfer-node-inline-error">
+                            已保存的{sideLabel}数据库不可用，请重新选择
+                        </div>
+                    )}
+                </div>
+                <div className="transfer-node-control-group">
+                    <label className="transfer-node-field">
+                        表
+                        <TransferSearchSelect
+                            ariaLabel="表"
+                            value={endpoint.table}
+                            options={tableOptions}
+                            placeholder="选择表"
+                            disabled={tableDisabled}
+                            loading={metadata.tables.loading}
+                            loadingMore={metadata.tables.loadingMore}
+                            hasMore={metadata.tables.hasMore}
+                            menuContainer={menuContainer}
+                            contentClassName="min-w-[280px] max-w-[calc(100vw-32px)]"
+                            onChange={onSelectTable}
+                            onSearch={metadata.tables.search}
+                            onLoadMore={metadata.tables.loadMore}
+                        />
+                    </label>
+                    {metadata.tables.error && (
+                        <ResourceError
+                            message={`${sideLabel}${metadata.tables.error}`}
+                            retryLabel={`重试${sideLabel}表`}
+                            onRetry={metadata.tables.retry}
+                        />
+                    )}
+                </div>
+            </div>
+            <div className={`transfer-node-secondary-fields transfer-node-secondary-fields--${side}`}>
+                {side === 'source' ? (
+                    <div className="transfer-node-field transfer-node-filter-field">
+                        <label htmlFor={whereInputId}>过滤条件（可选）</label>
+                        <div className={`transfer-node-filter-control${whereTouched && whereHasPrefix ? ' is-invalid' : ''}`}>
+                            <span className="transfer-node-filter-prefix" aria-hidden="true">WHERE</span>
+                            <textarea
+                                id={whereInputId}
+                                aria-label="过滤条件（可选）"
+                                aria-invalid={whereTouched && whereHasPrefix}
+                                rows={whereExpanded ? 3 : 1}
+                                value={whereValue}
+                                onBlur={() => setWhereTouched(true)}
+                                onChange={(event) => onPatch({
+                                    source: { ...config.source, where: event.target.value },
+                                })}
+                                placeholder="status = 'ACTIVE' AND created_at >= '2026-01-01'"
+                            />
+                            <button
+                                type="button"
+                                className="transfer-node-filter-expand"
+                                aria-label={whereExpanded ? '收起过滤条件' : '展开过滤条件'}
+                                title={whereExpanded ? '收起过滤条件' : '展开过滤条件'}
+                                onClick={() => setWhereExpanded((current) => !current)}
+                            >
+                                {whereExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                            </button>
+                        </div>
+                        {whereTouched && whereHasPrefix ? (
+                            <span className="transfer-node-filter-error">无需填写 WHERE，请从字段条件开始。</span>
+                        ) : (
+                            <span className="transfer-node-field-help">只填写 WHERE 后面的条件，语法按来源数据库执行。</span>
+                        )}
+                    </div>
+                ) : (
+                    <label className="transfer-node-field">
+                        写入方式
+                        <Select
+                            value={config.target.writeMode ?? 'append'}
+                            disabled={!metadata.metadata.data || metadata.metadata.loading}
+                            onValueChange={(nextMode) => {
+                                if (!nextMode) return;
+                                onPatch({
+                                    target: {
+                                        ...config.target,
+                                        writeMode: nextMode as TransferWriteMode,
+                                    },
+                                });
+                            }}
+                        >
+                            <SelectTrigger
+                                aria-label="写入方式"
+                                className="transfer-node-write-mode-trigger"
+                            >
+                                <span data-slot="select-value" className="flex flex-1 text-left">
+                                    {writeModes.find((mode) => mode.value === config.target.writeMode)?.label
+                                        ?? '加载目标表后可选择'}
+                                </span>
+                            </SelectTrigger>
+                            <SelectContent
+                                side="bottom"
+                                align="start"
+                                sideOffset={4}
+                                container={menuContainer}
+                            >
+                                {writeModes.map((mode) => (
+                                    <SelectItem key={mode.value} value={mode.value}>{mode.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </label>
+                )}
+            </div>
         </section>
     );
 }
 
-export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: TransferNodeDialogProps) {
+export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, menuContainer }: TransferNodeDialogProps) {
     const [config, setConfig] = useState<TransferConfig>(value ?? emptyConfig);
     const emittedConfigRef = useRef('');
     const reportedDraftRef = useRef('');
     const reportedConfigRef = useRef('');
     const previousValueRef = useRef(JSON.stringify(value ?? emptyConfig));
-    const { dataSources, source, target } = useTransferMetadata(
+    const refreshBaselineRef = useRef({ source: '', target: '' });
+    const [refreshPhase, setRefreshPhase] = useState<'idle' | 'requested' | 'loading'>('idle');
+    const [refreshMessage, setRefreshMessage] = useState('');
+    const { dataSources, dataSourceSearch, source, target } = useTransferMetadata(
         groupId,
         config.source.dataSourceId || undefined,
         config.source.database,
@@ -316,17 +665,29 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: 
 
     const sourceMetadata = source.metadata.data;
     const targetMetadata = target.metadata.data;
-    const sourceColumns = useMemo(
-        () => sourceMetadata?.columns.map((column) => column.name) ?? [],
+    const sourceFields = useMemo(
+        () => sourceMetadata?.columns.map(normalizeColumn) ?? [],
         [sourceMetadata],
     );
-    const targetColumns = useMemo(
-        () => targetMetadata?.columns.map((column) => column.name) ?? [],
+    const targetFields = useMemo(
+        () => targetMetadata?.columns.map(normalizeColumn) ?? [],
         [targetMetadata],
     );
-    const partitionColumns = useMemo(
-        () => targetMetadata?.partitionColumns.map((column) => column.name) ?? [],
+    const partitionFields = useMemo(
+        () => targetMetadata?.partitionColumns.map(normalizePartitionColumn) ?? [],
         [targetMetadata],
+    );
+    const sourceColumns = useMemo(
+        () => sourceFields.map((column) => column.name),
+        [sourceFields],
+    );
+    const targetColumns = useMemo(
+        () => targetFields.map((column) => column.name),
+        [targetFields],
+    );
+    const partitionColumns = useMemo(
+        () => partitionFields.map((column) => column.name),
+        [partitionFields],
     );
     const writeModes = useMemo(
         () => targetMetadata?.writeModes.filter(
@@ -335,32 +696,38 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: 
         [targetMetadata],
     );
 
-    useEffect(() => {
-        if (!sourceMetadata || !targetMetadata) return;
-        setConfig((current) => ({
-            ...current,
+    const reconciledConfig = useMemo(() => {
+        if (!config.source.table || !config.target.table || !sourceMetadata || !targetMetadata) return config;
+        const next = {
+            ...config,
             fieldMappings: reconcileTargetMappings(
-                current.fieldMappings,
+                config.fieldMappings,
                 sourceColumns,
                 targetColumns,
             ),
             partitions: reconcileTargetMappings(
-                current.partitions,
+                config.partitions,
                 sourceColumns,
                 partitionColumns,
             ) as TransferPartitionMapping[],
             target: {
-                ...current.target,
-                writeMode: writeModes.some((mode) => mode.value === current.target.writeMode)
-                    ? current.target.writeMode
+                ...config.target,
+                writeMode: writeModes.some((mode) => mode.value === config.target.writeMode)
+                    ? config.target.writeMode
                     : writeModes[0]?.value ?? 'append',
             },
-        }));
-    }, [partitionColumns, sourceColumns, sourceMetadata, targetColumns, targetMetadata, writeModes]);
+        };
+        return JSON.stringify(next) === JSON.stringify(config) ? config : next;
+    }, [config, partitionColumns, sourceColumns, sourceMetadata, targetColumns, targetMetadata, writeModes]);
+
+    useEffect(() => {
+        if (reconciledConfig === config) return;
+        setConfig((current) => current === config ? reconciledConfig : current);
+    }, [config, reconciledConfig]);
 
     const validation = useMemo(
-        () => validateTransferConfig(config, targetColumns, partitionColumns),
-        [config, partitionColumns, targetColumns],
+        () => validateTransferConfig(reconciledConfig, targetColumns, partitionColumns, sourceColumns),
+        [partitionColumns, reconciledConfig, sourceColumns, targetColumns],
     );
     const validationErrors = useMemo(() => [
         ...validation.errors,
@@ -368,10 +735,12 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: 
         ...(targetDatabaseUnavailable ? ['已保存的目标数据库不可用，请重新选择'] : []),
     ], [sourceDatabaseUnavailable, targetDatabaseUnavailable, validation.errors]);
     const validationKey = validationErrors.join('\n');
-    const writeModeValid = writeModes.some((mode) => mode.value === (config.target.writeMode ?? 'append'));
+    const writeModeValid = writeModes.some(
+        (mode) => mode.value === (reconciledConfig.target.writeMode ?? 'append'),
+    );
     const saveable = Boolean(
-        config.source.database
-        && config.target.database
+        reconciledConfig.source.database
+        && reconciledConfig.target.database
         && sourceMetadata
         && targetMetadata
         && !sourceDatabaseUnavailable
@@ -381,19 +750,19 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: 
     );
 
     useEffect(() => {
-        const draftReport = JSON.stringify({ config, valid: saveable, errors: validationErrors });
+        const draftReport = JSON.stringify({ config: reconciledConfig, valid: saveable, errors: validationErrors });
         if (draftReport !== reportedDraftRef.current) {
             reportedDraftRef.current = draftReport;
-            reportedConfigRef.current = JSON.stringify(config);
-            onDraftChange?.(config, { valid: saveable, errors: validationErrors });
+            reportedConfigRef.current = JSON.stringify(reconciledConfig);
+            onDraftChange?.(reconciledConfig, { valid: saveable, errors: validationErrors });
         }
         if (!saveable) return;
-        const next = JSON.stringify(config);
+        const next = JSON.stringify(reconciledConfig);
         if (next !== emittedConfigRef.current) {
             emittedConfigRef.current = next;
-            onChange(config);
+            onChange(reconciledConfig);
         }
-    }, [config, onChange, onDraftChange, saveable, validationErrors, validationKey]);
+    }, [onChange, onDraftChange, reconciledConfig, saveable, validationErrors, validationKey]);
 
     const patch = (next: Partial<TransferConfig>) => {
         setConfig((current) => ({ ...current, ...next }));
@@ -430,9 +799,51 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: 
         }));
     };
 
-    const tablesSelected = Boolean(config.source.table && config.target.table);
-    const metadataReady = Boolean(sourceMetadata && targetMetadata);
+    const endpointsConfigured = Boolean(
+        reconciledConfig.source.dataSourceId
+        && reconciledConfig.source.database
+        && reconciledConfig.source.table
+        && reconciledConfig.target.dataSourceId
+        && reconciledConfig.target.database
+        && reconciledConfig.target.table,
+    );
+    const metadataReady = Boolean(endpointsConfigured && sourceMetadata && targetMetadata);
     const targetHasFields = targetColumns.length > 0 || partitionColumns.length > 0;
+    const metadataRefreshing = source.metadata.loading || target.metadata.loading;
+    const sourceFingerprint = schemaFingerprint(sourceFields);
+    const targetFingerprint = schemaFingerprint([...targetFields, ...partitionFields]);
+
+    useEffect(() => {
+        if (refreshPhase === 'requested' && metadataRefreshing) {
+            setRefreshPhase('loading');
+            return;
+        }
+        if (refreshPhase !== 'loading' || metadataRefreshing) return;
+
+        const changed = refreshBaselineRef.current.source !== sourceFingerprint
+            || refreshBaselineRef.current.target !== targetFingerprint;
+        if (source.metadata.error || target.metadata.error) {
+            setRefreshMessage('字段结构刷新失败，请重试');
+        } else {
+            setRefreshMessage(changed ? '字段结构已更新，请检查失效映射' : '字段结构已刷新，未发现变化');
+        }
+        setRefreshPhase('idle');
+    }, [
+        metadataRefreshing,
+        refreshPhase,
+        source.metadata.error,
+        sourceFingerprint,
+        target.metadata.error,
+        targetFingerprint,
+    ]);
+
+    const refreshFieldStructures = () => {
+        refreshBaselineRef.current = { source: sourceFingerprint, target: targetFingerprint };
+        setRefreshMessage('正在刷新字段结构');
+        setRefreshPhase('requested');
+        source.metadata.retry();
+        target.metadata.retry();
+    };
 
     return (
         <div className="transfer-node-dialog" data-testid="transfer-node-dialog">
@@ -440,8 +851,9 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: 
                 <EndpointFields
                     side="source"
                     title="来源"
-                    config={config}
+                    config={reconciledConfig}
                     dataSources={dataSources}
+                    dataSourceSearch={dataSourceSearch}
                     metadata={source}
                     databaseUnavailable={sourceDatabaseUnavailable}
                     onSelectDataSource={(id) => selectEndpoint('source', id)}
@@ -449,12 +861,14 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: 
                     onSelectTable={(table) => selectTable('source', table)}
                     onPatch={patch}
                     writeModes={writeModes}
+                    menuContainer={menuContainer}
                 />
                 <EndpointFields
                     side="target"
                     title="目标"
-                    config={config}
+                    config={reconciledConfig}
                     dataSources={dataSources}
+                    dataSourceSearch={dataSourceSearch}
                     metadata={target}
                     databaseUnavailable={targetDatabaseUnavailable}
                     onSelectDataSource={(id) => selectEndpoint('target', id)}
@@ -462,14 +876,43 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: 
                     onSelectTable={(table) => selectTable('target', table)}
                     onPatch={patch}
                     writeModes={writeModes}
+                    menuContainer={menuContainer}
                 />
             </div>
 
             <section className="transfer-node-panel transfer-node-mappings-panel">
-                <h3>目标普通字段</h3>
-                {!tablesSelected && <div className="transfer-node-status">请选择来源表和目标表</div>}
-                {source.metadata.loading && <div className="transfer-node-status">正在加载来源字段</div>}
-                {target.metadata.loading && <div className="transfer-node-status">正在加载目标字段</div>}
+                <div className="transfer-node-panel-heading">
+                    <h3>字段映射</h3>
+                    <div className="transfer-node-mapping-actions">
+                        {metadataReady && validation.unmappedTargetColumns.length > 0 && (
+                            <span className="transfer-node-mapping-summary">
+                                {validation.unmappedTargetColumns.length} 个目标字段待映射
+                            </span>
+                        )}
+                        {metadataReady && (
+                            <button
+                                type="button"
+                                className="transfer-node-refresh-fields"
+                                aria-label="刷新字段结构"
+                                title="重新读取来源表和目标表的字段结构"
+                                disabled={metadataRefreshing || refreshPhase !== 'idle'}
+                                onClick={refreshFieldStructures}
+                            >
+                                <RefreshCw size={14} className={metadataRefreshing ? 'is-spinning' : undefined} />
+                                刷新字段结构
+                            </button>
+                        )}
+                    </div>
+                </div>
+                {refreshMessage && <div className="transfer-node-refresh-message" role="status">{refreshMessage}</div>}
+                {!endpointsConfigured && (
+                    <div className="transfer-node-status transfer-node-status--empty">
+                        <strong>完成来源和目标配置后生成字段映射</strong>
+                        <span>系统会按目标表字段自动匹配同名源字段。</span>
+                    </div>
+                )}
+                {endpointsConfigured && source.metadata.loading && <div className="transfer-node-status">正在加载来源字段</div>}
+                {endpointsConfigured && target.metadata.loading && <div className="transfer-node-status">正在加载目标字段</div>}
                 {source.metadata.error && (
                     <ResourceError
                         message={`来源${source.metadata.error}`}
@@ -487,33 +930,42 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange }: 
                 {metadataReady && !targetHasFields && (
                     <div className="transfer-node-status">目标表没有可传输字段</div>
                 )}
-                {metadataReady && targetColumns.length > 0 && (
+                {metadataReady && (reconciledConfig.fieldMappings?.length ?? 0) > 0 && (
                     <MappingRows
-                        mappings={config.fieldMappings}
-                        sourceColumns={sourceColumns}
-                        errorPrefix="目标字段"
+                        mappings={reconciledConfig.fieldMappings}
+                        sourceFields={sourceFields}
+                        targetFields={targetFields}
+                        targetLabel="目标字段"
+                        menuContainer={menuContainer}
                         onChange={(fieldMappings) => patch({ fieldMappings: fieldMappings as TransferFieldMapping[] })}
+                        onRemove={(removedTarget) => patch({
+                            fieldMappings: reconciledConfig.fieldMappings?.filter(
+                                (mapping) => mapping.target !== removedTarget,
+                            ),
+                        })}
                     />
                 )}
             </section>
 
-            {metadataReady && targetMetadata?.partitioned && (
+            {metadataReady && (targetMetadata?.partitioned || (reconciledConfig.partitions?.length ?? 0) > 0) && (
                 <section className="transfer-node-panel transfer-node-mappings-panel">
-                    <h3>Hive 分区字段</h3>
+                    <h3>分区映射</h3>
                     <MappingRows
-                        mappings={config.partitions}
-                        sourceColumns={sourceColumns}
-                        errorPrefix="分区字段"
+                        mappings={reconciledConfig.partitions}
+                        sourceFields={sourceFields}
+                        targetFields={partitionFields}
+                        targetLabel="分区字段"
+                        menuContainer={menuContainer}
                         onChange={(partitions) => patch({ partitions: partitions as TransferPartitionMapping[] })}
+                        onRemove={(removedTarget) => patch({
+                            partitions: reconciledConfig.partitions?.filter(
+                                (mapping) => mapping.target !== removedTarget,
+                            ),
+                        })}
                     />
                 </section>
             )}
 
-            {validation.errors.length > 0 && (
-                <div className="transfer-node-errors">
-                    {validation.errors.map((error) => <div key={error}>{error}</div>)}
-                </div>
-            )}
         </div>
     );
 }

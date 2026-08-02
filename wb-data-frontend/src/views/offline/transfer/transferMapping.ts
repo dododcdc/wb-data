@@ -11,8 +11,9 @@ export function reconcileTargetMappings<T extends TransferFieldMapping | Transfe
 ): T[] {
     const sourceNames = new Set(sourceColumns);
     const currentByTarget = new Map((currentMappings ?? []).map((mapping) => [mapping.target, mapping]));
+    const targetNames = new Set(targetColumns);
 
-    return targetColumns.map((target) => {
+    const activeMappings = targetColumns.map((target) => {
         const current = currentByTarget.get(target);
         if (current) {
             if (current.kind === 'source_field' && !current.source && sourceNames.has(target)) {
@@ -26,6 +27,9 @@ export function reconcileTargetMappings<T extends TransferFieldMapping | Transfe
             ...(sourceNames.has(target) ? { source: target } : {}),
         } as T;
     });
+
+    const staleMappings = (currentMappings ?? []).filter((mapping) => !targetNames.has(mapping.target));
+    return [...activeMappings, ...staleMappings];
 }
 
 export function updateMapping(

@@ -1,14 +1,16 @@
 .transfer-node-dialog {
     height: 100%;
     overflow: auto;
-    padding: 20px;
+    padding: 16px;
     color: var(--color-text-primary);
 }
 
 .transfer-node-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
+    gap: 0;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--color-border);
 }
 
 .transfer-node-panel {
@@ -19,11 +21,50 @@
 }
 
 .transfer-node-grid + .transfer-node-panel {
-    margin-top: 16px;
+    margin-top: 12px;
+}
+
+.transfer-node-endpoint-panel {
+    min-width: 0;
+    padding: 0 16px 0 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.transfer-node-endpoint-panel + .transfer-node-endpoint-panel {
+    padding-right: 0;
+    padding-left: 16px;
+    border-left: 1px solid var(--color-border);
+}
+
+.transfer-node-connection-fields {
+    display: grid;
+    grid-template-columns: minmax(180px, 0.9fr) minmax(130px, 0.65fr) minmax(240px, 1.35fr);
+    gap: 10px;
+    align-items: start;
+}
+
+.transfer-node-control-group,
+.transfer-node-field {
+    min-width: 0;
+}
+
+.transfer-node-secondary-fields {
+    display: grid;
+    margin-top: 10px;
+}
+
+.transfer-node-secondary-fields--source {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.transfer-node-secondary-fields--target {
+    grid-template-columns: minmax(180px, 220px);
 }
 
 .transfer-node-panel h3 {
-    margin: 0 0 12px;
+    margin: 0 0 10px;
     color: var(--color-text-primary);
     font-size: 0.82rem;
     font-weight: 700;
@@ -32,16 +73,19 @@
 .transfer-node-field {
     display: grid;
     gap: 5px;
-    margin-top: 10px;
+    margin-top: 0;
     color: var(--color-text-secondary);
     font-size: 0.76rem;
 }
 
 .transfer-node-field input,
+.transfer-node-field textarea,
 .transfer-node-field select,
 .transfer-node-mapping input,
 .transfer-node-mapping select {
+    width: 100%;
     min-height: 34px;
+    min-width: 0;
     padding: 5px 8px;
     border: 1px solid var(--color-input-border);
     border-radius: var(--radius-sm);
@@ -51,6 +95,7 @@
 }
 
 .transfer-node-field input:focus,
+.transfer-node-field textarea:focus,
 .transfer-node-field select:focus,
 .transfer-node-mapping input:focus,
 .transfer-node-mapping select:focus {
@@ -65,29 +110,413 @@
     opacity: 0.62;
 }
 
-.transfer-node-mapping {
-    display: grid;
-    grid-template-columns: minmax(120px, 1fr) 130px minmax(160px, 2fr);
-    gap: 8px;
-    align-items: center;
-    padding: 9px 0;
-    border-top: 1px solid var(--color-border-subtle);
-    font-size: 0.76rem;
+.transfer-node-search-select {
+    height: 34px !important;
+    min-height: 34px;
+    background: var(--color-input-bg) !important;
 }
 
-.transfer-node-mapping:first-of-type {
+.transfer-node-filter-control {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) 32px;
+    min-height: 34px;
+    overflow: hidden;
+    border: 1px solid var(--color-input-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-input-bg);
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.transfer-node-filter-control:focus-within {
+    border-color: var(--color-focus);
+    box-shadow: 0 0 0 2px var(--color-focus-glow);
+}
+
+.transfer-node-filter-control.is-invalid {
+    border-color: var(--color-error-border);
+}
+
+.transfer-node-filter-prefix {
+    display: flex;
+    align-items: flex-start;
+    padding: 8px 9px;
+    border-right: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1rem;
+}
+
+.transfer-node-filter-control textarea {
+    min-height: 32px;
+    padding: 7px 9px;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.76rem;
+    line-height: 1rem;
+    resize: none;
+}
+
+.transfer-node-filter-control textarea:focus {
+    border: 0;
+    box-shadow: none;
+}
+
+.transfer-node-filter-expand {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 9px;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+}
+
+.transfer-node-filter-expand:hover {
+    background: var(--color-bg-secondary);
+    color: var(--color-text-primary);
+}
+
+.transfer-node-filter-expand:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: -2px;
+}
+
+.transfer-node-field-help,
+.transfer-node-filter-error {
+    font-size: 0.7rem;
+    line-height: 1.35;
+}
+
+.transfer-node-field-help {
+    color: var(--color-text-muted);
+}
+
+.transfer-node-filter-error {
+    color: var(--color-error);
+}
+
+.transfer-node-mapping-matrix {
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+}
+
+.transfer-node-mapping-columns,
+.transfer-node-mapping {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) 140px minmax(260px, 1fr);
+    gap: 12px;
+}
+
+.transfer-node-mapping-columns {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+    color: var(--color-text-muted);
+    font-size: 0.68rem;
+    font-weight: 600;
+}
+
+.transfer-node-mapping-columns span:nth-child(2) {
+    text-align: center;
+}
+
+.transfer-node-mapping {
+    align-items: start;
+    min-height: 58px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--color-border-subtle);
+    font-size: 0.76rem;
+    transition: background-color 150ms ease;
+}
+
+.transfer-node-mapping-columns + .transfer-node-mapping {
     border-top: 0;
 }
 
-.transfer-node-mapping-error {
+.transfer-node-mapping.is-invalid {
+    background: var(--color-error-bg);
+    box-shadow: inset 1px 0 0 var(--color-error-border);
+}
+
+.transfer-node-mapping-source {
+    display: grid;
+    grid-template-columns: minmax(190px, 1fr) minmax(140px, 0.8fr);
+    align-items: center;
+    min-width: 0;
+    gap: 10px;
+}
+
+.transfer-node-mapping-source > input {
     grid-column: 1 / -1;
+}
+
+.transfer-node-mapping-source > .transfer-node-mapping-error {
+    grid-column: 1 / -1;
+}
+
+.transfer-node-mapping-target {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    min-height: 34px;
+}
+
+.transfer-node-mapping-target > * {
+    width: 100%;
+}
+
+.transfer-node-mapping-kind {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 16px;
+    align-items: center;
+    min-height: 34px;
+    gap: 7px;
+    color: var(--color-text-muted);
+}
+
+.transfer-node-mapping-source-select {
+    height: 34px !important;
+    min-height: 34px;
+    background: var(--color-input-bg) !important;
+}
+
+.transfer-node-field-details {
+    display: grid;
+    align-items: center;
+    min-width: 0;
+    gap: 6px;
+}
+
+.transfer-node-field-details--source {
+    grid-template-columns: 72px 36px 36px minmax(72px, 1fr);
+}
+
+.transfer-node-field-details--target {
+    grid-template-columns: minmax(110px, 1fr) 72px 36px 36px 36px minmax(72px, 1fr);
+}
+
+.transfer-node-field-details strong {
+    flex: 0 1 auto;
+    overflow: hidden;
+    color: var(--color-text-primary);
+    font-size: 0.78rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.transfer-node-field-type,
+.transfer-node-field-flag {
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.64rem;
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+.transfer-node-field-type {
+    background: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+}
+
+.transfer-node-field-flag {
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+}
+
+.transfer-node-field-flag-slot {
+    display: flex;
+    width: 36px;
+    min-width: 0;
+    justify-content: flex-start;
+}
+
+.transfer-node-field-description {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: 0.68rem;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.transfer-node-field-option {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+.transfer-node-field-option > span {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.transfer-node-field-option small {
+    overflow: hidden;
+    color: var(--color-text-muted);
+    font-size: 0.68rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.transfer-node-stale-target {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.transfer-node-stale-target > div {
+    display: grid;
+    gap: 3px;
+}
+
+.transfer-node-stale-target button {
+    display: grid;
+    flex: 0 0 32px;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border: 1px solid var(--color-error-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
     color: var(--color-error);
+}
+
+.transfer-node-stale-target button:hover {
+    background: var(--color-bg-primary);
+}
+
+.transfer-node-mapping .transfer-node-mapping-kind-trigger {
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    padding: 5px 8px;
+    border-color: var(--color-input-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-input-bg);
+    color: var(--color-text-primary);
+    font: inherit;
+}
+
+.transfer-node-mapping .transfer-node-mapping-kind-trigger:focus-visible {
+    border-color: var(--color-focus);
+    box-shadow: 0 0 0 2px var(--color-focus-glow);
+}
+
+.transfer-node-field .transfer-node-write-mode-trigger {
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    padding: 5px 8px;
+    border-color: var(--color-input-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-input-bg);
+    color: var(--color-text-primary);
+    font: inherit;
+}
+
+.transfer-node-field .transfer-node-write-mode-trigger:focus-visible {
+    border-color: var(--color-focus);
+    box-shadow: 0 0 0 2px var(--color-focus-glow);
+}
+
+.transfer-node-panel-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.transfer-node-panel-heading h3 {
+    margin-bottom: 0;
+}
+
+.transfer-node-mapping-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.transfer-node-refresh-fields {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-primary);
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: 0.7rem;
+}
+
+.transfer-node-refresh-fields:hover:not(:disabled) {
+    border-color: var(--color-input-border);
+    background: var(--color-bg-secondary);
+    color: var(--color-text-primary);
+}
+
+.transfer-node-refresh-fields:disabled {
+    cursor: wait;
+    opacity: 0.58;
+}
+
+.transfer-node-refresh-fields .is-spinning {
+    animation: transfer-node-spin 800ms linear infinite;
+}
+
+.transfer-node-refresh-message {
+    margin: -4px 0 10px;
+    color: var(--color-text-muted);
+    font-size: 0.7rem;
+    text-align: right;
+}
+
+@keyframes transfer-node-spin {
+    to { transform: rotate(360deg); }
+}
+
+.transfer-node-mapping-summary {
+    color: var(--color-warning);
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+.transfer-node-mapping-error {
+    color: var(--color-error);
+    font-size: 0.68rem;
+    line-height: 1.35;
 }
 
 .transfer-node-status {
     padding: 12px 0;
     color: var(--color-text-muted);
     font-size: 0.78rem;
+}
+
+.transfer-node-status--empty {
+    display: grid;
+    gap: 4px;
+}
+
+.transfer-node-status--empty strong {
+    color: var(--color-text-secondary);
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.transfer-node-status--empty span {
+    font-size: 0.72rem;
 }
 
 .transfer-node-resource-error {
@@ -109,8 +538,7 @@
     font: inherit;
 }
 
-.transfer-node-inline-error,
-.transfer-node-errors {
+.transfer-node-inline-error {
     color: var(--color-error);
     font-size: 0.75rem;
 }
@@ -119,8 +547,28 @@
     margin-top: 6px;
 }
 
-.transfer-node-errors {
-    margin-top: 14px;
+@media (max-width: 1100px) {
+    .transfer-node-connection-fields {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .transfer-node-control-group--data-source {
+        grid-column: 1 / -1;
+    }
+
+    .transfer-node-mapping-source {
+        grid-template-columns: minmax(160px, 1fr) minmax(100px, 0.65fr);
+    }
+
+    .transfer-node-field-details--source {
+        grid-template-columns: 64px 34px 34px minmax(56px, 1fr);
+        gap: 4px;
+    }
+
+    .transfer-node-field-details--target {
+        grid-template-columns: minmax(96px, 1fr) 64px 34px 34px 34px minmax(56px, 1fr);
+        gap: 4px;
+    }
 }
 
 @media (max-width: 800px) {
@@ -128,11 +576,73 @@
         grid-template-columns: 1fr;
     }
 
-    .transfer-node-mapping {
-        grid-template-columns: 1fr;
+    .transfer-node-endpoint-panel {
+        padding-right: 0;
     }
 
-    .transfer-node-mapping-error {
+    .transfer-node-endpoint-panel + .transfer-node-endpoint-panel {
+        margin-top: 12px;
+        padding-top: 12px;
+        padding-left: 0;
+        border-top: 1px solid var(--color-border);
+        border-left: 0;
+    }
+
+    .transfer-node-mapping-columns {
+        display: none;
+    }
+
+    .transfer-node-mapping {
+        grid-template-columns: 1fr;
+        gap: 10px;
+        padding: 12px;
+    }
+
+    .transfer-node-mapping-kind {
+        grid-template-columns: minmax(0, 180px) 16px;
+    }
+
+    .transfer-node-mapping-kind::before {
+        grid-column: 1 / -1;
+        color: var(--color-text-muted);
+        content: '映射方式';
+        font-size: 0.68rem;
+    }
+
+    .transfer-node-mapping-source {
+        grid-template-columns: minmax(180px, 1fr) minmax(120px, 0.75fr);
+    }
+}
+
+@media (max-width: 560px) {
+    .transfer-node-dialog {
+        padding: 12px;
+    }
+
+    .transfer-node-connection-fields,
+    .transfer-node-secondary-fields--target {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .transfer-node-control-group--data-source {
         grid-column: auto;
+    }
+
+    .transfer-node-panel-heading {
+        align-items: flex-start;
+    }
+
+    .transfer-node-mapping-actions {
+        align-items: flex-end;
+        flex-direction: column;
+    }
+
+    .transfer-node-mapping-source {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .transfer-node-mapping-source > .transfer-node-field-details,
+    .transfer-node-mapping-source > .transfer-node-mapping-error {
+        grid-column: 1;
     }
 }

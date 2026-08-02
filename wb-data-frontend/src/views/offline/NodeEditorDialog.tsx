@@ -237,6 +237,7 @@ export function NodeEditorDialog({
                             value={activeNode.transferDraft ?? activeNode.transfer}
                             onChange={() => {}}
                             onDraftChange={handleTransferDraftChange}
+                            menuContainer={dialogEl}
                         />
                     ) : isSqlNode ? (
                         <SqlEditor
