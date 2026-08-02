@@ -40,7 +40,7 @@ public final class MySqlDataSourcePlugin extends AbstractJdbcDataSourcePlugin {
     @Override
     protected String buildJdbcUrl(DataSourceConnectionInfo connectionInfo) {
         String jdbcParams = connectionParam(connectionInfo.connectionParams(), "jdbcParams");
-        String suffix = jdbcParams == null ? "useSSL=false&serverTimezone=UTC" : jdbcParams;
+        String suffix = jdbcParams == null ? "useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" : jdbcParams;
         return String.format(
                 "jdbc:mysql://%s:%s/%s?%s",
                 connectionInfo.host(),
