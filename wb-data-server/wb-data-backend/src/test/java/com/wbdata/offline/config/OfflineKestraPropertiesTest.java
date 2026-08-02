@@ -10,7 +10,7 @@ class OfflineKestraPropertiesTest {
     void transferRuntimeProperties_haveSafeDefaultNamesAndRuntimeSettings() {
         OfflineTransferProperties properties = new OfflineTransferProperties();
 
-        assertThat(properties.getSeatunnelImage()).isEqualTo("apache/seatunnel:2.3.13");
+        assertThat(properties.getSeatunnelImage()).isEqualTo("wb-data-seatunnel:2.3.13");
         assertThat(properties.getDockerNetwork()).isEqualTo("wb-data_default");
         assertThat(properties.getInternalBaseUrlEnv()).isEqualTo("WB_DATA_INTERNAL_BASE_URL");
         assertThat(properties.getInternalTokenEnv()).isEqualTo("WB_DATA_INTERNAL_TOKEN");

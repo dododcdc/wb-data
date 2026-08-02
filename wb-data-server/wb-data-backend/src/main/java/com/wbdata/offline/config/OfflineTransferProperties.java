@@ -9,7 +9,9 @@ import java.util.List;
 @Component
 @ConfigurationProperties(prefix = "wbdata.offline.transfer")
 public class OfflineTransferProperties {
-    private String seatunnelImage = "apache/seatunnel:2.3.13";
+    public static final String DEFAULT_SEATUNNEL_IMAGE = "wb-data-seatunnel:2.3.13";
+
+    private String seatunnelImage = DEFAULT_SEATUNNEL_IMAGE;
     private String dockerNetwork = "wb-data_default";
     private String internalBaseUrlEnv = "WB_DATA_INTERNAL_BASE_URL";
     private String internalTokenEnv = "WB_DATA_INTERNAL_TOKEN";
