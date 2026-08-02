@@ -30,7 +30,7 @@ final class OfflineFlowYamlSupport {
 
     OfflineFlowYamlSupport() {
         this(new TransferRuntimeSettings(
-                "apache/seatunnel:2.3.13",
+                OfflineTransferProperties.DEFAULT_SEATUNNEL_IMAGE,
                 "wb-data_default",
                 "WB_DATA_INTERNAL_BASE_URL",
                 "WB_DATA_INTERNAL_TOKEN",

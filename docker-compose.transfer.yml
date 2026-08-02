@@ -1,4 +1,16 @@
 services:
+  wb-data-seatunnel:
+    image: ${WB_DATA_TRANSFER_SEATUNNEL_IMAGE:-wb-data-seatunnel:2.3.13}
+    build:
+      context: .
+      dockerfile: docker/seatunnel/Dockerfile
+      args:
+        SEATUNNEL_BASE_IMAGE: ${WB_DATA_TRANSFER_SEATUNNEL_BASE_IMAGE:-apache/seatunnel:2.3.13}
+        HIVE_JDBC_VERSION: ${WB_DATA_TRANSFER_HIVE_JDBC_VERSION:-3.1.3}
+        HIVE_JDBC_SHA1: ${WB_DATA_TRANSFER_HIVE_JDBC_SHA1:-a5b6b2f2afbb2b9d5b2bca9396d6e16da8c18edb}
+    profiles:
+      - build
+
   wb-data-transfer-mysql:
     image: ${WB_DATA_TRANSFER_MYSQL_IMAGE:-mysql:8.0}
     container_name: wb-data-transfer-mysql

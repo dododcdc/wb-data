@@ -108,6 +108,7 @@ class OfflineFlowYamlSupportTest {
                 "transfer_1", "TRANSFER", null, null, null, "transfers/orders/transfer_1.transfer.json"
         ), Map.of());
 
+        assertThat(task).containsEntry("containerImage", OfflineTransferProperties.DEFAULT_SEATUNNEL_IMAGE);
         Map<String, Object> taskRunner = (Map<String, Object>) task.get("taskRunner");
         assertThat(taskRunner).doesNotContainKey("volumes");
     }
