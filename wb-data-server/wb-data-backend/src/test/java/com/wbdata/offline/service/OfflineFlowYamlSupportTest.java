@@ -12,6 +12,48 @@ import static org.assertj.core.api.Assertions.assertThat;
 class OfflineFlowYamlSupportTest {
 
     @Test
+    @SuppressWarnings("unchecked")
+    void buildDebugFlow_selectedModePrunesDependenciesToDisabledTasks() {
+        OfflineFlowYamlSupport support = new OfflineFlowYamlSupport();
+        String source = support.compileGraph(
+                support.buildEmptyFlowYaml("orders", "pg-1"),
+                List.of(
+                        new OfflineFlowYamlSupport.FlowNode("task_a", "SHELL", "scripts/task_a.sh", null, null, null),
+                        new OfflineFlowYamlSupport.FlowNode("task_b", "SHELL", "scripts/task_b.sh", null, null, null),
+                        new OfflineFlowYamlSupport.FlowNode("task_c", "SHELL", "scripts/task_c.sh", null, null, null)
+                ),
+                List.of(
+                        new OfflineFlowYamlSupport.FlowEdge("task_a", "task_b"),
+                        new OfflineFlowYamlSupport.FlowEdge("task_b", "task_c")
+                ),
+                Map.of()
+        );
+
+        String debugFlow = support.buildDebugFlow(
+                source,
+                "wb-debug-g1-bmain-u1",
+                "_flows/orders/flow.yaml",
+                1L,
+                1L,
+                "main",
+                "revision",
+                "SELECTED",
+                List.of("task_b", "task_c")
+        );
+
+        Map<String, Object> root = new Yaml().load(debugFlow);
+        Map<String, Object> dag = ((List<Map<String, Object>>) root.get("tasks")).getFirst();
+        List<Map<String, Object>> dagTasks = (List<Map<String, Object>>) dag.get("tasks");
+        Map<String, Object> taskA = dagTasks.get(0);
+        Map<String, Object> taskB = dagTasks.get(1);
+        Map<String, Object> taskC = dagTasks.get(2);
+
+        assertThat((Map<String, Object>) taskA.get("task")).containsEntry("disabled", true);
+        assertThat(taskB).doesNotContainKey("dependsOn");
+        assertThat(taskC).containsEntry("dependsOn", List.of("task_b"));
+    }
+
+    @Test
     void compileAndParseGraph_roundTripsTransferMetadataAndNamespaceSidecar() {
         OfflineFlowYamlSupport support = new OfflineFlowYamlSupport();
         String transferPath = "transfers/orders/transfer_1.transfer.json";
