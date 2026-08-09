@@ -794,14 +794,16 @@ final class OfflineFlowYamlSupport {
             Object childTasks = task.get("tasks");
             if (childTasks instanceof List<?> rawChildTasks && !rawChildTasks.isEmpty()) {
                 if (isDagTask(task)) {
+                    List<Map<String, Object>> dagChildren = castTaskList(rawChildTasks);
                     List<Map<String, Object>> unwrappedChildren = new ArrayList<>();
-                    for (Map<String, Object> wrapper : castTaskList(rawChildTasks)) {
+                    for (Map<String, Object> wrapper : dagChildren) {
                         Object innerTask = wrapper.get("task");
                         if (innerTask instanceof Map<?, ?> inner) {
                             unwrappedChildren.add((Map<String, Object>) inner);
                         }
                     }
                     descendantSelected = applySelection(unwrappedChildren, selectedTaskIds);
+                    pruneDagDependencies(dagChildren);
                 } else {
                     descendantSelected = applySelection(castTaskList(rawChildTasks), selectedTaskIds);
                 }
@@ -819,6 +821,34 @@ final class OfflineFlowYamlSupport {
             subtreeSelected = subtreeSelected || keepEnabled;
         }
         return subtreeSelected;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void pruneDagDependencies(List<Map<String, Object>> dagTasks) {
+        Set<String> enabledTaskIds = new LinkedHashSet<>();
+        for (Map<String, Object> wrapper : dagTasks) {
+            Object innerTask = wrapper.get("task");
+            if (innerTask instanceof Map<?, ?> inner && !Boolean.TRUE.equals(inner.get("disabled"))) {
+                enabledTaskIds.add(requiredString((Map<String, Object>) inner, "id"));
+            }
+        }
+
+        for (Map<String, Object> wrapper : dagTasks) {
+            Object dependsOn = wrapper.get("dependsOn");
+            if (!(dependsOn instanceof List<?> dependencies)) {
+                continue;
+            }
+            List<String> retained = dependencies.stream()
+                    .filter(String.class::isInstance)
+                    .map(String.class::cast)
+                    .filter(enabledTaskIds::contains)
+                    .toList();
+            if (retained.isEmpty()) {
+                wrapper.remove("dependsOn");
+            } else {
+                wrapper.put("dependsOn", retained);
+            }
+        }
     }
 
     private Map<String, Object> findScheduleTrigger(Map<String, Object> root) {
