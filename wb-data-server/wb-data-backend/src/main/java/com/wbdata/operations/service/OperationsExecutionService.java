@@ -6,6 +6,10 @@ import com.wbdata.offline.service.KestraClient;
 import com.wbdata.offline.service.KestraExecutionSnapshot;
 import com.wbdata.offline.service.KestraLogEntry;
 import com.wbdata.offline.service.KestraTaskRunSnapshot;
+import com.wbdata.offline.service.ExecutionParameterResolver;
+import com.wbdata.offline.service.ExecutionParameterSnapshotRegistry;
+import com.wbdata.offline.service.ExecutionTimeContext;
+import com.wbdata.offline.service.FlowParameterMetadata;
 import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
 import com.wbdata.operations.dto.OperationsExecutionListItem;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
@@ -24,12 +28,15 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.LinkedHashSet;
 
 @Service
 @RequiredArgsConstructor
@@ -38,10 +45,14 @@ public class OperationsExecutionService {
     private static final int DEFAULT_PAGE = 1;
     private static final int DEFAULT_PAGE_SIZE = 50;
     private static final int MAX_PAGE_SIZE = 200;
+    private static final String PARAMETER_OVERRIDE_KEYS_LABEL = "wbdataParameterOverrideKeys";
+    private static final String NO_PARAMETER_OVERRIDES_LABEL_VALUE = "__none__";
 
     private final GitSyncConfigService gitSyncConfigService;
     private final KestraClient kestraClient;
     private final WbOperationExecutionActionMapper actionMapper;
+    private final ExecutionParameterSnapshotRegistry parameterSnapshotRegistry;
+    private final ExecutionParameterResolver parameterResolver = new ExecutionParameterResolver();
 
     public OperationsExecutionListResponse listExecutions(Long groupId, OperationsExecutionQuery query) {
         OperationsExecutionQuery effectiveQuery = query == null
@@ -99,7 +110,7 @@ public class OperationsExecutionService {
     public OperationsExecutionDetailResponse getExecution(Long groupId, String executionId) {
         Scope scope = loadScope(groupId);
         KestraExecutionSnapshot execution = requireAccessibleExecution(scope, executionId);
-        return toDetail(execution, scope.branchFor(execution.namespace()));
+        return toDetail(groupId, execution, scope.branchFor(execution.namespace()));
     }
 
     public List<OperationsExecutionLogEntry> getLogs(Long groupId, String executionId, String taskId) {
@@ -115,14 +126,26 @@ public class OperationsExecutionService {
                 .toList();
     }
 
-    public OperationsExecutionRerunResponse rerunExecution(Long groupId, Long requestedBy, String executionId) {
+    public OperationsExecutionRerunResponse rerunExecution(Long groupId,
+                                                            Long requestedBy,
+                                                            String executionId,
+                                                            boolean reuseManualOverrides) {
         Scope scope = loadScope(groupId);
         KestraExecutionSnapshot original = requireAccessibleExecution(scope, executionId);
         if (!rerunnable(original.status())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前状态不支持重跑");
         }
 
-        KestraExecutionSnapshot rerun = kestraClient.createExecution(original.namespace(), original.flowId());
+        Map<String, String> rerunInputs = resolveRerunInputs(groupId, original, reuseManualOverrides);
+        Set<String> originalOverrideKeys = splitLabelValues(labels(original).get(PARAMETER_OVERRIDE_KEYS_LABEL));
+        String rerunOverrideKeys = reuseManualOverrides && !originalOverrideKeys.isEmpty()
+                ? String.join("---", originalOverrideKeys)
+                : NO_PARAMETER_OVERRIDES_LABEL_VALUE;
+        KestraExecutionSnapshot rerun = kestraClient.createExecution(
+                original.namespace(),
+                original.flowId(),
+                rerunInputs,
+                Map.of(PARAMETER_OVERRIDE_KEYS_LABEL, rerunOverrideKeys));
 
         WbOperationExecutionAction action = new WbOperationExecutionAction();
         action.setGroupId(groupId);
@@ -143,6 +166,51 @@ public class OperationsExecutionService {
                 rerun.status(),
                 rerun.createdAt()
         );
+    }
+
+    private Map<String, String> resolveRerunInputs(Long groupId,
+                                                   KestraExecutionSnapshot original,
+                                                   boolean reuseManualOverrides) {
+        Map<String, String> rerunInputs = new LinkedHashMap<>();
+        Map<String, String> originalInputs = original.inputs() == null ? Map.of() : original.inputs();
+        Set<String> originalOverrideKeys = splitLabelValues(labels(original).get(PARAMETER_OVERRIDE_KEYS_LABEL));
+        String currentSnapshotId = FlowParameterMetadata.readSnapshotId(
+                kestraClient.getFlowSource(original.namespace(), original.flowId()));
+        com.wbdata.offline.dto.FlowParameterSnapshot currentSnapshot =
+                currentSnapshotId == null || currentSnapshotId.isBlank()
+                        ? null
+                        : parameterSnapshotRegistry.find(groupId, currentSnapshotId)
+                        .orElseThrow(() -> new ResponseStatusException(
+                                HttpStatus.BAD_REQUEST, "当前 Flow 的参数快照已不可用，无法重跑"));
+        if (reuseManualOverrides && !originalOverrideKeys.isEmpty()) {
+            if (currentSnapshot == null) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "当前 Flow 没有参数定义，无法沿用原执行的手动覆盖值");
+            }
+            for (String overrideKey : originalOverrideKeys) {
+                String value = originalInputs.get(overrideKey);
+                if (value == null) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "原执行的手动参数值不完整，无法重跑");
+                }
+                if (!definesParameter(currentSnapshot, overrideKey)) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "参数 " + overrideKey + " 在当前 Flow 参数中已不存在，无法沿用覆盖值重跑");
+                }
+                rerunInputs.put(overrideKey, value);
+            }
+        }
+        if (currentSnapshot != null && hasPlannedTimeParameter(currentSnapshot)) {
+            Instant plannedTime = readPlannedTime(original);
+            if (plannedTime == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "原执行缺少计划时间，无法重跑");
+            }
+            rerunInputs.put(ExecutionTimeContext.PLANNED_TIME_INPUT, plannedTime.toString());
+        }
+        return Map.copyOf(rerunInputs);
+    }
+
+    private boolean definesParameter(com.wbdata.offline.dto.FlowParameterSnapshot snapshot, String key) {
+        return snapshot.definitions().stream().anyMatch(definition -> key.equals(definition.key()));
     }
 
     private void insertAuditOrStopExecution(WbOperationExecutionAction action, String createdExecutionId) {
@@ -258,7 +326,7 @@ public class OperationsExecutionService {
                 execution.flowId(),
                 branch,
                 execution.status(),
-                execution.plannedAt(),
+                readPlannedTime(execution),
                 execution.createdAt(),
                 execution.startDate(),
                 execution.endDate(),
@@ -267,7 +335,9 @@ public class OperationsExecutionService {
         );
     }
 
-    private OperationsExecutionDetailResponse toDetail(KestraExecutionSnapshot execution, String branch) {
+    private OperationsExecutionDetailResponse toDetail(Long groupId,
+                                                        KestraExecutionSnapshot execution,
+                                                        String branch) {
         List<OperationsExecutionTaskRun> taskRuns = execution.taskRuns() == null
                 ? List.of()
                 : execution.taskRuns().stream()
@@ -275,13 +345,14 @@ public class OperationsExecutionService {
                 .filter(this::isUserTaskRun)
                 .map(this::toTaskRun)
                 .toList();
+        ParameterDetail parameterDetail = resolveParameterDetail(groupId, execution);
         return new OperationsExecutionDetailResponse(
                 execution.id(),
                 execution.namespace(),
                 execution.flowId(),
                 branch,
                 execution.status(),
-                execution.plannedAt(),
+                readPlannedTime(execution),
                 execution.createdAt(),
                 execution.startDate(),
                 execution.endDate(),
@@ -289,8 +360,88 @@ public class OperationsExecutionService {
                 rerunnable(execution.status()),
                 taskRuns,
                 execution.inputs() == null ? Map.of() : execution.inputs(),
-                execution.labels() == null ? Map.of() : execution.labels()
+                execution.labels() == null ? Map.of() : execution.labels(),
+                parameterDetail.status(),
+                parameterDetail.parameters(),
+                resolveParameterSnapshotChanged(execution)
         );
+    }
+
+    private Boolean resolveParameterSnapshotChanged(KestraExecutionSnapshot execution) {
+        String originalSnapshotId = labels(execution).get(ExecutionParameterSnapshotRegistry.LABEL_KEY);
+        String currentSnapshotId;
+        try {
+            currentSnapshotId = FlowParameterMetadata.readSnapshotId(
+                    kestraClient.getFlowSource(execution.namespace(), execution.flowId()));
+        } catch (RuntimeException ex) {
+            return null;
+        }
+        boolean originalHas = originalSnapshotId != null && !originalSnapshotId.isBlank();
+        boolean currentHas = currentSnapshotId != null && !currentSnapshotId.isBlank();
+        if (originalHas != currentHas) {
+            return Boolean.TRUE;
+        }
+        return originalHas && !originalSnapshotId.equals(currentSnapshotId);
+    }
+
+    private ParameterDetail resolveParameterDetail(Long groupId, KestraExecutionSnapshot execution) {
+        String snapshotId = labels(execution).get(ExecutionParameterSnapshotRegistry.LABEL_KEY);
+        if (snapshotId == null || snapshotId.isBlank()) {
+            String status = execution.inputs() == null || execution.inputs().isEmpty() ? "NONE" : "UNAVAILABLE";
+            return new ParameterDetail(status, List.of());
+        }
+        var snapshot = parameterSnapshotRegistry.find(groupId, snapshotId).orElse(null);
+        if (snapshot == null) {
+            return new ParameterDetail("UNAVAILABLE", List.of());
+        }
+        var resolution = parameterResolver.resolveExecution(
+                snapshot,
+                execution.inputs(),
+                new ExecutionTimeContext(readPlannedTime(execution), execution.startDate()),
+                splitLabelValues(labels(execution).get(PARAMETER_OVERRIDE_KEYS_LABEL))
+        );
+        return new ParameterDetail(resolution.status(), resolution.parameters());
+    }
+
+    private boolean hasPlannedTimeParameter(com.wbdata.offline.dto.FlowParameterSnapshot snapshot) {
+        return snapshot.definitions().stream()
+                .anyMatch(definition -> "SYSTEM_TIME".equals(definition.valueSource())
+                        && "PLANNED_TIME".equals(
+                        definition.timeBasis() == null ? "PLANNED_TIME" : definition.timeBasis()));
+    }
+
+    private Instant readPlannedTime(KestraExecutionSnapshot execution) {
+        String input = execution.inputs() == null
+                ? null
+                : execution.inputs().get(ExecutionTimeContext.PLANNED_TIME_INPUT);
+        if (input == null || input.isBlank()) {
+            return execution.plannedAt();
+        }
+        try {
+            return Instant.parse(input);
+        } catch (DateTimeParseException ex) {
+            return null;
+        }
+    }
+
+    private Set<String> splitLabelValues(String value) {
+        if (value == null || value.isBlank()) {
+            return Set.of();
+        }
+        return java.util.Arrays.stream(value.split("---"))
+                .map(String::trim)
+                .filter(item -> !item.isEmpty() && !NO_PARAMETER_OVERRIDES_LABEL_VALUE.equals(item))
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private Map<String, String> labels(KestraExecutionSnapshot execution) {
+        return execution.labels() == null ? Map.of() : execution.labels();
+    }
+
+    private record ParameterDetail(
+            String status,
+            List<com.wbdata.offline.dto.ExecutionParameterValueResponse> parameters
+    ) {
     }
 
     private OperationsExecutionTaskRun toTaskRun(KestraTaskRunSnapshot taskRun) {

@@ -25,6 +25,7 @@ import { formatBrowserDateTime, formatLocalDateTime, parseLocalDateTime } from '
 import { useAuthStore } from '../../utils/auth';
 import { getExecutionStatusLabel } from '../offline/executionPresentation';
 import './OperationsCenter.css';
+import { OperationsRerunDialog } from './OperationsRerunDialog';
 import { OperationsTimeFilter } from './OperationsTimeFilter';
 
 const ALL_BRANCHES = '__all_branches__';
@@ -259,6 +260,7 @@ export default function OperationsCenter() {
     const [pageSize, setPageSize] = useState(readStoredPageSize);
     const [branchInitializedGroupId, setBranchInitializedGroupId] = useState<number | null>(null);
     const [pendingRerunId, setPendingRerunId] = useState<string | null>(null);
+    const [rerunTarget, setRerunTarget] = useState<OperationsExecutionListItem | null>(null);
 
     useEffect(() => {
         const now = new Date(Date.now());
@@ -269,6 +271,7 @@ export default function OperationsCenter() {
         setToFilter(formatLocalDateTime(now));
         setCurrentPage(1);
         setBranchInitializedGroupId(null);
+        setRerunTarget(null);
     }, [groupId]);
 
     const repoStatusQuery = useQuery({
@@ -311,14 +314,18 @@ export default function OperationsCenter() {
     );
 
     const rerunMutation = useMutation({
-        mutationFn: (executionId: string) => {
+        mutationFn: ({ executionId, reuseManualOverrides }: {
+            executionId: string;
+            reuseManualOverrides: boolean;
+        }) => {
             if (groupId == null) throw new Error('missing group');
-            return rerunOperationsExecution(groupId, executionId);
+            return rerunOperationsExecution(groupId, executionId, { reuseManualOverrides });
         },
-        onMutate: (executionId) => {
+        onMutate: ({ executionId }) => {
             setPendingRerunId(executionId);
         },
         onSuccess: () => {
+            setRerunTarget(null);
             showFeedback({ tone: 'success', title: '已触发重跑', detail: '' });
             void queryClient.invalidateQueries({ queryKey: ['operations-executions'] });
         },
@@ -519,7 +526,7 @@ export default function OperationsCenter() {
                                                         aria-label={`重跑 ${row.flowId}`}
                                                         title={`重跑 ${row.flowId}`}
                                                         disabled={pendingRerunId === row.id}
-                                                        onClick={() => rerunMutation.mutate(row.id)}
+                                                        onClick={() => setRerunTarget(row)}
                                                     >
                                                         <RotateCcw size={14} />
                                                     </button>
@@ -544,6 +551,19 @@ export default function OperationsCenter() {
                     </>
                 )}
             </div>
+            <OperationsRerunDialog
+                open={rerunTarget != null}
+                groupId={groupId}
+                executionId={rerunTarget?.id ?? null}
+                pending={rerunMutation.isPending}
+                onOpenChange={(open) => {
+                    if (!open) setRerunTarget(null);
+                }}
+                onConfirm={(reuseManualOverrides) => {
+                    if (!rerunTarget) return;
+                    rerunMutation.mutate({ executionId: rerunTarget.id, reuseManualOverrides });
+                }}
+            />
         </main>
     );
 }

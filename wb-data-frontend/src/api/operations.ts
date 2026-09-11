@@ -1,5 +1,6 @@
 import request from '../utils/request';
 import { groupScopedPath } from './groupScoped';
+import type { ExecutionParameterValue } from './offline';
 
 export interface OperationsExecutionListQuery {
     groupId: number;
@@ -61,6 +62,9 @@ export interface OperationsExecutionDetail {
     taskRuns: OperationsExecutionTaskRun[];
     inputs: Record<string, string>;
     labels: Record<string, string>;
+    parameterResolutionStatus: 'NONE' | 'AVAILABLE' | 'PENDING' | 'UNAVAILABLE';
+    parameters: ExecutionParameterValue[];
+    parameterSnapshotChanged?: boolean | null;
 }
 
 export interface OperationsExecutionLogEntry {
@@ -77,6 +81,10 @@ export interface OperationsExecutionRerunResponse {
     flowId: string;
     status: string;
     createdAt: string | null;
+}
+
+export interface OperationsExecutionRerunRequest {
+    reuseManualOverrides: boolean;
 }
 
 function buildListSearchParams(query?: OperationsExecutionListQuery) {
@@ -126,9 +134,13 @@ export const getOperationsExecutionLogs = (groupId: number, executionId: string,
     );
 };
 
-export const rerunOperationsExecution = (groupId: number, executionId: string) => {
+export const rerunOperationsExecution = (
+    groupId: number,
+    executionId: string,
+    payload: OperationsExecutionRerunRequest,
+) => {
     return request.post<unknown, OperationsExecutionRerunResponse>(
         groupScopedPath(groupId, `/operations/executions/${encodeURIComponent(executionId)}/rerun`),
-        null
+        payload
     );
 };

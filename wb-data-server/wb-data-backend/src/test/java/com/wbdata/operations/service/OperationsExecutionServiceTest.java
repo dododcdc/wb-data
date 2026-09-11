@@ -6,6 +6,10 @@ import com.wbdata.offline.service.KestraClient;
 import com.wbdata.offline.service.KestraExecutionSnapshot;
 import com.wbdata.offline.service.KestraLogEntry;
 import com.wbdata.offline.service.KestraTaskRunSnapshot;
+import com.wbdata.offline.service.ExecutionParameterSnapshotRegistry;
+import com.wbdata.offline.service.ExecutionTimeContext;
+import com.wbdata.offline.dto.FlowParameterDefinitionSnapshot;
+import com.wbdata.offline.dto.FlowParameterSnapshot;
 import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
 import com.wbdata.operations.dto.OperationsExecutionListItem;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
@@ -49,7 +53,8 @@ class OperationsExecutionServiceTest {
                 .containsExactly(
                         "id", "namespace", "flowId", "branch", "status",
                         "plannedAt", "createdAt", "startDate", "endDate", "durationMs", "rerunnable",
-                        "taskRuns", "inputs", "labels"
+                        "taskRuns", "inputs", "labels", "parameterResolutionStatus", "parameters",
+                        "parameterSnapshotChanged"
                 );
         assertThat(Arrays.stream(OperationsExecutionListResponse.class.getRecordComponents())
                 .map(component -> component.getName()))
@@ -345,7 +350,9 @@ class OperationsExecutionServiceTest {
                         taskRun("parallel_root", "SUCCESS", "2026-06-07T01:00:01Z", "2026-06-07T01:00:02Z"),
                         taskRun("load", "FAILED", "2026-06-07T01:00:02Z", "2026-06-07T01:00:05Z")
                 ),
-                Map.of("date", "2026-06-07"),
+                Map.of(
+                        "date", "2026-06-07",
+                        ExecutionTimeContext.PLANNED_TIME_INPUT, "2026-06-06T23:30:00Z"),
                 Map.of("env", "prod")
         );
         when(kestraClient.getExecution("exec-main")).thenReturn(execution);
@@ -354,7 +361,7 @@ class OperationsExecutionServiceTest {
 
         assertThat(response.id()).isEqualTo("exec-main");
         assertThat(response.branch()).isEqualTo("main");
-        assertThat(response.plannedAt()).isEqualTo(Instant.parse("2026-06-07T00:00:00Z"));
+        assertThat(response.plannedAt()).isEqualTo(Instant.parse("2026-06-06T23:30:00Z"));
         assertThat(response.durationMs()).isEqualTo(5_000L);
         assertThat(response.rerunnable()).isTrue();
         assertThat(response.taskRuns()).hasSize(1);
@@ -362,6 +369,47 @@ class OperationsExecutionServiceTest {
         assertThat(response.taskRuns().getFirst().durationMs()).isEqualTo(3_000L);
         assertThat(response.inputs()).containsEntry("date", "2026-06-07");
         assertThat(response.labels()).containsEntry("env", "prod");
+    }
+
+    @Test
+    void getExecutionResolvesScheduledParametersFromImmutableSnapshotAndPlannedTime() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        WbOperationExecutionActionMapper actionMapper = Mockito.mock(WbOperationExecutionActionMapper.class);
+        ExecutionParameterSnapshotRegistry registry = Mockito.mock(ExecutionParameterSnapshotRegistry.class);
+        OperationsExecutionService service = service(
+                gitSyncConfigService, kestraClient, actionMapper, registry);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        KestraExecutionSnapshot scheduled = new KestraExecutionSnapshot(
+                "exec-scheduled",
+                "g4-main",
+                "daily",
+                "SUCCESS",
+                Instant.parse("2026-06-07T00:00:00Z"),
+                Instant.parse("2026-06-07T00:00:01Z"),
+                Instant.parse("2026-06-07T00:00:02Z"),
+                Instant.parse("2026-06-07T00:01:00Z"),
+                List.of(),
+                Map.of("name", "小明"),
+                Map.of(
+                        ExecutionParameterSnapshotRegistry.LABEL_KEY, "snapshot-1",
+                        "wbdataParameterOverrideKeys", "__none__")
+        );
+        FlowParameterSnapshot snapshot = new FlowParameterSnapshot(2, "Asia/Shanghai", "daily", 3, List.of(
+                new FlowParameterDefinitionSnapshot(
+                        "name", "CONSTANT", "小明", null, 0, null, 0, null),
+                new FlowParameterDefinitionSnapshot(
+                        "v_day", "SYSTEM_TIME", null, "yyyyMMdd", -1, null, 1, "PLANNED_TIME")
+        ));
+        when(kestraClient.getExecution("exec-scheduled")).thenReturn(scheduled);
+        when(registry.find(4L, "snapshot-1")).thenReturn(java.util.Optional.of(snapshot));
+
+        OperationsExecutionDetailResponse detail = service.getExecution(4L, "exec-scheduled");
+
+        assertThat(detail.parameterResolutionStatus()).isEqualTo("AVAILABLE");
+        assertThat(detail.parameters())
+                .extracting(parameter -> parameter.key() + "=" + parameter.value() + ":" + parameter.source())
+                .containsExactly("name=小明:CONSTANT", "v_day=20260606:SYSTEM_TIME");
     }
 
     @Test
@@ -409,10 +457,12 @@ class OperationsExecutionServiceTest {
         OperationsExecutionService service = service(gitSyncConfigService, kestraClient, actionMapper);
         when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
         when(kestraClient.getExecution("exec-main")).thenReturn(execution("exec-main", "g4-main", "daily", "FAILED", "2026-06-07T01:00:00Z"));
-        when(kestraClient.createExecution("g4-main", "daily")).thenReturn(execution("rerun-1", "g4-main-rerun", "daily_rerun", "CREATED", "2026-06-07T01:05:00Z"));
+        when(kestraClient.createExecution(
+                Mockito.eq("g4-main"), Mockito.eq("daily"), Mockito.anyMap(), Mockito.anyMap()))
+                .thenReturn(execution("rerun-1", "g4-main-rerun", "daily_rerun", "CREATED", "2026-06-07T01:05:00Z"));
         when(actionMapper.insert(Mockito.any())).thenReturn(1);
 
-        OperationsExecutionRerunResponse response = service.rerunExecution(4L, 9L, "exec-main");
+        OperationsExecutionRerunResponse response = service.rerunExecution(4L, 9L, "exec-main", false);
 
         assertThat(response.originalExecutionId()).isEqualTo("exec-main");
         assertThat(response.newExecutionId()).isEqualTo("rerun-1");
@@ -431,6 +481,168 @@ class OperationsExecutionServiceTest {
         assertThat(captor.getValue().getNamespace()).isEqualTo("g4-main");
         assertThat(captor.getValue().getFlowId()).isEqualTo("daily");
         assertThat(captor.getValue().getRequestedAt()).isNotNull();
+        verify(kestraClient).createExecution(
+                "g4-main",
+                "daily",
+                Map.of(),
+                Map.of("wbdataParameterOverrideKeys", "__none__"));
+    }
+
+    @Test
+    void rerunExecutionPreservesPlannedContextButRecomputesParameterValues() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        WbOperationExecutionActionMapper actionMapper = Mockito.mock(WbOperationExecutionActionMapper.class);
+        ExecutionParameterSnapshotRegistry registry = Mockito.mock(ExecutionParameterSnapshotRegistry.class);
+        OperationsExecutionService service = service(
+                gitSyncConfigService, kestraClient, actionMapper, registry);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        KestraExecutionSnapshot original = new KestraExecutionSnapshot(
+                "exec-main",
+                "g4-main",
+                "daily",
+                "FAILED",
+                Instant.parse("2026-06-07T00:00:00Z"),
+                Instant.parse("2026-06-07T00:00:01Z"),
+                Instant.parse("2026-06-07T00:00:02Z"),
+                Instant.parse("2026-06-07T00:01:00Z"),
+                List.of(),
+                Map.of("name", "李雷"),
+                Map.of(
+                        ExecutionParameterSnapshotRegistry.LABEL_KEY, "snapshot-1",
+                        "wbdataParameterOverrideKeys", "name")
+        );
+        FlowParameterSnapshot snapshot = new FlowParameterSnapshot(2, "Asia/Shanghai", "daily", 3, List.of(
+                new FlowParameterDefinitionSnapshot(
+                        "name", "CONSTANT", "小明", null, 0, null, 0, null),
+                new FlowParameterDefinitionSnapshot(
+                        "v_day", "SYSTEM_TIME", null, "yyyyMMdd", -1, null, 1, "PLANNED_TIME")
+        ));
+        when(kestraClient.getExecution("exec-main")).thenReturn(original);
+        when(kestraClient.getFlowSource("g4-main", "daily")).thenReturn("""
+                id: daily
+                namespace: g4-main
+                labels:
+                  wbdataParameterSnapshotId: snapshot-1
+                tasks: []
+                """);
+        when(registry.find(4L, "snapshot-1")).thenReturn(java.util.Optional.of(snapshot));
+        when(kestraClient.createExecution(
+                Mockito.eq("g4-main"), Mockito.eq("daily"), Mockito.anyMap(), Mockito.anyMap()))
+                .thenReturn(execution("rerun-1", "g4-main", "daily", "CREATED", "2026-06-07T01:05:00Z"));
+        when(actionMapper.insert(Mockito.any())).thenReturn(1);
+
+        service.rerunExecution(4L, 9L, "exec-main", false);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> inputs = ArgumentCaptor.forClass(Map.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> labels = ArgumentCaptor.forClass(Map.class);
+        verify(kestraClient).createExecution(
+                Mockito.eq("g4-main"), Mockito.eq("daily"), inputs.capture(), labels.capture());
+        assertThat(inputs.getValue()).containsExactly(
+                Map.entry(ExecutionTimeContext.PLANNED_TIME_INPUT, "2026-06-07T00:00:00Z")
+        );
+        assertThat(labels.getValue()).containsExactly(
+                Map.entry("wbdataParameterOverrideKeys", "__none__"));
+    }
+
+    @Test
+    void rerunExecutionReusesManualOverridesOnlyWhenExplicitlyRequested() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        WbOperationExecutionActionMapper actionMapper = Mockito.mock(WbOperationExecutionActionMapper.class);
+        ExecutionParameterSnapshotRegistry registry = Mockito.mock(ExecutionParameterSnapshotRegistry.class);
+        OperationsExecutionService service = service(
+                gitSyncConfigService, kestraClient, actionMapper, registry);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        KestraExecutionSnapshot original = new KestraExecutionSnapshot(
+                "exec-main", "g4-main", "daily", "FAILED",
+                Instant.parse("2026-06-07T00:00:00Z"),
+                Instant.parse("2026-06-07T00:00:01Z"),
+                Instant.parse("2026-06-07T00:00:02Z"),
+                Instant.parse("2026-06-07T00:01:00Z"),
+                List.of(),
+                Map.of("name", "李雷"),
+                Map.of(
+                        ExecutionParameterSnapshotRegistry.LABEL_KEY, "snapshot-1",
+                        "wbdataParameterOverrideKeys", "name"));
+        FlowParameterSnapshot snapshot = new FlowParameterSnapshot(2, "Asia/Shanghai", "daily", 3, List.of(
+                new FlowParameterDefinitionSnapshot(
+                        "name", "CONSTANT", "小明", null, 0, null, 0, null),
+                new FlowParameterDefinitionSnapshot(
+                        "v_day", "SYSTEM_TIME", null, "yyyyMMdd", -1, null, 1, "PLANNED_TIME")));
+        when(kestraClient.getExecution("exec-main")).thenReturn(original);
+        when(kestraClient.getFlowSource("g4-main", "daily")).thenReturn("""
+                id: daily
+                namespace: g4-main
+                labels:
+                  wbdataParameterSnapshotId: snapshot-1
+                tasks: []
+                """);
+        when(registry.find(4L, "snapshot-1")).thenReturn(java.util.Optional.of(snapshot));
+        when(kestraClient.createExecution(
+                Mockito.eq("g4-main"), Mockito.eq("daily"), Mockito.anyMap(), Mockito.anyMap()))
+                .thenReturn(execution("rerun-1", "g4-main", "daily", "CREATED", "2026-06-07T01:05:00Z"));
+        when(actionMapper.insert(Mockito.any())).thenReturn(1);
+
+        service.rerunExecution(4L, 9L, "exec-main", true);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> inputs = ArgumentCaptor.forClass(Map.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> labels = ArgumentCaptor.forClass(Map.class);
+        verify(kestraClient).createExecution(
+                Mockito.eq("g4-main"), Mockito.eq("daily"), inputs.capture(), labels.capture());
+        assertThat(inputs.getValue()).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "name", "李雷",
+                ExecutionTimeContext.PLANNED_TIME_INPUT, "2026-06-07T00:00:00Z"));
+        assertThat(labels.getValue()).containsExactly(
+                Map.entry("wbdataParameterOverrideKeys", "name"));
+    }
+
+    @Test
+    void rerunExecutionUsesCurrentParameterSnapshotWhenSnapshotChanged() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        WbOperationExecutionActionMapper actionMapper = Mockito.mock(WbOperationExecutionActionMapper.class);
+        ExecutionParameterSnapshotRegistry registry = Mockito.mock(ExecutionParameterSnapshotRegistry.class);
+        OperationsExecutionService service = service(
+                gitSyncConfigService, kestraClient, actionMapper, registry);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        KestraExecutionSnapshot original = new KestraExecutionSnapshot(
+                "exec-main", "g4-main", "daily", "FAILED",
+                Instant.parse("2026-06-07T00:00:00Z"),
+                Instant.parse("2026-06-07T00:00:01Z"),
+                Instant.parse("2026-06-07T00:00:02Z"),
+                Instant.parse("2026-06-07T00:01:00Z"),
+                List.of(), Map.of("name", "小明"),
+                Map.of(ExecutionParameterSnapshotRegistry.LABEL_KEY, "snapshot-old"));
+        FlowParameterSnapshot currentSnapshot = new FlowParameterSnapshot(2, "Asia/Shanghai", "daily", 4, List.of(
+                new FlowParameterDefinitionSnapshot(
+                        "v_day", "SYSTEM_TIME", null, "yyyyMMdd", -1, null, 0, "PLANNED_TIME")));
+        when(kestraClient.getExecution("exec-main")).thenReturn(original);
+        when(kestraClient.getFlowSource("g4-main", "daily")).thenReturn("""
+                id: daily
+                namespace: g4-main
+                labels:
+                  wbdataParameterSnapshotId: snapshot-new
+                tasks: []
+                """);
+        when(registry.find(4L, "snapshot-new")).thenReturn(java.util.Optional.of(currentSnapshot));
+        when(kestraClient.createExecution(
+                Mockito.eq("g4-main"), Mockito.eq("daily"), Mockito.anyMap(), Mockito.anyMap()))
+                .thenReturn(execution("rerun-1", "g4-main", "daily", "CREATED", "2026-06-07T01:05:00Z"));
+        when(actionMapper.insert(Mockito.any())).thenReturn(1);
+
+        service.rerunExecution(4L, 9L, "exec-main", false);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> inputs = ArgumentCaptor.forClass(Map.class);
+        verify(kestraClient).createExecution(
+                Mockito.eq("g4-main"), Mockito.eq("daily"), inputs.capture(), Mockito.anyMap());
+        assertThat(inputs.getValue()).containsExactly(
+                Map.entry(ExecutionTimeContext.PLANNED_TIME_INPUT, "2026-06-07T00:00:00Z"));
     }
 
     @Test
@@ -442,13 +654,14 @@ class OperationsExecutionServiceTest {
         when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
         when(kestraClient.getExecution("exec-main")).thenReturn(execution("exec-main", "g4-main", "daily", "SUCCESS", "2026-06-07T01:00:00Z"));
 
-        assertThatThrownBy(() -> service.rerunExecution(4L, 9L, "exec-main"))
+        assertThatThrownBy(() -> service.rerunExecution(4L, 9L, "exec-main", false))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
                     assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
                     assertThat(exception.getReason()).isEqualTo("当前状态不支持重跑");
                 });
 
-        verify(kestraClient, never()).createExecution(Mockito.anyString(), Mockito.anyString());
+        verify(kestraClient, never()).createExecution(
+                Mockito.anyString(), Mockito.anyString(), Mockito.anyMap(), Mockito.anyMap());
         verify(actionMapper, never()).insert(Mockito.any());
     }
 
@@ -460,10 +673,12 @@ class OperationsExecutionServiceTest {
         OperationsExecutionService service = service(gitSyncConfigService, kestraClient, actionMapper);
         when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
         when(kestraClient.getExecution("exec-main")).thenReturn(execution("exec-main", "g4-main", "daily", "FAILED", "2026-06-07T01:00:00Z"));
-        when(kestraClient.createExecution("g4-main", "daily")).thenReturn(execution("rerun-1", "g4-main", "daily", "CREATED", "2026-06-07T01:05:00Z"));
+        when(kestraClient.createExecution(
+                Mockito.eq("g4-main"), Mockito.eq("daily"), Mockito.anyMap(), Mockito.anyMap()))
+                .thenReturn(execution("rerun-1", "g4-main", "daily", "CREATED", "2026-06-07T01:05:00Z"));
         when(actionMapper.insert(Mockito.any())).thenThrow(new IllegalStateException("audit failed"));
 
-        assertThatThrownBy(() -> service.rerunExecution(4L, 9L, "exec-main"))
+        assertThatThrownBy(() -> service.rerunExecution(4L, 9L, "exec-main", false))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
                     assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
                     assertThat(exception.getReason()).isEqualTo("重跑审计记录写入失败，已尝试停止新执行");
@@ -480,10 +695,12 @@ class OperationsExecutionServiceTest {
         OperationsExecutionService service = service(gitSyncConfigService, kestraClient, actionMapper);
         when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
         when(kestraClient.getExecution("exec-main")).thenReturn(execution("exec-main", "g4-main", "daily", "FAILED", "2026-06-07T01:00:00Z"));
-        when(kestraClient.createExecution("g4-main", "daily")).thenReturn(execution("rerun-1", "g4-main", "daily", "CREATED", "2026-06-07T01:05:00Z"));
+        when(kestraClient.createExecution(
+                Mockito.eq("g4-main"), Mockito.eq("daily"), Mockito.anyMap(), Mockito.anyMap()))
+                .thenReturn(execution("rerun-1", "g4-main", "daily", "CREATED", "2026-06-07T01:05:00Z"));
         when(actionMapper.insert(Mockito.any())).thenReturn(0);
 
-        assertThatThrownBy(() -> service.rerunExecution(4L, 9L, "exec-main"))
+        assertThatThrownBy(() -> service.rerunExecution(4L, 9L, "exec-main", false))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
                     assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
                     assertThat(exception.getReason()).isEqualTo("重跑审计记录写入失败，已尝试停止新执行");
@@ -500,10 +717,23 @@ class OperationsExecutionServiceTest {
     private static OperationsExecutionService service(GitSyncConfigService gitSyncConfigService,
                                                       KestraClient kestraClient,
                                                       WbOperationExecutionActionMapper actionMapper) {
+        return service(
+                gitSyncConfigService,
+                kestraClient,
+                actionMapper,
+                Mockito.mock(ExecutionParameterSnapshotRegistry.class)
+        );
+    }
+
+    private static OperationsExecutionService service(GitSyncConfigService gitSyncConfigService,
+                                                      KestraClient kestraClient,
+                                                      WbOperationExecutionActionMapper actionMapper,
+                                                      ExecutionParameterSnapshotRegistry registry) {
         return new OperationsExecutionService(
                 gitSyncConfigService,
                 kestraClient,
-                actionMapper
+                actionMapper,
+                registry
         );
     }
 

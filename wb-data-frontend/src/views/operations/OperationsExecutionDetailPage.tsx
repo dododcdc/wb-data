@@ -23,6 +23,7 @@ import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { formatBrowserDateTime } from '../../lib/dateTime';
 import { useAuthStore } from '../../utils/auth';
 import './OperationsExecutionDetailPage.css';
+import { OperationsRerunDialog } from './OperationsRerunDialog';
 
 const LEVELS = ['ERROR', 'WARN', 'INFO'] as const;
 const EMPTY_LOGS: OperationsExecutionLogEntry[] = [];
@@ -184,6 +185,7 @@ export default function OperationsExecutionDetailPage() {
     const [selectedTaskId, setSelectedTaskId] = useState<string | undefined>(undefined);
     const [activeLevels, setActiveLevels] = useState<Set<string>>(new Set());
     const [searchText, setSearchText] = useState('');
+    const [rerunDialogOpen, setRerunDialogOpen] = useState(false);
 
     const detailQuery = useQuery({
         queryKey: ['operations-execution', groupId, executionId],
@@ -216,8 +218,13 @@ export default function OperationsExecutionDetailPage() {
     });
 
     const rerunMutation = useMutation({
-        mutationFn: () => rerunOperationsExecution(groupId ?? 0, executionId ?? ''),
+        mutationFn: (reuseManualOverrides: boolean) => rerunOperationsExecution(
+            groupId ?? 0,
+            executionId ?? '',
+            { reuseManualOverrides },
+        ),
         onSuccess: () => {
+            setRerunDialogOpen(false);
             showFeedback({ tone: 'success', title: '已触发重跑', detail: '' });
             void queryClient.invalidateQueries({ queryKey: ['operations-executions'] });
             void queryClient.invalidateQueries({ queryKey: ['operations-execution', groupId, executionId] });
@@ -303,7 +310,7 @@ export default function OperationsExecutionDetailPage() {
                         <button
                             type="button"
                             className="operations-execution-rerun"
-                            onClick={() => rerunMutation.mutate()}
+                            onClick={() => setRerunDialogOpen(true)}
                             disabled={rerunMutation.isPending}
                         >
                             <RotateCcw size={15} className={rerunMutation.isPending ? 'operations-execution-spin' : undefined} />
@@ -422,6 +429,15 @@ export default function OperationsExecutionDetailPage() {
                     </section>
                 </section>
             </main>
+            <OperationsRerunDialog
+                open={rerunDialogOpen}
+                groupId={groupId}
+                executionId={executionId}
+                detail={detail}
+                pending={rerunMutation.isPending}
+                onOpenChange={setRerunDialogOpen}
+                onConfirm={(reuseManualOverrides) => rerunMutation.mutate(reuseManualOverrides)}
+            />
         </div>
     );
 }
