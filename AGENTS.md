@@ -48,6 +48,13 @@ mvn clean install
 
 根据改动范围运行相关检查；提交或 PR 前应完成受影响部分的完整验证。
 
+传输 / 执行链路改动还需跑集成冒烟（依赖本地 Docker 环境，见 [测试策略](docs/testing-strategy.md)）：
+
+```bash
+DB_PASSWORD=<元数据库密码> scripts/dev/transfer-smoke.sh
+WB_DATA_PASSWORD=<admin-密码> scripts/dev/smoke-verify.sh
+```
+
 ## Git 约定
 
 - 分支从 `main` 创建。
