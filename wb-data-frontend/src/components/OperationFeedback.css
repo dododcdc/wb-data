@@ -1,35 +1,35 @@
-/* Global Operation Feedback - Top-Center Pill Style */
+/* Global Operation Feedback - Top-Center Card Style */
 
 .ofb-toast {
     position: fixed;
     top: 20px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 10000;
-    
+    z-index: var(--z-toast);
+
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 16px;
+    padding: 10px 16px;
     min-width: 200px;
     max-width: 480px;
-    
-    background: #1e293b; /* 深色实心背景，高对比度 */
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 999px; /* 彻底的胶囊形状 */
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-    
-    animation: ofb-pill-drop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.15);
+
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+
+    animation: ofb-toast-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes ofb-pill-drop {
+@keyframes ofb-toast-in {
     from {
         opacity: 0;
-        transform: translate(-50%, -20px) scale(0.95);
+        transform: translate(-50%, -8px);
     }
     to {
         opacity: 1;
-        transform: translate(-50%, 0) scale(1);
+        transform: translate(-50%, 0);
     }
 }
 
@@ -38,6 +38,7 @@
     align-items: center;
     gap: 10px;
     flex: 1;
+    min-width: 0;
 }
 
 .ofb-icon {
@@ -47,45 +48,38 @@
     flex-shrink: 0;
 }
 
-/* Success State */
 .ofb-toast.is-success .ofb-icon {
-    color: #4ade80;
+    color: var(--color-success);
 }
 
-/* Error State */
-.ofb-toast.is-error {
-    background: #450a0a;
-    border-color: rgba(248, 113, 113, 0.2);
-}
 .ofb-toast.is-error .ofb-icon {
-    color: #f87171;
+    color: var(--color-error);
 }
 
-/* Info State */
 .ofb-toast.is-info .ofb-icon {
-    color: #60a5fa;
+    color: var(--color-info);
 }
 
 .ofb-copy {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 8px;
-    color: #f8fafc;
-    font-size: 0.88rem;
+    min-width: 0;
+    color: var(--color-text-primary);
+    font-size: var(--text-md);
     font-weight: 500;
 }
 
 .ofb-copy strong {
     font-weight: 600;
+    white-space: nowrap;
 }
 
 .ofb-copy p {
     margin: 0;
-    opacity: 0.85;
-    font-size: 0.82rem;
-}
-
-/* 隐藏关闭按钮，中上方胶囊通常靠自动消失或点击整体关闭，保持极简 */
-.ofb-close {
-    display: none;
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
