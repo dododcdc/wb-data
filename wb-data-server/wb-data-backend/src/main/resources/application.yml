@@ -38,6 +38,7 @@ wbdata:
       seatunnel-image: ${WB_DATA_TRANSFER_SEATUNNEL_IMAGE:wb-data-seatunnel:2.3.13}
       docker-network: ${WB_DATA_TRANSFER_DOCKER_NETWORK:wb-data_default}
       docker-volumes: ${WB_DATA_TRANSFER_DOCKER_VOLUMES:}
+      container-host-rewrite: ${WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE:}
       internal-base-url-env: ${WB_DATA_TRANSFER_INTERNAL_BASE_URL_ENV:WB_DATA_INTERNAL_BASE_URL}
       internal-token-env: ${WB_DATA_TRANSFER_INTERNAL_TOKEN_ENV:WB_DATA_INTERNAL_TOKEN}
     kestra:

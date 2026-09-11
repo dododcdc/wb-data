@@ -271,6 +271,21 @@ save_flow "_flows/smoke_it/selected_single_node/flow.yaml" "[$node_a,$node_b]"
 run_flow "_flows/smoke_it/selected_single_node/flow.yaml" SELECTED '["sel_node_a"]' "场景 E"
 assert_eq "$(mysql_query 'SELECT COUNT(*) FROM transfer_orders_target')" "4" "只跑选中节点行数（1+3，而非 1+6）"
 
+echo "==> 场景 G：SQL 节点使用 localhost 数据源（容器主机改写）"
+# 场景 0 的数据源 host=localhost，只有配置 WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE 后，
+# Kestra 进程内执行的 SQL 节点才能连上宿主机 MySQL。
+sql_node="$(jq -nc --argjson ds "$API_MYSQL_DS_ID" '{
+  taskId: "sql_loopback",
+  kind: "SQL",
+  scriptPath: "scripts/sql_loopback/sql_loopback.sql",
+  scriptContent: "REPLACE INTO transfer_orders_target (order_id, customer_name, amount, date_key, dayno) VALUES (7777, '"'"'sql-loopback'"'"', 7.77, '"'"'2026-07-07'"'"', '"'"'20260707'"'"')",
+  dataSourceId: $ds,
+  dataSourceType: "MYSQL"
+}')"
+save_flow "_flows/smoke_it/sql_loopback/flow.yaml" "[$sql_node]"
+run_flow "_flows/smoke_it/sql_loopback/flow.yaml" ALL '[]' "场景 G"
+assert_eq "$(mysql_query 'SELECT COUNT(*) FROM transfer_orders_target WHERE order_id = 7777')" "1" "SQL 节点写入行数"
+
 echo "==> 场景 F：运维中心执行记录接口"
 # 运维中心只扫描 git sync 配置的业务命名空间，debug 执行（wb-debug-*）按设计不出现在这里；
 # 本场景验证接口可用与响应结构，记录可见性由 push 链路场景覆盖（待补）。

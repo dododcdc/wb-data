@@ -2,6 +2,7 @@ package com.wbdata.offline.service;
 
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.offline.config.OfflineTransferProperties;
+import com.wbdata.offline.transfer.service.JdbcDriverCatalog;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -29,7 +30,8 @@ final class OfflineNodeTaskCompiler {
                 "WB_DATA_INTERNAL_TOKEN",
                 null,
                 null,
-                List.of()
+                List.of(),
+                ""
         ));
     }
 
@@ -41,7 +43,8 @@ final class OfflineNodeTaskCompiler {
                 transferProperties.getInternalTokenEnv(),
                 transferProperties.getInternalBaseUrl(),
                 transferProperties.getInternalToken(),
-                transferProperties.getDockerVolumes()
+                transferProperties.getDockerVolumes(),
+                transferProperties.getContainerHostRewrite()
         ));
     }
 
@@ -281,12 +284,13 @@ final class OfflineNodeTaskCompiler {
     }
 
     private String buildJdbcUrl(String host, Integer port, String databaseName, String dataSourceType) {
+        String effectiveHost = JdbcDriverCatalog.rewriteContainerHost(host, transferRuntimeSettings.containerHostRewrite());
         String normalizedType = dataSourceType == null ? "" : dataSourceType.trim().toUpperCase();
         String databaseSegment = databaseName == null || databaseName.isBlank() ? "" : "/" + databaseName;
         return switch (normalizedType) {
-            case "MYSQL", "STARROCKS" -> String.format("jdbc:mysql://%s:%d%s", host, port, databaseSegment);
-            case "POSTGRESQL" -> String.format("jdbc:postgresql://%s:%d%s", host, port, databaseSegment);
-            case "HIVE" -> String.format("jdbc:hive2://%s:%d%s", host, port, databaseSegment);
+            case "MYSQL", "STARROCKS" -> String.format("jdbc:mysql://%s:%d%s", effectiveHost, port, databaseSegment);
+            case "POSTGRESQL" -> String.format("jdbc:postgresql://%s:%d%s", effectiveHost, port, databaseSegment);
+            case "HIVE" -> String.format("jdbc:hive2://%s:%d%s", effectiveHost, port, databaseSegment);
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "暂不支持的数据源类型: " + dataSourceType);
         };
     }
@@ -335,7 +339,8 @@ final class OfflineNodeTaskCompiler {
             String internalTokenEnv,
             String internalBaseUrl,
             String internalToken,
-            List<String> dockerVolumes
+            List<String> dockerVolumes,
+            String containerHostRewrite
     ) {
     }
 }

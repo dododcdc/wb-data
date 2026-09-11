@@ -2,6 +2,7 @@ package com.wbdata.offline.transfer.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.datasource.entity.DataSource;
+import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.transfer.config.TransferInternalProperties;
 import com.wbdata.offline.transfer.dto.TransferConfig;
 import com.wbdata.offline.transfer.dto.TransferEndpointConfig;
@@ -114,7 +115,8 @@ class TransferExecutionRenderServiceTest {
         TransferInternalProperties properties = new TransferInternalProperties();
         properties.setInternalToken("internal-token");
         return new TransferExecutionRenderService(properties, metadataService,
-                Validation.buildDefaultValidatorFactory().getValidator());
+                Validation.buildDefaultValidatorFactory().getValidator(),
+                new TransferSeatunnelConfigBuilder(new OfflineTransferProperties()));
     }
 
     private TransferRenderRequest request() {
