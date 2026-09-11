@@ -9,6 +9,7 @@ import com.wbdata.offline.controller.OfflineFlowController;
 import com.wbdata.offline.controller.OfflineRepoController;
 import com.wbdata.offline.controller.OfflineScheduleController;
 import com.wbdata.operations.controller.OperationsExecutionController;
+import com.wbdata.parameter.controller.ParameterGroupController;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.RequestMapping;
 
@@ -27,6 +28,7 @@ class GroupScopedRouteMappingTest {
         assertMapping(OfflineScheduleController.class, "/api/v1/groups/{groupId}/offline/schedules");
         assertMapping(OfflineExecutionController.class, "/api/v1/groups/{groupId}/offline/executions");
         assertMapping(OperationsExecutionController.class, "/api/v1/groups/{groupId}/operations/executions");
+        assertMapping(ParameterGroupController.class, "/api/v1/groups/{groupId}/parameter-groups");
     }
 
     private void assertMapping(Class<?> controller, String expectedPath) {

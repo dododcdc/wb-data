@@ -1,4 +1,4 @@
-import type { OfflineFlowDocument, OfflineFlowSchedule } from '../../api/offline';
+import type { FlowParameterBinding, OfflineFlowDocument, OfflineFlowSchedule } from '../../api/offline';
 import type { TransferConfig } from './transfer/transferTypes';
 
 import { buildFlowDocumentSignature } from './flowCanvasState';
@@ -40,6 +40,14 @@ function cloneDocument(document: OfflineFlowDocument): OfflineFlowDocument {
             Object.entries(document.layout).map(([taskId, position]) => [taskId, { ...position }]),
         ),
         schedule: document.schedule ? { ...document.schedule } : undefined,
+        parameterBinding: document.parameterBinding ? {
+            ...document.parameterBinding,
+            definitions: document.parameterBinding.definitions.map((definition) => ({ ...definition })),
+            bindings: document.parameterBinding.bindings?.map((item) => ({
+                ...item,
+                definitions: item.definitions.map((d) => ({ ...d })),
+            })),
+        } : document.parameterBinding,
     };
 }
 
@@ -204,6 +212,25 @@ export function updateFlowScheduleDraft(
     schedule: OfflineFlowSchedule,
 ): FlowDraftSession {
     return updateFlowDraftDocument(session, (draft) => {
-        draft.schedule = { ...schedule };
+        draft.schedule = {
+            ...schedule,
+            timezone: draft.runtimeTimezone ?? schedule.timezone,
+        };
+    });
+}
+
+export function updateFlowParameterBindingDraft(
+    session: FlowDraftSession,
+    parameterBinding: FlowParameterBinding | null,
+): FlowDraftSession {
+    return updateFlowDraftDocument(session, (draft) => {
+        draft.parameterBinding = parameterBinding ? {
+            ...parameterBinding,
+            definitions: parameterBinding.definitions.map((definition) => ({ ...definition })),
+            bindings: parameterBinding.bindings?.map((item) => ({
+                ...item,
+                definitions: item.definitions.map((d) => ({ ...d })),
+            })),
+        } : null;
     });
 }

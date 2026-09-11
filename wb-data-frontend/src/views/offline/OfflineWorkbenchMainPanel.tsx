@@ -11,6 +11,8 @@ interface OfflineWorkbenchMainPanelProps {
     activeFlowPath: string | null;
     flowDocument: OfflineFlowDocument | null;
     canWrite: boolean;
+    canConfigureParameters: boolean;
+    timezone?: string | null;
     nodeCount: number;
     selectedTaskIds: string[];
     activeNodeId: string | null;
@@ -26,6 +28,7 @@ interface OfflineWorkbenchMainPanelProps {
     onSaveFlow: () => void;
     onOpenFlowCommitDialog: () => void;
     onOpenScheduleDialog: () => void;
+    onOpenParameterDialog: () => void;
     onExecute: () => void;
     onOpenExecutionDialog: () => void;
     onAddNodeAtCanvasCenter: (kind: OfflineFlowNodeKind) => void;
@@ -46,6 +49,8 @@ export function OfflineWorkbenchMainPanel({
     activeFlowPath,
     flowDocument,
     canWrite,
+    canConfigureParameters,
+    timezone,
     nodeCount,
     selectedTaskIds,
     activeNodeId,
@@ -61,6 +66,7 @@ export function OfflineWorkbenchMainPanel({
     onSaveFlow,
     onOpenFlowCommitDialog,
     onOpenScheduleDialog,
+    onOpenParameterDialog,
     onExecute,
     onOpenExecutionDialog,
     onAddNodeAtCanvasCenter,
@@ -91,6 +97,9 @@ export function OfflineWorkbenchMainPanel({
             <OfflineCanvasToolbar
                 activeFlowPath={activeFlowPath}
                 canWrite={canWrite}
+                canConfigureParameters={canConfigureParameters}
+                parameterBindingStatus={flowDocument.parameterBinding?.status}
+                timezone={timezone}
                 nodeCount={nodeCount}
                 selectedNodeCount={selectedTaskIds.length}
                 dirty={dirty}
@@ -101,6 +110,7 @@ export function OfflineWorkbenchMainPanel({
                 onSave={onSaveFlow}
                 onCommit={onOpenFlowCommitDialog}
                 onOpenSchedule={onOpenScheduleDialog}
+                onOpenParameters={onOpenParameterDialog}
                 onExecute={onExecute}
                 onOpenExecutions={onOpenExecutionDialog}
                 onAddNode={onAddNodeAtCanvasCenter}

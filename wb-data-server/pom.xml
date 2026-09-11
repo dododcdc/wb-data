@@ -21,11 +21,13 @@
     </properties>
 
     <modules>
+        <module>wb-data-sql-template</module>
         <module>wb-data-plugin-api</module>
         <module>wb-data-plugin-mysql</module>
         <module>wb-data-plugin-hive</module>
         <module>wb-data-plugin-postgresql</module>
         <module>wb-data-plugin-starrocks</module>
+        <module>wb-data-kestra-plugin</module>
         <module>wb-data-backend</module>
     </modules>
 

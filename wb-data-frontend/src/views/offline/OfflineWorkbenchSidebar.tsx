@@ -181,6 +181,7 @@ export function OfflineWorkbenchSidebar({
     tree,
 }: OfflineWorkbenchSidebarProps) {
     const branchSwitcherRef = useRef<HTMLDivElement>(null);
+    const treeGroupIdRef = useRef<number | null>(null);
     const [expandedTreeIds, setExpandedTreeIds] = useState<string[]>([]);
     const branchMenuOpen = branch.menuOpen;
     const setBranchMenuOpen = branch.onMenuOpenChange;
@@ -197,10 +198,20 @@ export function OfflineWorkbenchSidebar({
 
     useEffect(() => {
         if (!tree.data) {
+            treeGroupIdRef.current = null;
             setExpandedTreeIds([]);
             return;
         }
-        setExpandedTreeIds([tree.data.root.id, ...collectTreeDirectoryIds(tree.data.root)]);
+
+        const availableIds = [tree.data.root.id, ...collectTreeDirectoryIds(tree.data.root)];
+        if (treeGroupIdRef.current !== tree.data.groupId) {
+            treeGroupIdRef.current = tree.data.groupId;
+            setExpandedTreeIds(availableIds);
+            return;
+        }
+
+        const availableIdSet = new Set(availableIds);
+        setExpandedTreeIds((current) => current.filter((id) => availableIdSet.has(id)));
     }, [tree.data]);
 
     useEffect(() => {

@@ -1,15 +1,21 @@
 package com.wbdata.offline.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.offline.config.OfflineKestraProperties;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.dto.DebugExecutionRequest;
+import com.wbdata.offline.dto.FlowParameterDefinitionSnapshot;
+import com.wbdata.offline.dto.FlowParameterSnapshot;
 import com.wbdata.offline.dto.OfflineRepoStatusResponse;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -21,6 +27,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class OfflineExecutionServiceBranchTest {
+
+    @TempDir
+    Path tempDir;
 
     @Test
     void createDebugExecution_usesCurrentBranchNamespaceAndLabelsFlow() {
@@ -67,6 +76,55 @@ class OfflineExecutionServiceBranchTest {
         ));
 
         assertThat(service.getExecution(1L, "exec-1").branch()).isEqualTo("feature/pipeline");
+    }
+
+    @Test
+    void getExecutionResolvesHistoricalSnapshotValuesAndSources() {
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        ExecutionParameterSnapshotRegistry registry = Mockito.mock(ExecutionParameterSnapshotRegistry.class);
+        OfflineProperties properties = offlineProperties();
+        OfflineExecutionService service = service(
+                kestraClient,
+                repoStatusService("main"),
+                properties,
+                new FlowParameterSnapshotStore(new ObjectMapper()),
+                registry
+        );
+        FlowParameterSnapshot snapshot = new FlowParameterSnapshot(2, "Asia/Shanghai", "daily", 3, List.of(
+                new FlowParameterDefinitionSnapshot(
+                        "name", "CONSTANT", "小明", null, 0, null, 0, null),
+                new FlowParameterDefinitionSnapshot(
+                        "v_day", "SYSTEM_TIME", null, "yyyyMMdd", -1, null, 1, "PLANNED_TIME")
+        ));
+        when(registry.find(1L, "snapshot-1")).thenReturn(java.util.Optional.of(snapshot));
+        when(kestraClient.getExecution("exec-parameter")).thenReturn(new KestraExecutionSnapshot(
+                "exec-parameter",
+                "wb-debug-g1-bmain-0d6e4079-u7",
+                "example",
+                "SUCCESS",
+                null,
+                Instant.parse("2026-08-15T01:00:00Z"),
+                Instant.parse("2026-08-15T01:00:01Z"),
+                Instant.parse("2026-08-15T01:00:02Z"),
+                List.of(),
+                Map.of(
+                        "name", "李雷",
+                        ExecutionTimeContext.PLANNED_TIME_INPUT, "2026-08-15T01:00:00Z"
+                ),
+                Map.of(
+                        "wbdataGroupId", "1",
+                        "wbdataBranch", "main",
+                        ExecutionParameterSnapshotRegistry.LABEL_KEY, "snapshot-1",
+                        "wbdataParameterOverrideKeys", "name"
+                )
+        ));
+
+        var detail = service.getExecution(1L, "exec-parameter");
+
+        assertThat(detail.parameterResolutionStatus()).isEqualTo("AVAILABLE");
+        assertThat(detail.parameters())
+                .extracting(parameter -> parameter.key() + "=" + parameter.value() + ":" + parameter.source())
+                .containsExactly("name=李雷:MANUAL_OVERRIDE", "v_day=20260814:SYSTEM_TIME");
     }
 
     @Test
@@ -157,10 +215,196 @@ class OfflineExecutionServiceBranchTest {
         assertThat(flowSource.getValue()).doesNotContain("disabled: true");
     }
 
+    @Test
+    void createDebugExecutionValidatesSnapshotOverridesAndKeepsStringInputs() throws Exception {
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OfflineProperties properties = offlineProperties();
+        FlowParameterSnapshotStore snapshotStore = new FlowParameterSnapshotStore(new ObjectMapper());
+        snapshotStore.write(properties.resolveRepoPath(1L), "_flows/example/flow.yaml", parameterSnapshot());
+        OfflineExecutionService service = service(
+                kestraClient, repoStatusService("main"), properties, snapshotStore);
+        when(kestraClient.createExecution(any(), any(), any())).thenReturn(execution(
+                "exec-parameter",
+                "wb-debug-g1-bmain-0d6e4079-u7",
+                "example",
+                "RUNNING",
+                Map.of()
+        ));
+        DebugExecutionRequest request = new DebugExecutionRequest(
+                1L,
+                "_flows/example/flow.yaml",
+                "id: example\nnamespace: pg-1\ntasks: []\n",
+                List.of(),
+                "ALL",
+                Map.of("count", " 002 ", "name", "李雷")
+        );
+
+        service.createDebugExecution(request, 7L);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> inputs = ArgumentCaptor.forClass(Map.class);
+        verify(kestraClient).createExecution(
+                Mockito.matches("wb-debug-g1-bmain-[a-f0-9]{8}-u7"),
+                Mockito.eq("example"),
+                inputs.capture()
+        );
+        assertThat(inputs.getValue()).containsExactlyInAnyOrderEntriesOf(
+                Map.of("count", " 002 ", "name", "李雷"));
+    }
+
+    @Test
+    void createDebugExecutionRejectsUnknownOverrideBeforeMutatingKestra() throws Exception {
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OfflineProperties properties = offlineProperties();
+        FlowParameterSnapshotStore snapshotStore = new FlowParameterSnapshotStore(new ObjectMapper());
+        snapshotStore.write(properties.resolveRepoPath(1L), "_flows/example/flow.yaml", parameterSnapshot());
+        OfflineExecutionService service = service(
+                kestraClient, repoStatusService("main"), properties, snapshotStore);
+        DebugExecutionRequest request = new DebugExecutionRequest(
+                1L,
+                "_flows/example/flow.yaml",
+                "id: example\nnamespace: pg-1\ntasks: []\n",
+                List.of(),
+                "ALL",
+                Map.of("missing", "1")
+        );
+
+        assertThatThrownBy(() -> service.createDebugExecution(request, 7L))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("missing");
+
+        verify(kestraClient, never()).upsertFlow(any());
+        verify(kestraClient, never()).createExecution(any(), any(), any());
+    }
+
+    @Test
+    void createDebugExecutionRequiresPlannedTimeWhenSnapshotDefinesIt() throws Exception {
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OfflineProperties properties = offlineProperties();
+        FlowParameterSnapshotStore snapshotStore = new FlowParameterSnapshotStore(new ObjectMapper());
+        snapshotStore.write(properties.resolveRepoPath(1L), "_flows/example/flow.yaml", plannedParameterSnapshot());
+        OfflineExecutionService service = service(
+                kestraClient, repoStatusService("main"), properties, snapshotStore);
+        DebugExecutionRequest request = new DebugExecutionRequest(
+                1L,
+                "_flows/example/flow.yaml",
+                plannedParameterFlow(),
+                List.of("query"),
+                "SELECTED",
+                Map.of(),
+                null
+        );
+
+        assertThatThrownBy(() -> service.createDebugExecution(request, 7L))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("请选择参考计划时间");
+
+        verify(kestraClient, never()).upsertFlow(any());
+        verify(kestraClient, never()).createExecution(any(), any(), any());
+    }
+
+    @Test
+    void createDebugExecutionConvertsLocalPlannedTimeUsingSnapshotTimezone() throws Exception {
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OfflineProperties properties = offlineProperties();
+        FlowParameterSnapshotStore snapshotStore = new FlowParameterSnapshotStore(new ObjectMapper());
+        snapshotStore.write(properties.resolveRepoPath(1L), "_flows/example/flow.yaml", plannedParameterSnapshot());
+        OfflineExecutionService service = service(
+                kestraClient, repoStatusService("main"), properties, snapshotStore);
+        when(kestraClient.createExecution(any(), any(), any())).thenReturn(execution(
+                "exec-planned", "wb-debug-g1-bmain-0d6e4079-u7", "example", "RUNNING", Map.of()));
+        DebugExecutionRequest request = new DebugExecutionRequest(
+                1L,
+                "_flows/example/flow.yaml",
+                plannedParameterFlow(),
+                List.of("query"),
+                "SELECTED",
+                Map.of(),
+                LocalDateTime.parse("2026-01-01T02:00:00")
+        );
+
+        service.createDebugExecution(
+                request,
+                Map.of("scripts/query.sql", "select ${v_day}"),
+                7L
+        );
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> inputs = ArgumentCaptor.forClass(Map.class);
+        verify(kestraClient).createExecution(any(), Mockito.eq("example"), inputs.capture());
+        assertThat(inputs.getValue()).containsExactly(
+                Map.entry(ExecutionTimeContext.PLANNED_TIME_INPUT, "2025-12-31T18:00:00Z"));
+    }
+
     private static OfflineExecutionService service(KestraClient kestraClient, OfflineRepoStatusService repoStatusService) {
         OfflineProperties offlineProperties = new OfflineProperties();
+        return service(
+                kestraClient,
+                repoStatusService,
+                offlineProperties,
+                new FlowParameterSnapshotStore(new ObjectMapper()),
+                Mockito.mock(ExecutionParameterSnapshotRegistry.class)
+        );
+    }
+
+    private static OfflineExecutionService service(KestraClient kestraClient,
+                                                    OfflineRepoStatusService repoStatusService,
+                                                    OfflineProperties offlineProperties,
+                                                    FlowParameterSnapshotStore snapshotStore) {
+        return service(kestraClient, repoStatusService, offlineProperties, snapshotStore,
+                Mockito.mock(ExecutionParameterSnapshotRegistry.class));
+    }
+
+    private static OfflineExecutionService service(KestraClient kestraClient,
+                                                    OfflineRepoStatusService repoStatusService,
+                                                    OfflineProperties offlineProperties,
+                                                    FlowParameterSnapshotStore snapshotStore,
+                                                    ExecutionParameterSnapshotRegistry snapshotRegistry) {
         OfflineKestraProperties kestraProperties = new OfflineKestraProperties();
-        return new OfflineExecutionService(kestraClient, kestraProperties, offlineProperties, repoStatusService);
+        return new OfflineExecutionService(
+                kestraClient, kestraProperties, offlineProperties, repoStatusService, snapshotStore, snapshotRegistry);
+    }
+
+    private OfflineProperties offlineProperties() {
+        OfflineProperties properties = new OfflineProperties();
+        properties.setRepoBaseDir(tempDir.toString());
+        properties.setRepoDirPrefix("wb-data-");
+        return properties;
+    }
+
+    private FlowParameterSnapshot parameterSnapshot() {
+        return new FlowParameterSnapshot(2, "Asia/Shanghai", "daily", 3, List.of(
+                new FlowParameterDefinitionSnapshot(
+                        "name", "CONSTANT", "小明", null, 0, null, 0, null),
+                new FlowParameterDefinitionSnapshot(
+                        "count", "CONSTANT", "1", null, 0, null, 1, null)
+        ));
+    }
+
+    private FlowParameterSnapshot plannedParameterSnapshot() {
+        return new FlowParameterSnapshot(2, "Asia/Shanghai", "daily", 3, List.of(
+                new FlowParameterDefinitionSnapshot(
+                        "v_day", "SYSTEM_TIME", null, "yyyyMMdd", 0, null, 0, "PLANNED_TIME")
+        ));
+    }
+
+    private String plannedParameterFlow() {
+        return """
+                id: example
+                namespace: pg-1
+                inputs:
+                  - id: wbdata_planned_time
+                    type: DATETIME
+                    required: false
+                tasks:
+                  - id: query
+                    type: io.kestra.plugin.scripts.shell.Commands
+                    namespaceFiles:
+                      enabled: true
+                      include:
+                        - scripts/query.sql
+                    parameters: '{{ {"v_day": (inputs.v_day ?? ((inputs.wbdata_planned_time ?? trigger.date) | date("yyyyMMdd")))} | toJson }}'
+                """;
     }
 
     private static OfflineRepoStatusService repoStatusService(String branch) {

@@ -3,6 +3,7 @@ package com.wbdata.offline.service;
 import com.wbdata.offline.config.OfflineKestraProperties;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.dto.DebugExecutionRequest;
+import com.wbdata.offline.dto.FlowParameterSnapshot;
 import com.wbdata.offline.dto.OfflineExecutionDetailResponse;
 import com.wbdata.offline.dto.OfflineExecutionListItem;
 import com.wbdata.offline.dto.OfflineExecutionLogEntry;
@@ -18,8 +19,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +40,10 @@ public class OfflineExecutionService {
     private final OfflineKestraProperties offlineKestraProperties;
     private final OfflineProperties offlineProperties;
     private final OfflineRepoStatusService offlineRepoStatusService;
+    private final FlowParameterSnapshotStore parameterSnapshotStore;
+    private final ExecutionParameterSnapshotRegistry executionParameterSnapshotRegistry;
     private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
+    private final ExecutionParameterResolver parameterResolver = new ExecutionParameterResolver();
 
     public OfflineExecutionResponse createDebugExecution(DebugExecutionRequest request, Long requestedBy) {
         return createDebugExecution(request, Collections.emptyMap(), requestedBy);
@@ -44,12 +52,14 @@ public class OfflineExecutionService {
     public OfflineExecutionResponse createDebugExecution(DebugExecutionRequest request,
                                                          Map<String, String> namespaceFileOverrides,
                                                          Long requestedBy) {
+        FlowParameterSnapshot parameterSnapshot = resolveParameterSnapshot(request);
+        Map<String, String> overrides = parameterResolver.resolveOverrides(
+                parameterSnapshot, request.parameterOverrides());
         Set<String> actualSelectedTaskIds = getActualSelectedTaskIds(request);
         validateSelectedTaskTypes(request, actualSelectedTaskIds);
         String sourceRevision = yamlSupport.sha256Hex(request.content());
         String branch = readCurrentBranch(request.groupId());
         String debugNamespace = offlineKestraProperties.buildDebugNamespace(request.groupId(), requestedBy, branch);
-        syncNamespaceFiles(request.groupId(), request.content(), debugNamespace, namespaceFileOverrides);
         OfflineFlowYamlSupport.FlowIdentity identity = yamlSupport.parseIdentity(request.content());
         String debugFlow = yamlSupport.buildDebugFlow(
                 request.content(),
@@ -60,11 +70,17 @@ public class OfflineExecutionService {
                 branch,
                 sourceRevision,
                 request.mode(),
-                new java.util.ArrayList<>(actualSelectedTaskIds)
+                new java.util.ArrayList<>(actualSelectedTaskIds),
+                overrides.keySet()
         );
+        Map<String, String> inputs = buildExecutionInputs(
+                request, parameterSnapshot, overrides);
 
+        syncNamespaceFiles(request.groupId(), request.content(), debugNamespace, namespaceFileOverrides);
         kestraClient.upsertFlow(debugFlow);
-        KestraExecutionSnapshot execution = kestraClient.createExecution(debugNamespace, identity.flowId());
+        KestraExecutionSnapshot execution = inputs.isEmpty()
+                ? kestraClient.createExecution(debugNamespace, identity.flowId())
+                : kestraClient.createExecution(debugNamespace, identity.flowId(), inputs);
         return new OfflineExecutionResponse(
                 execution.id(),
                 "DEBUG",
@@ -75,19 +91,83 @@ public class OfflineExecutionService {
         );
     }
 
+    private FlowParameterSnapshot resolveParameterSnapshot(DebugExecutionRequest request) {
+        String snapshotId = yamlSupport.readLabel(
+                request.content(), ExecutionParameterSnapshotRegistry.LABEL_KEY);
+        if (snapshotId != null) {
+            return executionParameterSnapshotRegistry.find(request.groupId(), snapshotId)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST, "Flow 引用的执行参数快照不存在"));
+        }
+        Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
+        try {
+            return parameterSnapshotStore.read(repoPath, request.flowPath())
+                    .map(FlowParameterSnapshotStore.SnapshotFile::snapshot)
+                    .orElse(null);
+        } catch (IOException ex) {
+            throw new IllegalStateException("读取 Flow 参数快照失败", ex);
+        }
+    }
+
+    private Map<String, String> buildExecutionInputs(DebugExecutionRequest request,
+                                                     FlowParameterSnapshot snapshot,
+                                                     Map<String, String> overrides) {
+        Map<String, String> inputs = new LinkedHashMap<>(overrides);
+        if (!requiresPlannedTimeContext(snapshot)) {
+            return Collections.unmodifiableMap(inputs);
+        }
+        if (request.plannedTime() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "当前 Flow 包含计划时间参数，请选择参考计划时间");
+        }
+        ZoneId runtimeZone = resolveRuntimeZone(snapshot);
+        List<ZoneOffset> validOffsets = runtimeZone.getRules().getValidOffsets(request.plannedTime());
+        if (validOffsets.size() != 1) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "参考计划时间在运行时区中不存在或不唯一，请换一个时间");
+        }
+        Instant plannedTime = request.plannedTime().atOffset(validOffsets.getFirst()).toInstant();
+        inputs.put(ExecutionTimeContext.PLANNED_TIME_INPUT, plannedTime.toString());
+        return Collections.unmodifiableMap(inputs);
+    }
+
+    private boolean requiresPlannedTimeContext(FlowParameterSnapshot snapshot) {
+        if (snapshot == null) {
+            return false;
+        }
+        return snapshot.definitions().stream()
+                .anyMatch(definition -> "SYSTEM_TIME".equals(definition.valueSource())
+                        && "PLANNED_TIME".equals(
+                                definition.timeBasis() == null ? "PLANNED_TIME" : definition.timeBasis()));
+    }
+
+    private ZoneId resolveRuntimeZone(FlowParameterSnapshot snapshot) {
+        if (snapshot == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前 Flow 缺少参数快照");
+        }
+        if (snapshot.runtimeTimezone() == null || snapshot.runtimeTimezone().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前 Flow 缺少运行时区");
+        }
+        try {
+            return ZoneId.of(snapshot.runtimeTimezone());
+        } catch (RuntimeException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 运行时区不合法");
+        }
+    }
+
     private Set<String> getActualSelectedTaskIds(DebugExecutionRequest request) {
         if (!"ALL".equalsIgnoreCase(request.mode()) && request.selectedTaskIds() != null && !request.selectedTaskIds().isEmpty()) {
             return new LinkedHashSet<>(request.selectedTaskIds());
         }
         OfflineFlowYamlSupport.FlowGraph graph = yamlSupport.parseGraph(request.content());
         return graph.nodes().stream()
-                .map(OfflineFlowYamlSupport.FlowNode::taskId)
+                .map(OfflineFlowNode::taskId)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
 
     private void validateSelectedTaskTypes(DebugExecutionRequest request, Set<String> selectedTaskIds) {
         OfflineFlowYamlSupport.FlowGraph graph = yamlSupport.parseGraph(request.content());
-        for (OfflineFlowYamlSupport.FlowNode node : graph.nodes()) {
+        for (OfflineFlowNode node : graph.nodes()) {
             if (!selectedTaskIds.contains(node.taskId())) {
                 continue;
             }
@@ -108,7 +188,7 @@ public class OfflineExecutionService {
                 );
             }
 
-            String taskType = yamlSupport.resolveKestraQueryTaskType(node.dataSourceType());
+            String taskType = OfflineNodeTaskCompiler.resolveKestraQueryTaskType(node.dataSourceType());
             if (!kestraClient.supportsTaskType(taskType)) {
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,
@@ -176,6 +256,8 @@ public class OfflineExecutionService {
             }
         }
 
+        ExecutionParameterResolver.Resolution parameterResolution = resolveExecutionParameters(
+                groupId, execution, labels);
         return new OfflineExecutionDetailResponse(
                 execution.id(),
                 labels.getOrDefault("wbdataMode", "DEBUG"),
@@ -187,8 +269,57 @@ public class OfflineExecutionService {
                 execution.createdAt(),
                 execution.startDate(),
                 execution.endDate(),
-                taskRuns
+                taskRuns,
+                parameterResolution == null ? parameterResolutionStatus(execution) : parameterResolution.status(),
+                parameterResolution == null ? List.of() : parameterResolution.parameters()
         );
+    }
+
+    private ExecutionParameterResolver.Resolution resolveExecutionParameters(Long groupId,
+                                                                              KestraExecutionSnapshot execution,
+                                                                              Map<String, String> executionLabels) {
+        String snapshotId = executionLabels.get(ExecutionParameterSnapshotRegistry.LABEL_KEY);
+        if (snapshotId == null || snapshotId.isBlank()) {
+            return null;
+        }
+        var snapshot = executionParameterSnapshotRegistry.find(groupId, snapshotId).orElse(null);
+        if (snapshot == null) {
+            return null;
+        }
+        Set<String> overrideKeys = splitLabelValues(executionLabels.get("wbdataParameterOverrideKeys"));
+        return parameterResolver.resolveExecution(
+                snapshot,
+                execution.inputs(),
+                new ExecutionTimeContext(readPlannedTime(execution), execution.startDate()),
+                overrideKeys);
+    }
+
+    private Instant readPlannedTime(KestraExecutionSnapshot execution) {
+        String input = execution.inputs() == null
+                ? null
+                : execution.inputs().get(ExecutionTimeContext.PLANNED_TIME_INPUT);
+        if (input == null || input.isBlank()) {
+            return execution.plannedAt();
+        }
+        try {
+            return Instant.parse(input);
+        } catch (DateTimeParseException ex) {
+            return null;
+        }
+    }
+
+    private String parameterResolutionStatus(KestraExecutionSnapshot execution) {
+        return execution.inputs() == null || execution.inputs().isEmpty() ? "NONE" : "UNAVAILABLE";
+    }
+
+    private Set<String> splitLabelValues(String value) {
+        if (value == null || value.isBlank()) {
+            return Set.of();
+        }
+        return java.util.Arrays.stream(value.split("---"))
+                .map(String::trim)
+                .filter(item -> !item.isEmpty())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
 
     public OfflineExecutionScriptResponse getExecutionScript(Long groupId, String executionId) {

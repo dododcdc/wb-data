@@ -21,16 +21,27 @@ import {
     DialogTitle,
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
+import {
+    Combobox,
+    ComboboxContent,
+    ComboboxEmpty,
+    ComboboxInput,
+    ComboboxItem,
+    ComboboxTrigger,
+} from '../../components/ui/combobox';
+import { POPULAR_TIMEZONES, TIMEZONES, getTimezoneOffset } from './ScheduleUtils';
 import './OfflineContextMenu.css';
 
 interface CreateAction {
     open: boolean;
     name: string;
     parentPath: string;
+    timezone?: string;
     pending: boolean;
     onOpenChange: (open: boolean) => void;
     onNameChange: (name: string) => void;
     onParentPathChange: (path: string) => void;
+    onTimezoneChange?: (timezone: string) => void;
     onSubmit: () => void;
 }
 
@@ -242,6 +253,19 @@ function CreateDialog({
     action: CreateAction;
     repoTree: OfflineRepoTreeResponse | null;
 }) {
+    const [tzQuery, setTzQuery] = useState('');
+    const filteredTimezones = useMemo(() => {
+        const q = tzQuery.toLowerCase().trim();
+        const base = q
+            ? TIMEZONES.filter((tz) => tz.toLowerCase().includes(q))
+            : TIMEZONES;
+        const popularSet = new Set(POPULAR_TIMEZONES);
+        return {
+            popular: q ? [] : POPULAR_TIMEZONES,
+            rest: q ? base : base.filter((tz) => !popularSet.has(tz)),
+        };
+    }, [tzQuery]);
+
     const close = () => {
         action.onOpenChange(false);
         action.onNameChange('');
@@ -261,7 +285,7 @@ function CreateDialog({
                 <DialogHeader>
                     <DialogTitle>新建 {kind}</DialogTitle>
                     <DialogDescription>
-                        {isFlow ? '输入 Flow 名称，将自动创建空白的 Flow 文件' : '输入文件夹名称，将在指定路径下创建文件夹'}
+                        {isFlow ? '输入 Flow 名称并配置运行时区，将自动创建空白的 Flow 文件' : '输入文件夹名称，将在指定路径下创建文件夹'}
                     </DialogDescription>
                 </DialogHeader>
                 <div className="dialog-body">
@@ -277,6 +301,52 @@ function CreateDialog({
                             style={{ width: '100%' }}
                         />
                     </div>
+                    {isFlow && action.onTimezoneChange ? (
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
+                                运行时区
+                            </label>
+                            <Combobox
+                                value={action.timezone || 'Asia/Shanghai'}
+                                onInputValueChange={setTzQuery}
+                                onValueChange={(value) => {
+                                    if (value) {
+                                        action.onTimezoneChange?.(value);
+                                        setTzQuery('');
+                                    }
+                                }}
+                                disabled={action.pending}
+                            >
+                                <div className="offline-combobox-wrapper">
+                                    <ComboboxInput
+                                        placeholder="搜索时区..."
+                                        disabled={action.pending}
+                                    />
+                                    <ComboboxTrigger />
+                                </div>
+                                <ComboboxContent>
+                                    {filteredTimezones.popular.map((tz) => (
+                                        <ComboboxItem key={tz} value={tz}>
+                                            <span className="offline-tz-name">{tz}</span>
+                                            <span className="offline-tz-offset">{getTimezoneOffset(tz)}</span>
+                                        </ComboboxItem>
+                                    ))}
+                                    {filteredTimezones.popular.length > 0 && filteredTimezones.rest.length > 0 && (
+                                        <div className="offline-tz-divider" />
+                                    )}
+                                    {filteredTimezones.rest.map((tz) => (
+                                        <ComboboxItem key={tz} value={tz}>
+                                            <span className="offline-tz-name">{tz}</span>
+                                            <span className="offline-tz-offset">{getTimezoneOffset(tz)}</span>
+                                        </ComboboxItem>
+                                    ))}
+                                    {filteredTimezones.popular.length === 0 && filteredTimezones.rest.length === 0 && (
+                                        <ComboboxEmpty>未找到匹配的时区</ComboboxEmpty>
+                                    )}
+                                </ComboboxContent>
+                            </Combobox>
+                        </div>
+                    ) : null}
                     <div>
                         <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
                             存储路径 {action.parentPath ? `（已选：${action.parentPath.replace('_flows/', '')}）` : `（默认：${repoTree?.root.name ?? '根目录'}）`}

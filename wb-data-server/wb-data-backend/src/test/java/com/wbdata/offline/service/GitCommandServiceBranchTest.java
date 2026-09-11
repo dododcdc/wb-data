@@ -81,12 +81,14 @@ class GitCommandServiceBranchTest {
         initRepo(repo);
         write(repo, "_flows/example/flow.yaml", "id: example\n");
         write(repo, "_flows/with-layout/.layout.json", "{}\n");
+        write(repo, "_flows/with-parameters/.parameters.json", "{}\n");
         write(repo, "scripts/scripted/node_1.sql", "select 1;\n");
         write(repo, "README.md", "hello\n");
         git(repo, "add", "-A");
         git(repo, "commit", "-m", "init");
         write(repo, "_flows/example/flow.yaml", "id: changed\n");
         write(repo, "_flows/with-layout/.layout.json", "{\"node_1\":{\"x\":1,\"y\":2}}\n");
+        write(repo, "_flows/with-parameters/.parameters.json", "{\"groupVersion\":2}\n");
         write(repo, "scripts/scripted/node_1.sql", "select 2;\n");
         write(repo, "README.md", "changed\n");
 
@@ -98,6 +100,7 @@ class GitCommandServiceBranchTest {
         assertThat(ex.details().changedFlows()).containsExactlyInAnyOrder(
                 "_flows/example/flow.yaml",
                 "_flows/with-layout/flow.yaml",
+                "_flows/with-parameters/flow.yaml",
                 "_flows/scripted/flow.yaml"
         );
         assertThat(ex.details().changedFlowDetails())
@@ -105,6 +108,7 @@ class GitCommandServiceBranchTest {
                 .contains(
                         org.assertj.core.groups.Tuple.tuple("_flows/example/flow.yaml", "MODIFIED"),
                         org.assertj.core.groups.Tuple.tuple("_flows/with-layout/flow.yaml", "MODIFIED"),
+                        org.assertj.core.groups.Tuple.tuple("_flows/with-parameters/flow.yaml", "MODIFIED"),
                         org.assertj.core.groups.Tuple.tuple("_flows/scripted/flow.yaml", "MODIFIED")
                 );
         assertThat(ex.details().otherFileCount()).isEqualTo(1);

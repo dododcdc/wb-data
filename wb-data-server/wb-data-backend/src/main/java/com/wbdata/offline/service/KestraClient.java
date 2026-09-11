@@ -10,7 +10,20 @@ public interface KestraClient {
 
     void upsertNamespaceFile(String namespace, String path, String content);
 
-    KestraExecutionSnapshot createExecution(String namespace, String flowId);
+    default KestraExecutionSnapshot createExecution(String namespace, String flowId) {
+        return createExecution(namespace, flowId, java.util.Map.of());
+    }
+
+    default KestraExecutionSnapshot createExecution(String namespace,
+                                                     String flowId,
+                                                     java.util.Map<String, String> inputs) {
+        return createExecution(namespace, flowId, inputs, java.util.Map.of());
+    }
+
+    KestraExecutionSnapshot createExecution(String namespace,
+                                             String flowId,
+                                             java.util.Map<String, String> inputs,
+                                             java.util.Map<String, String> labels);
 
     java.util.List<KestraExecutionSnapshot> searchExecutions(java.util.Map<String, String> filters);
 

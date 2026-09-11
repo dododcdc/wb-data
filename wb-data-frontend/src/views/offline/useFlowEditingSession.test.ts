@@ -43,6 +43,7 @@ function makeFlowDocument(overrides?: Partial<OfflineFlowDocument>): OfflineFlow
         namespace: 'jack.demo',
         documentHash: 'server-hash',
         documentUpdatedAt: 10,
+        runtimeTimezone: 'Asia/Shanghai',
         stages: [
             {
                 stageId: 'main',

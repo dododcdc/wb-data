@@ -78,7 +78,10 @@ public class OfflineFlowController {
                 request.stages(),
                 request.edges(),
                 request.layout(),
-                request.schedule()
+                request.schedule(),
+                request.parameterBinding(),
+                request.parameterBindings(),
+                request.runtimeTimezone()
         );
         return Result.success(offlineFlowDocumentService.saveFlowDocument(normalizedRequest));
     }

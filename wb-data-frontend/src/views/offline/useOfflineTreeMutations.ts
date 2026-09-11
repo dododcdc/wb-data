@@ -1,4 +1,4 @@
-import { useCallback, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useState, type MouseEvent } from 'react';
 import {
     createOfflineFolder,
     deleteOfflineFlow,
@@ -23,6 +23,7 @@ interface UseOfflineTreeMutationsParams {
     groupId: number | null;
     activeFlowPath: string | null;
     draftSession: FlowDraftSession | null;
+    defaultTimezone?: string;
     refreshRepoTree: () => Promise<void>;
     openFlowDocument: (path: string) => Promise<boolean>;
     leaveCurrentFlow: (session: FlowDraftSession) => void;
@@ -54,6 +55,7 @@ export function useOfflineTreeMutations({
     groupId,
     activeFlowPath,
     draftSession,
+    defaultTimezone,
     refreshRepoTree,
     openFlowDocument,
     leaveCurrentFlow,
@@ -65,6 +67,7 @@ export function useOfflineTreeMutations({
     const [newFlowName, setNewFlowName] = useState('');
     const [newFlowCreating, setNewFlowCreating] = useState(false);
     const [newFlowParentPath, setNewFlowParentPath] = useState('');
+    const [newFlowTimezone, setNewFlowTimezone] = useState(defaultTimezone || 'Asia/Shanghai');
     const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
     const [newFolderCreating, setNewFolderCreating] = useState(false);
@@ -92,6 +95,12 @@ export function useOfflineTreeMutations({
     const [renameFolderPath, setRenameFolderPath] = useState('');
     const [renameFolderLoading, setRenameFolderLoading] = useState(false);
 
+    useEffect(() => {
+        if (defaultTimezone) {
+            setNewFlowTimezone(defaultTimezone);
+        }
+    }, [defaultTimezone]);
+
     const handleCreateFlow = useCallback(async () => {
         if (!groupId || !newFlowName.trim()) return;
         const name = newFlowName.trim();
@@ -108,6 +117,7 @@ export function useOfflineTreeMutations({
                 stages: [],
                 edges: [],
                 layout: {},
+                runtimeTimezone: newFlowTimezone || defaultTimezone || 'Asia/Shanghai',
             });
             setNewFlowDialogOpen(false);
             setNewFlowName('');
@@ -124,7 +134,7 @@ export function useOfflineTreeMutations({
         } finally {
             setNewFlowCreating(false);
         }
-    }, [groupId, newFlowName, newFlowParentPath, openFlowDocument, refreshRepoTree, showFeedback]);
+    }, [defaultTimezone, groupId, newFlowName, newFlowParentPath, newFlowTimezone, openFlowDocument, refreshRepoTree, showFeedback]);
 
     const handleCreateFolder = useCallback(async () => {
         if (!groupId || !newFolderName.trim()) return;
@@ -311,8 +321,9 @@ export function useOfflineTreeMutations({
         const relativePath = node.path.replace(/^_flows\/?/, '');
         setNewFlowParentPath(relativePath);
         setNewFlowName('');
+        setNewFlowTimezone(defaultTimezone || 'Asia/Shanghai');
         setNewFlowDialogOpen(true);
-    }, []);
+    }, [defaultTimezone]);
 
     const openNewFolderDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
         setContextMenuOpen(false);
@@ -356,14 +367,17 @@ export function useOfflineTreeMutations({
     const openRootNewFlowDialog = useCallback(() => {
         setNewFlowParentPath('');
         setNewFlowName('');
+        setNewFlowTimezone(defaultTimezone || 'Asia/Shanghai');
         setNewFlowDialogOpen(true);
-    }, []);
+    }, [defaultTimezone]);
 
     return {
         newFlowDialogOpen,
         setNewFlowDialogOpen,
         newFlowName,
         setNewFlowName,
+        newFlowTimezone,
+        setNewFlowTimezone,
         newFlowCreating,
         newFlowParentPath,
         setNewFlowParentPath,

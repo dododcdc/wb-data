@@ -30,7 +30,6 @@ class OfflineScheduleControllerGroupScopeTest {
                 999L,
                 "_flows/jack/test/flow.yaml",
                 "* * * * *",
-                "Asia/Singapore",
                 "hash",
                 100L
         ));

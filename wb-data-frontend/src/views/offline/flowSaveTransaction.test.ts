@@ -19,6 +19,7 @@ function makeFlowDocument(overrides?: Partial<OfflineFlowDocument>): OfflineFlow
         namespace: 'jack.demo',
         documentHash: 'server-hash',
         documentUpdatedAt: 10,
+        runtimeTimezone: 'Asia/Shanghai',
         stages: [
             {
                 stageId: 'main',
@@ -108,7 +109,53 @@ describe('flowSaveTransaction', () => {
                 timezone: 'Asia/Shanghai',
                 enabled: true,
             },
+            runtimeTimezone: 'Asia/Shanghai',
         });
+    });
+
+    it('rejects saving when the Flow runtime timezone is missing', () => {
+        const session = makeSession(makeFlowDocument({ runtimeTimezone: null }));
+
+        expect(() => buildSaveFlowDocumentRequest(1, session))
+            .toThrow('Flow 运行时区不能为空');
+    });
+
+    it('serializes a newly staged parameter group binding', () => {
+        const session = makeSession();
+        session.workingDraft.parameterBinding = {
+            parameterGroupId: 8,
+            code: 'daily_common',
+            name: '日常公共参数',
+            boundVersion: 3,
+            currentVersion: 3,
+            status: 'CURRENT',
+            definitions: [],
+        };
+
+        expect(buildSaveFlowDocumentRequest(1, session).parameterBinding).toEqual({
+            parameterGroupId: 8,
+            expectedVersion: 3,
+        });
+    });
+
+    it('serializes an explicit unbind while omitting an unchanged binding', () => {
+        const boundDocument = makeFlowDocument({
+            parameterBinding: {
+                parameterGroupId: 8,
+                code: 'daily_common',
+                name: '日常公共参数',
+                boundVersion: 2,
+                currentVersion: 3,
+                status: 'OUTDATED',
+                definitions: [],
+            },
+        });
+        const unchanged = makeSession(boundDocument);
+        const unbound = makeSession(boundDocument);
+        unbound.workingDraft.parameterBinding = null;
+
+        expect(buildSaveFlowDocumentRequest(1, unchanged)).not.toHaveProperty('parameterBinding');
+        expect(buildSaveFlowDocumentRequest(1, unbound).parameterBinding).toEqual({});
     });
 
     it('preserves transfer configuration when serializing a transfer node', () => {

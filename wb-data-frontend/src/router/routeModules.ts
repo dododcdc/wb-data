@@ -6,6 +6,7 @@ export const loadOfflineWorkbenchModule = () => import('../views/offline/Offline
 export const loadExecutionDetailPageModule = () => import('../views/offline/ExecutionDetailPage');
 export const loadOperationsCenterModule = () => import('../views/operations/OperationsCenter');
 export const loadOperationsExecutionDetailPageModule = () => import('../views/operations/OperationsExecutionDetailPage');
+export const loadParameterGroupPageModule = () => import('../views/parameters/ParameterGroupPage');
 export const loadUserListModule = () => import('../views/users/UserList');
 export const loadGroupListModule = () => import('../views/groups/GroupList');
 export const loadGroupSettingsModule = () => import('../views/group-settings/GroupSettingsPage');

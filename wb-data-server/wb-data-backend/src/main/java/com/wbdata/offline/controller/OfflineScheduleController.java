@@ -46,7 +46,6 @@ public class OfflineScheduleController {
                 context.currentGroup().id(),
                 request.path(),
                 request.cron(),
-                request.timezone(),
                 request.contentHash(),
                 request.fileUpdatedAt()
         );

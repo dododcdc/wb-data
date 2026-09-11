@@ -18,6 +18,8 @@ public class PermissionService {
             Permission.QUERY_EXPORT.code(),
             Permission.OFFLINE_READ.code(),
             Permission.OFFLINE_WRITE.code(),
+            Permission.PARAMETER_READ.code(),
+            Permission.PARAMETER_WRITE.code(),
             Permission.MEMBER_READ.code()
     );
 

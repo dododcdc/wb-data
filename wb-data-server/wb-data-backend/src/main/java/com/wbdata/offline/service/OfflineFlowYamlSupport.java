@@ -19,45 +19,27 @@ import java.util.Map;
 import java.util.Set;
 
 final class OfflineFlowYamlSupport {
-    private static final String WB_DATA_META_PREFIX = "[wbdata-meta]";
-    private static final String SHELL_COMMANDS_TASK_TYPE = "io.kestra.plugin.scripts.shell.Commands";
     private static final String RECOVER_MISSED_SCHEDULES_NONE = "NONE";
     private static final java.util.regex.Pattern READ_CALL_PATTERN =
             java.util.regex.Pattern.compile("\\{\\{\\s*read\\(\\s*['\"]([^'\"]+)['\"]\\s*\\)\\s*}}");
 
     private final Yaml yaml;
-    private final TransferRuntimeSettings transferRuntimeSettings;
+    private final OfflineNodeTaskCompiler nodeTaskCompiler;
 
     OfflineFlowYamlSupport() {
-        this(new TransferRuntimeSettings(
-                OfflineTransferProperties.DEFAULT_SEATUNNEL_IMAGE,
-                "wb-data_default",
-                "WB_DATA_INTERNAL_BASE_URL",
-                "WB_DATA_INTERNAL_TOKEN",
-                null,
-                null,
-                List.of()
-        ));
+        this(new OfflineNodeTaskCompiler());
     }
 
     OfflineFlowYamlSupport(OfflineTransferProperties transferProperties) {
-        this(new TransferRuntimeSettings(
-                transferProperties.getSeatunnelImage(),
-                transferProperties.getDockerNetwork(),
-                transferProperties.getInternalBaseUrlEnv(),
-                transferProperties.getInternalTokenEnv(),
-                transferProperties.getInternalBaseUrl(),
-                transferProperties.getInternalToken(),
-                transferProperties.getDockerVolumes()
-        ));
+        this(new OfflineNodeTaskCompiler(transferProperties));
     }
 
-    OfflineFlowYamlSupport(TransferRuntimeSettings transferRuntimeSettings) {
+    private OfflineFlowYamlSupport(OfflineNodeTaskCompiler nodeTaskCompiler) {
         DumperOptions options = new DumperOptions();
         options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
         options.setPrettyFlow(true);
         this.yaml = new Yaml(options);
-        this.transferRuntimeSettings = transferRuntimeSettings;
+        this.nodeTaskCompiler = nodeTaskCompiler;
     }
 
     String buildEmptyFlowYaml(String flowId, String namespace) {
@@ -73,6 +55,11 @@ final class OfflineFlowYamlSupport {
         return new FlowIdentity(requiredString(root, "namespace"), requiredString(root, "id"));
     }
 
+    String readLabel(String source, String key) {
+        Object value = asStringObjectMap(loadRoot(source).get("labels")).get(key);
+        return value == null ? null : value.toString();
+    }
+
     String buildDebugFlow(String source,
                           String debugNamespace,
                           String flowPath,
@@ -82,6 +69,20 @@ final class OfflineFlowYamlSupport {
                           String sourceRevision,
                           String mode,
                           List<String> selectedTaskIds) {
+        return buildDebugFlow(source, debugNamespace, flowPath, groupId, requestedBy, branch,
+                sourceRevision, mode, selectedTaskIds, Set.of());
+    }
+
+    String buildDebugFlow(String source,
+                          String debugNamespace,
+                          String flowPath,
+                          Long groupId,
+                          Long requestedBy,
+                          String branch,
+                          String sourceRevision,
+                          String mode,
+                          List<String> selectedTaskIds,
+                          Set<String> parameterOverrideKeys) {
         Map<String, Object> root = loadRoot(source);
         root.put("namespace", debugNamespace);
         root.remove("triggers");
@@ -96,6 +97,11 @@ final class OfflineFlowYamlSupport {
         labels.put("wbdataDebugNamespace", debugNamespace);
         labels.put("wbdataSourceRevision", sourceRevision);
         labels.put("wbdataSelectedTaskIds", String.join("---", new LinkedHashSet<>(selectedTaskIds)));
+        if (parameterOverrideKeys == null || parameterOverrideKeys.isEmpty()) {
+            labels.remove("wbdataParameterOverrideKeys");
+        } else {
+            labels.put("wbdataParameterOverrideKeys", String.join("---", parameterOverrideKeys));
+        }
         root.put("labels", labels);
 
         if (!"ALL".equalsIgnoreCase(mode) && !"SELECTED".equalsIgnoreCase(mode)) {
@@ -112,7 +118,34 @@ final class OfflineFlowYamlSupport {
         return yaml.dump(root);
     }
 
+    String applyParameterSnapshotId(String source, String snapshotId) {
+        Map<String, Object> root = loadRoot(source);
+        Map<String, Object> labels = new LinkedHashMap<>();
+        labels.putAll(asStringObjectMap(root.get("labels")));
+        if (snapshotId == null || snapshotId.isBlank()) {
+            labels.remove(ExecutionParameterSnapshotRegistry.LABEL_KEY);
+        } else {
+            labels.put(ExecutionParameterSnapshotRegistry.LABEL_KEY, snapshotId);
+        }
+        if (labels.isEmpty()) {
+            root.remove("labels");
+        } else {
+            root.put("labels", labels);
+        }
+        return yaml.dump(root);
+    }
 
+    String applyRuntimeTimezoneLabel(String source, String runtimeTimezone) {
+        if (runtimeTimezone == null || runtimeTimezone.isBlank()) {
+            return source;
+        }
+        Map<String, Object> root = loadRoot(source);
+        Map<String, Object> labels = new LinkedHashMap<>();
+        labels.putAll(asStringObjectMap(root.get("labels")));
+        labels.put("wbdataRuntimeTimezone", runtimeTimezone.trim());
+        root.put("labels", labels);
+        return yaml.dump(root);
+    }
 
     String sha256Hex(String content) {
         try {
@@ -206,7 +239,7 @@ final class OfflineFlowYamlSupport {
     FlowGraph parseGraph(String source) {
         Map<String, Object> root = loadRoot(source);
         List<Map<String, Object>> tasks = requireTasks(root);
-        List<FlowNode> nodes = new ArrayList<>();
+        List<OfflineFlowNode> nodes = new ArrayList<>();
         List<FlowEdge> edges = new ArrayList<>();
         parseGraphTasks(tasks, nodes, edges);
         return new FlowGraph(
@@ -218,7 +251,7 @@ final class OfflineFlowYamlSupport {
     }
 
     private void parseGraphTasks(List<Map<String, Object>> tasks,
-                                 List<FlowNode> outNodes,
+                                 List<OfflineFlowNode> outNodes,
                                  List<FlowEdge> outEdges) {
         for (Map<String, Object> task : tasks) {
             if (isDagTask(task)) {
@@ -227,7 +260,7 @@ final class OfflineFlowYamlSupport {
                 for (Map<String, Object> dagTaskEntry : childTasks) {
                     Map<String, Object> actualTask = (Map<String, Object>) dagTaskEntry.get("task");
                     if (actualTask == null) continue;
-                    FlowNode childNode = parseLeafNode(actualTask);
+                    OfflineFlowNode childNode = parseLeafNode(actualTask);
                     outNodes.add(childNode);
                     
                     Object dependsOn = dagTaskEntry.get("dependsOn");
@@ -252,19 +285,34 @@ final class OfflineFlowYamlSupport {
      * 3. Single nodes become plain tasks
      */
     String compileGraph(String existingSource,
-                        List<FlowNode> nodes,
+                        List<OfflineFlowNode> nodes,
                         List<FlowEdge> edges,
                         java.util.Map<Long, com.wbdata.datasource.entity.DataSource> dataSourceMap) {
+        return compileGraph(existingSource, nodes, edges, dataSourceMap, null);
+    }
+
+    String compileGraph(String existingSource,
+                        List<OfflineFlowNode> nodes,
+                        List<FlowEdge> edges,
+                        java.util.Map<Long, com.wbdata.datasource.entity.DataSource> dataSourceMap,
+                        FlowParameterCompiler.Compilation parameterCompilation) {
         if (!isAcyclicGraph(nodes, edges)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "DAG 中存在环，请修正连线");
         }
 
         Map<String, Object> root = loadRoot(existingSource);
+        if (parameterCompilation != null) {
+            if (parameterCompilation.inputs().isEmpty()) {
+                root.remove("inputs");
+            } else {
+                root.put("inputs", parameterCompilation.inputs());
+            }
+        }
 
         // Build adjacency maps
         Map<String, Set<String>> successors = new LinkedHashMap<>();
         Map<String, Set<String>> predecessors = new LinkedHashMap<>();
-        for (FlowNode n : nodes) {
+        for (OfflineFlowNode n : nodes) {
             successors.put(n.taskId(), new LinkedHashSet<>());
             predecessors.put(n.taskId(), new LinkedHashSet<>());
         }
@@ -276,7 +324,7 @@ final class OfflineFlowYamlSupport {
         // Topological sort (Kahn's algorithm)
         List<String> sorted = new ArrayList<>();
         Map<String, Integer> inDegree = new LinkedHashMap<>();
-        for (FlowNode n : nodes) {
+        for (OfflineFlowNode n : nodes) {
             inDegree.put(n.taskId(), predecessors.get(n.taskId()).size());
         }
         java.util.Queue<String> queue = new java.util.ArrayDeque<>();
@@ -304,7 +352,8 @@ final class OfflineFlowYamlSupport {
 
         List<Map<String, Object>> childTasks = new ArrayList<>();
         for (String taskId : sorted) {
-            Map<String, Object> taskDef = getOrCreateTaskDef(existingTaskMap, taskId, nodes, dataSourceMap);
+            Map<String, Object> taskDef = getOrCreateTaskDef(
+                    existingTaskMap, taskId, nodes, dataSourceMap, parameterCompilation);
             
             // Wrap in DagTask
             Map<String, Object> dagTaskEntry = new LinkedHashMap<>();
@@ -353,229 +402,24 @@ final class OfflineFlowYamlSupport {
 
     private Map<String, Object> getOrCreateTaskDef(Map<String, Map<String, Object>> existingTaskMap,
                                                    String taskId,
-                                                   List<FlowNode> nodes,
-                                                   Map<Long, com.wbdata.datasource.entity.DataSource> dataSourceMap) {
+                                                   List<OfflineFlowNode> nodes,
+                                                   Map<Long, com.wbdata.datasource.entity.DataSource> dataSourceMap,
+                                                   FlowParameterCompiler.Compilation parameterCompilation) {
         Map<String, Object> existing = existingTaskMap.get(taskId);
-        FlowNode nodeInfo = nodes.stream()
+        OfflineFlowNode nodeInfo = nodes.stream()
                 .filter(n -> n.taskId().equals(taskId))
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "未知节点: " + taskId));
-
-        Map<String, Object> task;
-        if (existing != null) {
-            task = new LinkedHashMap<>(existing);
-            task.remove("disabled");
-        } else {
-            task = new LinkedHashMap<>();
-            task.put("id", taskId);
-            if (!"SQL".equalsIgnoreCase(nodeInfo.kind())) {
-                task.put("type", SHELL_COMMANDS_TASK_TYPE);
-            }
+        if (parameterCompilation == null) {
+            return nodeTaskCompiler.compile(existing, nodeInfo, dataSourceMap);
         }
-
-        if ("TRANSFER".equalsIgnoreCase(nodeInfo.kind())) {
-            applyTransferTask(task, nodeInfo);
-        } else if ("SQL".equalsIgnoreCase(nodeInfo.kind())) {
-            applyDataSourceToTask(task, nodeInfo, dataSourceMap);
-        } else if ("HIVE_SQL".equalsIgnoreCase(nodeInfo.kind())) {
-            applyHiveSqlTask(task, nodeInfo, dataSourceMap);
-        } else {
-            applyShellTask(task, nodeInfo);
-        }
-
-        return task;
-    }
-
-    private void applyTransferTask(Map<String, Object> task, FlowNode nodeInfo) {
-        clearJdbcTaskFields(task);
-        clearShellTaskFields(task);
-        task.put("type", SHELL_COMMANDS_TASK_TYPE);
-        task.put("description", mergeTransferTaskMetadataDescription(
-                readOptionalString(task, "description"),
-                nodeInfo.transferConfigPath()
-        ));
-        task.put("namespaceFiles", buildNamespaceFilesConfig(nodeInfo.transferConfigPath()));
-        task.put("containerImage", transferRuntimeSettings.seatunnelImage());
-        Map<String, String> env = buildTransferEnv();
-        if (!env.isEmpty()) {
-            task.put("env", env);
-        }
-        task.put("taskRunner", buildTransferTaskRunner());
-        task.put("commands", buildTransferCommands(nodeInfo.taskId(), nodeInfo.transferConfigPath()));
-    }
-
-    private Map<String, String> buildTransferEnv() {
-        Map<String, String> env = new LinkedHashMap<>();
-        putIfPresent(env, transferRuntimeSettings.internalBaseUrlEnv(), transferRuntimeSettings.internalBaseUrl());
-        putIfPresent(env, transferRuntimeSettings.internalTokenEnv(), transferRuntimeSettings.internalToken());
-        return env;
-    }
-
-    private void putIfPresent(Map<String, String> env, String name, String value) {
-        if (name != null && !name.isBlank() && value != null && !value.isBlank()) {
-            env.put(name, value);
-        }
-    }
-
-    private Map<String, Object> buildTransferTaskRunner() {
-        Map<String, Object> taskRunner = new LinkedHashMap<>();
-        taskRunner.put("type", "io.kestra.plugin.scripts.runner.docker.Docker");
-        taskRunner.put("networkMode", transferRuntimeSettings.dockerNetwork());
-        taskRunner.put("pullPolicy", "IF_NOT_PRESENT");
-        List<String> dockerVolumes = transferRuntimeSettings.dockerVolumes() == null
-                ? List.of()
-                : transferRuntimeSettings.dockerVolumes().stream()
-                .filter(volume -> volume != null && !volume.isBlank())
-                .toList();
-        if (!dockerVolumes.isEmpty()) {
-            taskRunner.put("volumes", new ArrayList<>(dockerVolumes));
-        }
-        return taskRunner;
-    }
-
-    private List<String> buildTransferCommands(String taskId, String transferConfigPath) {
-        String renderedConfigPath = "/tmp/wb-data-transfer/" + taskId + ".conf";
-        return List.of(
-                "set -eu",
-                "mkdir -p /tmp/wb-data-transfer",
-                "curl --fail --show-error --silent -H \"X-WB-Data-Internal-Token: ${"
-                        + transferRuntimeSettings.internalTokenEnv() + "}\" -H 'Content-Type: application/json' "
-                        + "--data-binary @" + shellQuote(transferConfigPath) + " \"${"
-                        + transferRuntimeSettings.internalBaseUrlEnv() + "}/api/v1/internal/offline/transfer/render\" "
-                        + "-o " + renderedConfigPath,
-                "/opt/seatunnel/bin/seatunnel.sh --config " + renderedConfigPath + " -m local"
+        return nodeTaskCompiler.compile(
+                existing,
+                nodeInfo,
+                dataSourceMap,
+                parameterCompilation.parametersForTask(taskId),
+                true
         );
-    }
-
-    private void applyShellTask(Map<String, Object> task, FlowNode nodeInfo) {
-        clearJdbcTaskFields(task);
-        clearShellTaskFields(task);
-        task.put("type", SHELL_COMMANDS_TASK_TYPE);
-        task.put("namespaceFiles", buildNamespaceFilesConfig(nodeInfo.scriptPath()));
-        task.put("commands", List.of("bash " + shellQuote(nodeInfo.scriptPath())));
-    }
-
-    private void applyDataSourceToTask(Map<String, Object> task,
-                                       FlowNode nodeInfo,
-                                       Map<Long, com.wbdata.datasource.entity.DataSource> dataSourceMap) {
-        Long dsId = nodeInfo.dataSourceId();
-        com.wbdata.datasource.entity.DataSource ds = dsId != null ? dataSourceMap.get(dsId) : null;
-
-        if (ds == null) {
-            clearJdbcTaskFields(task);
-            task.put("type", SHELL_COMMANDS_TASK_TYPE);
-            task.put("namespaceFiles", buildNamespaceFilesConfig(nodeInfo.scriptPath()));
-            task.put("commands", List.of("cat " + shellQuote(nodeInfo.scriptPath()) + " # No data source selected"));
-            return;
-        }
-
-        clearShellTaskFields(task);
-        String type = ds.getType().toUpperCase();
-        task.put("type", resolveKestraQueryTaskType(type));
-        task.put("description", mergeTaskMetadataDescription(readOptionalString(task, "description"), ds.getId(), type, "SQL"));
-        task.put("url", buildJdbcUrl(ds.getHost(), ds.getPort(), ds.getDatabaseName(), type));
-        task.put("username", ds.getUsername());
-        task.put("password", ds.getPassword());
-        task.put("sql", String.format("{{ read('%s') }}", nodeInfo.scriptPath()));
-    }
-
-    private void applyHiveSqlTask(Map<String, Object> task,
-                                  FlowNode nodeInfo,
-                                  Map<Long, com.wbdata.datasource.entity.DataSource> dataSourceMap) {
-        Long dsId = nodeInfo.dataSourceId();
-        com.wbdata.datasource.entity.DataSource ds = dsId != null ? dataSourceMap.get(dsId) : null;
-
-        clearJdbcTaskFields(task);
-        clearShellTaskFields(task);
-
-        if (ds == null) {
-            task.put("type", SHELL_COMMANDS_TASK_TYPE);
-            task.put("namespaceFiles", buildNamespaceFilesConfig(nodeInfo.scriptPath()));
-            task.put("commands", List.of("cat " + shellQuote(nodeInfo.scriptPath()) + " # No data source selected"));
-            return;
-        }
-
-        String type = ds.getType() == null ? "" : ds.getType().trim().toUpperCase();
-        if (!"HIVE".equals(type)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "HiveSQL 节点只能绑定 Hive 数据源: " + nodeInfo.taskId());
-        }
-
-        task.put("type", SHELL_COMMANDS_TASK_TYPE);
-        task.put("description", mergeTaskMetadataDescription(readOptionalString(task, "description"), ds.getId(), type, "HIVE_SQL"));
-        task.put("namespaceFiles", buildNamespaceFilesConfig(nodeInfo.scriptPath()));
-        task.put("commands", List.of(buildBeelineCommand(ds, nodeInfo.scriptPath())));
-    }
-
-    String resolveKestraQueryTaskType(String dataSourceType) {
-        String normalizedType = dataSourceType == null ? "" : dataSourceType.trim().toUpperCase();
-        return switch (normalizedType) {
-            case "MYSQL", "STARROCKS" -> "io.kestra.plugin.jdbc.mysql.Query";
-            case "POSTGRESQL" -> "io.kestra.plugin.jdbc.postgresql.Query";
-            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "暂不支持的数据源类型: " + dataSourceType);
-        };
-    }
-
-    private String buildJdbcUrl(String host, Integer port, String databaseName, String dataSourceType) {
-        String normalizedType = dataSourceType == null ? "" : dataSourceType.trim().toUpperCase();
-        String databaseSegment = databaseName == null || databaseName.isBlank() ? "" : "/" + databaseName;
-        return switch (normalizedType) {
-            case "MYSQL", "STARROCKS" -> String.format("jdbc:mysql://%s:%d%s", host, port, databaseSegment);
-            case "POSTGRESQL" -> String.format("jdbc:postgresql://%s:%d%s", host, port, databaseSegment);
-            case "HIVE" -> String.format("jdbc:hive2://%s:%d%s", host, port, databaseSegment);
-            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "暂不支持的数据源类型: " + dataSourceType);
-        };
-    }
-
-    private Map<String, Object> buildNamespaceFilesConfig(String scriptPath) {
-        Map<String, Object> nsFiles = new LinkedHashMap<>();
-        nsFiles.put("enabled", true);
-        nsFiles.put("include", List.of(scriptPath));
-        return nsFiles;
-    }
-
-    private String buildBeelineCommand(com.wbdata.datasource.entity.DataSource dataSource, String scriptPath) {
-        StringBuilder command = new StringBuilder("beeline -u ")
-                .append(shellQuote(buildJdbcUrl(dataSource.getHost(), dataSource.getPort(), dataSource.getDatabaseName(), "HIVE")));
-        if (dataSource.getUsername() != null && !dataSource.getUsername().isBlank()) {
-            command.append(" -n ").append(shellQuote(dataSource.getUsername()));
-        }
-        if (dataSource.getPassword() != null && !dataSource.getPassword().isBlank()) {
-            command.append(" -p ").append(shellQuote(dataSource.getPassword()));
-        }
-        command.append(" -f ").append(shellQuote(scriptPath));
-        return command.toString();
-    }
-
-    private String shellQuote(String value) {
-        return "'" + (value == null ? "" : value.replace("'", "'\"'\"'")) + "'";
-    }
-
-    private void clearShellTaskFields(Map<String, Object> task) {
-        task.remove("namespaceFiles");
-        task.remove("commands");
-        task.remove("containerImage");
-        task.remove("taskRunner");
-        task.remove("labels");
-        cleanupTaskMetadataDescription(task);
-    }
-
-    private void clearJdbcTaskFields(Map<String, Object> task) {
-        task.remove("url");
-        task.remove("username");
-        task.remove("password");
-        task.remove("sql");
-        task.remove("driverClassName");
-        task.remove("parameters");
-        task.remove("fetch");
-        task.remove("fetchOne");
-        task.remove("fetchType");
-        task.remove("fetchSize");
-        task.remove("afterSQL");
-        task.remove("timeZoneId");
-        task.remove("store");
-        task.remove("inputFile");
-        task.remove("labels");
-        cleanupTaskMetadataDescription(task);
     }
 
     private String readSqlReadPath(Map<String, Object> task) {
@@ -590,109 +434,15 @@ final class OfflineFlowYamlSupport {
         return null;
     }
 
-    private ParsedTaskMetadata parseTaskMetadata(String description) {
-        if (description == null || description.isBlank()) {
-            return new ParsedTaskMetadata(null, null, null, null);
-        }
-
-        String metadataLine = null;
-        for (String line : description.split("\\R")) {
-            if (line.startsWith(WB_DATA_META_PREFIX)) {
-                metadataLine = line;
-            }
-        }
-        if (metadataLine == null) {
-            return new ParsedTaskMetadata(null, null, null, null);
-        }
-
-        Long dataSourceId = null;
-        String dataSourceType = null;
-        String nodeKind = null;
-        String transferConfigPath = null;
-        String payload = metadataLine.substring(WB_DATA_META_PREFIX.length()).trim();
-        for (String entry : payload.split(";")) {
-            String trimmed = entry.trim();
-            if (trimmed.isEmpty()) {
-                continue;
-            }
-            int eqIndex = trimmed.indexOf('=');
-            if (eqIndex <= 0 || eqIndex >= trimmed.length() - 1) {
-                continue;
-            }
-            String key = trimmed.substring(0, eqIndex).trim();
-            String value = trimmed.substring(eqIndex + 1).trim();
-            if ("dataSourceId".equals(key)) {
-                try {
-                    dataSourceId = Long.parseLong(value);
-                } catch (NumberFormatException ignored) {
-                    // ignore malformed metadata
-                }
-            } else if ("dataSourceType".equals(key) && !value.isBlank()) {
-                dataSourceType = value;
-            } else if ("nodeKind".equals(key) && !value.isBlank()) {
-                nodeKind = value;
-            } else if ("transferConfigPath".equals(key) && !value.isBlank()) {
-                transferConfigPath = value;
-            }
-        }
-        return new ParsedTaskMetadata(dataSourceId, dataSourceType, nodeKind, transferConfigPath);
-    }
-
-    private String mergeTaskMetadataDescription(String existingDescription, Long dataSourceId, String dataSourceType, String nodeKind) {
-        String cleaned = stripTaskMetadataDescription(existingDescription);
-        StringBuilder metadata = new StringBuilder(WB_DATA_META_PREFIX)
-                .append(" dataSourceId=").append(dataSourceId)
-                .append(";dataSourceType=").append(dataSourceType);
-        if (nodeKind != null && !nodeKind.isBlank()) {
-            metadata.append(";nodeKind=").append(nodeKind);
-        }
-        if (cleaned == null || cleaned.isBlank()) {
-            return metadata.toString();
-        }
-        return cleaned + "\n" + metadata;
-    }
-
-    private String mergeTransferTaskMetadataDescription(String existingDescription, String transferConfigPath) {
-        String cleaned = stripTaskMetadataDescription(existingDescription);
-        String metadata = WB_DATA_META_PREFIX
-                + " nodeKind=TRANSFER;transferConfigPath=" + transferConfigPath;
-        if (cleaned == null || cleaned.isBlank()) {
-            return metadata;
-        }
-        return cleaned + "\n" + metadata;
-    }
-
-    private void cleanupTaskMetadataDescription(Map<String, Object> task) {
-        String cleaned = stripTaskMetadataDescription(readOptionalString(task, "description"));
-        if (cleaned == null || cleaned.isBlank()) {
-            task.remove("description");
-        } else {
-            task.put("description", cleaned);
-        }
-    }
-
-    private String stripTaskMetadataDescription(String description) {
-        if (description == null || description.isBlank()) {
-            return description;
-        }
-        List<String> preservedLines = new ArrayList<>();
-        for (String line : description.split("\\R")) {
-            if (!line.startsWith(WB_DATA_META_PREFIX)) {
-                preservedLines.add(line);
-            }
-        }
-        return String.join("\n", preservedLines).trim();
-    }
-
-    boolean isAcyclicGraph(List<FlowNode> nodes, List<FlowEdge> edges) {
+    boolean isAcyclicGraph(List<OfflineFlowNode> nodes, List<FlowEdge> edges) {
         Map<String, Set<String>> adj = new LinkedHashMap<>();
-        for (FlowNode n : nodes) adj.put(n.taskId(), new LinkedHashSet<>());
+        for (OfflineFlowNode n : nodes) adj.put(n.taskId(), new LinkedHashSet<>());
         for (FlowEdge e : edges) adj.get(e.source()).add(e.target());
 
         Set<String> visited = new LinkedHashSet<>();
         Set<String> onStack = new LinkedHashSet<>();
 
-        for (FlowNode n : nodes) {
+        for (OfflineFlowNode n : nodes) {
             if (!visited.contains(n.taskId())) {
                 if (hasCycleDfs(n.taskId(), adj, visited, onStack)) return false;
             }
@@ -866,7 +616,7 @@ final class OfflineFlowYamlSupport {
             if (isDagTask(task)) {
                 Object rawChildTasks = task.get("tasks");
                 if (rawChildTasks instanceof List<?> childTasks && !childTasks.isEmpty()) {
-                    List<FlowNode> unwrappedNodes = new ArrayList<>();
+                    List<OfflineFlowNode> unwrappedNodes = new ArrayList<>();
                     for (Map<String, Object> wrapper : castTaskList(childTasks)) {
                         Object innerTask = wrapper.get("task");
                         if (innerTask instanceof Map<?, ?> inner) {
@@ -886,9 +636,11 @@ final class OfflineFlowYamlSupport {
         return stages;
     }
 
-    private FlowNode parseLeafNode(Map<String, Object> task) {
+    private OfflineFlowNode parseLeafNode(Map<String, Object> task) {
         String taskId = requiredString(task, "id");
-        ParsedTaskMetadata metadata = parseTaskMetadata(readOptionalString(task, "description"));
+        OfflineTaskMetadataCodec.ParsedTaskMetadata metadata = OfflineTaskMetadataCodec.parse(
+                readOptionalString(task, "description")
+        );
         Long dataSourceId = metadata.dataSourceId();
         String dataSourceType = metadata.dataSourceType();
         String nodeKind = metadata.nodeKind();
@@ -912,8 +664,12 @@ final class OfflineFlowYamlSupport {
         // Infer kind and type
         String typeAttr = readOptionalString(task, "type");
         if (typeAttr != null) {
-            if ((dataSourceType == null || dataSourceType.isBlank()) && typeAttr.startsWith("io.kestra.plugin.jdbc.")) {
-                dataSourceType = typeAttr.substring("io.kestra.plugin.jdbc.".length()).split("\\.")[0].toUpperCase();
+            if ((dataSourceType == null || dataSourceType.isBlank())
+                    && OfflineNodeTaskCompiler.isJdbcQueryTaskType(typeAttr)) {
+                String prefix = typeAttr.startsWith(OfflineNodeTaskCompiler.WB_DATA_JDBC_TASK_PREFIX)
+                        ? OfflineNodeTaskCompiler.WB_DATA_JDBC_TASK_PREFIX
+                        : OfflineNodeTaskCompiler.KESTRA_JDBC_TASK_PREFIX;
+                dataSourceType = typeAttr.substring(prefix.length()).split("\\.")[0].toUpperCase();
                 if ("GENERIC".equals(dataSourceType)) {
                     dataSourceType = "HIVE";
                 }
@@ -922,14 +678,15 @@ final class OfflineFlowYamlSupport {
 
         if (nodeKind == null || nodeKind.isBlank()) {
             if (scriptPath.endsWith(".hql")
-                    || ("HIVE".equalsIgnoreCase(dataSourceType) && SHELL_COMMANDS_TASK_TYPE.equals(typeAttr))) {
+                    || ("HIVE".equalsIgnoreCase(dataSourceType)
+                    && OfflineNodeTaskCompiler.SHELL_COMMANDS_TASK_TYPE.equals(typeAttr))) {
                 nodeKind = "HIVE_SQL";
             } else {
                 nodeKind = scriptPath.endsWith(".sql") ? "SQL" : "SHELL";
             }
         }
 
-        return new FlowNode(
+        return new OfflineFlowNode(
                 taskId,
                 nodeKind,
                 scriptPath,
@@ -1027,17 +784,7 @@ final class OfflineFlowYamlSupport {
     record FlowStage(
             String stageId,
             boolean parallel,
-            List<FlowNode> nodes
-    ) {
-    }
-
-    record FlowNode(
-            String taskId,
-            String kind,
-            String scriptPath,
-            Long dataSourceId,
-            String dataSourceType,
-            String transferConfigPath
+            List<OfflineFlowNode> nodes
     ) {
     }
 
@@ -1047,18 +794,10 @@ final class OfflineFlowYamlSupport {
     ) {
     }
 
-    private record ParsedTaskMetadata(
-            Long dataSourceId,
-            String dataSourceType,
-            String nodeKind,
-            String transferConfigPath
-    ) {
-    }
-
     record FlowGraph(
             String flowId,
             String namespace,
-            List<FlowNode> nodes,
+            List<OfflineFlowNode> nodes,
             List<FlowEdge> edges
     ) {
     }
@@ -1071,14 +810,4 @@ final class OfflineFlowYamlSupport {
     ) {
     }
 
-    record TransferRuntimeSettings(
-            String seatunnelImage,
-            String dockerNetwork,
-            String internalBaseUrlEnv,
-            String internalTokenEnv,
-            String internalBaseUrl,
-            String internalToken,
-            List<String> dockerVolumes
-    ) {
-    }
 }

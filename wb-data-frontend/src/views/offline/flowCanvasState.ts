@@ -61,6 +61,11 @@ export function buildFlowDocumentSignature(document: OfflineFlowDocument | null)
             timezone: document.schedule.timezone,
             enabled: document.schedule.enabled,
         } : null,
+        parameterBinding: document.parameterBinding ? {
+            parameterGroupId: document.parameterBinding.parameterGroupId ?? null,
+            code: document.parameterBinding.code,
+            boundVersion: document.parameterBinding.boundVersion,
+        } : null,
     });
 }
 

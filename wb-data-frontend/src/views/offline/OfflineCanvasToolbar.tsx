@@ -1,4 +1,5 @@
 import {
+    Braces,
     Database,
     FileCode2,
     GitCommitHorizontal,
@@ -13,12 +14,16 @@ import {
 import type { ReactNode } from 'react';
 
 import type { OfflineFlowNodeKind } from '../../api/offline';
+import type { FlowParameterBinding } from '../../api/offline';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { isExecuteButtonDisabled } from './executionToolbarState';
 
 interface OfflineCanvasToolbarProps {
     activeFlowPath: string | null;
     canWrite: boolean;
+    canConfigureParameters: boolean;
+    parameterBindingStatus?: FlowParameterBinding['status'] | null;
+    timezone?: string | null;
     nodeCount: number;
     selectedNodeCount: number;
     dirty: boolean;
@@ -29,6 +34,7 @@ interface OfflineCanvasToolbarProps {
     onSave: () => void;
     onCommit: () => void;
     onOpenSchedule: () => void;
+    onOpenParameters: () => void;
     onExecute: () => void;
     onOpenExecutions: () => void;
     onAddNode: (kind: OfflineFlowNodeKind) => void;
@@ -63,6 +69,9 @@ function ToolbarButton({ label, disabled, onClick, children }: ToolbarButtonProp
 export function OfflineCanvasToolbar({
     activeFlowPath,
     canWrite,
+    canConfigureParameters,
+    parameterBindingStatus,
+    timezone,
     nodeCount,
     selectedNodeCount,
     dirty,
@@ -73,6 +82,7 @@ export function OfflineCanvasToolbar({
     onSave,
     onCommit,
     onOpenSchedule,
+    onOpenParameters,
     onExecute,
     onOpenExecutions,
     onAddNode,
@@ -119,6 +129,22 @@ export function OfflineCanvasToolbar({
             </ToolbarButton>
 
             <ToolbarButton
+                label="参数"
+                disabled={editDisabled || !canConfigureParameters}
+                onClick={onOpenParameters}
+            >
+                <span className="relative flex">
+                    <Braces size={16} />
+                    {parameterBindingStatus ? (
+                        <span
+                            className={`offline-toolbar-binding-dot is-${parameterBindingStatus.toLowerCase()}`}
+                            aria-hidden="true"
+                        />
+                    ) : null}
+                </span>
+            </ToolbarButton>
+
+            <ToolbarButton
                 label="执行"
                 disabled={isExecuteButtonDisabled({ activeFlowPath, canWrite })}
                 onClick={onExecute}
@@ -147,6 +173,21 @@ export function OfflineCanvasToolbar({
             <ToolbarButton label="添加传输节点" disabled={editDisabled} onClick={() => onAddNode('TRANSFER')}>
                 <Waypoints size={16} />
             </ToolbarButton>
+
+            {timezone ? (
+                <div className="offline-canvas-toolbar-meta">
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <span className="offline-canvas-timezone-badge">
+                                {timezone}
+                            </span>
+                        </TooltipTrigger>
+                        <TooltipContent className="tooltip-content" side="bottom">
+                            运行时区: {timezone}
+                        </TooltipContent>
+                    </Tooltip>
+                </div>
+            ) : null}
         </header>
     );
 }

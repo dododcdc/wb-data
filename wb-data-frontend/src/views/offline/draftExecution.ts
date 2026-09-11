@@ -9,6 +9,8 @@ interface BuildDraftExecutionRequestParams {
     canvasNodes: Node[];
     canvasEdges: Edge[];
     selectedTaskIds: string[];
+    plannedTime?: string;
+    parameterOverrides?: Record<string, string>;
 }
 
 function buildFallbackCanvasNodes(flowDocument: OfflineFlowDocument): Node[] {
@@ -34,6 +36,8 @@ export function buildDraftExecutionRequest({
     canvasNodes,
     canvasEdges,
     selectedTaskIds,
+    plannedTime,
+    parameterOverrides,
 }: BuildDraftExecutionRequestParams): DebugDocumentExecutionRequest {
     const effectiveCanvasNodes = canvasNodes.length > 0 ? canvasNodes : buildFallbackCanvasNodes(flowDocument);
     const effectiveCanvasEdges = canvasEdges.length > 0 ? canvasEdges : buildFallbackCanvasEdges(flowDocument);
@@ -60,5 +64,7 @@ export function buildDraftExecutionRequest({
         layout: draftDocument.layout,
         selectedTaskIds,
         mode: 'SELECTED',
+        ...(plannedTime ? { plannedTime } : {}),
+        ...(parameterOverrides && Object.keys(parameterOverrides).length > 0 ? { parameterOverrides } : {}),
     };
 }
