@@ -23,7 +23,7 @@ public class TransferExecutionRenderService {
     private final TransferInternalProperties properties;
     private final TransferMetadataService metadataService;
     private final Validator validator;
-    private final TransferSeatunnelConfigBuilder configBuilder = new TransferSeatunnelConfigBuilder();
+    private final TransferSeatunnelConfigBuilder configBuilder;
 
     public String render(String internalToken, TransferRenderRequest request) {
         authenticate(internalToken);

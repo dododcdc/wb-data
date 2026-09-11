@@ -6,6 +6,12 @@ import java.util.Locale;
 
 public final class JdbcDriverCatalog {
 
+    private final String containerHostRewrite;
+
+    public JdbcDriverCatalog(String containerHostRewrite) {
+        this.containerHostRewrite = containerHostRewrite == null ? "" : containerHostRewrite.trim();
+    }
+
     public JdbcConnection resolve(DataSource dataSource, String databaseName) {
         if (dataSource == null) {
             throw new IllegalArgumentException("Data source is required");
@@ -27,20 +33,23 @@ public final class JdbcDriverCatalog {
         if (dataSource.getHost() == null || dataSource.getHost().isBlank() || dataSource.getPort() == null) {
             throw new IllegalArgumentException("Data source host and port are required");
         }
-        return new JdbcConnection(prefix + resolveDockerReachableHost(dataSource.getHost()) + ":"
+        return new JdbcConnection(prefix + rewriteContainerHost(dataSource.getHost(), containerHostRewrite) + ":"
                 + dataSource.getPort() + database, driver);
+    }
+
+    public static String rewriteContainerHost(String host, String containerHostRewrite) {
+        if (host == null || containerHostRewrite == null || containerHostRewrite.isBlank()) {
+            return host;
+        }
+        String normalized = host.trim().toLowerCase(Locale.ROOT);
+        if ("localhost".equals(normalized) || "127.0.0.1".equals(normalized) || "::1".equals(normalized)) {
+            return containerHostRewrite.trim();
+        }
+        return host;
     }
 
     private String normalize(String type) {
         return type == null ? "" : type.trim().toUpperCase(Locale.ROOT);
-    }
-
-    private String resolveDockerReachableHost(String host) {
-        String normalized = host.trim().toLowerCase(Locale.ROOT);
-        if ("localhost".equals(normalized) || "127.0.0.1".equals(normalized) || "::1".equals(normalized)) {
-            return "host.docker.internal";
-        }
-        return host;
     }
 
     public record JdbcConnection(String url, String driver) {

@@ -1,15 +1,22 @@
 package com.wbdata.offline.transfer.service;
 
 import com.wbdata.datasource.entity.DataSource;
+import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.transfer.dto.TransferWriteMode;
 import com.wbdata.plugin.api.PartitionColumnMetadata;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+@Component
 public final class TransferSeatunnelConfigBuilder {
 
     private final TransferSqlBuilder sqlBuilder = new TransferSqlBuilder();
-    private final JdbcDriverCatalog driverCatalog = new JdbcDriverCatalog();
+    private final JdbcDriverCatalog driverCatalog;
+
+    public TransferSeatunnelConfigBuilder(OfflineTransferProperties properties) {
+        this.driverCatalog = new JdbcDriverCatalog(properties.getContainerHostRewrite());
+    }
 
     public String build(TransferRenderInput input) {
         if (input == null || input.transferConfig() == null || input.sourceTableDetail() == null

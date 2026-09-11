@@ -54,10 +54,13 @@ WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
 WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:8080 \
 WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default \
 WB_DATA_TRANSFER_DOCKER_VOLUMES=wb-data_hive-warehouse:/opt/hive/data/warehouse \
+WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE=host.docker.internal \
 java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
 ```
 
 如果后端使用其他端口，要同时调整 `SERVER_PORT`、`WB_DATA_TRANSFER_INTERNAL_BASE_URL`，并在下一步设置 `WB_DATA_TRANSFER_BACKEND_HOST_PORT`。
+
+`WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE` 只用于本地开发：数据源 host 配成 `localhost`/`127.0.0.1`/`::1` 时（例如指向宿主机端口映射出来的 MySQL），在容器内执行的 SQL 节点与 SeaTunnel 传输任务会把 host 改写为该值。生产环境各服务网络互通，保持默认空值即可，此时数据源 host 按字面使用。
 
 ## 3. 准备 smoke 环境
 

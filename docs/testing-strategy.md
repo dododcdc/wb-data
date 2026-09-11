@@ -17,7 +17,7 @@ L0 与 L3 之间目前没有自动化集成层（无 `@SpringBootTest`、无 Tes
 1. 环境准备（幂等，可重复跑）：`DB_PASSWORD=<元数据库密码> scripts/dev/transfer-smoke.sh`
 2. 自动验证（幂等，可重复跑）：`WB_DATA_PASSWORD=<admin 密码> scripts/dev/smoke-verify.sh`
 
-verify 脚本通过后端 API 完成：登录 → 定位 `policy` 项目组 → 重置测试数据 → 依次验证七个场景：
+verify 脚本通过后端 API 完成：登录 → 定位 `policy` 项目组 → 重置测试数据 → 依次验证八个场景：
 
 - 数据源管理：API 创建数据源 + 测试连接（`smoke_it_mysql_api`，重复执行时复用）
 - MySQL → MySQL `append`（使用上一步创建的数据源）
@@ -25,6 +25,7 @@ verify 脚本通过后端 API 完成：登录 → 定位 `policy` 项目组 → 
 - MySQL → Hive 分区表 `overwrite_partition`
 - Hive → MySQL `append`
 - 选中单个传输节点执行时只运行该节点
+- SQL 节点使用 `localhost` 数据源执行写入（验证容器主机改写 `WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE`）
 - 运维中心执行列表接口可用性
 
 每个传输场景断言目标库的实际行数/分区数据。脚本在 `_flows/smoke_it/` 下保存测试 flow（未提交状态，重复执行会原地更新，不需要时可在界面删除）。

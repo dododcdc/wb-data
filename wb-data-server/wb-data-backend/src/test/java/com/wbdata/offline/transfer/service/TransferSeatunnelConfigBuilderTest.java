@@ -1,6 +1,7 @@
 package com.wbdata.offline.transfer.service;
 
 import com.wbdata.datasource.entity.DataSource;
+import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.transfer.dto.TransferConfig;
 import com.wbdata.offline.transfer.dto.TransferEndpointConfig;
 import com.wbdata.offline.transfer.dto.TransferFieldMapping;
@@ -20,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 
 class TransferSeatunnelConfigBuilderTest {
 
-    private final TransferSeatunnelConfigBuilder builder = new TransferSeatunnelConfigBuilder();
+    private final TransferSeatunnelConfigBuilder builder = new TransferSeatunnelConfigBuilder(new OfflineTransferProperties());
 
     @Test
     void rendersMysqlToMysqlAppendConfig() {
@@ -184,7 +185,10 @@ class TransferSeatunnelConfigBuilderTest {
 
     @Test
     void rewritesLoopbackJdbcHostsForDockerRuntime() {
-        assertThat(builder.build(input(
+        OfflineTransferProperties properties = new OfflineTransferProperties();
+        properties.setContainerHostRewrite("host.docker.internal");
+        TransferSeatunnelConfigBuilder rewritingBuilder = new TransferSeatunnelConfigBuilder(properties);
+        assertThat(rewritingBuilder.build(input(
                 new TransferEndpointConfig(1L, "MYSQL", "sales", "orders", "status = 'paid'", null),
                 new TransferEndpointConfig(2L, "MYSQL", "warehouse", "dwd_orders", null, TransferWriteMode.APPEND),
                 dataSource("MYSQL", "localhost", "source_default", "source_user", "source-password"),
@@ -193,6 +197,20 @@ class TransferSeatunnelConfigBuilderTest {
         ))).contains(
                 "url = \"jdbc:mysql://host.docker.internal:3306/sales\"",
                 "url = \"jdbc:mysql://host.docker.internal:3306/warehouse\""
+        );
+    }
+
+    @Test
+    void keepsLoopbackJdbcHostsLiteralWhenRewriteDisabled() {
+        assertThat(builder.build(input(
+                new TransferEndpointConfig(1L, "MYSQL", "sales", "orders", "status = 'paid'", null),
+                new TransferEndpointConfig(2L, "MYSQL", "warehouse", "dwd_orders", null, TransferWriteMode.APPEND),
+                dataSource("MYSQL", "localhost", "source_default", "source_user", "source-password"),
+                dataSource("MYSQL", "127.0.0.1", "target_default", "target_user", "target-password"),
+                false
+        ))).contains(
+                "url = \"jdbc:mysql://localhost:3306/sales\"",
+                "url = \"jdbc:mysql://127.0.0.1:3306/warehouse\""
         );
     }
 

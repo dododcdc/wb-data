@@ -17,7 +17,16 @@ public class OfflineTransferProperties {
     private String internalTokenEnv = "WB_DATA_INTERNAL_TOKEN";
     private String internalBaseUrl;
     private String internalToken;
+    private String containerHostRewrite = "";
     private List<String> dockerVolumes = new ArrayList<>();
+
+    public String getContainerHostRewrite() {
+        return containerHostRewrite;
+    }
+
+    public void setContainerHostRewrite(String containerHostRewrite) {
+        this.containerHostRewrite = containerHostRewrite == null ? "" : containerHostRewrite;
+    }
 
     public String getSeatunnelImage() {
         return seatunnelImage;

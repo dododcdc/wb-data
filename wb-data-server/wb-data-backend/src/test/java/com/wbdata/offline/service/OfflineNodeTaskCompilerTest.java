@@ -146,4 +146,32 @@ class OfflineNodeTaskCompilerTest {
         dataSource.setPassword("existing-password");
         return dataSource;
     }
+
+    @Test
+    void compile_rewritesLoopbackHostInSqlTaskUrlWhenConfigured() {
+        OfflineTransferProperties transferProperties = new OfflineTransferProperties();
+        transferProperties.setContainerHostRewrite("host.docker.internal");
+        OfflineNodeTaskCompiler compiler = new OfflineNodeTaskCompiler(transferProperties);
+        DataSource mysql = dataSource(1L, "MYSQL");
+        mysql.setHost("localhost");
+
+        Map<String, Object> task = compiler.compile(null, new OfflineFlowNode(
+                "sql_1", "SQL", "scripts/sql_1.sql", 1L, "MYSQL", null
+        ), Map.of(1L, mysql));
+
+        assertThat(task).containsEntry("url", "jdbc:mysql://host.docker.internal:3306/warehouse");
+    }
+
+    @Test
+    void compile_keepsLoopbackHostInSqlTaskUrlByDefault() {
+        OfflineNodeTaskCompiler compiler = new OfflineNodeTaskCompiler();
+        DataSource mysql = dataSource(1L, "MYSQL");
+        mysql.setHost("127.0.0.1");
+
+        Map<String, Object> task = compiler.compile(null, new OfflineFlowNode(
+                "sql_1", "SQL", "scripts/sql_1.sql", 1L, "MYSQL", null
+        ), Map.of(1L, mysql));
+
+        assertThat(task).containsEntry("url", "jdbc:mysql://127.0.0.1:3306/warehouse");
+    }
 }
