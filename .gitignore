@@ -42,10 +42,12 @@ target/
 # Logs
 logs/
 *.log
+**/thread_dump*.txt
 
 # Misc
 .claude/
 .gemini/
+.codex/
 .alma-snapshots
 .worktrees/
 
