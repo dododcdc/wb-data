@@ -95,12 +95,22 @@ WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080 scripts/dev/transfer-smoke.sh
 
 ## 4. 产品内验证
 
-在 `policy` 项目组中确认两个测试数据源存在，然后至少验证：
+在 `policy` 项目组中确认两个测试数据源存在（`it_transfer_mysql`、`it_transfer_hive`），然后运行自动化验证：
 
+```bash
+WB_DATA_PASSWORD=<admin-密码> scripts/dev/smoke-verify.sh
+```
+
+脚本通过后端 API 自动建数据源、建 flow、触发执行并断言目标库数据，覆盖：
+
+- 数据源管理：API 创建数据源 + 测试连接
 - MySQL 到 MySQL：`append`、`overwrite_table`
 - MySQL 到 Hive 分区表：`overwrite_partition`
 - Hive 到 MySQL：`append`
 - 选中单个传输节点执行时，只运行该节点
+- 运维中心执行列表接口可用性
+
+脚本走 debug 执行接口（`wb-debug-*` 命名空间），按设计不进运维中心列表；git push 到 Kestra 的同步链路和调度触发仍需在界面手动验证。测试分层和决策理由见 [测试策略](testing-strategy.md)。
 
 测试表由以下文件定义：
 
