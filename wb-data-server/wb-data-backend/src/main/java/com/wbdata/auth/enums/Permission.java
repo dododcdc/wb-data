@@ -7,6 +7,8 @@ public enum Permission {
     QUERY_EXPORT("query.export"),
     OFFLINE_READ("offline.read"),
     OFFLINE_WRITE("offline.write"),
+    PARAMETER_READ("parameter.read"),
+    PARAMETER_WRITE("parameter.write"),
     MEMBER_READ("member.read"),
     MEMBER_MANAGE("member.manage"),
     GROUP_SETTINGS("group.settings");

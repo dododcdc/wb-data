@@ -32,6 +32,7 @@ vi.mock('../../router/routeModules', () => ({
     loadGroupSettingsModule: vi.fn(),
     loadOfflineWorkbenchModule: vi.fn(),
     loadOperationsCenterModule: vi.fn(),
+    loadParameterGroupPageModule: vi.fn(),
     loadQueryModule: vi.fn(),
     loadUserListModule: vi.fn(),
 }));
@@ -122,6 +123,14 @@ describe('Layout workspace context', () => {
 
         expect(await screen.findByText('policy')).toBeTruthy();
         expect(screen.getByRole('link', { name: /运维中心/ }).getAttribute('href')).toBe('/operations');
+    });
+
+    it('shows parameter group entry when parameter read permission is available', async () => {
+        useAuthStore.setState({ permissions: ['offline.read', 'parameter.read'] });
+        renderOfflineLayout();
+
+        expect(await screen.findByText('policy')).toBeTruthy();
+        expect(screen.getByRole('link', { name: /参数组/ }).getAttribute('href')).toBe('/parameters');
     });
 
     it('leaves branch lookup and switching to the offline workbench', async () => {

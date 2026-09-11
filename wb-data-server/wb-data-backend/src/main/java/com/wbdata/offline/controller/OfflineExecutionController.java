@@ -62,7 +62,9 @@ public class OfflineExecutionController {
                 request.flowPath(),
                 flow.content(),
                 request.selectedTaskIds(),
-                request.mode()
+                request.mode(),
+                request.parameterOverrides(),
+                request.plannedTime()
         );
         return Result.success(offlineExecutionService.createDebugExecution(resolvedRequest, context.user().id()));
     }
@@ -80,7 +82,9 @@ public class OfflineExecutionController {
                 request.edges(),
                 request.layout(),
                 request.selectedTaskIds(),
-                request.mode()
+                request.mode(),
+                request.parameterOverrides(),
+                request.plannedTime()
         );
         var compiledDraft = offlineFlowDocumentService.compileFlowDraft(normalizedDocumentRequest);
         DebugExecutionRequest resolvedRequest = new DebugExecutionRequest(
@@ -88,7 +92,9 @@ public class OfflineExecutionController {
                 request.flowPath(),
                 compiledDraft.content(),
                 request.selectedTaskIds(),
-                request.mode()
+                request.mode(),
+                request.parameterOverrides(),
+                request.plannedTime()
         );
         return Result.success(offlineExecutionService.createDebugExecution(
                 resolvedRequest,
@@ -103,7 +109,9 @@ public class OfflineExecutionController {
                 request.flowPath(),
                 request.content(),
                 request.selectedTaskIds(),
-                request.mode()
+                request.mode(),
+                request.parameterOverrides(),
+                request.plannedTime()
         );
     }
 

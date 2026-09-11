@@ -26,6 +26,7 @@ function makeDocument(): OfflineFlowDocument {
         namespace: 'g1-main',
         documentHash: 'hash',
         documentUpdatedAt: 1,
+        runtimeTimezone: 'Asia/Shanghai',
         stages: [{
             stageId: 'stage_1',
             parallel: false,
@@ -147,7 +148,6 @@ describe('useFlowExecutionAndSchedule', () => {
 
         act(() => {
             result.current.setScheduleCron('* * * * *');
-            result.current.setScheduleTimezone('Asia/Singapore');
         });
         await act(async () => {
             await result.current.toggleSchedule(true);
@@ -158,7 +158,7 @@ describe('useFlowExecutionAndSchedule', () => {
             workingDraft: expect.objectContaining({
                 schedule: {
                     cron: '* * * * *',
-                    timezone: 'Asia/Singapore',
+                    timezone: 'Asia/Shanghai',
                     enabled: true,
                 },
             }),
@@ -188,6 +188,127 @@ describe('useFlowExecutionAndSchedule', () => {
             selectedTaskIds: ['shell_node_1'],
         }));
         expect(result.current.executionDialogOpen).toBe(true);
+    });
+
+    it('asks for planned time whenever the Flow defines a planned-time parameter', async () => {
+        const offlineApi = await import('../../api/offline');
+        const document: OfflineFlowDocument = {
+            ...makeDocument(),
+            schedule: { cron: '0 2 * * *', timezone: 'Asia/Shanghai', enabled: true },
+            parameterBinding: {
+                parameterGroupId: 12,
+                code: 'daily_common',
+                name: '日常参数',
+                boundVersion: 3,
+                currentVersion: 3,
+                status: 'CURRENT',
+                definitions: [{
+                    key: 'v_day',
+                    valueSource: 'SYSTEM_TIME',
+                    format: 'yyyyMMdd',
+                    offsetDays: 0,
+                    timeBasis: 'PLANNED_TIME',
+                    sortOrder: 0,
+                }],
+            },
+            stages: [{
+                stageId: 'stage_1',
+                parallel: false,
+                nodes: [{
+                    taskId: 'query',
+                    kind: 'SQL',
+                    scriptContent: 'select 1',
+                    scriptPath: 'scripts/query.sql',
+                    dataSourceId: 1,
+                    dataSourceType: 'MYSQL',
+                }],
+            }],
+        };
+        vi.mocked(offlineApi.createOfflineDocumentDebugExecution).mockResolvedValue({
+            executionId: 'exec-planned',
+            mode: 'DRAFT_SELECTED',
+            flowPath: document.path,
+            sourceRevision: 'draft',
+            status: 'CREATED',
+            createdAt: '2026-08-16T00:00:00Z',
+        });
+        vi.mocked(offlineApi.listOfflineExecutions).mockResolvedValue([]);
+        const { result } = renderExecutionAndSchedule({
+            draftSession: makeSession(document),
+            flowDocument: document,
+            selectedTaskIds: ['query'],
+        });
+
+        await act(async () => {
+            await result.current.execute();
+        });
+
+        expect(offlineApi.createOfflineDocumentDebugExecution).not.toHaveBeenCalled();
+        expect(result.current.executionContextDialogOpen).toBe(true);
+        expect(result.current.executionTimeRequirement.timezone).toBe('Asia/Shanghai');
+        expect(result.current.plannedTime).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+
+        act(() => result.current.setPlannedTime('2026-01-01T02:00'));
+        await act(async () => {
+            await result.current.confirmExecution();
+        });
+
+        expect(offlineApi.createOfflineDocumentDebugExecution).toHaveBeenCalledWith(
+            expect.objectContaining({ plannedTime: '2026-01-01T02:00' }),
+        );
+        expect(result.current.executionContextDialogOpen).toBe(false);
+    });
+
+    it('opens parameter settings for constant-only parameters without requiring planned time', async () => {
+        const offlineApi = await import('../../api/offline');
+        const document: OfflineFlowDocument = {
+            ...makeDocument(),
+            parameterBinding: {
+                parameterGroupId: 12,
+                code: 'daily_common',
+                name: '日常参数',
+                boundVersion: 3,
+                currentVersion: 3,
+                status: 'CURRENT',
+                definitions: [{
+                    key: 'tenant_name',
+                    valueSource: 'CONSTANT',
+                    constantValue: 'tom',
+                    offsetDays: 0,
+                    sortOrder: 0,
+                }],
+            },
+        };
+        vi.mocked(offlineApi.createOfflineDocumentDebugExecution).mockResolvedValue({
+            executionId: 'exec-constant',
+            mode: 'DRAFT_SELECTED',
+            flowPath: document.path,
+            sourceRevision: 'draft',
+            status: 'CREATED',
+            createdAt: '2026-08-16T00:00:00Z',
+        });
+        vi.mocked(offlineApi.listOfflineExecutions).mockResolvedValue([]);
+        const { result } = renderExecutionAndSchedule({
+            draftSession: makeSession(document),
+            flowDocument: document,
+        });
+
+        await act(async () => {
+            await result.current.execute();
+        });
+
+        expect(offlineApi.createOfflineDocumentDebugExecution).not.toHaveBeenCalled();
+        expect(result.current.executionContextDialogOpen).toBe(true);
+        expect(result.current.executionTimeRequirement.requiresPlannedTime).toBe(false);
+
+        act(() => result.current.setParameterOverrides({ tenant_name: '' }));
+        await act(async () => {
+            await result.current.confirmExecution();
+        });
+
+        expect(offlineApi.createOfflineDocumentDebugExecution).toHaveBeenCalledWith(
+            expect.objectContaining({ parameterOverrides: { tenant_name: '' } }),
+        );
     });
 
     it('includes saved transfer configuration when debugging a selected transfer node', async () => {

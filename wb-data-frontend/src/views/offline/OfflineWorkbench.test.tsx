@@ -167,6 +167,15 @@ vi.mock('../../api/transfer', () => ({
     })),
 }));
 
+vi.mock('../../api/parameterGroups', async () => {
+    const actual = await vi.importActual<typeof import('../../api/parameterGroups')>('../../api/parameterGroups');
+    return {
+        ...actual,
+        getParameterGroupPage: vi.fn(),
+        getParameterGroup: vi.fn(),
+    };
+});
+
 vi.mock('../../utils/auth', async () => {
     const React = await vi.importActual<typeof import('react')>('react');
     const useAuthStore = Object.assign(
@@ -287,6 +296,7 @@ function makeFlowDocumentForPath(path: string) {
         ...makeFlowDocumentBase(path, flowId),
         documentHash: 'base-hash',
         documentUpdatedAt: 100,
+        runtimeTimezone: 'Asia/Shanghai',
     };
 }
 
@@ -498,7 +508,107 @@ describe('OfflineWorkbench commit UI', () => {
         });
         vi.mocked(offlineApi.getOfflineFlowCommitStatus).mockResolvedValue({ groupId: 1, flowPath: '_flows/example/flow.yaml', dirty: true });
         vi.mocked(offlineApi.listBranches).mockResolvedValue(makeBranchList());
+        const parameterApi = await import('../../api/parameterGroups');
+        vi.mocked(parameterApi.getParameterGroupPage).mockResolvedValue({
+            records: [{
+                id: 8,
+                code: 'daily_common',
+                name: '日常公共参数',
+                description: '公共日期参数',
+                version: 3,
+                revision: 4,
+                status: 'ACTIVE',
+                parameterCount: 1,
+                createdBy: 7,
+                updatedBy: 7,
+                createdAt: '2026-08-16T00:00:00Z',
+                updatedAt: '2026-08-16T00:00:00Z',
+            }],
+            total: 1,
+            size: 100,
+            current: 1,
+            pages: 1,
+        });
+        vi.mocked(parameterApi.getParameterGroup).mockResolvedValue({
+            id: 8,
+            code: 'daily_common',
+            name: '日常公共参数',
+            description: '公共日期参数',
+            version: 3,
+            revision: 4,
+            status: 'ACTIVE',
+            parameterCount: 1,
+            createdBy: 7,
+            updatedBy: 7,
+            createdAt: '2026-08-16T00:00:00Z',
+            updatedAt: '2026-08-16T00:00:00Z',
+            definitions: [{
+                id: 11,
+                key: 'v_day',
+                valueSource: 'SYSTEM_TIME',
+                constantValue: null,
+                timeBasis: 'PLANNED_TIME',
+                format: 'yyyyMMdd',
+                offsetDays: 0,
+                description: '业务日期',
+                sortOrder: 0,
+            }],
+        });
     });
+
+    it('stages and saves a parameter group binding from the Flow toolbar', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.permissions = ['offline.write', 'parameter.read'];
+        vi.mocked(offlineApi.getOfflineFlowDocument).mockResolvedValue({
+            ...makeFlowDocument(),
+            schedule: {
+                cron: '0 2 * * *',
+                timezone: 'Asia/Shanghai',
+                enabled: true,
+            },
+        });
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue({
+            ...makeFlowDocument(),
+            documentHash: 'saved-hash',
+            documentUpdatedAt: 101,
+            parameterBinding: {
+                parameterGroupId: 8,
+                code: 'daily_common',
+                name: '日常公共参数',
+                boundVersion: 3,
+                currentVersion: 3,
+                status: 'CURRENT',
+                definitions: [],
+            },
+        });
+
+        renderOfflineWorkbench();
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        fireEvent.click(screen.getByRole('button', { name: '参数' }));
+        const dialog = await screen.findByRole('dialog', { name: '任务参数' });
+        fireEvent.click(within(dialog).getByRole('combobox', { name: '参数组' }));
+        fireEvent.click(await screen.findByRole('option', { name: /日常公共参数/ }));
+        await within(dialog).findByText('日常公共参数');
+        fireEvent.click(within(dialog).getByText('日常公共参数'));
+        await within(dialog).findByText('${v_day}');
+        fireEvent.click(within(dialog).getByRole('button', { name: '暂存绑定' }));
+
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: '任务参数' })).toBeNull();
+        });
+        fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+        await waitFor(() => {
+            expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledWith(expect.objectContaining({
+                parameterBinding: {
+                    parameterGroupId: 8,
+                    expectedVersion: 3,
+                },
+            }));
+        });
+    }, 15000);
 
     it('hides repo commit and push from developers', async () => {
         authState.currentGroup = { id: 1, name: 'Team' };
@@ -893,7 +1003,7 @@ describe('OfflineWorkbench commit UI', () => {
             documentUpdatedAt: 101,
             schedule: {
                 cron: '* * * * *',
-                timezone: 'Asia/Singapore',
+                timezone: 'Asia/Shanghai',
                 enabled: true,
             },
         });
@@ -912,6 +1022,9 @@ describe('OfflineWorkbench commit UI', () => {
 
         fireEvent.click(screen.getByRole('button', { name: '调度' }));
         const scheduleDialog = await screen.findByRole('dialog', { name: '调度配置' });
+        const timezoneInput = within(scheduleDialog).getByLabelText<HTMLInputElement>('Flow 运行时区');
+        expect(timezoneInput.value).toBe('Asia/Shanghai');
+        expect(timezoneInput.disabled).toBe(true);
         const cronInputs = scheduleDialog.querySelectorAll<HTMLInputElement>('.offline-segmented-cron-input');
         fireEvent.change(cronInputs[0], { target: { value: '' } });
         fireEvent.change(cronInputs[1], { target: { value: '' } });
@@ -929,7 +1042,7 @@ describe('OfflineWorkbench commit UI', () => {
                 path: '_flows/example/flow.yaml',
                 schedule: {
                     cron: '* * * * *',
-                    timezone: 'Asia/Singapore',
+                    timezone: 'Asia/Shanghai',
                     enabled: true,
                 },
             }));

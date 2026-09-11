@@ -5,20 +5,80 @@ import com.wbdata.offline.config.OfflineKestraProperties;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Flow;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 class KestraHttpClientTest {
+
+    @Test
+    void createExecutionSendsUtf8InputsAsMultipartFields() throws Exception {
+        HttpClient httpClient = Mockito.mock(HttpClient.class);
+        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+        when(httpClient.send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response(200, """
+                        {
+                          "id": "exec-1",
+                          "namespace": "demo",
+                          "flowId": "daily",
+                          "state": {"current": "CREATED"},
+                          "inputs": {"name": "李雷", "note": "a&b=1"}
+                        }
+                        """));
+        KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
+
+        KestraExecutionSnapshot execution = client.createExecution(
+                "demo",
+                "daily",
+                Map.of("name", "李雷\n第二行", "note", "a&b=1"),
+                Map.of("wbdataParameterOverrideKeys", "name---note"));
+
+        HttpRequest request = requestCaptor.getValue();
+        String contentType = request.headers().firstValue("Content-Type").orElseThrow();
+        String boundary = contentType.substring(contentType.indexOf("boundary=") + "boundary=".length());
+        String body = new String(readBody(request), java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(request.uri()).isEqualTo(
+                URI.create("http://localhost:8090/api/v1/main/executions/demo/daily"
+                        + "?labels=wbdataParameterOverrideKeys%3Aname---note"));
+        assertThat(body)
+                .contains("--" + boundary)
+                .contains("name=\"name\"")
+                .contains("李雷\n第二行")
+                .contains("name=\"note\"")
+                .contains("a&b=1")
+                .endsWith("--" + boundary + "--\r\n");
+        assertThat(execution.inputs()).containsEntry("name", "李雷");
+    }
+
+    @Test
+    void createExecutionPreservesKestraFailureStatusAndMessage() throws Exception {
+        HttpClient httpClient = Mockito.mock(HttpClient.class);
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response(422, "invalid input count"));
+        KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
+
+        assertThatThrownBy(() -> client.createExecution("demo", "daily", Map.of("count", "bad")))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode().value())
+                        .isEqualTo(422))
+                .hasMessageContaining("invalid input count");
+    }
 
     @Test
     void validateFlow_postsYamlToKestraValidateEndpoint() throws Exception {
@@ -149,5 +209,34 @@ class KestraHttpClientTest {
                 return HttpClient.Version.HTTP_1_1;
             }
         };
+    }
+
+    private byte[] readBody(HttpRequest request) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        CompletableFuture<byte[]> completed = new CompletableFuture<>();
+        request.bodyPublisher().orElseThrow().subscribe(new Flow.Subscriber<>() {
+            @Override
+            public void onSubscribe(Flow.Subscription subscription) {
+                subscription.request(Long.MAX_VALUE);
+            }
+
+            @Override
+            public void onNext(ByteBuffer item) {
+                byte[] chunk = new byte[item.remaining()];
+                item.get(chunk);
+                output.writeBytes(chunk);
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                completed.completeExceptionally(throwable);
+            }
+
+            @Override
+            public void onComplete() {
+                completed.complete(output.toByteArray());
+            }
+        });
+        return completed.join();
     }
 }

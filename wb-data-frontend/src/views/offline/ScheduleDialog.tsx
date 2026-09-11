@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { CronExpressionParser } from 'cron-parser';
 import { LoaderCircle } from 'lucide-react';
 import {
@@ -10,10 +10,9 @@ import {
     DialogFooter,
 } from '../../components/ui/dialog';
 import { Button } from '../../components/ui/button';
-import { Combobox, ComboboxInput, ComboboxTrigger, ComboboxContent, ComboboxItem, ComboboxEmpty } from '../../components/ui/combobox';
 import { SegmentedCronInput } from './SegmentedCronInput';
 import { type OfflineScheduleResponse } from '../../api/offline';
-import { TIMEZONES, POPULAR_TIMEZONES, getTimezoneOffset, formatPreviewTime } from './ScheduleUtils';
+import { formatPreviewTime } from './ScheduleUtils';
 import '../../components/ui/form-input-group.css';
 import './ScheduleDialog.css';
 
@@ -26,7 +25,6 @@ interface ScheduleDialogProps {
     flowId: string | null;
     onOpenChange: (open: boolean) => void;
     onCronChange: (cron: string) => void;
-    onTimezoneChange: (timezone: string) => void;
     onSave: () => void;
     onToggle: (enabled: boolean) => void;
 }
@@ -41,13 +39,9 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
         flowId,
         onOpenChange,
         onCronChange,
-        onTimezoneChange,
         onSave,
         onToggle,
     } = props;
-
-    const [tzQuery, setTzQuery] = useState('');
-    const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
 
     const preview = useMemo(() => {
         const currentCron = cron || '0 2 * * *';
@@ -67,23 +61,9 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
         }
     }, [cron, timezone]);
 
-    const filteredTimezones = useMemo(() => {
-        const q = tzQuery.toLowerCase();
-        const matching = tzQuery
-            ? TIMEZONES.filter((tz) => tz.toLowerCase().includes(q))
-            : TIMEZONES;
-        const popularSet = new Set(POPULAR_TIMEZONES);
-        const popular = matching.filter((tz) => popularSet.has(tz));
-        const rest = matching
-            .filter((tz) => !popularSet.has(tz))
-            .sort((a, b) => a.localeCompare(b));
-        return { popular: popular.slice(0, 20), rest: rest.slice(0, 100) };
-    }, [tzQuery]);
-
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent
-                ref={(el) => { setDialogEl(el); }}
                 style={{ maxWidth: '640px' }}
                 className="offline-schedule-dialog-standard"
                 onOpenAutoFocus={(e) => e.preventDefault()}
@@ -101,47 +81,15 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                             <h3 className="sub-section-title">核心设置</h3>
                             
                             <div className="form-input-group">
-                                <label>运行时区</label>
-                                <Combobox
+                                <label htmlFor="flow-runtime-timezone">Flow 运行时区</label>
+                                <input
+                                    id="flow-runtime-timezone"
+                                    aria-label="Flow 运行时区"
                                     value={timezone}
-                                    onInputValueChange={setTzQuery}
-                                    onValueChange={(value) => {
-                                        if (!value) {
-                                            return;
-                                        }
-                                        onTimezoneChange(value);
-                                        setTzQuery('');
-                                    }}
-                                    disabled={saving}
-                                >
-                                    <div className="offline-combobox-wrapper">
-                                        <ComboboxInput
-                                            placeholder="搜索时区..."
-                                            disabled={saving}
-                                        />
-                                        <ComboboxTrigger />
-                                    </div>
-                                    <ComboboxContent container={dialogEl}>
-                                        {filteredTimezones.popular.map((tz) => (
-                                            <ComboboxItem key={tz} value={tz}>
-                                                <span className="offline-tz-name">{tz}</span>
-                                                <span className="offline-tz-offset">{getTimezoneOffset(tz)}</span>
-                                            </ComboboxItem>
-                                        ))}
-                                        {filteredTimezones.popular.length > 0 && filteredTimezones.rest.length > 0 && (
-                                            <div className="offline-tz-divider" />
-                                        )}
-                                        {filteredTimezones.rest.map((tz) => (
-                                            <ComboboxItem key={tz} value={tz}>
-                                                <span className="offline-tz-name">{tz}</span>
-                                                <span className="offline-tz-offset">{getTimezoneOffset(tz)}</span>
-                                            </ComboboxItem>
-                                        ))}
-                                        {filteredTimezones.popular.length === 0 && filteredTimezones.rest.length === 0 && (
-                                            <ComboboxEmpty>未找到匹配的时区</ComboboxEmpty>
-                                        )}
-                                    </ComboboxContent>
-                                </Combobox>
+                                    readOnly
+                                    disabled
+                                />
+                                <small>运行时区在创建 Flow 时确定，调度与时间参数共同使用该时区。</small>
                             </div>
 
                             <div className="form-input-group">

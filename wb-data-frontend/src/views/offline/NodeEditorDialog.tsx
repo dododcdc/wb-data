@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type * as Monaco from 'monaco-editor';
-import { Database, X } from 'lucide-react';
+import { Braces, Database, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import {
     Dialog,
@@ -12,7 +12,7 @@ import { cn } from '../../lib/utils';
 import { SqlEditor } from '../../components/sql-editor/SqlEditor';
 import { loadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import { registerSqlEditorTheme } from '../../components/sql-editor/sqlEditorTheme';
-import type { OfflineFlowNode } from '../../api/offline';
+import type { FlowParameterDefinitionSnapshot, OfflineFlowNode } from '../../api/offline';
 import type { TransferConfig } from './transfer/transferTypes';
 import { TransferNodeDialog, type TransferNodeDraftState } from './transfer/TransferNodeDialog';
 import { DataSourceSelect } from '../../components/DataSourceSelect';
@@ -37,6 +37,7 @@ export interface NodeEditorDialogProps {
     activeNode: OfflineFlowNode | null;
     groupId: number | null;
     content: string;
+    parameterDefinitions?: FlowParameterDefinitionSnapshot[];
     onOpenChange: (open: boolean) => void;
     onTempSave: (content: string, dataSourceId?: number, dataSourceType?: string) => void;
     onContentChange: (content: string) => void;
@@ -49,6 +50,7 @@ export function NodeEditorDialog({
     activeNode,
     groupId,
     content,
+    parameterDefinitions = [],
     onOpenChange,
     onContentChange,
     onDraftChange,
@@ -57,6 +59,8 @@ export function NodeEditorDialog({
     const latestContentRef = useRef(content);
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
+    const [paramMenuOpen, setParamMenuOpen] = useState(false);
+    const paramMenuRef = useRef<HTMLDivElement | null>(null);
     const {
         currentDataSourceId,
         selectedDataSource,
@@ -137,8 +141,42 @@ export function NodeEditorDialog({
         onTransferChange?.(transferDraft, state);
     }, [onTransferChange]);
 
+    const handleInsertParameter = useCallback((key: string) => {
+        const editor = editorRef.current;
+        const textToInsert = `\${${key}}`;
+        if (!editor) {
+            onContentChange(content ? `${content} ${textToInsert}` : textToInsert);
+            return;
+        }
+        const selection = editor.getSelection();
+        if (selection) {
+            const op: Monaco.editor.ISingleEditOperation = {
+                range: selection,
+                text: textToInsert,
+                forceMoveMarkers: true,
+            };
+            editor.executeEdits('parameter-insert', [op]);
+            editor.focus();
+        } else {
+            editor.trigger('keyboard', 'type', { text: textToInsert });
+            editor.focus();
+        }
+    }, [content, onContentChange]);
+
+    useEffect(() => {
+        if (!paramMenuOpen) return;
+        const handleClickOutside = (e: MouseEvent) => {
+            if (paramMenuRef.current && !paramMenuRef.current.contains(e.target as Node)) {
+                setParamMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [paramMenuOpen]);
+
     if (!activeNode) return null;
     const isSqlNode = isSqlEditorNodeKind(activeNode.kind);
+    const supportsParameters = activeNode.kind === 'SQL';
     const isTransferNode = activeNode.kind === 'TRANSFER';
 
     const handleAttemptClose = () => onOpenChange(false);
@@ -202,6 +240,52 @@ export function NodeEditorDialog({
                                     />
                                 </div>
                             </div>
+                        )}
+
+                        {supportsParameters && parameterDefinitions && parameterDefinitions.length > 0 && (
+                            <>
+                                <div className="h-4 w-[1px] bg-gray-200" />
+                                <div className="relative" ref={paramMenuRef}>
+                                    <button
+                                        type="button"
+                                        className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border border-dashed border-gray-300 hover:border-gray-400 text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-xs"
+                                        title="插入任务参数到 SQL"
+                                        onClick={() => setParamMenuOpen((prev) => !prev)}
+                                    >
+                                        <Braces size={13} className="text-gray-500" />
+                                        <span>插入参数</span>
+                                        <span className="text-[10px] text-gray-400">({parameterDefinitions.length})</span>
+                                    </button>
+
+                                    {paramMenuOpen && (
+                                        <div className="absolute left-0 top-full mt-1.5 w-64 rounded-md border border-gray-200 bg-white shadow-lg p-1.5 z-[2200]">
+                                            <div className="text-[11px] font-semibold text-gray-500 px-2 py-1 border-b border-gray-100 mb-1">
+                                                点击插入参数到光标处
+                                            </div>
+                                            <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                                                {parameterDefinitions.map((param) => (
+                                                    <button
+                                                        key={param.key}
+                                                        type="button"
+                                                        className="w-full flex items-center justify-between text-left px-2 py-1.5 rounded text-xs hover:bg-gray-100 transition-colors group"
+                                                        onClick={() => {
+                                                            handleInsertParameter(param.key);
+                                                            setParamMenuOpen(false);
+                                                        }}
+                                                    >
+                                                        <code className="font-semibold text-emerald-700 group-hover:underline">
+                                                            :{param.key}
+                                                        </code>
+                                                        <span className="text-[11px] text-muted-foreground truncate max-w-[120px]">
+                                                            {param.valueSource === 'SYSTEM_TIME' ? (param.format ?? '时间') : (param.constantValue ?? '固定值')}
+                                                        </span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
                         )}
                     </div>
 

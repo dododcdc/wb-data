@@ -123,6 +123,8 @@ public class OfflineFlowContentService {
             if (Files.exists(scriptsDir)) {
                 deleteDirectory(scriptsDir);
             }
+
+            Files.deleteIfExists(kestraFlowFileService.resolveFlowFile(repoPath, path));
         } catch (IOException ex) {
             throw new IllegalStateException("删除 Flow 失败", ex);
         }

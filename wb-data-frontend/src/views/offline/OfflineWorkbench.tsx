@@ -9,6 +9,7 @@ import {
 } from '../../components/ui/resizable';
 import {
     getOfflineRepoTree,
+    type FlowParameterBinding,
     type OfflineFlowNodeKind,
     type OfflineRepoTreeResponse,
 } from '../../api/offline';
@@ -18,6 +19,7 @@ import { NodeEditorDialog } from './NodeEditorDialog';
 import type { TransferConfig } from './transfer/transferTypes';
 import type { TransferNodeDraftState } from './transfer/TransferNodeDialog';
 import { ScheduleDialog } from './ScheduleDialog';
+import { FlowParameterDialog } from './FlowParameterDialog';
 import { UnsavedChangesDialog } from '../../components/ui/unsaved-changes-dialog';
 import {
     flattenFlowDocumentNodes,
@@ -31,6 +33,7 @@ import { OfflineCommitDialogs } from './OfflineCommitDialogs';
 import { OfflineWorkbenchSidebar } from './OfflineWorkbenchSidebar';
 import { OfflineTreeActionDialogs } from './OfflineTreeActionDialogs';
 import { OfflineExecutionDialog } from './OfflineExecutionDialog';
+import { ExecutionTimeContextDialog } from './ExecutionTimeContextDialog';
 import { OfflineRepositoryDialogs } from './OfflineRepositoryDialogs';
 import { OfflineWorkbenchMainPanel } from './OfflineWorkbenchMainPanel';
 import { resolveViewportCenterFlowPosition } from './flowCanvasViewport';
@@ -49,6 +52,7 @@ import {
     useOfflineWorkbenchNewFlowShortcut,
     useOfflineWorkbenchUrlRestore,
 } from './OfflineWorkbenchLifecycle';
+import { updateFlowParameterBindingDraft } from './flowDraftController';
 
 import './OfflineWorkbench.css';
 
@@ -60,6 +64,7 @@ export default function OfflineWorkbench() {
     const systemAdmin = useAuthStore((state) => state.systemAdmin);
     const groupId = currentGroup?.id ?? null;
     const canWrite = systemAdmin || permissions.includes('offline.write');
+    const canConfigureParameters = canWrite && (systemAdmin || permissions.includes('parameter.read'));
     const isGroupAdmin = systemAdmin || permissions.includes('group.settings') || currentGroup?.role === 'GROUP_ADMIN';
     const defaultTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', []);
     const { showFeedback } = useOperationFeedback();
@@ -70,6 +75,7 @@ export default function OfflineWorkbench() {
     const [repoCommitDialogOpen, setRepoCommitDialogOpen] = useState(false);
     const [commitMessage, setCommitMessage] = useState('');
     const [committing, setCommitting] = useState(false);
+    const [parameterDialogOpen, setParameterDialogOpen] = useState(false);
     const canvasBoardRef = useRef<HTMLElement | null>(null);
     const loadScheduleSnapshotRef = useRef<((path: string) => Promise<void>) | null>(null);
     const resetExecutionAndScheduleRef = useRef<(() => void) | null>(null);
@@ -197,6 +203,14 @@ export default function OfflineWorkbench() {
     const {
         executionDialogOpen,
         setExecutionDialogOpen,
+        executionContextDialogOpen,
+        setExecutionContextDialogOpen,
+        executionTimeRequirement,
+        plannedTime,
+        setPlannedTime,
+        parameterOverrides,
+        setParameterOverrides,
+        executionSubmitting,
         executions,
         executionsLoading,
         activeExecutionId,
@@ -211,11 +225,11 @@ export default function OfflineWorkbench() {
         scheduleCron,
         setScheduleCron,
         scheduleTimezone,
-        setScheduleTimezone,
         scheduleSaving,
         refreshExecutions,
         loadExecutionDetail,
         execute: handleExecute,
+        confirmExecution: handleConfirmExecution,
         stopAllExecutions: handleStopAllExecutions,
         loadScheduleSnapshot,
         stageSchedule: handleScheduleSave,
@@ -341,6 +355,8 @@ export default function OfflineWorkbench() {
         setNewFlowDialogOpen,
         newFlowName,
         setNewFlowName,
+        newFlowTimezone,
+        setNewFlowTimezone,
         newFlowCreating,
         newFlowParentPath,
         setNewFlowParentPath,
@@ -395,6 +411,7 @@ export default function OfflineWorkbench() {
         groupId,
         activeFlowPath,
         draftSession,
+        defaultTimezone,
         refreshRepoTree,
         openFlowDocument,
         leaveCurrentFlow,
@@ -437,7 +454,9 @@ export default function OfflineWorkbench() {
         newFlowDialogOpen,
         nodeEditorOpen,
         executionDialogOpen,
+        executionContextDialogOpen,
         scheduleDialogOpen,
+        parameterDialogOpen,
         openRootNewFlowDialog,
     });
 
@@ -505,6 +524,17 @@ export default function OfflineWorkbench() {
             void loadScheduleSnapshot(activeFlowPath);
         }
     }, [activeFlowPath, loadScheduleSnapshot, setScheduleDialogOpen]);
+
+    const handleStageParameterBinding = useCallback((binding: FlowParameterBinding | null) => {
+        setDraftSession((current) => current
+            ? updateFlowParameterBindingDraft(current, binding)
+            : current);
+        showFeedback({
+            tone: 'success',
+            title: binding ? '参数组已暂存' : '已暂存解除绑定',
+            detail: '点击“保存”后写入当前 Flow。',
+        });
+    }, [setDraftSession, showFeedback]);
 
     const handleSelectAllNodes = useCallback((selected: boolean) => {
         setDraftSelectedTaskIds(selected && flowDocument
@@ -636,6 +666,8 @@ export default function OfflineWorkbench() {
                         activeFlowPath={activeFlowPath}
                         flowDocument={flowDocument}
                         canWrite={canWrite}
+                        canConfigureParameters={canConfigureParameters}
+                        timezone={flowDocument?.runtimeTimezone || flowDocument?.schedule?.timezone || defaultTimezone}
                         nodeCount={nodeCount}
                         selectedTaskIds={selectedTaskIds}
                         activeNodeId={activeNodeId}
@@ -651,6 +683,7 @@ export default function OfflineWorkbench() {
                         onSaveFlow={() => void handleSaveFlow()}
                         onOpenFlowCommitDialog={handleOpenFlowCommitDialog}
                         onOpenScheduleDialog={handleOpenScheduleDialog}
+                        onOpenParameterDialog={() => setParameterDialogOpen(true)}
                         onExecute={() => void handleExecute()}
                         onOpenExecutionDialog={() => setExecutionDialogOpen(true)}
                         onAddNodeAtCanvasCenter={handleAddNodeAtCanvasCenter}
@@ -700,6 +733,20 @@ export default function OfflineWorkbench() {
                 }}
             />
 
+            <ExecutionTimeContextDialog
+                open={executionContextDialogOpen}
+                timezone={executionTimeRequirement.timezone || flowDocument?.runtimeTimezone || flowDocument?.schedule?.timezone || defaultTimezone}
+                parameterKeys={executionTimeRequirement.parameterKeys}
+                definitions={flowDocument?.parameterBinding?.definitions}
+                plannedTime={plannedTime}
+                parameterOverrides={parameterOverrides}
+                pending={executionSubmitting}
+                onOpenChange={setExecutionContextDialogOpen}
+                onPlannedTimeChange={setPlannedTime}
+                onParameterOverridesChange={setParameterOverrides}
+                onConfirm={() => void handleConfirmExecution()}
+            />
+
             <ScheduleDialog
                 open={scheduleDialogOpen}
                 schedule={schedule}
@@ -714,10 +761,19 @@ export default function OfflineWorkbench() {
                     }
                 }}
                 onCronChange={setScheduleCron}
-                onTimezoneChange={setScheduleTimezone}
                 onSave={() => void handleScheduleSave()}
                 onToggle={(enabled) => void handleScheduleToggle(enabled)}
             />
+
+            {groupId && flowDocument ? (
+                <FlowParameterDialog
+                    open={parameterDialogOpen}
+                    groupId={groupId}
+                    binding={flowDocument.parameterBinding}
+                    onOpenChange={setParameterDialogOpen}
+                    onStage={handleStageParameterBinding}
+                />
+            ) : null}
 
             <OfflineCommitDialogs
                 flowCommitOpen={flowCommitDialogOpen}
@@ -762,6 +818,7 @@ export default function OfflineWorkbench() {
                 activeNode={activeNode}
                 groupId={groupId}
                 content={nodeEditorContent}
+                parameterDefinitions={flowDocument?.parameterBinding?.definitions}
                 onOpenChange={handleNodeEditorOpenChange}
                 onTempSave={handleNodeEditorTempSave}
                 onContentChange={handleNodeEditorContentChange}
@@ -776,10 +833,12 @@ export default function OfflineWorkbench() {
                     open: newFlowDialogOpen,
                     name: newFlowName,
                     parentPath: newFlowParentPath,
+                    timezone: newFlowTimezone,
                     pending: newFlowCreating,
                     onOpenChange: setNewFlowDialogOpen,
                     onNameChange: setNewFlowName,
                     onParentPathChange: setNewFlowParentPath,
+                    onTimezoneChange: setNewFlowTimezone,
                     onSubmit: () => void handleCreateFlow(),
                 }}
                 createFolder={{

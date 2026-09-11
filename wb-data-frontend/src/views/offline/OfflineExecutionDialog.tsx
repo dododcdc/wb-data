@@ -216,6 +216,32 @@ export function OfflineExecutionDialog({
                                     </Button>
                                 </div>
 
+                                {detail.parameters && detail.parameters.length > 0 && (
+                                    <div className="offline-detail-params-section">
+                                        <div className="offline-detail-tasks-header">
+                                            <span>执行参数</span>
+                                            <em>{detail.parameters.length} 个参数</em>
+                                        </div>
+                                        <div className="offline-detail-params-list">
+                                            {detail.parameters.map((param) => (
+                                                <div key={param.key} className="offline-detail-param-item">
+                                                    <span className="offline-param-key">:{param.key}</span>
+                                                    <span className="offline-param-val" title={param.value ?? '""'}>
+                                                        {param.value === null ? '—' : param.value === '' ? '""' : param.value}
+                                                    </span>
+                                                    <span className={`offline-param-source is-${param.source.toLowerCase()}`}>
+                                                        {param.source === 'MANUAL_OVERRIDE'
+                                                            ? '手动覆盖'
+                                                            : param.source === 'SYSTEM_TIME'
+                                                                ? '时间'
+                                                                : '固定值'}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {visibleTaskRuns.length > 0 && (
                                     <div className="offline-detail-tasks">
                                         <div className="offline-detail-tasks-header">

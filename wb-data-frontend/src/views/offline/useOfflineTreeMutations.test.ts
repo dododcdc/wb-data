@@ -93,6 +93,47 @@ describe('useOfflineTreeMutations', () => {
         expect(params.showFeedback).toHaveBeenCalledWith({ tone: 'success', title: 'Flow 创建成功', detail: '' });
     });
 
+    it('creates a Flow preserving the default runtime timezone', async () => {
+        const offlineApi = await import('../../api/offline');
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue(makeDocument('_flows/jack/new_flow/flow.yaml'));
+        const { result } = renderTreeMutations({ defaultTimezone: 'Asia/Kolkata' });
+
+        act(() => {
+            result.current.setNewFlowParentPath('jack');
+            result.current.setNewFlowName('new_flow');
+        });
+        await act(async () => {
+            await result.current.handleCreateFlow();
+        });
+
+        expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledWith(expect.objectContaining({
+            groupId: 1,
+            path: '_flows/jack/new_flow/flow.yaml',
+            runtimeTimezone: 'Asia/Kolkata',
+        }));
+    });
+
+    it('creates a Flow with explicitly selected runtime timezone', async () => {
+        const offlineApi = await import('../../api/offline');
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue(makeDocument('_flows/jack/new_flow/flow.yaml'));
+        const { result } = renderTreeMutations({ defaultTimezone: 'Asia/Kolkata' });
+
+        act(() => {
+            result.current.setNewFlowParentPath('jack');
+            result.current.setNewFlowName('new_flow');
+            result.current.setNewFlowTimezone('America/New_York');
+        });
+        await act(async () => {
+            await result.current.handleCreateFlow();
+        });
+
+        expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledWith(expect.objectContaining({
+            groupId: 1,
+            path: '_flows/jack/new_flow/flow.yaml',
+            runtimeTimezone: 'America/New_York',
+        }));
+    });
+
     it('clears the active Flow when deleting it', async () => {
         const offlineApi = await import('../../api/offline');
         vi.mocked(offlineApi.deleteOfflineFlow).mockResolvedValue(undefined as never);

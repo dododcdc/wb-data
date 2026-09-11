@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { AxiosError } from 'axios';
 import type { Edge, Node } from '@xyflow/react';
 import {
@@ -17,6 +17,7 @@ import type { FeedbackPayload } from '../../hooks/useOperationFeedback';
 import { getErrorMessage } from '../../utils/error';
 import { buildDraftExecutionRequest } from './draftExecution';
 import { isActiveStatus } from './executionPresentation';
+import { defaultPlannedTimeValue, getExecutionTimeRequirement } from './executionTimeContext';
 import { updateFlowScheduleDraft, type FlowDraftSession } from './flowDraftController';
 
 interface UseFlowExecutionAndScheduleParams {
@@ -47,6 +48,10 @@ export function useFlowExecutionAndSchedule({
     showFeedback,
 }: UseFlowExecutionAndScheduleParams) {
     const [executionDialogOpen, setExecutionDialogOpen] = useState(false);
+    const [executionContextDialogOpen, setExecutionContextDialogOpen] = useState(false);
+    const [plannedTime, setPlannedTime] = useState('');
+    const [parameterOverrides, setParameterOverrides] = useState<Record<string, string>>({});
+    const [executionSubmitting, setExecutionSubmitting] = useState(false);
     const [executions, setExecutions] = useState<OfflineExecutionListItem[]>([]);
     const [executionsLoading, setExecutionsLoading] = useState(false);
     const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
@@ -59,10 +64,16 @@ export function useFlowExecutionAndSchedule({
     const [, setScheduleLoading] = useState(false);
     const [scheduleSaving] = useState(false);
     const [scheduleCron, setScheduleCron] = useState('');
-    const [scheduleTimezone, setScheduleTimezone] = useState(defaultTimezone);
+    const scheduleTimezone = draftSession?.workingDraft.runtimeTimezone || defaultTimezone;
     const groupIdRef = useRef(groupId);
     const actionVersionRef = useRef(0);
     const scheduleLoadVersionRef = useRef(0);
+    const executionTimeRequirement = useMemo(
+        () => flowDocument
+            ? getExecutionTimeRequirement(flowDocument)
+            : { requiresConfiguration: false, requiresPlannedTime: false, timezone: null, parameterKeys: [] },
+        [flowDocument],
+    );
 
     useEffect(() => {
         if (groupIdRef.current !== groupId) {
@@ -79,13 +90,15 @@ export function useFlowExecutionAndSchedule({
     const resetExecutionAndSchedule = useCallback(() => {
         setSchedule(null);
         setScheduleCron('');
-        setScheduleTimezone(defaultTimezone);
         setScheduleDialogOpen(false);
+        setExecutionContextDialogOpen(false);
+        setPlannedTime('');
+        setParameterOverrides({});
         setExecutionDialogOpen(false);
         setExecutions([]);
         setActiveExecutionId(null);
         setExecutionDetail(null);
-    }, [defaultTimezone]);
+    }, []);
 
     const loadExecutionDetail = useCallback(async (executionId: string, silent = false) => {
         if (!groupId) return;
@@ -170,7 +183,7 @@ export function useFlowExecutionAndSchedule({
         };
     }, [activeExecutionId, executionDetail, executionDialogOpen, loadExecutionDetail]);
 
-    const execute = useCallback(async () => {
+    const validateExecutionRequest = useCallback(() => {
         if (!groupId || !activeFlowPath || !flowDocument) return;
         if (nodeEditorOpen) {
             showFeedback({
@@ -178,7 +191,7 @@ export function useFlowExecutionAndSchedule({
                 title: '请先处理当前节点编辑',
                 detail: '请先点击应用暂存或关闭节点编辑器，再执行当前 Flow。',
             });
-            return;
+            return false;
         }
         if (selectedTaskIds.length === 0) {
             showFeedback({
@@ -186,10 +199,16 @@ export function useFlowExecutionAndSchedule({
                 title: '请选择要执行的节点',
                 detail: '请在画布上勾选需要参与调试的节点。',
             });
-            return;
+            return false;
         }
+        return true;
+    }, [activeFlowPath, flowDocument, groupId, nodeEditorOpen, selectedTaskIds.length, showFeedback]);
 
+    const submitExecution = useCallback(async (selectedPlannedTime?: string, overrides?: Record<string, string>) => {
+        if (!groupId || !activeFlowPath || !flowDocument) return;
+        setExecutionSubmitting(true);
         try {
+            const effectiveOverrides = overrides ?? parameterOverrides;
             const response = await createOfflineDocumentDebugExecution(buildDraftExecutionRequest({
                 groupId,
                 flowPath: activeFlowPath,
@@ -197,12 +216,17 @@ export function useFlowExecutionAndSchedule({
                 canvasNodes: canvasNodesRef.current,
                 canvasEdges: canvasEdgesRef.current,
                 selectedTaskIds,
+                plannedTime: selectedPlannedTime,
+                parameterOverrides: effectiveOverrides,
             }));
             showFeedback({
                 tone: 'success',
                 title: '调试执行已提交',
                 detail: `执行 ID：${response.executionId}`,
             });
+            setExecutionContextDialogOpen(false);
+            setPlannedTime('');
+            setParameterOverrides({});
             setExecutionDialogOpen(true);
             await refreshExecutions(response.executionId);
         } catch (error) {
@@ -211,8 +235,35 @@ export function useFlowExecutionAndSchedule({
                 title: '调试执行失败',
                 detail: getErrorMessage(error, '暂时无法触发调试执行。'),
             });
+        } finally {
+            setExecutionSubmitting(false);
         }
-    }, [activeFlowPath, canvasEdgesRef, canvasNodesRef, flowDocument, groupId, nodeEditorOpen, refreshExecutions, selectedTaskIds, showFeedback]);
+    }, [activeFlowPath, canvasEdgesRef, canvasNodesRef, flowDocument, groupId, parameterOverrides, refreshExecutions, selectedTaskIds, showFeedback]);
+
+    const execute = useCallback(async () => {
+        if (!validateExecutionRequest()) return;
+        if (executionTimeRequirement.requiresConfiguration) {
+            if (executionTimeRequirement.requiresPlannedTime) {
+                setPlannedTime(defaultPlannedTimeValue(executionTimeRequirement.timezone));
+            }
+            setExecutionContextDialogOpen(true);
+            return;
+        }
+        await submitExecution();
+    }, [executionTimeRequirement.requiresConfiguration, executionTimeRequirement.requiresPlannedTime, executionTimeRequirement.timezone, submitExecution, validateExecutionRequest]);
+
+    const confirmExecution = useCallback(async () => {
+        if (!validateExecutionRequest()) return;
+        if (executionTimeRequirement.requiresPlannedTime && !plannedTime) {
+            showFeedback({
+                tone: 'error',
+                title: '请选择参考计划时间',
+                detail: '',
+            });
+            return;
+        }
+        await submitExecution(plannedTime, parameterOverrides);
+    }, [executionTimeRequirement.requiresPlannedTime, parameterOverrides, plannedTime, showFeedback, submitExecution, validateExecutionRequest]);
 
     const stopExecution = useCallback(async (executionId: string) => {
         if (!groupId || !activeFlowPath) return;
@@ -270,7 +321,6 @@ export function useFlowExecutionAndSchedule({
             : null;
         if (draftSchedule) {
             setScheduleCron(draftSchedule.cron);
-            setScheduleTimezone(draftSchedule.timezone || defaultTimezone);
             setSchedule({
                 groupId,
                 path,
@@ -292,13 +342,11 @@ export function useFlowExecutionAndSchedule({
             if (!isCurrentScheduleLoad()) return;
             setSchedule(nextSchedule);
             setScheduleCron(nextSchedule.cron);
-            setScheduleTimezone(nextSchedule.timezone ?? defaultTimezone);
         } catch (error) {
             if (!isCurrentScheduleLoad()) return;
             if (error instanceof AxiosError && error.response?.status === 404) {
                 setSchedule(null);
                 setScheduleCron('0 2 * * *');
-                setScheduleTimezone(defaultTimezone);
                 return;
             }
             showFeedback({
@@ -311,7 +359,7 @@ export function useFlowExecutionAndSchedule({
                 setScheduleLoading(false);
             }
         }
-    }, [captureGroupActionGuard, defaultTimezone, draftSession, groupId, showFeedback]);
+    }, [captureGroupActionGuard, draftSession, groupId, showFeedback]);
 
     const stageSchedule = useCallback(async () => {
         if (!draftSession) return;
@@ -357,6 +405,14 @@ export function useFlowExecutionAndSchedule({
     return {
         executionDialogOpen,
         setExecutionDialogOpen,
+        executionContextDialogOpen,
+        setExecutionContextDialogOpen,
+        executionTimeRequirement,
+        plannedTime,
+        setPlannedTime,
+        parameterOverrides,
+        setParameterOverrides,
+        executionSubmitting,
         executions,
         executionsLoading,
         activeExecutionId,
@@ -371,11 +427,11 @@ export function useFlowExecutionAndSchedule({
         scheduleCron,
         setScheduleCron,
         scheduleTimezone,
-        setScheduleTimezone,
         scheduleSaving,
         refreshExecutions,
         loadExecutionDetail,
         execute,
+        confirmExecution,
         stopExecution,
         stopAllExecutions,
         loadScheduleSnapshot,

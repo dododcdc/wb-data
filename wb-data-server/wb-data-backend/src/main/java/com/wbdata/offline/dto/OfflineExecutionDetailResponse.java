@@ -14,6 +14,8 @@ public record OfflineExecutionDetailResponse(
         Instant createdAt,
         Instant startDate,
         Instant endDate,
-        List<OfflineExecutionTaskRun> taskRuns
+        List<OfflineExecutionTaskRun> taskRuns,
+        String parameterResolutionStatus,
+        List<ExecutionParameterValueResponse> parameters
 ) {
 }

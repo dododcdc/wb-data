@@ -10,6 +10,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.ZoneId;
+
 @Service
 @RequiredArgsConstructor
 public class OfflineScheduleService {
@@ -27,19 +29,36 @@ public class OfflineScheduleService {
     }
 
     public OfflineScheduleResponse updateSchedule(UpdateOfflineScheduleRequest request) {
+        OfflineFlowContentResponse existing = offlineFlowContentService.getFlowContent(
+                request.groupId(), request.path());
+        String runtimeTimezone = requireRuntimeTimezone(existing.content());
         OfflineFlowContentResponse current = offlineFlowContentService.saveFlowContent(new SaveOfflineFlowRequest(
                 request.groupId(),
                 request.path(),
                 yamlSupport.updateSchedule(
-                        offlineFlowContentService.getFlowContent(request.groupId(), request.path()).content(),
+                        existing.content(),
                         request.cron(),
-                        request.timezone()
+                        runtimeTimezone
                 ),
                 request.contentHash(),
                 request.fileUpdatedAt()
         ));
         OfflineFlowYamlSupport.ScheduleData schedule = yamlSupport.readSchedule(current.content());
         return toResponse(request.groupId(), request.path(), current, schedule);
+    }
+
+    private String requireRuntimeTimezone(String flowSource) {
+        String runtimeTimezone = yamlSupport.readLabel(flowSource, "wbdataRuntimeTimezone");
+        if (runtimeTimezone == null || runtimeTimezone.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 运行时区不能为空");
+        }
+        String normalized = runtimeTimezone.trim();
+        try {
+            ZoneId.of(normalized);
+        } catch (RuntimeException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 运行时区不合法");
+        }
+        return normalized;
     }
 
     public OfflineScheduleResponse updateScheduleStatus(UpdateOfflineScheduleStatusRequest request) {

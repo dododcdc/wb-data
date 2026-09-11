@@ -565,7 +565,8 @@ public class GitCommandService {
             if ("flow.yaml".equals(fileName)) {
                 return path.toString();
             }
-            if (".layout.json".equals(fileName) && path.getParent() != null) {
+            if ((".layout.json".equals(fileName) || ".parameters.json".equals(fileName))
+                    && path.getParent() != null) {
                 return path.getParent().resolve("flow.yaml").toString();
             }
             return null;

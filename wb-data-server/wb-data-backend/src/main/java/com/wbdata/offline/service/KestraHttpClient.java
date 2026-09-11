@@ -157,13 +157,16 @@ public class KestraHttpClient implements KestraClient {
     }
 
     @Override
-    public KestraExecutionSnapshot createExecution(String namespace, String flowId) {
+    public KestraExecutionSnapshot createExecution(String namespace,
+                                                    String flowId,
+                                                    Map<String, String> inputs,
+                                                    Map<String, String> labels) {
         ensureCredentialsConfigured();
         String boundary = "----wb-data-" + UUID.randomUUID().toString().replace("-", "");
-        byte[] body = ("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8);
+        byte[] body = buildExecutionBody(boundary, inputs);
         HttpResponse<byte[]> response = send(
                 "POST",
-                "/api/v1/" + properties.getTenant() + "/executions/" + encode(namespace) + "/" + encode(flowId),
+                buildCreateExecutionPath(namespace, flowId, labels),
                 body,
                 "multipart/form-data; boundary=" + boundary,
                 "application/json"
@@ -172,6 +175,46 @@ public class KestraHttpClient implements KestraClient {
             throw toKestraException(response, "创建执行失败");
         }
         return readExecution(response.body());
+    }
+
+    private String buildCreateExecutionPath(String namespace,
+                                            String flowId,
+                                            Map<String, String> labels) {
+        String path = "/api/v1/" + properties.getTenant()
+                + "/executions/" + encode(namespace) + "/" + encode(flowId);
+        if (labels == null || labels.isEmpty()) {
+            return path;
+        }
+        String query = labels.entrySet().stream()
+                .map(entry -> "labels=" + encodeQueryParam(entry.getKey() + ":" + entry.getValue()))
+                .collect(java.util.stream.Collectors.joining("&"));
+        return path + "?" + query;
+    }
+
+    private byte[] buildExecutionBody(String boundary, Map<String, String> inputs) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        try {
+            for (Map.Entry<String, String> input : inputs.entrySet()) {
+                String key = input.getKey();
+                if (key == null || !key.matches("[A-Za-z][A-Za-z0-9_]{0,63}")) {
+                    throw new IllegalArgumentException("Kestra input 名称不合法: " + key);
+                }
+                if (input.getValue() == null) {
+                    throw new IllegalArgumentException("Kestra input 不能为空: " + key);
+                }
+                output.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
+                output.write(("Content-Disposition: form-data; name=\"" + key + "\"\r\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                output.write("Content-Type: text/plain; charset=UTF-8\r\n\r\n"
+                        .getBytes(StandardCharsets.UTF_8));
+                output.write(input.getValue().getBytes(StandardCharsets.UTF_8));
+                output.write("\r\n".getBytes(StandardCharsets.UTF_8));
+            }
+            output.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+            return output.toByteArray();
+        } catch (IOException ex) {
+            throw new UncheckedIOException(ex);
+        }
     }
 
     @Override

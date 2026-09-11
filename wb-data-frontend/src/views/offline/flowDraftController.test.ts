@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+    createFlowDraftSession,
     forceOverwriteRebase,
+    hasFlowDraftChanges,
     rebaseFlowDraftSession,
+    updateFlowParameterBindingDraft,
+    updateFlowScheduleDraft,
     type FlowDraftSession,
 } from './flowDraftController';
 
@@ -101,5 +105,51 @@ describe('rebaseFlowDraftSession', () => {
         expect(next.selectedNodeId).toBe('node-1');
         expect(next.selectedTaskIds).toEqual(['node-1']);
         expect(next.conflict).toBeNull();
+    });
+});
+
+describe('Flow parameter binding draft', () => {
+    it('marks a parameter binding change as an unsaved Flow change', () => {
+        const session = createFlowDraftSession({
+            path: '_flows/example.yml',
+            serverDocument: makeDocument(),
+            snapshot: null,
+        });
+
+        const next = updateFlowParameterBindingDraft(session, {
+            parameterGroupId: 8,
+            code: 'daily_common',
+            name: '日常公共参数',
+            boundVersion: 2,
+            currentVersion: 2,
+            status: 'CURRENT',
+            definitions: [],
+        });
+
+        expect(hasFlowDraftChanges(next)).toBe(true);
+        expect(next.workingDraft.parameterBinding).toMatchObject({
+            parameterGroupId: 8,
+            code: 'daily_common',
+            boundVersion: 2,
+        });
+    });
+});
+
+describe('Flow schedule draft', () => {
+    it('keeps the Flow runtime timezone fixed and applies it to the schedule', () => {
+        const session = createFlowDraftSession({
+            path: '_flows/example.yml',
+            serverDocument: makeDocument({ runtimeTimezone: 'Asia/Shanghai' }),
+            snapshot: null,
+        });
+
+        const next = updateFlowScheduleDraft(session, {
+            cron: '0 2 * * *',
+            timezone: 'Asia/Singapore',
+            enabled: true,
+        });
+
+        expect(next.workingDraft.runtimeTimezone).toBe('Asia/Shanghai');
+        expect(next.workingDraft.schedule?.timezone).toBe('Asia/Shanghai');
     });
 });

@@ -35,6 +35,8 @@ class OfflineScheduleServiceTest {
                 """
                         id: example
                         namespace: pg-1
+                        labels:
+                          wbdataRuntimeTimezone: Asia/Shanghai
                         tasks: []
                         """,
                 null,
@@ -45,7 +47,6 @@ class OfflineScheduleServiceTest {
                 1L,
                 "_flows/example/flow.yaml",
                 "* * * * *",
-                "Asia/Singapore",
                 initial.contentHash(),
                 initial.fileUpdatedAt()
         ));
@@ -58,7 +59,7 @@ class OfflineScheduleServiceTest {
                 .contains("type: io.kestra.plugin.core.trigger.Schedule")
                 .contains("cron:")
                 .contains("* * * * *")
-                .contains("timezone: Asia/Singapore")
+                .contains("timezone: Asia/Shanghai")
                 .contains("recoverMissedSchedules: NONE");
 
         var disabled = scheduleService.updateScheduleStatus(new UpdateOfflineScheduleStatusRequest(

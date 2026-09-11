@@ -41,14 +41,16 @@ class OfflineExecutionControllerGroupScopeTest {
                         id: test
                         namespace: pg-4
                         tasks: []
-                        """,
+                """,
                 List.of(),
-                "ALL"
+                "ALL",
+                Map.of("name", "李雷")
         ));
 
         ArgumentCaptor<DebugExecutionRequest> captor = ArgumentCaptor.forClass(DebugExecutionRequest.class);
         verify(executionService).createDebugExecution(captor.capture(), eq(1L));
         assertThat(captor.getValue().groupId()).isEqualTo(4L);
+        assertThat(captor.getValue().parameterOverrides()).containsEntry("name", "李雷");
     }
 
     @Test
@@ -76,12 +78,17 @@ class OfflineExecutionControllerGroupScopeTest {
                 List.of(),
                 Map.of(),
                 List.of(),
-                "ALL"
+                "ALL",
+                Map.of("name", "李雷")
         ));
 
         ArgumentCaptor<DebugDocumentExecutionRequest> captor = ArgumentCaptor.forClass(DebugDocumentExecutionRequest.class);
         verify(documentService).compileFlowDraft(captor.capture());
         assertThat(captor.getValue().groupId()).isEqualTo(4L);
+        assertThat(captor.getValue().parameterOverrides()).containsEntry("name", "李雷");
+        ArgumentCaptor<DebugExecutionRequest> executionCaptor = ArgumentCaptor.forClass(DebugExecutionRequest.class);
+        verify(executionService).createDebugExecution(executionCaptor.capture(), eq(Map.of()), eq(1L));
+        assertThat(executionCaptor.getValue().parameterOverrides()).containsEntry("name", "李雷");
     }
 
     private AuthContextResponse context(Long groupId) {

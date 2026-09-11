@@ -1,0 +1,412 @@
+.flow-parameter-dialog {
+    max-width: 640px;
+    width: 100%;
+    height: min(560px, 85vh);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.flow-parameter-dialog-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 24px 8px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Add Bar (Fixed at top of body) */
+.flow-parameter-add-bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    background: var(--color-surface, var(--background, #ffffff));
+    padding: 0 0 2px;
+    flex-shrink: 0;
+}
+
+.flow-parameter-add-select {
+    flex: 1;
+}
+
+/* Groups List (Scrollable middle container) */
+.flow-parameter-groups-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.flow-parameter-groups-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.flow-parameter-groups-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.flow-parameter-groups-list::-webkit-scrollbar-thumb {
+    background: var(--color-border, rgba(0, 0, 0, 0.12));
+    border-radius: 9999px;
+}
+
+.flow-parameter-groups-list::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-muted, rgba(0, 0, 0, 0.25));
+}
+
+.flow-parameter-empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 160px;
+    padding: 24px 16px;
+    border: 1px dashed var(--color-border);
+    border-radius: 10px;
+    color: var(--color-text-muted);
+    font-size: 0.84rem;
+    text-align: center;
+    background: var(--color-surface-secondary);
+}
+
+/* Group Card */
+.flow-parameter-group-card {
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-surface);
+    transition: box-shadow 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.flow-parameter-group-card.is-dragging {
+    opacity: 0.45;
+    border-style: dashed;
+    border-color: var(--color-brand);
+    background: var(--color-surface-secondary);
+}
+
+.flow-parameter-group-card.is-drag-over {
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.25);
+    background: rgba(217, 119, 87, 0.04);
+}
+
+.flow-parameter-group-card:hover {
+    border-color: var(--color-border-hover, #a1a1aa);
+}
+
+/* Card Header */
+.flow-parameter-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    min-height: 48px;
+    background: var(--color-surface-secondary);
+    user-select: none;
+    box-sizing: border-box;
+}
+
+.flow-parameter-card-drag-handle {
+    display: flex;
+    align-items: center;
+    color: var(--color-text-muted);
+    cursor: grab;
+    padding: 2px;
+    flex-shrink: 0;
+}
+
+.flow-parameter-card-drag-handle:active {
+    cursor: grabbing;
+}
+
+.flow-parameter-card-priority {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 20px;
+    padding: 0 4px;
+    border-radius: 4px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-family: var(--font-mono, monospace);
+    flex-shrink: 0;
+}
+
+.flow-parameter-card-main-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+    line-height: 1.4;
+}
+
+.flow-parameter-card-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.4;
+}
+
+.flow-parameter-card-meta {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    line-height: 1.4;
+    flex-shrink: 0;
+}
+
+.flow-parameter-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.flow-parameter-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+
+.flow-parameter-action-btn.is-upgrade {
+    background: rgba(217, 119, 87, 0.12);
+    color: var(--color-brand-dark, #b85434);
+    border-color: rgba(217, 119, 87, 0.3);
+}
+
+.flow-parameter-action-btn.is-upgrade:hover {
+    background: var(--color-brand, #d97757);
+    color: #fff;
+}
+
+.flow-parameter-action-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+.flow-parameter-action-icon-btn:hover:not(:disabled) {
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+}
+
+.flow-parameter-action-icon-btn.is-remove:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--color-danger, #ef4444);
+}
+
+.flow-parameter-action-icon-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+/* Card Body */
+.flow-parameter-card-body {
+    border-top: 1px solid var(--color-border);
+    padding: 10px 14px 12px;
+    background: var(--color-surface);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Search Bar */
+.flow-parameter-search-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-surface-secondary);
+}
+
+.flow-parameter-search-icon {
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+}
+
+.flow-parameter-search-bar input {
+    border: none;
+    background: transparent;
+    outline: none;
+    width: 100%;
+    font-size: 0.78rem;
+    color: var(--color-text-primary);
+}
+
+.flow-parameter-search-bar input::placeholder {
+    color: var(--color-text-muted);
+}
+
+/* Items List */
+.flow-parameter-items-list {
+    display: flex;
+    flex-direction: column;
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid var(--color-border-subtle, #f0f0f0);
+    border-radius: 6px;
+}
+
+.flow-parameter-items-empty {
+    padding: 16px;
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: 0.76rem;
+}
+
+.flow-parameter-item-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--color-border-subtle, #f4f4f5);
+    font-size: 0.8rem;
+    transition: background 0.1s ease;
+}
+
+.flow-parameter-item-row:last-child {
+    border-bottom: 0;
+}
+
+.flow-parameter-item-row:hover {
+    background: var(--color-surface-secondary);
+}
+
+.flow-parameter-item-row.is-overridden {
+    opacity: 0.65;
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.flow-parameter-item-row.is-overridden code {
+    text-decoration: line-through;
+    color: var(--color-text-muted);
+}
+
+.flow-parameter-item-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.flow-parameter-item-left code {
+    color: var(--color-brand-dark, #b85434);
+    font-family: var(--font-mono, monospace);
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+
+.flow-parameter-item-desc {
+    color: var(--color-text-muted);
+    font-size: 0.74rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.flow-parameter-item-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.flow-parameter-overridden-badge {
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--color-text-muted);
+    font-size: 0.68rem;
+}
+
+.flow-parameter-item-val {
+    color: var(--color-text-secondary);
+    font-size: 0.76rem;
+    white-space: nowrap;
+}
+
+/* Badges */
+.flow-parameter-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.flow-parameter-badge.is-current {
+    background: rgba(34, 197, 94, 0.12);
+    color: var(--color-success, #16a34a);
+}
+
+.flow-parameter-badge.is-outdated {
+    background: rgba(217, 119, 87, 0.14);
+    color: var(--color-brand-dark, #b85434);
+}
+
+.flow-parameter-badge.is-archived {
+    background: rgba(100, 116, 139, 0.14);
+    color: var(--color-text-muted);
+}
+
+.flow-parameter-badge.is-missing {
+    background: rgba(239, 68, 68, 0.14);
+    color: var(--color-danger, #ef4444);
+}
+
+.flow-parameter-error {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--color-danger, #ef4444);
+    font-size: 0.8rem;
+}
+
+.flow-parameter-dialog-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    border-top: 1px solid var(--color-border);
+}
+
+.flow-parameter-dialog-actions {
+    display: flex;
+    gap: 8px;
+}

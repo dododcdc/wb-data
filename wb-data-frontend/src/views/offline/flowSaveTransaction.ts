@@ -1,6 +1,10 @@
 import { AxiosError } from 'axios';
 
-import type { SaveOfflineFlowDocumentRequest } from '../../api/offline';
+import type {
+    FlowParameterBinding,
+    FlowParameterBindingRequest,
+    SaveOfflineFlowDocumentRequest,
+} from '../../api/offline';
 import type { TransferConfig } from './transfer/transferTypes';
 import { flattenFlowDocumentNodes } from './flowDocumentMutations';
 import {
@@ -75,6 +79,13 @@ export function buildSaveFlowDocumentRequest(
     session: FlowDraftSession,
 ): SaveOfflineFlowDocumentRequest {
     const draftDocument = session.workingDraft;
+    const bindingRequests = buildParameterBindingRequests(
+        session.baseDocument.parameterBinding,
+        draftDocument.parameterBinding,
+    );
+    if (!draftDocument.runtimeTimezone) {
+        throw new Error('Flow 运行时区不能为空，请先选择运行时区');
+    }
 
     return {
         groupId,
@@ -90,12 +101,61 @@ export function buildSaveFlowDocumentRequest(
                 scriptPath: node.scriptPath,
                 dataSourceId: node.dataSourceId,
                 dataSourceType: node.dataSourceType,
-                transfer: node.transfer,
+                ...(node.transfer !== undefined ? { transfer: node.transfer } : {}),
             })),
         })),
         edges: draftDocument.edges,
         layout: draftDocument.layout,
-        schedule: draftDocument.schedule,
+        schedule: draftDocument.schedule ?? undefined,
+        runtimeTimezone: draftDocument.runtimeTimezone,
+        ...(bindingRequests !== undefined ? bindingRequests : {}),
+    };
+}
+
+function buildParameterBindingRequests(
+    baseBinding: FlowParameterBinding | null | undefined,
+    draftBinding: FlowParameterBinding | null | undefined,
+): { parameterBinding?: FlowParameterBindingRequest | null; parameterBindings?: FlowParameterBindingRequest[] | null } | undefined {
+    const serializeBinding = (b: FlowParameterBinding | null | undefined) => {
+        if (!b) return null;
+        if (b.bindings && b.bindings.length > 0) {
+            return b.bindings.map((item) => `${item.parameterGroupId ?? ''}:${item.code}:${item.boundVersion}`).join(',');
+        }
+        return `${b.parameterGroupId ?? ''}:${b.code}:${b.boundVersion}`;
+    };
+
+    const baseIdentity = serializeBinding(baseBinding);
+    const draftIdentity = serializeBinding(draftBinding);
+    if (baseIdentity === draftIdentity) {
+        return undefined;
+    }
+    if (!draftBinding) {
+        return { parameterBinding: {}, parameterBindings: [] };
+    }
+    if (draftBinding.bindings && draftBinding.bindings.length > 0) {
+        const list: FlowParameterBindingRequest[] = draftBinding.bindings
+            .filter((item) => item.parameterGroupId != null)
+            .map((item) => ({
+                parameterGroupId: item.parameterGroupId!,
+                expectedVersion: item.boundVersion,
+            }));
+        return {
+            parameterBinding: list.length > 0 ? list[0] : {},
+            parameterBindings: list,
+        };
+    }
+    if (draftBinding.parameterGroupId == null) {
+        return undefined;
+    }
+    return {
+        parameterBinding: {
+            parameterGroupId: draftBinding.parameterGroupId,
+            expectedVersion: draftBinding.boundVersion,
+        },
+        parameterBindings: [{
+            parameterGroupId: draftBinding.parameterGroupId,
+            expectedVersion: draftBinding.boundVersion,
+        }],
     };
 }
 

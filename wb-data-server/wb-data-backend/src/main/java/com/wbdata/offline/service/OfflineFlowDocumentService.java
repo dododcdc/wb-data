@@ -7,6 +7,12 @@ import com.wbdata.datasource.service.DataSourceService;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.dto.DebugDocumentExecutionRequest;
+import com.wbdata.offline.dto.FlowParameterBindingItemResponse;
+import com.wbdata.offline.dto.FlowParameterBindingRequest;
+import com.wbdata.offline.dto.FlowParameterBindingResponse;
+import com.wbdata.offline.dto.FlowParameterDefinitionSnapshot;
+import com.wbdata.offline.dto.FlowParameterGroupBindingSnapshot;
+import com.wbdata.offline.dto.FlowParameterSnapshot;
 import com.wbdata.offline.dto.NodePosition;
 import com.wbdata.offline.dto.OfflineFlowDocumentResponse;
 import com.wbdata.offline.dto.OfflineFlowEdgeResponse;
@@ -19,6 +25,9 @@ import com.wbdata.offline.dto.SaveOfflineFlowNodeRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowStageRequest;
 import com.wbdata.offline.transfer.dto.TransferConfig;
 import com.wbdata.offline.transfer.service.TransferConfigFileService;
+import com.wbdata.parameter.dto.ParameterDefinitionResponse;
+import com.wbdata.parameter.dto.ParameterGroupResponse;
+import com.wbdata.parameter.service.ParameterGroupService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -27,12 +36,14 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -45,7 +56,7 @@ public class OfflineFlowDocumentService {
     }
 
     private record GraphDraft(
-            List<OfflineFlowYamlSupport.FlowNode> nodes,
+            List<OfflineFlowNode> nodes,
             List<OfflineFlowYamlSupport.FlowEdge> edges,
             Map<Long, DataSource> dataSourceMap,
             Map<String, String> scriptFileContents,
@@ -60,6 +71,10 @@ public class OfflineFlowDocumentService {
     private final RepoLockManager repoLockManager;
     private final OfflineKestraFlowFileService kestraFlowFileService;
     private final TransferConfigFileService transferConfigFileService;
+    private final ParameterGroupService parameterGroupService;
+    private final FlowParameterSnapshotStore parameterSnapshotStore;
+    private final ExecutionParameterSnapshotRegistry executionParameterSnapshotRegistry;
+    private final FlowParameterCompiler parameterCompiler = new FlowParameterCompiler();
     private final OfflineFlowYamlSupport yamlSupport;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -69,6 +84,9 @@ public class OfflineFlowDocumentService {
                                       RepoLockManager repoLockManager,
                                       OfflineKestraFlowFileService kestraFlowFileService,
                                       TransferConfigFileService transferConfigFileService,
+                                      ParameterGroupService parameterGroupService,
+                                      FlowParameterSnapshotStore parameterSnapshotStore,
+                                      ExecutionParameterSnapshotRegistry executionParameterSnapshotRegistry,
                                       OfflineTransferProperties transferProperties) {
         this.offlineProperties = offlineProperties;
         this.offlineFlowContentService = offlineFlowContentService;
@@ -76,6 +94,9 @@ public class OfflineFlowDocumentService {
         this.repoLockManager = repoLockManager;
         this.kestraFlowFileService = kestraFlowFileService;
         this.transferConfigFileService = transferConfigFileService;
+        this.parameterGroupService = parameterGroupService;
+        this.parameterSnapshotStore = parameterSnapshotStore;
+        this.executionParameterSnapshotRegistry = executionParameterSnapshotRegistry;
         this.yamlSupport = new OfflineFlowYamlSupport(transferProperties);
     }
 
@@ -100,6 +121,16 @@ public class OfflineFlowDocumentService {
             Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
             Path flowFile = resolveRepoFile(repoPath, request.path());
             boolean isNewFile = !Files.exists(flowFile);
+            String runtimeTimezone = resolveRuntimeTimezoneForSave(request, isNewFile);
+            ParameterSnapshotUpdate parameterUpdate = prepareParameterSnapshotUpdate(
+                    request.groupId(), request.parameterBinding(), request.parameterBindings(), runtimeTimezone);
+            FlowParameterSnapshot effectiveParameterSnapshot = resolveEffectiveParameterSnapshot(
+                    repoPath, request.path(), parameterUpdate);
+            parameterUpdate = normalizeParameterSnapshotForSave(
+                    parameterUpdate, effectiveParameterSnapshot, runtimeTimezone);
+            effectiveParameterSnapshot = parameterUpdate.requested()
+                    ? parameterUpdate.snapshot()
+                    : effectiveParameterSnapshot;
 
             if (request.edges() != null) {
                 // New graph-based save: compile DAG back to YAML
@@ -115,7 +146,7 @@ public class OfflineFlowDocumentService {
                         || current.response().documentUpdatedAt() != request.documentUpdatedAt())) {
                     throw new ResponseStatusException(HttpStatus.CONFLICT, "检测到文件已被修改，请先加载最新内容");
                 }
-                saveWithGraph(request, flowSource);
+                saveWithGraph(request, flowSource, effectiveParameterSnapshot, runtimeTimezone);
             } else {
                 // Legacy stage-based save
                 if (isNewFile) {
@@ -133,11 +164,17 @@ public class OfflineFlowDocumentService {
                     throw new ResponseStatusException(HttpStatus.CONFLICT, "检测到文件已被修改，请先加载最新内容");
                 }
                 saveWithStages(request, current);
+                if (effectiveParameterSnapshot != null || parameterUpdate.requested()) {
+                    recompileLegacyFlowWithParameters(request, effectiveParameterSnapshot);
+                }
             }
 
+            applyRuntimeTimezoneToFlowFile(repoPath, request.path(), runtimeTimezone);
             if (request.schedule() != null) {
-                applyScheduleToFlowFile(repoPath, request.path(), request.schedule());
+                applyScheduleToFlowFile(repoPath, request.path(), new OfflineFlowSchedule(
+                        request.schedule().cron(), runtimeTimezone, request.schedule().enabled()));
             }
+            applyParameterSnapshotUpdate(repoPath, request.path(), parameterUpdate);
             kestraFlowFileService.syncFlowFile(repoPath, request.path());
 
             // Save layout.json if provided
@@ -201,12 +238,23 @@ public class OfflineFlowDocumentService {
                     request.edges()
             );
             var flowContent = offlineFlowContentService.getFlowContent(request.groupId(), request.flowPath());
+            Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
+            FlowParameterSnapshot parameterSnapshot = parameterSnapshotStore.read(repoPath, request.flowPath())
+                    .map(FlowParameterSnapshotStore.SnapshotFile::snapshot)
+                    .orElse(null);
+            FlowParameterCompiler.Compilation parameterCompilation = parameterCompiler.compile(
+                    parameterSnapshot,
+                    draft.nodes(),
+                    draft.scriptFileContents()
+            );
             String compiledYaml = yamlSupport.compileGraph(
                     flowContent.content(),
                     draft.nodes(),
                     draft.edges(),
-                    draft.dataSourceMap()
+                    draft.dataSourceMap(),
+                    parameterCompilation
             );
+            compiledYaml = applyParameterSnapshotId(request.groupId(), compiledYaml, parameterSnapshot);
             return new CompiledFlowDraft(compiledYaml, draft.namespaceFileContents());
         } catch (IOException ex) {
             throw new IllegalStateException("编译 Flow 文档失败", ex);
@@ -222,7 +270,10 @@ public class OfflineFlowDocumentService {
         return "flow";
     }
 
-    private void saveWithGraph(SaveOfflineFlowDocumentRequest request, String flowSource) throws IOException {
+    private void saveWithGraph(SaveOfflineFlowDocumentRequest request,
+                               String flowSource,
+                               FlowParameterSnapshot parameterSnapshot,
+                               String runtimeTimezone) throws IOException {
         Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
         GraphDraft graphDraft = prepareGraphDraft(
                 request.groupId(),
@@ -240,13 +291,19 @@ public class OfflineFlowDocumentService {
             }
         }
 
+        FlowParameterCompiler.Compilation parameterCompilation = parameterCompiler.compile(
+                parameterSnapshot,
+                graphDraft.nodes(),
+                graphDraft.scriptFileContents()
+        );
         String compiledYaml = yamlSupport.compileGraph(
                 flowSource,
                 graphDraft.nodes(),
                 graphDraft.edges(),
-                graphDraft.dataSourceMap()
+                graphDraft.dataSourceMap(),
+                parameterCompilation
         );
-
+        compiledYaml = applyParameterSnapshotId(request.groupId(), compiledYaml, parameterSnapshot);
         writeGraphFiles(repoPath, request.groupId(), request.path(), graphDraft);
 
         Path flowFile = resolveRepoFile(repoPath, request.path());
@@ -260,6 +317,16 @@ public class OfflineFlowDocumentService {
         Files.writeString(flowFile, yamlSupport.applySchedule(current, schedule), StandardCharsets.UTF_8);
     }
 
+    private void applyRuntimeTimezoneToFlowFile(Path repoPath,
+                                                String flowPath,
+                                                String runtimeTimezone) throws IOException {
+        Path flowFile = resolveRepoFile(repoPath, flowPath);
+        String current = Files.readString(flowFile, StandardCharsets.UTF_8);
+        Files.writeString(flowFile,
+                yamlSupport.applyRuntimeTimezoneLabel(current, runtimeTimezone),
+                StandardCharsets.UTF_8);
+    }
+
     private void writeGraphFiles(Path repoPath, Long groupId, String flowPath, GraphDraft graphDraft) throws IOException {
         for (Map.Entry<String, String> entry : graphDraft.scriptFileContents().entrySet()) {
             Path scriptFile = resolveRepoFile(repoPath, entry.getKey());
@@ -271,7 +338,7 @@ public class OfflineFlowDocumentService {
         }
         List<String> activeTransferPaths = graphDraft.nodes().stream()
                 .filter(node -> "TRANSFER".equalsIgnoreCase(node.kind()))
-                .map(OfflineFlowYamlSupport.FlowNode::transferConfigPath)
+                .map(OfflineFlowNode::transferConfigPath)
                 .toList();
         transferConfigFileService.deleteStaleForFlow(repoPath, flowPath, activeTransferPaths);
     }
@@ -281,7 +348,7 @@ public class OfflineFlowDocumentService {
                                          List<SaveOfflineFlowStageRequest> stages,
                                          List<SaveOfflineFlowEdgeRequest> requestEdges) throws IOException {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
-        List<OfflineFlowYamlSupport.FlowNode> nodes = new ArrayList<>();
+        List<OfflineFlowNode> nodes = new ArrayList<>();
         Set<Long> dataSourceIds = new LinkedHashSet<>();
         Map<String, String> namespaceFileContents = new LinkedHashMap<>();
         Map<String, String> scriptFileContents = new LinkedHashMap<>();
@@ -293,7 +360,7 @@ public class OfflineFlowDocumentService {
                 String transferConfigPath = transferNode
                         ? transferConfigFileService.buildPath(flowPath, nodeReq.taskId())
                         : null;
-                nodes.add(new OfflineFlowYamlSupport.FlowNode(
+                nodes.add(new OfflineFlowNode(
                         nodeReq.taskId(),
                         nodeReq.kind(),
                         nodeReq.scriptPath(),
@@ -344,6 +411,45 @@ public class OfflineFlowDocumentService {
         }
     }
 
+    private void recompileLegacyFlowWithParameters(SaveOfflineFlowDocumentRequest request,
+                                                   FlowParameterSnapshot parameterSnapshot) throws IOException {
+        String flowSource = offlineFlowContentService.getFlowContent(request.groupId(), request.path()).content();
+        OfflineFlowYamlSupport.FlowGraph graph = yamlSupport.parseGraph(flowSource);
+        List<SaveOfflineFlowEdgeRequest> edges = graph.edges().stream()
+                .map(edge -> new SaveOfflineFlowEdgeRequest(edge.source(), edge.target()))
+                .toList();
+        GraphDraft draft = prepareGraphDraft(
+                request.groupId(),
+                request.path(),
+                request.stages(),
+                edges
+        );
+        FlowParameterCompiler.Compilation parameterCompilation = parameterCompiler.compile(
+                parameterSnapshot,
+                draft.nodes(),
+                draft.scriptFileContents()
+        );
+        String compiledYaml = yamlSupport.compileGraph(
+                flowSource,
+                draft.nodes(),
+                draft.edges(),
+                draft.dataSourceMap(),
+                parameterCompilation
+        );
+        compiledYaml = applyParameterSnapshotId(request.groupId(), compiledYaml, parameterSnapshot);
+        Files.writeString(resolveRepoFile(
+                offlineProperties.resolveRepoPath(request.groupId()), request.path()), compiledYaml, StandardCharsets.UTF_8);
+    }
+
+    private String applyParameterSnapshotId(Long groupId,
+                                            String flowSource,
+                                            FlowParameterSnapshot parameterSnapshot) {
+        String snapshotId = parameterSnapshot == null
+                ? null
+                : executionParameterSnapshotRegistry.register(groupId, parameterSnapshot);
+        return yamlSupport.applyParameterSnapshotId(flowSource, snapshotId);
+    }
+
     private OfflineFlowNodeResponse findNodeInResponse(OfflineFlowDocumentResponse response, String taskId) {
         for (OfflineFlowStageResponse stage : response.stages()) {
             for (OfflineFlowNodeResponse node : stage.nodes()) {
@@ -381,10 +487,23 @@ public class OfflineFlowDocumentService {
                 .append('\n')
                 .append(flow.content());
 
+        Optional<FlowParameterSnapshotStore.SnapshotFile> parameterFile = parameterSnapshotStore.read(repoPath, path);
+        FlowParameterBindingResponse parameterBinding = null;
+        if (parameterFile.isPresent()) {
+            FlowParameterSnapshotStore.SnapshotFile file = parameterFile.get();
+            updatedAt = Math.max(updatedAt, file.updatedAt());
+            signature.append('\n')
+                    .append(file.path().getFileName())
+                    .append('\n')
+                    .append(file.content());
+            managedNodeFiles.add(file.path());
+            parameterBinding = resolveParameterBinding(groupId, file.snapshot());
+        }
+
         for (OfflineFlowYamlSupport.FlowStage stage : document.stages()) {
             stageKeys.add(stage.stageId());
             List<OfflineFlowNodeResponse> nodes = new ArrayList<>();
-            for (OfflineFlowYamlSupport.FlowNode node : stage.nodes()) {
+            for (OfflineFlowNode node : stage.nodes()) {
                 if (!seenTaskIds.add(node.taskId())) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow YAML 中存在重复 taskId");
                 }
@@ -392,15 +511,17 @@ public class OfflineFlowDocumentService {
                 if ("TRANSFER".equalsIgnoreCase(node.kind())) {
                     TransferConfig transfer = transferConfigFileService.read(repoPath, node.transferConfigPath());
                     Path transferFile = resolveRepoFile(repoPath, node.transferConfigPath());
-                    String transferContent = Files.readString(transferFile, StandardCharsets.UTF_8);
-                    updatedAt = Math.max(updatedAt, Files.getLastModifiedTime(transferFile).toMillis());
-                    signature.append('\n')
-                            .append(node.taskId())
-                            .append('\n')
-                            .append(node.transferConfigPath())
-                            .append('\n')
-                            .append(transferContent);
-                    managedNodeFiles.add(transferFile);
+                    if (Files.isRegularFile(transferFile)) {
+                        updatedAt = Math.max(updatedAt, Files.getLastModifiedTime(transferFile).toMillis());
+                        String transferContent = Files.readString(transferFile, StandardCharsets.UTF_8);
+                        signature.append('\n')
+                                .append(node.taskId())
+                                .append('\n')
+                                .append(node.transferConfigPath())
+                                .append('\n')
+                                .append(transferContent);
+                        managedNodeFiles.add(transferFile);
+                    }
                     nodes.add(new OfflineFlowNodeResponse(
                             node.taskId(),
                             node.kind(),
@@ -447,6 +568,18 @@ public class OfflineFlowDocumentService {
         // Read layout.json if it exists
         Map<String, NodePosition> layout = readLayout(groupId, path);
 
+        String runtimeTimezone = yamlSupport.readLabel(flow.content(), "wbdataRuntimeTimezone");
+        if ((runtimeTimezone == null || runtimeTimezone.isBlank())
+                && schedule != null && schedule.timezone() != null && !schedule.timezone().isBlank()) {
+            runtimeTimezone = schedule.timezone();
+        }
+        if ((runtimeTimezone == null || runtimeTimezone.isBlank()) && parameterFile.isPresent()) {
+            runtimeTimezone = parameterFile.get().snapshot().runtimeTimezone();
+        }
+        runtimeTimezone = runtimeTimezone == null || runtimeTimezone.isBlank()
+                ? null
+                : runtimeTimezone.trim();
+
         return new DocumentSnapshot(
                 new OfflineFlowDocumentResponse(
                         groupId,
@@ -458,7 +591,9 @@ public class OfflineFlowDocumentService {
                         stages,
                         edges,
                         layout,
-                        schedule
+                        schedule,
+                        parameterBinding,
+                        runtimeTimezone
                 ),
                 taskFiles,
                 managedNodeFiles,
@@ -500,6 +635,289 @@ public class OfflineFlowDocumentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "布局文件路径不合法");
         }
         return resolved;
+    }
+
+    private String requireRuntimeTimezone(String runtimeTimezone) {
+        if (runtimeTimezone == null || runtimeTimezone.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 运行时区不能为空");
+        }
+        String normalized = runtimeTimezone.trim();
+        try {
+            ZoneId.of(normalized);
+        } catch (RuntimeException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 运行时区不合法");
+        }
+        return normalized;
+    }
+
+    private String resolveRuntimeTimezoneForSave(SaveOfflineFlowDocumentRequest request,
+                                                 boolean isNewFile) throws IOException {
+        String requestedTimezone = requireRuntimeTimezone(request.runtimeTimezone());
+        if (isNewFile) {
+            return requestedTimezone;
+        }
+
+        String existingTimezone = readSnapshot(request.groupId(), request.path()).response().runtimeTimezone();
+        if (existingTimezone == null || existingTimezone.isBlank()) {
+            return requestedTimezone;
+        }
+        existingTimezone = requireRuntimeTimezone(existingTimezone);
+        if (!existingTimezone.equals(requestedTimezone)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 运行时区创建后不能修改");
+        }
+        return existingTimezone;
+    }
+
+    private ParameterSnapshotUpdate prepareParameterSnapshotUpdate(Long groupId,
+                                                                   FlowParameterBindingRequest singleBinding,
+                                                                   List<FlowParameterBindingRequest> multipleBindings,
+                                                                   String runtimeTimezone) {
+        List<FlowParameterBindingRequest> bindings;
+        if (multipleBindings != null) {
+            bindings = multipleBindings;
+        } else if (singleBinding != null) {
+            bindings = List.of(singleBinding);
+        } else {
+            return new ParameterSnapshotUpdate(false, null);
+        }
+
+        if (bindings.isEmpty() || (bindings.size() == 1 && bindings.get(0).parameterGroupId() == null)) {
+            FlowParameterBindingRequest first = bindings.isEmpty() ? null : bindings.get(0);
+            if (first != null && first.expectedVersion() != null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "解除参数组绑定时不能提供 expectedVersion");
+            }
+            return new ParameterSnapshotUpdate(true, null);
+        }
+
+        List<FlowParameterGroupBindingSnapshot> groupSnapshots = new ArrayList<>();
+        Map<String, FlowParameterDefinitionSnapshot> mergedDefinitions = new LinkedHashMap<>();
+
+        for (FlowParameterBindingRequest binding : bindings) {
+            if (binding.parameterGroupId() == null) {
+                continue;
+            }
+            if (binding.expectedVersion() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "绑定参数组时必须提供 expectedVersion");
+            }
+
+            ParameterGroupResponse group = parameterGroupService.get(groupId, binding.parameterGroupId());
+            if ("ARCHIVED".equals(group.status())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "已归档的参数组不能绑定到 Flow");
+            }
+            if (!group.version().equals(binding.expectedVersion())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "参数组版本已变化，请刷新后重试");
+            }
+
+            List<FlowParameterDefinitionSnapshot> groupDefs = group.definitions().stream()
+                    .map(this::toSnapshotDefinition)
+                    .toList();
+
+            groupSnapshots.add(new FlowParameterGroupBindingSnapshot(
+                    group.code(),
+                    group.version(),
+                    groupDefs
+            ));
+
+            for (FlowParameterDefinitionSnapshot def : groupDefs) {
+                mergedDefinitions.putIfAbsent(def.key(), def);
+            }
+        }
+
+        if (groupSnapshots.isEmpty()) {
+            return new ParameterSnapshotUpdate(true, null);
+        }
+
+        FlowParameterGroupBindingSnapshot firstGroup = groupSnapshots.get(0);
+        FlowParameterSnapshot snapshot = new FlowParameterSnapshot(
+                2,
+                runtimeTimezone,
+                firstGroup.groupCode(),
+                firstGroup.groupVersion(),
+                new ArrayList<>(mergedDefinitions.values()),
+                groupSnapshots
+        );
+        return new ParameterSnapshotUpdate(true, snapshot);
+    }
+
+    private ParameterSnapshotUpdate normalizeParameterSnapshotForSave(ParameterSnapshotUpdate requestedUpdate,
+                                                                       FlowParameterSnapshot effectiveSnapshot,
+                                                                       String runtimeTimezone) {
+        if (effectiveSnapshot == null) {
+            return requestedUpdate;
+        }
+        if (effectiveSnapshot.schemaVersion() == 2
+                && runtimeTimezone.equals(effectiveSnapshot.runtimeTimezone())) {
+            return requestedUpdate;
+        }
+        return new ParameterSnapshotUpdate(true, new FlowParameterSnapshot(
+                2,
+                runtimeTimezone,
+                effectiveSnapshot.groupCode(),
+                effectiveSnapshot.groupVersion(),
+                effectiveSnapshot.definitions(),
+                effectiveSnapshot.groups()
+        ));
+    }
+
+    private void applyParameterSnapshotUpdate(Path repoPath,
+                                              String flowPath,
+                                              ParameterSnapshotUpdate update) throws IOException {
+        if (!update.requested()) {
+            return;
+        }
+        if (update.snapshot() == null) {
+            parameterSnapshotStore.delete(repoPath, flowPath);
+        } else {
+            parameterSnapshotStore.write(repoPath, flowPath, update.snapshot());
+        }
+    }
+
+    private FlowParameterSnapshot resolveEffectiveParameterSnapshot(Path repoPath,
+                                                                    String flowPath,
+                                                                    ParameterSnapshotUpdate update) throws IOException {
+        if (update.requested()) {
+            return update.snapshot();
+        }
+        return parameterSnapshotStore.read(repoPath, flowPath)
+                .map(FlowParameterSnapshotStore.SnapshotFile::snapshot)
+                .orElse(null);
+    }
+
+    private FlowParameterBindingResponse resolveParameterBinding(Long groupId, FlowParameterSnapshot snapshot) {
+        if (snapshot == null) {
+            return null;
+        }
+
+        if (snapshot.groups() != null && !snapshot.groups().isEmpty()) {
+            List<FlowParameterBindingItemResponse> itemResponses = new ArrayList<>();
+            Map<String, FlowParameterDefinitionSnapshot> mergedDefs = new LinkedHashMap<>();
+            boolean anyOutdated = false;
+            boolean anyArchived = false;
+            boolean anyMissing = false;
+
+            for (FlowParameterGroupBindingSnapshot groupSnapshot : snapshot.groups()) {
+                Optional<ParameterGroupResponse> current = parameterGroupService.findByCode(groupId, groupSnapshot.groupCode());
+                if (current.isEmpty()) {
+                    anyMissing = true;
+                    itemResponses.add(new FlowParameterBindingItemResponse(
+                            null,
+                            groupSnapshot.groupCode(),
+                            null,
+                            groupSnapshot.groupVersion(),
+                            null,
+                            "MISSING",
+                            groupSnapshot.definitions()
+                    ));
+                } else {
+                    ParameterGroupResponse group = current.get();
+                    String status;
+                    if ("ARCHIVED".equals(group.status())) {
+                        status = "ARCHIVED";
+                        anyArchived = true;
+                    } else if (group.version().equals(groupSnapshot.groupVersion())) {
+                        status = "CURRENT";
+                    } else {
+                        status = "OUTDATED";
+                        anyOutdated = true;
+                    }
+                    itemResponses.add(new FlowParameterBindingItemResponse(
+                            group.id(),
+                            groupSnapshot.groupCode(),
+                            group.name(),
+                            groupSnapshot.groupVersion(),
+                            group.version(),
+                            status,
+                            groupSnapshot.definitions()
+                    ));
+                }
+
+                if (groupSnapshot.definitions() != null) {
+                    for (FlowParameterDefinitionSnapshot def : groupSnapshot.definitions()) {
+                        mergedDefs.putIfAbsent(def.key(), def);
+                    }
+                }
+            }
+
+            FlowParameterBindingItemResponse firstItem = itemResponses.get(0);
+            String compositeStatus = anyMissing ? "MISSING" : anyArchived ? "ARCHIVED" : anyOutdated ? "OUTDATED" : "CURRENT";
+
+            return new FlowParameterBindingResponse(
+                    firstItem.parameterGroupId(),
+                    firstItem.code(),
+                    firstItem.name(),
+                    firstItem.boundVersion(),
+                    firstItem.currentVersion(),
+                    compositeStatus,
+                    new ArrayList<>(mergedDefs.values()),
+                    itemResponses
+            );
+        }
+
+        Optional<ParameterGroupResponse> current = parameterGroupService.findByCode(groupId, snapshot.groupCode());
+        if (current.isEmpty()) {
+            FlowParameterBindingItemResponse item = new FlowParameterBindingItemResponse(
+                    null,
+                    snapshot.groupCode(),
+                    null,
+                    snapshot.groupVersion(),
+                    null,
+                    "MISSING",
+                    snapshot.definitions()
+            );
+            return new FlowParameterBindingResponse(
+                    null,
+                    snapshot.groupCode(),
+                    null,
+                    snapshot.groupVersion(),
+                    null,
+                    "MISSING",
+                    snapshot.definitions(),
+                    List.of(item)
+            );
+        }
+
+        ParameterGroupResponse group = current.get();
+        String status;
+        if ("ARCHIVED".equals(group.status())) {
+            status = "ARCHIVED";
+        } else if (group.version().equals(snapshot.groupVersion())) {
+            status = "CURRENT";
+        } else {
+            status = "OUTDATED";
+        }
+        FlowParameterBindingItemResponse item = new FlowParameterBindingItemResponse(
+                group.id(),
+                snapshot.groupCode(),
+                group.name(),
+                snapshot.groupVersion(),
+                group.version(),
+                status,
+                snapshot.definitions()
+        );
+        return new FlowParameterBindingResponse(
+                group.id(),
+                snapshot.groupCode(),
+                group.name(),
+                snapshot.groupVersion(),
+                group.version(),
+                status,
+                snapshot.definitions(),
+                List.of(item)
+        );
+    }
+
+    private FlowParameterDefinitionSnapshot toSnapshotDefinition(ParameterDefinitionResponse definition) {
+        return new FlowParameterDefinitionSnapshot(
+                definition.key(),
+                definition.valueSource(),
+                definition.constantValue(),
+                definition.format(),
+                definition.offsetDays(),
+                definition.description(),
+                definition.sortOrder(),
+                definition.timeBasis()
+        );
     }
 
     private void validateStructure(DocumentSnapshot current, SaveOfflineFlowDocumentRequest request) {
@@ -552,5 +970,8 @@ public class OfflineFlowDocumentService {
             List<String> stageOrder,
             List<String> taskOrder
     ) {
+    }
+
+    private record ParameterSnapshotUpdate(boolean requested, FlowParameterSnapshot snapshot) {
     }
 }

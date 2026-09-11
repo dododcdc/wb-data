@@ -103,6 +103,43 @@ export interface OfflineFlowSchedule {
     enabled: boolean;
 }
 
+export interface FlowParameterDefinitionSnapshot {
+    key: string;
+    valueSource: 'CONSTANT' | 'SYSTEM_TIME';
+    constantValue?: string | null;
+    format?: string | null;
+    offsetDays: number;
+    timeBasis?: 'PLANNED_TIME' | 'EXECUTION_START_TIME' | null;
+    description?: string | null;
+    sortOrder: number;
+}
+
+export interface FlowParameterBindingItem {
+    parameterGroupId?: number | null;
+    code: string;
+    name?: string | null;
+    boundVersion: number;
+    currentVersion?: number | null;
+    status: 'CURRENT' | 'OUTDATED' | 'ARCHIVED' | 'MISSING';
+    definitions: FlowParameterDefinitionSnapshot[];
+}
+
+export interface FlowParameterBinding {
+    parameterGroupId?: number | null;
+    code: string;
+    name?: string | null;
+    boundVersion: number;
+    currentVersion?: number | null;
+    status: 'CURRENT' | 'OUTDATED' | 'ARCHIVED' | 'MISSING';
+    definitions: FlowParameterDefinitionSnapshot[];
+    bindings?: FlowParameterBindingItem[];
+}
+
+export interface FlowParameterBindingRequest {
+    parameterGroupId?: number;
+    expectedVersion?: number;
+}
+
 export interface OfflineFlowDocument {
     groupId: number;
     path: string;
@@ -110,10 +147,12 @@ export interface OfflineFlowDocument {
     namespace: string;
     documentHash: string;
     documentUpdatedAt: number;
+    runtimeTimezone?: string | null;
     stages: OfflineFlowStage[];
     edges: OfflineFlowEdge[];
     layout: Record<string, NodePosition>;
-    schedule?: OfflineFlowSchedule;
+    schedule?: OfflineFlowSchedule | null;
+    parameterBinding?: FlowParameterBinding | null;
 }
 
 export interface SaveOfflineFlowRequest {
@@ -148,6 +187,9 @@ export interface SaveOfflineFlowDocumentRequest {
     edges?: SaveOfflineFlowEdgeRequest[];
     layout?: Record<string, NodePosition>;
     schedule?: OfflineFlowSchedule;
+    parameterBinding?: FlowParameterBindingRequest | null;
+    parameterBindings?: FlowParameterBindingRequest[] | null;
+    runtimeTimezone: string;
 }
 
 export interface SaveOfflineFlowEdgeRequest {
@@ -163,6 +205,8 @@ export interface DebugExecutionRequest {
     content: string;
     selectedTaskIds: string[];
     mode: OfflineExecutionMode;
+    parameterOverrides?: Record<string, string>;
+    plannedTime?: string;
 }
 
 export interface SavedDebugExecutionRequest {
@@ -170,6 +214,8 @@ export interface SavedDebugExecutionRequest {
     flowPath: string;
     selectedTaskIds: string[];
     mode: OfflineExecutionMode;
+    parameterOverrides?: Record<string, string>;
+    plannedTime?: string;
 }
 
 export interface DebugDocumentExecutionRequest {
@@ -182,6 +228,8 @@ export interface DebugDocumentExecutionRequest {
     layout: Record<string, NodePosition>;
     selectedTaskIds: string[];
     mode: OfflineExecutionMode;
+    parameterOverrides?: Record<string, string>;
+    plannedTime?: string;
 }
 
 export interface OfflineExecutionResponse {
@@ -214,6 +262,13 @@ export interface OfflineExecutionTaskRun {
     endDate: string | null;
 }
 
+export interface ExecutionParameterValue {
+    key: string;
+    dataType: 'STRING' | 'INTEGER' | 'BOOLEAN' | 'DATE' | 'DATETIME';
+    value: string | null;
+    source: 'CONSTANT' | 'SYSTEM_TIME' | 'MANUAL_OVERRIDE' | 'EXPLICIT_INPUT' | 'RERUN';
+}
+
 export interface OfflineExecutionDetail {
     executionId: string;
     mode: string;
@@ -226,6 +281,8 @@ export interface OfflineExecutionDetail {
     startDate: string | null;
     endDate: string | null;
     taskRuns: OfflineExecutionTaskRun[];
+    parameterResolutionStatus: 'NONE' | 'AVAILABLE' | 'PENDING' | 'UNAVAILABLE';
+    parameters: ExecutionParameterValue[];
 }
 
 export interface OfflineExecutionScript {
@@ -256,7 +313,6 @@ export interface UpdateOfflineScheduleRequest {
     groupId: number;
     path: string;
     cron: string;
-    timezone: string;
     contentHash: string;
     fileUpdatedAt: number;
 }
