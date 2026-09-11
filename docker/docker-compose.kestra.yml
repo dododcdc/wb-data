@@ -1,0 +1,77 @@
+name: wb-data
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wb-data-kestra-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kestra
+      POSTGRES_USER: kestra
+      POSTGRES_PASSWORD: ${WB_DATA_KESTRA_DB_PASSWORD:?Set WB_DATA_KESTRA_DB_PASSWORD}
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kestra -d kestra"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - kestra-postgres-data:/var/lib/postgresql/data
+
+  kestra:
+    # This exact version is the WB-Data compatibility baseline. Upgrade it only
+    # together with the capability matrix in docs/research/.
+    image: wb-data/kestra:v1.3.7-sql-template
+    build:
+      context: ../wb-data-server/wb-data-kestra-plugin
+      args:
+        KESTRA_VERSION: v1.3.7
+    container_name: wb-data-kestra
+    restart: unless-stopped
+    user: root
+    command: server standalone
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      KESTRA_CONFIGURATION: |
+        datasources:
+          postgres:
+            url: jdbc:postgresql://postgres:5432/kestra
+            driverClassName: org.postgresql.Driver
+            username: kestra
+            password: ${WB_DATA_KESTRA_DB_PASSWORD:?Set WB_DATA_KESTRA_DB_PASSWORD}
+        kestra:
+          server:
+            basic-auth:
+              username: ${WB_DATA_KESTRA_USERNAME:-admin@kestra.io}
+              password: ${WB_DATA_KESTRA_PASSWORD:?Set WB_DATA_KESTRA_PASSWORD}
+          repository:
+            type: postgres
+          storage:
+            type: local
+            local:
+              base-path: /app/storage
+          queue:
+            type: postgres
+          tasks:
+            tmp-dir:
+              path: /tmp/kestra-wd
+          plugins:
+            configurations:
+              - type: io.kestra.plugin.scripts.runner.docker.Docker
+                values:
+                  volume-enabled: true
+          url: http://localhost:8090/
+    ports:
+      - "8090:8080"
+      - "8081:8081"
+    volumes:
+      - kestra-data:/app/storage
+      - ${WB_DATA_KESTRA_WORK_DIR:-/tmp/wb-data-kestra-wd}:/tmp/kestra-wd
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  kestra-data:
+  kestra-postgres-data:

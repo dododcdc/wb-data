@@ -1,97 +1,84 @@
 # WB-Data 数据处理中心
 
-WB-Data 是一个正在积极开发中的一站式大数据处理协作平台。它旨在通过统一的界面，将数据源管理、交互式查询、离线任务编排与运维监控集成在一起，构建企业级的数据中台。
+WB-Data 是一个面向数据团队的一站式协作平台，把数据源管理、自助查询、离线任务编排和运行监控放在同一个工作区中。
 
-> **当前状态**：Alpha 阶段（核心架构已搭建，离线开发模块正在全力推进中 🚀）
+## 当前能力
 
----
+- 数据源管理：通过插件加载 MySQL、PostgreSQL、Hive 和 StarRocks 驱动。
+- 自助查询：SQL 编辑、执行、结果查看与导出。
+- 离线开发：基于 React Flow 编排 Shell、SQL、HiveSQL 和数据传输节点。
+- 调度与版本：Kestra 执行和调度、Flow 保存、Git 提交与推送、多分支切换。
+- 运维中心：查看执行记录、节点状态和日志，并停止运行中的任务。
+- 权限管理：系统用户、项目组、项目组成员和按权限显示的工作区入口。
 
-## 🛠️ 功能路线图 (Roadmap)
+## 技术栈
 
-### 1. 数据源管理 (DataSource)
-- [x] 多数据源插件化架构 (支持启动时动态加载 JAR 包)
-- [x] MySQL / PostgreSQL / StarRocks / Hive 驱动支持
-- [ ] 运行时插件热插拔 (Hot-swapping without restart) `(待开发)`
-- [ ] 更多驱动扩展 (Clickhouse, Presto, etc.) `(按需集成)`
-- [ ] 数据源联通性自动化检测 `(待启动)`
+| 层 | 主要技术 |
+| --- | --- |
+| 前端 | React 18、TypeScript、Vite、Tailwind CSS v4、shadcn/ui、Zustand、React Flow |
+| 后端 | Java 21、Spring Boot 3、MyBatis-Plus、Flyway |
+| 执行与版本 | Kestra、Git |
+| 数据源插件 | MySQL、PostgreSQL、Hive、StarRocks |
 
-### 2. 自助查询 (SQL Lab)
-- [x] 基于编辑器的 SQL 编写环境
-- [x] 多数据源切换查询
-- [ ] 查询结果集分页预览与下载 `(待优化)`
-- [ ] 常用 SQL 片段保存功能 `(待启动)`
-
-### 3. 离线开发 (Offline Development)
-- [x] 基于 **ReactFlow** 的图形化 DAG 画布
-- [x] 任务依赖关系编排 (Dependency Management)
-- [x] 集成 **Kestra** 任务调度执行
-- [x] 节点类型：Shell 脚本、SQL 节点
-- [ ] 节点类型：数据集成 (SeaTunnel)、Python 脚本 `(待启动)`
-- [ ] 任务版本管理与回滚 `(待启动)`
-
-### 4. 运行结果 (Execution Results)
-- [x] 执行实例进度实时追踪（Gantt 风格进度条）
-- [x] 任务日志在线查看
-- [x] 运行中任务的停止 (Kill) 功能
-
-### 5. 任务运维 (Ops)
-- [ ] 全量任务运行状态监控大盘 `(待启动)`
-- [ ] 任务调度配置与调度策略 `(待启动)`
-
----
-
-## 🏗️ 技术架构
-
-### 后端 (wb-data-server)
-- **核心**：Java 21 / Spring Boot 3
-- **执行器**：Kestra (分布式编排引擎)
-- **插件**：自定义 Maven 类加载机制，支持热插拔数据源插件
-
-### 前端 (wb-data-frontend)
-- **核心**：React 18 / TypeScript / Vite
-- **交互**：ReactFlow (DAG 画布) / Zustand (状态管理)
-- **样式**：Tailwind CSS v4 / Shadcn UI (Radix UI)
-- **定制**：Vanilla CSS (用于复杂布局与精细动画)
-- **图标**：Lucide Icons
-
----
-
-## 📁 项目结构
+## 项目结构
 
 ```text
 wb-data/
-├── wb-data-frontend/     # 前端代码 (React + Vite)
-├── wb-data-server/       # 后端代码 (Maven 多模块)
-│   ├── wb-data-backend/  # 业务逻辑与 API 接口
-│   ├── wb-data-plugin-api/ # 插件标准接口
-│   └── wb-data-plugin-*/ # 各类数据源实现插件
-└── docs/                 # 项目设计文档与草案
+├── wb-data-frontend/          # React 前端
+├── wb-data-server/            # Maven 多模块后端和数据源插件
+│   ├── wb-data-backend/       # Spring Boot 应用
+│   ├── wb-data-plugin-api/    # 数据源插件 SPI
+│   └── wb-data-plugin-*/      # 各数据源插件实现
+├── docker/                    # 本地 Kestra、Hive、MySQL 和 SeaTunnel 容器配置
+├── plugins/                   # prepare-plugins.sh 准备的运行时插件 JAR
+├── scripts/                   # 开发辅助脚本
+└── docs/                      # 当前有效的开发与测试说明
 ```
 
----
+## 本地启动
 
-## 🚥 环境搭建
+前置依赖：JDK 21、Node.js 18+、Maven、MySQL。离线执行还需要一个可访问的 Kestra 实例。
 
-### 1. 准备工作
-- **JDK 21**
-- **Node.js 18+**
-- **Kestra** 实例 (需配置好 API 访问地址)
-
-### 2. 启动后端
-在 `wb-data-server` 目录下：
 ```bash
+# 构建后端和插件
+cd wb-data-server
 mvn clean install
-java -jar wb-data-backend/target/wb-data-backend-0.0.1-SNAPSHOT.jar
+cd ..
+bash scripts/prepare-plugins.sh
+
+# 启动后端；首次启动空库时必须提供管理员账号
+cd wb-data-server/wb-data-backend
+DB_PASSWORD=<mysql-password> \
+INIT_ADMIN_USERNAME=admin \
+INIT_ADMIN_PASSWORD=<admin-password> \
+WB_DATA_PLUGIN_DIR=/absolute/path/to/wb-data/plugins \
+java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
 ```
 
-### 3. 启动前端
-在 `wb-data-frontend` 目录下：
 ```bash
+# 启动前端
+cd wb-data-frontend
 npm install
 npm run dev
 ```
 
----
+默认地址：前端 `http://127.0.0.1:5173`，后端 `http://127.0.0.1:8080`，Swagger UI `http://127.0.0.1:8080/swagger-ui.html`。
 
-## 📄 愿景与目标
-打造一个最轻量、最现代、对开发者最友好的开源大数据工作站。
+更完整的配置和排障说明见：
+
+- [日常本地开发](docs/local-development.md)
+- [数据传输集成验证](docs/local-integration-testing.md)
+
+## 验证
+
+```bash
+cd wb-data-frontend
+npm run lint
+npm run test
+npm run build
+```
+
+```bash
+cd wb-data-server
+mvn clean install
+```

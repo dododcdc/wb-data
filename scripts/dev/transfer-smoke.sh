@@ -2,8 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-compose_file="$repo_root/docker-compose.transfer.yml"
-hive_compose_file="$repo_root/docker-compose.hive.yml"
+compose_file="$repo_root/docker/docker-compose.transfer.yml"
+hive_compose_file="$repo_root/docker/docker-compose.hive.yml"
 metadata_mysql_host="${WB_DATA_METADATA_MYSQL_HOST:-127.0.0.1}"
 metadata_mysql_port="${WB_DATA_METADATA_MYSQL_PORT:-3306}"
 metadata_mysql_database="${WB_DATA_METADATA_MYSQL_DATABASE:-wb_data}"
@@ -123,5 +123,5 @@ Manual validation:
 5. Run a Hive-to-MySQL append transfer and check target row counts.
 
 Reset with:
-  docker compose -f docker-compose.transfer.yml down -v
+  docker compose -f docker/docker-compose.transfer.yml down -v
 EOF

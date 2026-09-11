@@ -1,129 +1,64 @@
-# WB-Data 数据处理中心
+# WB-Data Agent 开发指南
 
-一站式大数据处理协作平台。数据源管理、SQL 自助查询、离线任务编排、运维监控。
+项目能力、技术栈和启动入口以 [README.md](README.md) 为准。日常环境配置见 [本地开发](docs/local-development.md)，数据传输验证见 [数据传输集成验证](docs/local-integration-testing.md)。
 
-## Build & Test
+## 代码约定
 
-### Frontend（wb-data-frontend/）
+### 前端（`wb-data-frontend/`）
+
+- 使用 TypeScript strict mode，路径别名 `@/` 指向 `src/`。
+- 使用 React 18、Tailwind CSS v4、shadcn/ui、Lucide Icons 和 Zustand。
+- API 请求放在 `src/api/`，并使用 `src/utils/request.ts` 中的共享 axios 实例。
+- 路由集中在 `src/router/`，业务界面主要按领域放在 `src/views/`，通用 UI 放在 `src/components/`。
+- 测试文件与源文件同目录，命名为 `*.test.ts` 或 `*.test.tsx`。
+
+### 后端（`wb-data-server/`）
+
+- 使用 Java 21、Spring Boot 3、MyBatis-Plus、Flyway 和 Lombok。
+- 代码按 `com.wbdata.{domain}` 业务域组织，再划分 controller、service、mapper、entity 和 dto 等职责。
+- Mapper XML 放在 `wb-data-backend/src/main/resources/mapper/`，Flyway 迁移放在 `db/migration/`。
+- 自定义配置统一使用 `wbdata.*` 前缀。
+- 数据源驱动通过插件 API 和自定义 ClassLoader 从 `plugins/` 目录加载。
+
+## 工作原则
+
+- 修改前先检查工作区，保留用户已有的未提交变更。
+- 只修改当前任务需要的内容，不顺手清理无关代码或文档。
+- UI 修改遵循清晰、克制、一致和可读优先的设计方向。
+- 修复缺陷时先确认真实调用链和根因，并补充能覆盖问题的回归测试。
+- 涉及保存、提交、推送或调度时，分别验证持久化、Git 状态、事件同步和 Kestra 状态。
+
+## 验证命令
+
+前端：
 
 ```bash
-npm install        # 安装依赖
-npm run dev        # 启动开发服务器 (Vite HMR)
-npm run build      # 类型检查 + 生产构建 (tsc -b && vite build)
-npm run lint       # ESLint 检查
-npm run test       # Vitest 单元测试
-npm run preview    # 预览生产构建
+cd wb-data-frontend
+npm run lint
+npm run test
+npm run build
 ```
 
-### Backend（wb-data-server/）
+后端：
 
 ```bash
-mvn clean install  # 全量构建（含所有插件模块）
-cd wb-data-backend
-java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
+cd wb-data-server
+mvn clean install
 ```
 
-### 前置依赖
+根据改动范围运行相关检查；提交或 PR 前应完成受影响部分的完整验证。
 
-- **JDK 21**
-- **Node.js 18+**
-- **MySQL**（本地库 `wb_data`，root 密码通过 `DB_PASSWORD` 环境变量配置）
-- **Kestra** 实例（默认 `http://localhost:8090`）
-- **Hive**（可选）：`docker compose -f docker-compose.hive.yml up -d`
+## Git 约定
 
-### 本地环境文档
+- 分支从 `main` 创建。
+- 人工功能分支使用 `feature/<描述>` 或 `fix/<描述>`；自动化 Agent 遵循其运行环境要求的分支前缀，例如 `codex/`。
+- 提交保持原子化，每次提交一个逻辑变更。
+- 暂存时指定准确路径，避免带入无关的工作区修改。
+- 不合并到共享 `main`、不删除远程内容，也不移除 worktree，除非用户明确授权。
 
-- 日常开发：`docs/local-development.md`
-- 完整容器集成测试：`docs/local-integration-testing.md`
+## PR 证据
 
-## Architecture Overview
-
-```
-wb-data/
-├── wb-data-frontend/           # React 18 + TypeScript + Vite
-│   └── src/
-│       ├── api/                # API 请求封装 (axios)
-│       ├── components/         # 通用组件 + shadcn/ui
-│       ├── pages/              # 页面级组件
-│       ├── views/              # 业务视图 (SQL Lab, 离线开发等)
-│       ├── router/             # React Router v7 路由配置
-│       ├── hooks/              # 自定义 Hooks
-│       ├── lib/                # 工具函数
-│       ├── types/              # TypeScript 类型定义
-│       └── index.css           # 全局样式 + Tailwind
-├── wb-data-server/             # Maven 多模块后端
-│   ├── wb-data-backend/        # Spring Boot 3 主应用 (port 8080)
-│   │   └── com.wbdata/
-│   │       ├── auth/           # 认证鉴权
-│   │       ├── datasource/     # 数据源管理 + 插件加载
-│   │       ├── query/          # SQL 自助查询
-│   │       ├── offline/        # 离线任务编排 (集成 Kestra)
-│   │       ├── git/            # Git 仓库集成
-│   │       ├── group/          # 项目组管理
-│   │       ├── user/           # 用户管理
-│   │       └── common/         # 通用配置、拦截器、工具类
-│   ├── wb-data-plugin-api/     # 数据源插件 SPI 接口
-│   └── wb-data-plugin-*/      # 各数据源驱动实现
-├── plugins/                    # 运行时插件 JAR 目录
-└── docs/                       # 设计文档
-```
-
-## Code Style & Conventions
-
-### 前端
-
-- TypeScript strict mode，路径别名 `@/` → `./src/`
-- **Tailwind CSS v4** + **shadcn/ui**（基于 Radix UI），图标使用 **Lucide Icons**
-- 状态管理：全局状态用 **Zustand**，组件本地状态用 `useState`
-- API 请求统一走 `src/api/` 下的模块，使用共享 axios 实例
-- **页面组件**放 `src/pages/`（路由对应的一级页面）
-- **业务视图**放 `src/views/`（页面内的功能模块，按业务域分子目录）
-- **通用组件**放 `src/components/ui/`（基础 UI）和 `src/components/`（业务组件）
-- 测试文件与源文件同目录，命名 `*.test.ts(x)`
-
-### 后端
-
-- Java 21，Spring Boot 3，Lombok
-- **MyBatis-Plus** 作为 ORM，Mapper XML 在 `resources/mapper/**/*.xml`
-- 包结构按业务领域划分：`com.wbdata.{domain}.{controller|service|mapper|entity|dto}`
-- 数据库迁移使用 **Flyway**，迁移文件放在 `resources/db/migration/`
-- 自定义配置使用前缀 `wbdata.*`（见 `application.yml`）
-- 虚拟线程已启用，尽量避免阻塞调用
-
-### 通用
-
-- 数据库：表名和字段用下划线命名，Java 实体自动映射为驼峰
-- 前端路由在 `src/router/` 中集中管理，支持嵌套布局
-- 插件系统：数据源驱动通过自定义 ClassLoader 从 `plugins/` 目录动态加载
-
-## Design Principles
-
-设计原则详见 `.impeccable.md`，核心方向：
-
-1. **Calm clarity over spectacle** — 复杂数据工作应井然有序、有呼吸感
-2. **Warm precision** — 暖色调（羊皮纸 + 陶土色），柔和但严谨
-3. **One workspace, multiple jobs** — 查询、工作流、管理界面统一不割裂
-4. **Quietly polished interaction** — 流畅自信的动效，避免装饰性花活
-5. **Operational readability first** — 信息层级、文案、状态一目了然
-
-## Git Workflow
-
-- 从 `main` 分支，功能命名：`feature/<描述>` 或 `fix/<描述>`
-- 提交前运行前端 lint 和后端编译检查
-- 提交保持原子化，每次提交一个逻辑变更
-
-## Evidence Required for PR
-
-- [ ] 前端：`npm run lint` 通过
-- [ ] 后端：`mvn clean install` 通过
-- [ ] 逻辑变更：补充或更新对应测试
-- [ ] PR 描述说明变更意图、影响范围和验证方式
-
-
-<claude-mem-context>
-# Memory Context
-
-# [wb-data] recent context, 2026-05-27 2:04am GMT+8
-
-No previous sessions found.
-</claude-mem-context>
+- [ ] 前端改动：`npm run lint`、`npm run test`、`npm run build` 通过。
+- [ ] 后端改动：`mvn clean install` 通过。
+- [ ] 逻辑变更：补充或更新对应测试。
+- [ ] PR 描述说明变更意图、影响范围和验证方式。
