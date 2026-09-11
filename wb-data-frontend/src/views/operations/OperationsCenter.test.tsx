@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getOfflineRepoStatus } from '../../api/offline';
-import { listOperationsExecutions, rerunOperationsExecution } from '../../api/operations';
+import { getOperationsExecution, listOperationsExecutions, rerunOperationsExecution } from '../../api/operations';
 import { formatLocalDateTime } from '../../lib/dateTime';
 import { useAuthStore } from '../../utils/auth';
 import OperationsCenter from './OperationsCenter';
@@ -19,6 +19,7 @@ vi.mock('../../api/offline', () => ({
 }));
 
 vi.mock('../../api/operations', () => ({
+    getOperationsExecution: vi.fn(),
     listOperationsExecutions: vi.fn(),
     rerunOperationsExecution: vi.fn(),
 }));
@@ -52,6 +53,7 @@ vi.mock('./OperationsTimeFilter', () => ({
 
 
 const listOperationsExecutionsMock = vi.mocked(listOperationsExecutions);
+const getOperationsExecutionMock = vi.mocked(getOperationsExecution);
 const rerunOperationsExecutionMock = vi.mocked(rerunOperationsExecution);
 const getOfflineRepoStatusMock = vi.mocked(getOfflineRepoStatus);
 
@@ -134,6 +136,29 @@ describe('OperationsCenter', () => {
                     rerunnable: false,
                 },
             ],
+        });
+        getOperationsExecutionMock.mockResolvedValue({
+            id: 'exec-1',
+            namespace: 'g4-feature-policy-review',
+            flowId: 'daily_policy',
+            branch: 'feature/policy-review',
+            status: 'FAILED',
+            plannedAt: '2026-06-07T00:00:00Z',
+            createdAt: '2026-06-07T01:00:00Z',
+            startDate: '2026-06-07T01:00:02Z',
+            endDate: '2026-06-07T01:03:12Z',
+            durationMs: 190000,
+            rerunnable: true,
+            taskRuns: [],
+            inputs: { bizDate: '2026-06-07' },
+            labels: { wbdataParameterOverrideKeys: 'bizDate' },
+            parameterResolutionStatus: 'AVAILABLE',
+            parameters: [{
+                key: 'bizDate',
+                dataType: 'DATE',
+                value: '2026-06-07',
+                source: 'MANUAL_OVERRIDE',
+            }],
         });
         window.localStorage.clear();
     });
@@ -250,7 +275,7 @@ describe('OperationsCenter', () => {
         ));
     });
 
-    it('reruns failed execution and refreshes list', async () => {
+    it('confirms rerun without silently reusing manual overrides', async () => {
         rerunOperationsExecutionMock.mockResolvedValue({
             originalExecutionId: 'exec-1',
             newExecutionId: 'exec-3',
@@ -263,7 +288,18 @@ describe('OperationsCenter', () => {
 
         fireEvent.click(await screen.findByRole('button', { name: '重跑 daily_policy' }));
 
-        await waitFor(() => expect(rerunOperationsExecutionMock).toHaveBeenCalledWith(4, 'exec-1'));
+        expect(await screen.findByRole('heading', { name: '确认重跑任务' })).toBeTruthy();
+        expect(await screen.findByText('新执行启动时重新取得')).toBeTruthy();
+        expect((await screen.findByRole('checkbox', { name: '沿用原执行的手动覆盖值' }) as HTMLInputElement).checked).toBe(false);
+        expect(rerunOperationsExecutionMock).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('button', { name: '确认重跑' }));
+
+        await waitFor(() => expect(rerunOperationsExecutionMock).toHaveBeenCalledWith(
+            4,
+            'exec-1',
+            { reuseManualOverrides: false },
+        ));
         await waitFor(() => expect(listOperationsExecutionsMock).toHaveBeenCalledTimes(2));
     });
 

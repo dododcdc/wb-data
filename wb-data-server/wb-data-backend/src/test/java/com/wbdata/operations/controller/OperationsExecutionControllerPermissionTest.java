@@ -3,6 +3,7 @@ package com.wbdata.operations.controller;
 import com.wbdata.auth.context.RequireGroupAuth;
 import com.wbdata.auth.dto.AuthContextResponse;
 import com.wbdata.auth.enums.Permission;
+import com.wbdata.operations.dto.OperationsExecutionRerunRequest;
 import org.junit.jupiter.api.Test;
 
 import java.lang.annotation.Annotation;
@@ -28,7 +29,8 @@ class OperationsExecutionControllerPermissionTest {
         );
         Method detail = OperationsExecutionController.class.getMethod("getExecution", AuthContextResponse.class, String.class);
         Method logs = OperationsExecutionController.class.getMethod("getLogs", AuthContextResponse.class, String.class, String.class);
-        Method rerun = OperationsExecutionController.class.getMethod("rerun", AuthContextResponse.class, String.class);
+        Method rerun = OperationsExecutionController.class.getMethod(
+                "rerun", AuthContextResponse.class, String.class, OperationsExecutionRerunRequest.class);
 
         assertThat(auth(list).value()).isEqualTo(Permission.OFFLINE_READ);
         assertThat(auth(detail).value()).isEqualTo(Permission.OFFLINE_READ);

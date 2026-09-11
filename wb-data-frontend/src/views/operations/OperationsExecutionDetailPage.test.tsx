@@ -85,7 +85,16 @@ describe('OperationsExecutionDetailPage', () => {
                 },
             ],
             inputs: { bizDate: '2026-06-07' },
-            labels: { owner: 'policy' },
+            labels: { owner: 'policy', wbdataParameterOverrideKeys: 'bizDate' },
+            parameterResolutionStatus: 'AVAILABLE',
+            parameters: [
+                {
+                    key: 'bizDate',
+                    dataType: 'DATE',
+                    value: '2026-06-07',
+                    source: 'MANUAL_OVERRIDE',
+                },
+            ],
         });
 
         getOperationsExecutionLogsMock.mockImplementation((_groupId, _executionId, taskId) => {
@@ -176,7 +185,7 @@ describe('OperationsExecutionDetailPage', () => {
         await waitFor(() => expect(getOperationsExecutionLogsMock.mock.calls.length).toBeGreaterThan(logCalls));
     });
 
-    it('reruns the whole execution when permitted', async () => {
+    it('reuses manual overrides only after explicit confirmation', async () => {
         rerunOperationsExecutionMock.mockResolvedValue({
             originalExecutionId: 'exec-1',
             newExecutionId: 'exec-2',
@@ -189,7 +198,16 @@ describe('OperationsExecutionDetailPage', () => {
 
         fireEvent.click(await screen.findByRole('button', { name: '重跑任务' }));
 
-        await waitFor(() => expect(rerunOperationsExecutionMock).toHaveBeenCalledWith(4, 'exec-1'));
+        expect(await screen.findByRole('heading', { name: '确认重跑任务' })).toBeTruthy();
+        expect(rerunOperationsExecutionMock).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('checkbox', { name: '沿用原执行的手动覆盖值' }));
+        fireEvent.click(screen.getByRole('button', { name: '确认重跑' }));
+
+        await waitFor(() => expect(rerunOperationsExecutionMock).toHaveBeenCalledWith(
+            4,
+            'exec-1',
+            { reuseManualOverrides: true },
+        ));
         expect(showFeedback).toHaveBeenCalledWith({
             tone: 'success',
             title: '已触发重跑',

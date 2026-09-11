@@ -36,9 +36,12 @@ describe('operations API group-scoped routes', () => {
 
     it('uses group-scoped routes for detail and rerun', async () => {
         await getOperationsExecution(4, 'exec-1');
-        await rerunOperationsExecution(4, 'exec-1');
+        await rerunOperationsExecution(4, 'exec-1', { reuseManualOverrides: false });
 
         expect(requestMock.get).toHaveBeenCalledWith('/api/v1/groups/4/operations/executions/exec-1');
-        expect(requestMock.post).toHaveBeenCalledWith('/api/v1/groups/4/operations/executions/exec-1/rerun', null);
+        expect(requestMock.post).toHaveBeenCalledWith(
+            '/api/v1/groups/4/operations/executions/exec-1/rerun',
+            { reuseManualOverrides: false },
+        );
     });
 });
