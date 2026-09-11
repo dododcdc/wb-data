@@ -1,8 +1,10 @@
+name: wb-data
+
 services:
   wb-data-seatunnel:
     image: ${WB_DATA_TRANSFER_SEATUNNEL_IMAGE:-wb-data-seatunnel:2.3.13}
     build:
-      context: .
+      context: ..
       dockerfile: docker/seatunnel/Dockerfile
       args:
         SEATUNNEL_BASE_IMAGE: ${WB_DATA_TRANSFER_SEATUNNEL_BASE_IMAGE:-apache/seatunnel:2.3.13}
@@ -23,7 +25,7 @@ services:
       - "13306:3306"
     volumes:
       - wb-data-transfer-mysql-data:/var/lib/mysql
-      - ./scripts/dev/init/transfer/mysql/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      - ../scripts/dev/init/transfer/mysql/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD"]
       interval: 5s

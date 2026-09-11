@@ -1,38 +1,29 @@
-# Local Integration Testing
+# 数据传输集成验证
 
-This document defines the production-like local test environment for WB Data. It is the preferred mode for validating SQL nodes, HiveSQL nodes, scheduling, save / commit / push behavior, and operations records.
+本文档描述仓库当前实际提供的数据传输 smoke 环境。它验证 MySQL 与 Hive 之间的数据传输、SeaTunnel 运行时以及 Kestra Docker task runner 的连接关系。
 
-Status: this is the environment contract. The compose file and seed scripts should follow this document. StarRocks is intentionally deferred for now because it is heavier than the first integration target needs.
+仓库目前没有完整应用栈的 `docker-compose.integration.yml`；前端、后端、元数据库和 Kestra 仍需按本地环境分别启动。
 
-## Transfer Node Environment
+## 环境组成
 
-Use the transfer smoke setup for JDBC transfer-node validation. It reuses the existing WB-Data Kestra and HiveServer2 containers, and starts only a small transfer-specific MySQL container so source/target MySQL data stays separate from the WB-Data metadata database.
+| 组件 | 来源 | 默认地址 |
+| --- | --- | --- |
+| WB-Data 后端 | 宿主机进程 | `http://127.0.0.1:8080` |
+| 元数据 MySQL | 宿主机已有实例 | `127.0.0.1:3306/wb_data` |
+| Kestra | 已有容器 `wb-data-kestra` | `http://127.0.0.1:8090` |
+| 传输源/目标 MySQL | `docker/docker-compose.transfer.yml` | `127.0.0.1:13306/transfer_demo` |
+| Hive Metastore | `docker/docker-compose.hive.yml` | `127.0.0.1:9083` |
+| HiveServer2 | `docker/docker-compose.hive.yml` | `127.0.0.1:10000` |
+| SeaTunnel 运行时 | `docker/seatunnel/Dockerfile` | 镜像 `wb-data-seatunnel:2.3.13` |
 
-```bash
-DB_PASSWORD=1111 \
-  WB_DATA_PLUGIN_DIR=/absolute/path/to/wb-data/plugins \
-  WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
-  WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:8080 \
-  WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default \
-  WB_DATA_TRANSFER_DOCKER_VOLUMES=wb-data_hive-warehouse:/opt/hive/data/warehouse \
-  mvn spring-boot:run -Dspring-boot.run.fork=false
+## 前置条件
 
-scripts/dev/transfer-smoke.sh
-```
-
-Run the backend command from `wb-data-server/wb-data-backend`. The smoke script builds `wb-data-seatunnel:2.3.13`, starts `wb-data-transfer-mysql`, starts or verifies the existing `wb-data-hiveserver2` and `wb-data-kestra` containers, applies the Hive schema, checks the Kestra API, and seeds the local WB-Data metadata database. Override its metadata connection with `WB_DATA_METADATA_MYSQL_HOST`, `WB_DATA_METADATA_MYSQL_PORT`, `WB_DATA_METADATA_MYSQL_DATABASE`, `WB_DATA_METADATA_MYSQL_USER`, and `DB_PASSWORD` when necessary.
-
-The transfer compose starts only `mysql:8.0` by default. Override it with `WB_DATA_TRANSFER_MYSQL_IMAGE` if your machine uses a pinned local image. The build-only `wb-data-seatunnel` service creates the local SeaTunnel runtime image used by generated transfer tasks; it is based on `apache/seatunnel:2.3.13`, adds `hive-jdbc-3.1.3.jar` so Hive can be used as a JDBC source, and runs as uid/gid `1000:1000` to match the local Hive containers when writing mounted warehouse files. The existing Kestra container must expose `http://localhost:8090`, use the local basic-auth credentials, and have Docker socket access for Docker task runner execution.
-
-If you only need to rebuild the SeaTunnel runtime image, run:
-
-```bash
-docker compose -f docker-compose.transfer.yml build wb-data-seatunnel
-```
-
-Hive transfer validation reuses `docker-compose.hive.yml`. That stack contains `wb-data-hiveserver2` on `10000` for HiveServer2/JDBC metadata reads and `wb-data-hive-metastore` on `9083` for SeaTunnel Hive sink metadata. The smoke seed stores the HiveServer2 endpoint in the normal data source fields and stores the metastore endpoint in `connection_params.metastoreUri`.
-
-SeaTunnel Hive sink writes files under the Hive warehouse path. The Kestra Docker runner must allow volume mounts and each transfer task mounts `wb-data_hive-warehouse:/opt/hive/data/warehouse`; otherwise a SeaTunnel execution can report success while writing to the task container's private filesystem. In local Kestra, enable:
+- Docker Desktop 可用。
+- 元数据 MySQL 已有 `wb_data` 数据库。
+- 元数据中存在用户名为 `admin` 的用户和名为 `policy` 的项目组；当前 seed SQL 依赖这两个记录。
+- `wb-data-kestra` 容器已经存在，并可通过默认地址和配置的凭据访问。
+- Kestra 容器可使用 Docker socket 启动任务容器。
+- Kestra Docker runner 允许挂载 Hive warehouse volume：
 
 ```yaml
 kestra:
@@ -43,231 +34,91 @@ kestra:
           volume-enabled: true
 ```
 
-If host port `8080` is already occupied, start the backend on another port and set the internal URL to that port:
+## 1. 准备插件
+
+从仓库根目录执行：
 
 ```bash
-DB_PASSWORD=1111 \
-  WB_DATA_PLUGIN_DIR=/absolute/path/to/wb-data/plugins \
-  WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
-  WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:18080 \
-  WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default \
-  WB_DATA_TRANSFER_DOCKER_VOLUMES=wb-data_hive-warehouse:/opt/hive/data/warehouse \
-  SERVER_PORT=18080 \
-  mvn spring-boot:run -Dspring-boot.run.fork=false
+bash scripts/prepare-plugins.sh
+```
 
+## 2. 启动后端
+
+先在 `wb-data-server` 完成 `mvn clean install`，然后启动后端：
+
+```bash
+cd wb-data-server/wb-data-backend
+DB_PASSWORD=<metadata-mysql-password> \
+WB_DATA_PLUGIN_DIR=/absolute/path/to/wb-data/plugins \
+WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
+WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:8080 \
+WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default \
+WB_DATA_TRANSFER_DOCKER_VOLUMES=wb-data_hive-warehouse:/opt/hive/data/warehouse \
+java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
+```
+
+如果后端使用其他端口，要同时调整 `SERVER_PORT`、`WB_DATA_TRANSFER_INTERNAL_BASE_URL`，并在下一步设置 `WB_DATA_TRANSFER_BACKEND_HOST_PORT`。
+
+## 3. 准备 smoke 环境
+
+从仓库根目录执行：
+
+```bash
+DB_PASSWORD=<metadata-mysql-password> \
+scripts/dev/transfer-smoke.sh
+```
+
+脚本会：
+
+1. 构建本地 SeaTunnel 镜像。
+2. 启动并重置传输测试用 MySQL 表。
+3. 启动 Hive Metastore 和 HiveServer2，并重置 Hive 测试表。
+4. 检查已有 Kestra 容器和 API。
+5. 在 `policy` 项目组中写入或更新 `it_transfer_mysql`、`it_transfer_hive` 两个数据源。
+
+元数据库不是默认地址时，可覆盖：
+
+```bash
+WB_DATA_METADATA_MYSQL_HOST=<host> \
+WB_DATA_METADATA_MYSQL_PORT=<port> \
+WB_DATA_METADATA_MYSQL_DATABASE=<database> \
+WB_DATA_METADATA_MYSQL_USER=<user> \
+DB_PASSWORD=<password> \
+scripts/dev/transfer-smoke.sh
+```
+
+后端运行在 `18080` 等非默认端口时，再增加：
+
+```bash
 WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080 scripts/dev/transfer-smoke.sh
 ```
 
-| Data source | Type | Host | Port | Database | Tables |
-| --- | --- | --- | --- | --- | --- |
-| `it_transfer_mysql` | `MYSQL` | `localhost` | `13306` | `transfer_demo` | `transfer_orders_source`, `transfer_orders_target` |
-| `it_transfer_hive` | `HIVE` | `localhost` | `10000` | `default` | `transfer_orders_source`, `transfer_orders_target`, `transfer_orders_partitioned_target`; `connection_params.metastoreUri=thrift://host.docker.internal:9083` |
+## 4. 产品内验证
 
-WB-Data writes `WB_DATA_INTERNAL_BASE_URL` and `WB_DATA_INTERNAL_TOKEN` into each generated transfer task. This lets the existing Kestra container run SeaTunnel on the `wb-data_default` network without relying on Kestra container-wide environment variables.
+在 `policy` 项目组中确认两个测试数据源存在，然后至少验证：
 
-By default, transfer tasks use `WB_DATA_TRANSFER_SEATUNNEL_IMAGE=wb-data-seatunnel:2.3.13`. Keep that image available in the same Docker daemon used by Kestra's Docker task runner.
+- MySQL 到 MySQL：`append`、`overwrite_table`
+- MySQL 到 Hive 分区表：`overwrite_partition`
+- Hive 到 MySQL：`append`
+- 选中单个传输节点执行时，只运行该节点
 
-The transfer seed uses `localhost` because the WB-Data backend runs on the macOS host and must read source/target metadata before rendering the SeaTunnel config. When WB-Data renders a SeaTunnel JDBC URL for Docker execution, it rewrites loopback hosts (`localhost`, `127.0.0.1`, `::1`) to `host.docker.internal` so the SeaTunnel container can reach the same mapped ports.
+测试表由以下文件定义：
 
-Run `bash scripts/prepare-plugins.sh` before backend startup and point `WB_DATA_PLUGIN_DIR` at the generated `plugins/` directory when validating from a worktree. Otherwise the backend may load stale plugin JARs from the main checkout.
+- `scripts/dev/init/transfer/mysql/001_schema.sql`
+- `scripts/dev/init/transfer/hive/001_schema.sql`
 
-Hive transfer writes need the metastore thrift endpoint because SeaTunnel's Hive sink resolves table, partition, and storage metadata through Hive Metastore rather than HiveServer2. Keep `metastoreUri` on the Hive data source instead of entering it on each transfer node.
+## 清理
 
-Reset the transfer MySQL data with:
-
-```bash
-docker compose -f docker-compose.transfer.yml down -v
-```
-
-## Goals
-
-- Run frontend, backend, Kestra, MySQL, PostgreSQL, and Hive in one Docker network.
-- Use the same data source hostnames from backend APIs and Kestra task execution.
-- Seed every supported first-phase data source with small, predictable demo tables.
-- Give humans and AI agents one stable reference for local credentials, ports, and validation flows.
-
-## Non-Goals
-
-- Do not model production security.
-- Do not include StarRocks in the default environment yet.
-- Do not optimize for frontend hot reload. Use `docs/local-development.md` for daily UI work.
-
-## Target Topology
-
-```text
-browser
-  -> wb-data-frontend     static files served by Nginx
-  -> wb-data-backend      Spring Boot API
-  -> wb-data-kestra       flow execution
-  -> wb-data-mysql        MySQL test data + app metadata if configured
-  -> wb-data-postgresql   PostgreSQL test data
-  -> wb-data-hiveserver2  HiveSQL test data
-```
-
-All containers must share the same Docker network. Data sources used by offline nodes must use container service names, not `127.0.0.1`.
-
-## Planned Files
-
-| File | Purpose |
-| --- | --- |
-| `docker-compose.integration.yml` | Starts the full integration stack |
-| `docker/frontend.Dockerfile` | Builds frontend assets and serves them with Nginx |
-| `docker/backend.Dockerfile` | Builds or runs the Spring Boot backend in the Docker network |
-| `scripts/dev/init/mysql/` | Initializes MySQL demo schema and data |
-| `scripts/dev/init/postgresql/` | Initializes PostgreSQL demo schema and data |
-| `scripts/dev/init/hive/` | Initializes Hive demo schema and data |
-| `scripts/dev/seed-integration-datasources.sql` | Inserts WB Data data source records for the seeded services |
-
-## Service Contract
-
-| Service | Container name | Internal port | Host port | Notes |
-| --- | --- | --- | --- | --- |
-| Frontend | `wb-data-frontend` | `80` | `5173` or `8088` | Static build, Nginx |
-| Backend | `wb-data-backend` | `8080` | `8080` | Talks to other services by container name |
-| Kestra | `wb-data-kestra` | `8080` | `8090` | Executes offline debug and scheduled flows |
-| Kestra internal port | `wb-data-kestra` | `8081` | `8081` | Keep if current local setup needs it |
-| MySQL | `wb-data-mysql` | `3306` | `3307` | Demo data and optionally app metadata |
-| PostgreSQL | `wb-data-postgresql` | `5432` | `5434` | Demo data |
-| HiveServer2 | `wb-data-hiveserver2` | `10000` | `10000` | Demo HiveSQL data |
-
-Host ports may change if they conflict locally. Container names and internal ports should stay stable because those are the values stored in test data sources.
-
-## Data Source Records
-
-Create these data sources in WB Data for project group `policy`.
-
-| Name | Type | Host | Port | Database | Username | Password | Used by |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `it_mysql_retail` | `MYSQL` | `wb-data-mysql` | `3306` | `retail_demo` | `wbdata` | `wbdata123` | SQL node, self-service query |
-| `it_postgres_retail` | `POSTGRESQL` | `wb-data-postgresql` | `5432` | `retail_demo` | `wbdata` | `wbdata123` | SQL node, self-service query |
-| `it_hive_retail` | `HIVE` | `wb-data-hiveserver2` | `10000` | `default` | `hive` | empty | HiveSQL node |
-
-Do not use `127.0.0.1` in these records. In integration mode, both backend and Kestra are containers and must use Docker service names.
-
-## Demo Data Model
-
-Use the same conceptual tables across MySQL, PostgreSQL, and Hive where practical.
-
-| Table | Purpose |
-| --- | --- |
-| `customers` | Small customer dimension |
-| `products` | Small product dimension |
-| `orders` | Order headers with timestamps and status |
-| `order_items` | Order line items |
-
-Minimum useful row counts:
-
-| Table | Rows |
-| --- | --- |
-| `customers` | 5 |
-| `products` | 5 |
-| `orders` | 8 |
-| `order_items` | 12 |
-
-Keep values deterministic. Avoid random data so screenshots, logs, and assertions stay stable.
-
-## Smoke Queries
-
-MySQL and PostgreSQL SQL node:
-
-```sql
-select count(*) as order_count from orders;
-```
-
-```sql
-select c.customer_name, count(*) as order_count
-from customers c
-join orders o on o.customer_id = c.customer_id
-group by c.customer_name
-order by order_count desc, c.customer_name;
-```
-
-HiveSQL node:
-
-```sql
-select count(*) as order_count from orders;
-```
-
-Keep Hive smoke queries simple. They validate connectivity and execution routing, not advanced SQL dialect behavior.
-
-## Manual Validation Flow
-
-Use this flow when validating offline SQL/HiveSQL changes:
-
-1. Start the integration stack.
-2. Log in as `admin / admin123`.
-3. Select project group `policy`.
-4. Open Data Source Management and verify these records exist:
-   - `it_mysql_retail`
-   - `it_postgres_retail`
-   - `it_hive_retail`
-5. Open Self-Service Query and run the MySQL smoke query.
-6. Open Offline Development.
-7. Create a flow under `jack/integration-smoke/`.
-8. Add a SQL node bound to `it_mysql_retail`.
-9. Put `select count(*) as order_count from orders;` in the node.
-10. Add a Shell node after the SQL node with `echo "sql complete"`.
-11. Execute the flow from the canvas toolbar.
-12. Confirm the SQL node succeeds.
-13. Add a HiveSQL node bound to `it_hive_retail`.
-14. Execute again and confirm HiveSQL succeeds.
-15. Save, commit, push, enable a one-minute schedule, and check Operations Center for records.
-
-## Expected Operations Center Behavior
-
-For a one-minute schedule:
-
-- No backfill should run when scheduling is first enabled.
-- A scheduled execution should appear once per minute after the next planned minute boundary.
-- The operations list should show planned execution time separately from actual start time.
-
-If the first minute shows duplicate executions, inspect whether both a manual debug execution and a scheduled execution are visible, or whether the schedule was registered twice.
-
-## Common Failures
-
-### `Communications link failure` / `Connection refused`
-
-The data source host is not reachable from the Kestra container. Check the generated JDBC URL in the execution log.
-
-Bad:
-
-```text
-jdbc:mysql://127.0.0.1:3306/retail_demo
-```
-
-Good:
-
-```text
-jdbc:mysql://wb-data-mysql:3306/retail_demo
-```
-
-### Backend Data Source Test Passes But Offline Node Fails
-
-The backend and Kestra are seeing different networks. In integration mode this should not happen if the data source uses service names. If it happens, confirm the backend container is using the same Docker network as Kestra.
-
-### HiveSQL Cannot Find Tables
-
-Verify the Hive init script ran and created tables in the database configured on the data source. For first-phase tests, use `default` unless the compose file explicitly creates a separate Hive database.
-
-## Reset Strategy
-
-The integration stack should support a clean reset by removing its named volumes and recreating containers.
-
-Target command shape:
+传输 MySQL 容器和数据卷：
 
 ```bash
-docker compose -f docker-compose.integration.yml down -v
-docker compose -f docker-compose.integration.yml up -d --build
+docker compose -f docker/docker-compose.transfer.yml down -v
 ```
 
-After reset, rerun or verify the data source seed step before testing offline nodes.
+Hive 容器和 warehouse 数据卷：
 
-## Agent Notes
+```bash
+docker compose -f docker/docker-compose.hive.yml down -v
+```
 
-When an AI agent investigates SQL or HiveSQL execution failures:
-
-1. Identify who executes the query: backend API or Kestra task.
-2. Read the generated Flow YAML or execution log to get the actual JDBC URL.
-3. Test network reachability from the executing container.
-4. Do not change SQL text until connectivity is ruled out.
-5. Do not replace service names with `127.0.0.1` in integration data sources.
+这些命令会删除对应的本地测试数据卷，不要用于保存了非测试数据的环境。
