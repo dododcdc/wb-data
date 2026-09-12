@@ -236,7 +236,17 @@ export default function ParameterGroupDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                {loading ? <div className="parameter-dialog-loading">正在加载参数组…</div> : (
+                {loading ? (
+                    <div className="parameter-dialog-skeleton" role="status">
+                        <span className="sr-only">正在加载参数组</span>
+                        {Array.from({ length: 3 }).map((_, index) => (
+                            <div className="parameter-dialog-skeleton-field" key={index} aria-hidden="true">
+                                <span className="skeleton-line parameter-dialog-skeleton-label" />
+                                <span className="skeleton-line parameter-dialog-skeleton-input" />
+                            </div>
+                        ))}
+                    </div>
+                ) : (
                     <div className="parameter-dialog-body">
                         <div className="parameter-meta-grid">
                             <label>

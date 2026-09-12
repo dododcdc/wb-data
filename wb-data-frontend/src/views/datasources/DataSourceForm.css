@@ -31,31 +31,31 @@
     flex: 1;
     min-height: 360px;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
     padding: 32px;
-    text-align: center;
 }
 
-.form-loading-state strong {
-    color: var(--color-text-primary);
-    font-size: 1rem;
+.form-loading-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    width: 100%;
+    max-width: 520px;
 }
 
-.form-loading-state p {
-    margin: 0;
-    color: var(--color-text-muted);
-    font-size: 0.9rem;
+.form-loading-skeleton-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
-.form-loading-spinner {
-    width: 28px;
-    height: 28px;
-    border: 2px solid rgba(217, 119, 87, 0.2);
-    border-top-color: var(--color-brand);
-    border-radius: 50%;
-    animation: formSpin 0.8s linear infinite;
+.form-loading-skeleton-label {
+    height: 12px;
+    width: 18%;
+}
+
+.form-loading-skeleton-input {
+    height: 36px;
+    border-radius: 8px;
 }
 
 .form-main-layout {

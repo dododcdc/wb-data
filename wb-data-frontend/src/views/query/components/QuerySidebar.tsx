@@ -107,9 +107,9 @@ export function QuerySidebar({
                 onScroll={handleTableScroll}
             >
                 {loadingTables ? (
-                    <div className="metadata-empty">
-                        <Loader2 size={24} className="animate-spin" />
-                        <span>加载中...</span>
+                    <div className="metadata-empty" role="status">
+                        <Loader2 size={24} className="animate-spin" aria-hidden="true" />
+                        <span className="sr-only">正在加载表列表</span>
                     </div>
                 ) : tables.length === 0 ? (
                     <div className="metadata-empty">

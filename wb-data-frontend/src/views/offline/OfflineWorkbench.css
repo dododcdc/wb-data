@@ -965,3 +965,22 @@ button.offline-branch-row:disabled {
     border: none;
     font-weight: 500;
 }
+
+/* 项目树加载骨架 */
+.offline-rail-tree-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 10px 14px;
+    width: 100%;
+}
+
+.offline-rail-tree-skeleton-row {
+    height: 13px;
+    width: 68%;
+}
+
+.offline-rail-tree-skeleton-row.is-indented {
+    width: 52%;
+    margin-left: 18px;
+}

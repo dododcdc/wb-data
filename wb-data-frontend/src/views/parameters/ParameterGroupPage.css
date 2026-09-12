@@ -456,11 +456,28 @@
     font-size: 0.82rem;
 }
 
-.parameter-dialog-loading {
+.parameter-dialog-skeleton {
     min-height: 220px;
-    display: grid;
-    place-items: center;
-    color: var(--color-text-muted);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 20px 24px;
+}
+
+.parameter-dialog-skeleton-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.parameter-dialog-skeleton-label {
+    height: 12px;
+    width: 22%;
+}
+
+.parameter-dialog-skeleton-input {
+    height: 34px;
+    border-radius: 8px;
 }
 
 .parameter-dialog code {
@@ -851,4 +868,10 @@
     .parameter-preview-footer {
         padding: 8px 16px 16px;
     }
+}
+
+.parameter-preview-banner-skeleton {
+    display: block;
+    height: 14px;
+    width: 68%;
 }

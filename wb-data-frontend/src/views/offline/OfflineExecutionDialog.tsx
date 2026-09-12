@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Copy, LoaderCircle, RefreshCcw, TerminalSquare, X } from 'lucide-react';
+import { Copy, History, LoaderCircle, RefreshCcw, TerminalSquare, X } from 'lucide-react';
 
 import type {
     OfflineExecutionDetail,
@@ -148,14 +148,27 @@ export function OfflineExecutionDialog({
                     </div>
                 </div>
 
+                {!loading && !listBusy && executions.length === 0 ? (
+                    <div className="offline-execution-empty-state">
+                        <History size={44} strokeWidth={1.2} aria-hidden="true" />
+                        <strong>还没有执行记录</strong>
+                        <p>点击画布工具栏的「执行」运行当前 Flow</p>
+                    </div>
+                ) : (
                 <div className="offline-execution-layout">
                     <section className="offline-execution-list">
                         {listBusy ? (
-                            <div className="offline-list-placeholder">正在加载执行记录...</div>
+                            <div className="offline-execution-skeleton" role="status">
+                                <span className="sr-only">正在加载执行记录</span>
+                                {Array.from({ length: 4 }).map((_, index) => (
+                                    <div className="offline-execution-skeleton-row" key={index} aria-hidden="true">
+                                        <span className="skeleton-line offline-execution-skeleton-dot" />
+                                        <span className="skeleton-line offline-execution-skeleton-title" />
+                                    </div>
+                                ))}
+                            </div>
                         ) : loading ? (
                             <div className="offline-list-placeholder" aria-hidden="true" />
-                        ) : executions.length === 0 ? (
-                            <div className="offline-list-placeholder">当前 Flow 还没有执行记录。</div>
                         ) : (
                             executions.map((item) => {
                                 const presentation = getExecutionPresentation(item.status);
@@ -185,11 +198,17 @@ export function OfflineExecutionDialog({
 
                     <section className="offline-execution-detail">
                         {detailBusy ? (
-                            <div className="offline-list-placeholder">正在加载执行详情...</div>
+                            <div className="offline-execution-detail-skeleton" role="status">
+                                <span className="sr-only">正在加载执行详情</span>
+                                <span className="skeleton-line offline-execution-detail-skeleton-title" aria-hidden="true" />
+                                <span className="skeleton-line offline-execution-detail-skeleton-line" aria-hidden="true" />
+                                <span className="skeleton-line offline-execution-detail-skeleton-line is-short" aria-hidden="true" />
+                                <span className="skeleton-line offline-execution-detail-skeleton-block" aria-hidden="true" />
+                            </div>
                         ) : detailLoading && !detail ? (
                             <div className="offline-list-placeholder" aria-hidden="true" />
                         ) : !detail ? (
-                            <div className="offline-list-placeholder">选择一条执行记录查看概览。</div>
+                            <div className="offline-list-placeholder offline-list-placeholder-centered">选择左侧记录查看详情</div>
                         ) : (
                             <div className="offline-detail-body">
                                 <div className="offline-detail-meta-minimal">
@@ -335,6 +354,7 @@ export function OfflineExecutionDialog({
                         )}
                     </section>
                 </div>
+                )}
             </DialogContent>
         </Dialog>
     );
