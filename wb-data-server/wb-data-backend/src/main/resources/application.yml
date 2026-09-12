@@ -10,7 +10,7 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/wb_data?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
     username: root
-    password: ${DB_PASSWORD:1111}
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
 
@@ -24,13 +24,13 @@ server:
 
 wbdata:
   cors:
-    allowed-origins: ${WB_DATA_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,https://dododcdc.tail84596d.ts.net}
+    allowed-origins: ${WB_DATA_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   plugins:
-    dir: ${WB_DATA_PLUGIN_DIR:/Users/wenbin/Projects/wb-data/plugins}
+    dir: ${WB_DATA_PLUGIN_DIR}
   git:
     sync-cron: "${WB_DATA_GIT_SYNC_CRON:*/5 * * * *}"
   offline:
-    repo-base-dir: ${WB_DATA_OFFLINE_REPO_BASE_DIR:/Users/wenbin/Projects/wb-data/output/offline-live/repos}
+    repo-base-dir: ${WB_DATA_OFFLINE_REPO_BASE_DIR}
     repo-dir-prefix: ${WB_DATA_OFFLINE_REPO_DIR_PREFIX:wb-data-}
     transfer:
       internal-token: ${WB_DATA_TRANSFER_INTERNAL_TOKEN:}
@@ -44,8 +44,8 @@ wbdata:
     kestra:
       base-url: ${WB_DATA_KESTRA_BASE_URL:http://localhost:8090}
       tenant: ${WB_DATA_KESTRA_TENANT:main}
-      username: ${WB_DATA_KESTRA_USERNAME:admin@kestra.io}
-      password: ${WB_DATA_KESTRA_PASSWORD:Admin1234!}
+      username: ${WB_DATA_KESTRA_USERNAME}
+      password: ${WB_DATA_KESTRA_PASSWORD}
       debug-namespace-prefix: ${WB_DATA_KESTRA_DEBUG_NAMESPACE_PREFIX:wb-debug-g}
 
 springdoc:

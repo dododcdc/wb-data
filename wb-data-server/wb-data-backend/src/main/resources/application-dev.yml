@@ -1,0 +1,14 @@
+# 本地开发默认值。通过 SPRING_PROFILES_ACTIVE=dev 启用；相对路径基于 wb-data-backend 启动目录。
+# 生产部署不要使用本 profile，所有敏感配置通过环境变量显式注入。
+spring:
+  datasource:
+    password: ${DB_PASSWORD:1111}
+
+wbdata:
+  plugins:
+    dir: ${WB_DATA_PLUGIN_DIR:../../plugins}
+  offline:
+    repo-base-dir: ${WB_DATA_OFFLINE_REPO_BASE_DIR:../../output/offline-live/repos}
+    kestra:
+      username: ${WB_DATA_KESTRA_USERNAME:admin@kestra.io}
+      password: ${WB_DATA_KESTRA_PASSWORD:Admin1234!}

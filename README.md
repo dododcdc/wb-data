@@ -46,12 +46,13 @@ mvn clean install
 cd ..
 bash scripts/prepare-plugins.sh
 
-# 启动后端；首次启动空库时必须提供管理员账号
+# 启动后端；本地开发使用 dev profile 提供本地默认值
+# 首次启动空库时必须提供管理员账号
 cd wb-data-server/wb-data-backend
+SPRING_PROFILES_ACTIVE=dev \
 DB_PASSWORD=<mysql-password> \
 INIT_ADMIN_USERNAME=admin \
 INIT_ADMIN_PASSWORD=<admin-password> \
-WB_DATA_PLUGIN_DIR=/absolute/path/to/wb-data/plugins \
 java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
 ```
 
