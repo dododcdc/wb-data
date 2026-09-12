@@ -10,8 +10,11 @@ import java.util.List;
 @ConfigurationProperties(prefix = "wbdata.offline.transfer")
 public class OfflineTransferProperties {
     public static final String DEFAULT_SEATUNNEL_IMAGE = "wb-data-seatunnel:2.3.13";
+    public static final String DEFAULT_SEATUNNEL_HOME = "/opt/seatunnel";
 
+    private TransferRunner runner = TransferRunner.DOCKER;
     private String seatunnelImage = DEFAULT_SEATUNNEL_IMAGE;
+    private String seatunnelHome = DEFAULT_SEATUNNEL_HOME;
     private String dockerNetwork = "wb-data_default";
     private String internalBaseUrlEnv = "WB_DATA_INTERNAL_BASE_URL";
     private String internalTokenEnv = "WB_DATA_INTERNAL_TOKEN";
@@ -26,6 +29,24 @@ public class OfflineTransferProperties {
 
     public void setContainerHostRewrite(String containerHostRewrite) {
         this.containerHostRewrite = containerHostRewrite == null ? "" : containerHostRewrite;
+    }
+
+    public TransferRunner getRunner() {
+        return runner == null ? TransferRunner.DOCKER : runner;
+    }
+
+    public void setRunner(TransferRunner runner) {
+        this.runner = runner == null ? TransferRunner.DOCKER : runner;
+    }
+
+    public String getSeatunnelHome() {
+        return seatunnelHome == null || seatunnelHome.isBlank() ? DEFAULT_SEATUNNEL_HOME : seatunnelHome;
+    }
+
+    public void setSeatunnelHome(String seatunnelHome) {
+        this.seatunnelHome = seatunnelHome == null || seatunnelHome.isBlank()
+                ? DEFAULT_SEATUNNEL_HOME
+                : seatunnelHome;
     }
 
     public String getSeatunnelImage() {

@@ -62,6 +62,8 @@ java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
 
 `WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE` 只用于本地开发：数据源 host 配成 `localhost`/`127.0.0.1`/`::1` 时（例如指向宿主机端口映射出来的 MySQL），在容器内执行的 SQL 节点与 SeaTunnel 传输任务会把 host 改写为该值。生产环境各服务网络互通，保持默认空值即可，此时数据源 host 按字面使用。
 
+传输任务默认仍由 Kestra 的 Docker runner 拉起 SeaTunnel 镜像。生产若不使用 Docker，设置 `WB_DATA_TRANSFER_RUNNER=process`，并保证 Kestra worker 上有 SeaTunnel（`WB_DATA_TRANSFER_SEATUNNEL_HOME`，默认 `/opt/seatunnel`）。改 runner 后需要重新保存 Flow，YAML 才会去掉 Docker `taskRunner`。
+
 ## 3. 准备 smoke 环境
 
 从仓库根目录执行：

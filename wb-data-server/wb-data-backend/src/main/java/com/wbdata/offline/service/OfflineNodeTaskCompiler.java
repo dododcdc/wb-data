@@ -2,6 +2,7 @@ package com.wbdata.offline.service;
 
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.offline.config.OfflineTransferProperties;
+import com.wbdata.offline.config.TransferRunner;
 import com.wbdata.offline.transfer.service.JdbcDriverCatalog;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -23,16 +24,7 @@ final class OfflineNodeTaskCompiler {
     private final TaskAdapter transferAdapter = new TransferTaskAdapter();
 
     OfflineNodeTaskCompiler() {
-        this(new TransferRuntimeSettings(
-                OfflineTransferProperties.DEFAULT_SEATUNNEL_IMAGE,
-                "wb-data_default",
-                "WB_DATA_INTERNAL_BASE_URL",
-                "WB_DATA_INTERNAL_TOKEN",
-                null,
-                null,
-                List.of(),
-                ""
-        ));
+        this(new OfflineTransferProperties());
     }
 
     OfflineNodeTaskCompiler(OfflineTransferProperties transferProperties) {
@@ -44,7 +36,9 @@ final class OfflineNodeTaskCompiler {
                 transferProperties.getInternalBaseUrl(),
                 transferProperties.getInternalToken(),
                 transferProperties.getDockerVolumes(),
-                transferProperties.getContainerHostRewrite()
+                transferProperties.getContainerHostRewrite(),
+                transferProperties.getRunner(),
+                transferProperties.getSeatunnelHome()
         ));
     }
 
@@ -127,12 +121,14 @@ final class OfflineNodeTaskCompiler {
                     node.transferConfigPath()
             ));
             task.put("namespaceFiles", buildNamespaceFilesConfig(node.transferConfigPath()));
-            task.put("containerImage", transferRuntimeSettings.seatunnelImage());
             Map<String, String> env = buildTransferEnv();
             if (!env.isEmpty()) {
                 task.put("env", env);
             }
-            task.put("taskRunner", buildTransferTaskRunner());
+            if (transferRuntimeSettings.runner() == TransferRunner.DOCKER) {
+                task.put("containerImage", transferRuntimeSettings.seatunnelImage());
+                task.put("taskRunner", buildTransferTaskRunner());
+            }
             task.put("commands", buildTransferCommands(node.taskId(), node.transferConfigPath()));
         }
     }
@@ -254,8 +250,16 @@ final class OfflineNodeTaskCompiler {
                         + "--data-binary @" + shellQuote(transferConfigPath) + " \"${"
                         + transferRuntimeSettings.internalBaseUrlEnv() + "}/api/v1/internal/offline/transfer/render\" "
                         + "-o " + renderedConfigPath,
-                "/opt/seatunnel/bin/seatunnel.sh --config " + renderedConfigPath + " -m local"
+                seatunnelBinary() + " --config " + renderedConfigPath + " -m local"
         );
+    }
+
+    private String seatunnelBinary() {
+        String home = transferRuntimeSettings.seatunnelHome();
+        if (home.endsWith("/")) {
+            return home + "bin/seatunnel.sh";
+        }
+        return home + "/bin/seatunnel.sh";
     }
 
     private Map<String, Object> buildNamespaceFilesConfig(String scriptPath) {
@@ -340,7 +344,9 @@ final class OfflineNodeTaskCompiler {
             String internalBaseUrl,
             String internalToken,
             List<String> dockerVolumes,
-            String containerHostRewrite
+            String containerHostRewrite,
+            TransferRunner runner,
+            String seatunnelHome
     ) {
     }
 }

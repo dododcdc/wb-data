@@ -2,6 +2,7 @@ package com.wbdata.offline.service;
 
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.offline.config.OfflineTransferProperties;
+import com.wbdata.offline.config.TransferRunner;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -52,6 +53,42 @@ class OfflineNodeTaskCompilerTest {
                         + "\"${TRANSFER_BACKEND_URL}/api/v1/internal/offline/transfer/render\" "
                         + "-o /tmp/wb-data-transfer/transfer_1.conf",
                 "/opt/seatunnel/bin/seatunnel.sh --config /tmp/wb-data-transfer/transfer_1.conf -m local"
+        );
+    }
+
+    @Test
+    void compile_generatesProcessBackedSeaTunnelTransferTaskWithoutDockerRunner() {
+        OfflineTransferProperties transferProperties = new OfflineTransferProperties();
+        transferProperties.setRunner(TransferRunner.PROCESS);
+        transferProperties.setSeatunnelHome("/usr/local/seatunnel");
+        transferProperties.setInternalBaseUrlEnv("TRANSFER_BACKEND_URL");
+        transferProperties.setInternalTokenEnv("TRANSFER_BACKEND_TOKEN");
+        transferProperties.setInternalBaseUrl("http://wb-data-backend:8080");
+        transferProperties.setInternalToken("prod-transfer-token");
+        transferProperties.setDockerNetwork("should-not-appear");
+        transferProperties.setDockerVolumes(List.of("should-not-appear:/unused"));
+        OfflineNodeTaskCompiler compiler = new OfflineNodeTaskCompiler(transferProperties);
+        String transferPath = "transfers/orders/transfer_1.transfer.json";
+
+        Map<String, Object> task = compiler.compile(null, new OfflineFlowNode(
+                "transfer_1", "TRANSFER", null, null, null, transferPath
+        ), Map.of());
+
+        assertThat(task).containsEntry("type", "io.kestra.plugin.scripts.shell.Commands");
+        assertThat(task).doesNotContainKey("containerImage");
+        assertThat(task).doesNotContainKey("taskRunner");
+        assertThat(task).containsEntry("env", Map.of(
+                "TRANSFER_BACKEND_URL", "http://wb-data-backend:8080",
+                "TRANSFER_BACKEND_TOKEN", "prod-transfer-token"
+        ));
+        assertThat((List<String>) task.get("commands")).containsExactly(
+                "set -eu",
+                "mkdir -p /tmp/wb-data-transfer",
+                "curl --fail --show-error --silent -H \"X-WB-Data-Internal-Token: ${TRANSFER_BACKEND_TOKEN}\" "
+                        + "-H 'Content-Type: application/json' --data-binary @'" + transferPath + "' "
+                        + "\"${TRANSFER_BACKEND_URL}/api/v1/internal/offline/transfer/render\" "
+                        + "-o /tmp/wb-data-transfer/transfer_1.conf",
+                "/usr/local/seatunnel/bin/seatunnel.sh --config /tmp/wb-data-transfer/transfer_1.conf -m local"
         );
     }
 

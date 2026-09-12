@@ -2,11 +2,13 @@ package com.wbdata.offline.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.offline.config.OfflineKestraProperties;
+import com.wbdata.offline.config.OfflineProperties;
+import com.wbdata.offline.config.OfflineTransferProperties;
+import com.wbdata.offline.config.TransferRunner;
 import com.wbdata.offline.kestra.KestraClient;
 import com.wbdata.offline.kestra.KestraExecutionSnapshot;
 import com.wbdata.offline.kestra.KestraLogEntry;
 import com.wbdata.offline.kestra.KestraTaskRunSnapshot;
-import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.dto.DebugExecutionRequest;
 import com.wbdata.offline.dto.FlowParameterDefinitionSnapshot;
 import com.wbdata.offline.dto.FlowParameterSnapshot;
@@ -190,6 +192,30 @@ class OfflineExecutionServiceBranchTest {
     }
 
     @Test
+    void createDebugExecution_allowsSelectedTransferWhenProcessRunnerIsConfigured() {
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OfflineTransferProperties transferProperties = new OfflineTransferProperties();
+        transferProperties.setRunner(TransferRunner.PROCESS);
+        OfflineExecutionService service = service(kestraClient, repoStatusService("main"), transferProperties);
+        when(kestraClient.createExecution(any(), any())).thenReturn(execution(
+                "exec-transfer",
+                "wb-debug-g1-bmain-0d6e4079-u7",
+                "example",
+                "RUNNING",
+                Map.of()
+        ));
+
+        service.createDebugExecution(
+                transferRequest(),
+                Map.of("transfers/example/transfer_orders.transfer.json", "{\"schemaVersion\":1}"),
+                7L
+        );
+
+        verify(kestraClient, never()).supportsTaskType("io.kestra.plugin.scripts.runner.docker.Docker");
+        verify(kestraClient).upsertFlow(any());
+    }
+
+    @Test
     void createDebugExecution_uploadsTransferSidecarAndAllowsSelectedTransfer() {
         KestraClient kestraClient = Mockito.mock(KestraClient.class);
         OfflineExecutionService service = service(kestraClient, repoStatusService("main"));
@@ -364,9 +390,46 @@ class OfflineExecutionServiceBranchTest {
                                                     OfflineProperties offlineProperties,
                                                     FlowParameterSnapshotStore snapshotStore,
                                                     ExecutionParameterSnapshotRegistry snapshotRegistry) {
+        return service(
+                kestraClient,
+                repoStatusService,
+                offlineProperties,
+                snapshotStore,
+                snapshotRegistry,
+                new OfflineTransferProperties()
+        );
+    }
+
+    private static OfflineExecutionService service(KestraClient kestraClient,
+                                                    OfflineRepoStatusService repoStatusService,
+                                                    OfflineTransferProperties transferProperties) {
+        OfflineProperties offlineProperties = new OfflineProperties();
+        return service(
+                kestraClient,
+                repoStatusService,
+                offlineProperties,
+                new FlowParameterSnapshotStore(new ObjectMapper()),
+                Mockito.mock(ExecutionParameterSnapshotRegistry.class),
+                transferProperties
+        );
+    }
+
+    private static OfflineExecutionService service(KestraClient kestraClient,
+                                                    OfflineRepoStatusService repoStatusService,
+                                                    OfflineProperties offlineProperties,
+                                                    FlowParameterSnapshotStore snapshotStore,
+                                                    ExecutionParameterSnapshotRegistry snapshotRegistry,
+                                                    OfflineTransferProperties transferProperties) {
         OfflineKestraProperties kestraProperties = new OfflineKestraProperties();
         return new OfflineExecutionService(
-                kestraClient, kestraProperties, offlineProperties, repoStatusService, snapshotStore, snapshotRegistry);
+                kestraClient,
+                kestraProperties,
+                offlineProperties,
+                repoStatusService,
+                snapshotStore,
+                snapshotRegistry,
+                transferProperties
+        );
     }
 
     private OfflineProperties offlineProperties() {
