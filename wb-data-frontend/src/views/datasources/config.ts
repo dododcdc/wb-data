@@ -1,4 +1,4 @@
-import { parsePageParam as _parsePageParam, parsePageSizeParam as _parsePageSizeParam, formatTimestamp as _formatTimestamp } from '../../utils/pagination';
+import { parsePageSizeParam as parseSharedPageSizeParam } from '../../utils/pagination';
 
 export const STATUS_FILTER_OPTIONS = [
     { label: '全部状态', value: '' },
@@ -8,6 +8,10 @@ export const STATUS_FILTER_OPTIONS = [
 
 export const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 export const DEFAULT_PAGE_SIZE = 10;
+
+export { parsePageParam, formatTimestamp } from '../../utils/pagination';
+
+export const parsePageSizeParam = (value: string | null) => parseSharedPageSizeParam(value, PAGE_SIZE_OPTIONS);
 
 export function buildDataSourcePageQueryKey(params: {
     currentPage: number;
@@ -22,10 +26,6 @@ export function buildDataSourcePageQueryKey(params: {
         groupId: params.groupId,
     }] as const;
 }
-
-export { _parsePageParam as parsePageParam };
-export { _parsePageSizeParam as parsePageSizeParam };
-export { _formatTimestamp as formatTimestamp };
 
 export function parseTypeParam(value: string | null) {
     return value?.split(',').map((item) => item.trim()).filter(Boolean) ?? [];

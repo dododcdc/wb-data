@@ -6,9 +6,9 @@ export function parsePageParam(value: string | null): number {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
-export function parsePageSizeParam(value: string | null): number {
+export function parsePageSizeParam(value: string | null, options: number[] = PAGE_SIZE_OPTIONS): number {
     const parsed = Number(value);
-    return PAGE_SIZE_OPTIONS.includes(parsed) ? parsed : DEFAULT_PAGE_SIZE;
+    return options.includes(parsed) ? parsed : DEFAULT_PAGE_SIZE;
 }
 
 export function formatTimestamp(value?: string | null): string {
