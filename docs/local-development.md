@@ -38,8 +38,8 @@ dev profile 提供的本地默认值：
 | 服务端口 | `8080` |
 | 元数据库 | `jdbc:mysql://localhost:3306/wb_data`，密码 `1111` |
 | Kestra | `http://localhost:8090`，账号 `admin@kestra.io` |
-| 离线仓库目录 | `output/offline-live/repos`（相对 `wb-data-backend` 启动目录） |
-| 插件目录 | `plugins/`（相对 `wb-data-backend` 启动目录，即仓库根 `plugins/`） |
+| 离线仓库目录 | `<启动目录>/../../output/offline-live/repos` |
+| 插件目录 | `<启动目录>/../../plugins`（代码强制要求绝对路径，默认值基于 `user.dir` 拼出） |
 | CORS 允许来源 | `http://localhost:5173`、`http://127.0.0.1:5173` |
 
 首次启动空数据库时，必须通过环境变量创建第一个系统管理员：
