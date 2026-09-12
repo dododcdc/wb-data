@@ -6,9 +6,14 @@ import com.wbdata.offline.dto.DebugExecutionRequest;
 import com.wbdata.offline.dto.FlowParameterSnapshot;
 import com.wbdata.offline.dto.OfflineExecutionDetailResponse;
 import com.wbdata.offline.dto.OfflineExecutionListItem;
-import com.wbdata.offline.dto.OfflineExecutionLogEntry;
+import com.wbdata.offline.dto.ExecutionLogEntry;
+import com.wbdata.offline.dto.ExecutionTaskRun;
 import com.wbdata.offline.dto.OfflineExecutionResponse;
 import com.wbdata.offline.dto.OfflineExecutionScriptResponse;
+import com.wbdata.offline.kestra.KestraClient;
+import com.wbdata.offline.kestra.KestraExecutionSnapshot;
+import com.wbdata.offline.kestra.KestraLogEntry;
+import com.wbdata.offline.kestra.KestraTaskRunSnapshot;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -225,13 +230,13 @@ public class OfflineExecutionService {
         KestraExecutionSnapshot execution = kestraClient.getExecution(executionId);
         ensureExecutionAccessible(execution, groupId);
         
-        java.util.List<com.wbdata.offline.dto.OfflineExecutionTaskRun> taskRuns = new java.util.ArrayList<>();
+        java.util.List<ExecutionTaskRun> taskRuns = new java.util.ArrayList<>();
         Set<String> seenTaskIds = new LinkedHashSet<>();
-        
+
         if (execution.taskRuns() != null) {
             for (KestraTaskRunSnapshot taskRun : execution.taskRuns()) {
                 seenTaskIds.add(taskRun.taskId());
-                taskRuns.add(new com.wbdata.offline.dto.OfflineExecutionTaskRun(
+                taskRuns.add(ExecutionTaskRun.of(
                         taskRun.taskId(),
                         taskRun.status(),
                         taskRun.startDate(),
@@ -239,14 +244,14 @@ public class OfflineExecutionService {
                 ));
             }
         }
-        
+
         Map<String, String> labels = labels(execution);
         String targetNodesStr = labels.get("wbdataSelectedTaskIds");
         if (targetNodesStr != null && !targetNodesStr.isBlank()) {
             for (String targetNode : targetNodesStr.split("---")) {
                 String taskId = targetNode.trim();
                 if (!taskId.isEmpty() && !seenTaskIds.contains(taskId)) {
-                    taskRuns.add(new com.wbdata.offline.dto.OfflineExecutionTaskRun(
+                    taskRuns.add(ExecutionTaskRun.of(
                             taskId,
                             "QUEUED",
                             null,
@@ -332,10 +337,10 @@ public class OfflineExecutionService {
         );
     }
 
-    public List<OfflineExecutionLogEntry> getExecutionLogs(Long groupId, String executionId, String taskId) {
+    public List<ExecutionLogEntry> getExecutionLogs(Long groupId, String executionId, String taskId) {
         ensureExecutionAccessible(kestraClient.getExecution(executionId), groupId);
         return kestraClient.getLogs(executionId, taskId).stream()
-                .map(entry -> new OfflineExecutionLogEntry(entry.timestamp(), entry.taskId(), entry.level(), entry.message()))
+                .map(entry -> new ExecutionLogEntry(entry.timestamp(), entry.taskId(), entry.level(), entry.message()))
                 .toList();
     }
 

@@ -6,7 +6,7 @@ import com.wbdata.auth.enums.Permission;
 import com.wbdata.common.Result;
 import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
-import com.wbdata.operations.dto.OperationsExecutionLogEntry;
+import com.wbdata.offline.dto.ExecutionLogEntry;
 import com.wbdata.operations.dto.OperationsExecutionQuery;
 import com.wbdata.operations.dto.OperationsExecutionRerunRequest;
 import com.wbdata.operations.dto.OperationsExecutionRerunResponse;
@@ -55,7 +55,7 @@ public class OperationsExecutionController {
     }
 
     @GetMapping("/{executionId}/logs")
-    public Result<List<OperationsExecutionLogEntry>> getLogs(
+    public Result<List<ExecutionLogEntry>> getLogs(
             @RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
             @PathVariable String executionId,
             @RequestParam(required = false) String taskId) {

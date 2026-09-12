@@ -2,10 +2,10 @@ package com.wbdata.operations.service;
 
 import com.wbdata.git.dto.GitSyncConfigResponse;
 import com.wbdata.git.service.GitSyncConfigService;
-import com.wbdata.offline.service.KestraClient;
-import com.wbdata.offline.service.KestraExecutionSnapshot;
-import com.wbdata.offline.service.KestraLogEntry;
-import com.wbdata.offline.service.KestraTaskRunSnapshot;
+import com.wbdata.offline.kestra.KestraClient;
+import com.wbdata.offline.kestra.KestraExecutionSnapshot;
+import com.wbdata.offline.kestra.KestraLogEntry;
+import com.wbdata.offline.kestra.KestraTaskRunSnapshot;
 import com.wbdata.offline.service.ExecutionParameterSnapshotRegistry;
 import com.wbdata.offline.service.ExecutionTimeContext;
 import com.wbdata.offline.dto.FlowParameterDefinitionSnapshot;

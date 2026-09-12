@@ -1,6 +1,7 @@
 package com.wbdata.operations.dto;
 
 import com.wbdata.offline.dto.ExecutionParameterValueResponse;
+import com.wbdata.offline.dto.ExecutionTaskRun;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -17,7 +18,7 @@ public record OperationsExecutionDetailResponse(
         Instant endDate,
         Long durationMs,
         boolean rerunnable,
-        List<OperationsExecutionTaskRun> taskRuns,
+        List<ExecutionTaskRun> taskRuns,
         Map<String, String> inputs,
         Map<String, String> labels,
         String parameterResolutionStatus,

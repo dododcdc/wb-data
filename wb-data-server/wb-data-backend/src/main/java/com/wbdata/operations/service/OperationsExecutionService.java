@@ -2,21 +2,21 @@ package com.wbdata.operations.service;
 
 import com.wbdata.git.dto.GitSyncConfigResponse;
 import com.wbdata.git.service.GitSyncConfigService;
-import com.wbdata.offline.service.KestraClient;
-import com.wbdata.offline.service.KestraExecutionSnapshot;
-import com.wbdata.offline.service.KestraLogEntry;
-import com.wbdata.offline.service.KestraTaskRunSnapshot;
+import com.wbdata.offline.kestra.KestraClient;
+import com.wbdata.offline.kestra.KestraExecutionSnapshot;
+import com.wbdata.offline.kestra.KestraLogEntry;
+import com.wbdata.offline.kestra.KestraTaskRunSnapshot;
 import com.wbdata.offline.service.ExecutionParameterResolver;
 import com.wbdata.offline.service.ExecutionParameterSnapshotRegistry;
 import com.wbdata.offline.service.ExecutionTimeContext;
 import com.wbdata.offline.service.FlowParameterMetadata;
+import com.wbdata.offline.dto.ExecutionLogEntry;
+import com.wbdata.offline.dto.ExecutionTaskRun;
 import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
 import com.wbdata.operations.dto.OperationsExecutionListItem;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
-import com.wbdata.operations.dto.OperationsExecutionLogEntry;
 import com.wbdata.operations.dto.OperationsExecutionQuery;
 import com.wbdata.operations.dto.OperationsExecutionRerunResponse;
-import com.wbdata.operations.dto.OperationsExecutionTaskRun;
 import com.wbdata.operations.entity.WbOperationExecutionAction;
 import com.wbdata.operations.mapper.WbOperationExecutionActionMapper;
 import lombok.RequiredArgsConstructor;
@@ -113,7 +113,7 @@ public class OperationsExecutionService {
         return toDetail(groupId, execution, scope.branchFor(execution.namespace()));
     }
 
-    public List<OperationsExecutionLogEntry> getLogs(Long groupId, String executionId, String taskId) {
+    public List<ExecutionLogEntry> getLogs(Long groupId, String executionId, String taskId) {
         Scope scope = loadScope(groupId);
         requireAccessibleExecution(scope, executionId);
         List<KestraLogEntry> logs = kestraClient.getLogs(executionId, blankToNull(taskId));
@@ -338,7 +338,7 @@ public class OperationsExecutionService {
     private OperationsExecutionDetailResponse toDetail(Long groupId,
                                                         KestraExecutionSnapshot execution,
                                                         String branch) {
-        List<OperationsExecutionTaskRun> taskRuns = execution.taskRuns() == null
+        List<ExecutionTaskRun> taskRuns = execution.taskRuns() == null
                 ? List.of()
                 : execution.taskRuns().stream()
                 .filter(taskRun -> taskRun != null)
@@ -444,13 +444,12 @@ public class OperationsExecutionService {
     ) {
     }
 
-    private OperationsExecutionTaskRun toTaskRun(KestraTaskRunSnapshot taskRun) {
-        return new OperationsExecutionTaskRun(
+    private ExecutionTaskRun toTaskRun(KestraTaskRunSnapshot taskRun) {
+        return ExecutionTaskRun.of(
                 taskRun.taskId(),
                 taskRun.status(),
                 taskRun.startDate(),
-                taskRun.endDate(),
-                durationMs(taskRun.startDate(), taskRun.endDate())
+                taskRun.endDate()
         );
     }
 
@@ -459,8 +458,8 @@ public class OperationsExecutionService {
         return taskId != null && !"flow_dag".equals(taskId) && !taskId.startsWith("parallel_");
     }
 
-    private OperationsExecutionLogEntry toLogEntry(KestraLogEntry log) {
-        return new OperationsExecutionLogEntry(
+    private ExecutionLogEntry toLogEntry(KestraLogEntry log) {
+        return new ExecutionLogEntry(
                 log.timestamp(),
                 log.taskId(),
                 log.level(),
