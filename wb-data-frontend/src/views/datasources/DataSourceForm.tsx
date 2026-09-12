@@ -261,7 +261,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                             port: res.port ? String(res.port) : '',
                             databaseName: res.databaseName || '',
                             username: res.username || '',
-                            password: res.password || '',
+                            password: '',
                             connectionParams: normalizeConnectionParams((res.connectionParams || {}) as Record<string, unknown>),
                         });
                     })

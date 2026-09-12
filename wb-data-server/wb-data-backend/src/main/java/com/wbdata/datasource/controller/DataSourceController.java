@@ -7,6 +7,7 @@ import com.wbdata.auth.enums.Permission;
 import com.wbdata.auth.service.AuthorizedDataSourceService;
 import com.wbdata.common.Result;
 import com.wbdata.datasource.dto.DataSourceSaveDTO;
+import com.wbdata.datasource.dto.DataSourceResponse;
 import com.wbdata.datasource.dto.DataSourceSearchQuery;
 import com.wbdata.datasource.dto.DataSourceStatusRequest;
 import com.wbdata.datasource.dto.TestConnectionRequest;
@@ -45,23 +46,23 @@ public class DataSourceController {
 
     @Operation(summary = "数据源分页列表")
     @GetMapping
-    public Result<IPage<DataSource>> list(@RequireGroupAuth(Permission.DATASOURCE_READ) AuthContextResponse context,
-                                          DataSourceSearchQuery query) {
+    public Result<IPage<DataSourceResponse>> list(@RequireGroupAuth(Permission.DATASOURCE_READ) AuthContextResponse context,
+                                                  DataSourceSearchQuery query) {
         if (query.getType() != null && !query.getType().isEmpty()) {
             query.setTypeList(java.util.Arrays.asList(query.getType().split(",")));
         }
         query.setGroupId(context.currentGroup().id());
         query.validateSort();
-        return Result.success(dataSourceService.getDataSourcePage(query));
+        return Result.success(dataSourceService.getDataSourcePage(query).convert(DataSourceResponse::from));
     }
 
     @Operation(summary = "获取数据源详情")
     @GetMapping("/{id}")
-    public Result<DataSource> getById(@PathVariable Long id,
-                                      @PathVariable(name = "groupId", required = false) Long groupId) {
+    public Result<DataSourceResponse> getById(@PathVariable Long id,
+                                              @PathVariable(name = "groupId", required = false) Long groupId) {
         DataSource dataSource = requireDataSourceContext(id, "datasource.read");
         ensureDataSourceBelongsToPathGroup(dataSource, groupId);
-        return Result.success(dataSource);
+        return Result.success(DataSourceResponse.from(dataSource));
     }
 
     @Operation(summary = "创建数据源")
