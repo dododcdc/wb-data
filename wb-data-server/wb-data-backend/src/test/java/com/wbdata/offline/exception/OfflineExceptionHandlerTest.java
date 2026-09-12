@@ -1,7 +1,6 @@
-package com.wbdata.common;
+package com.wbdata.offline.exception;
 
 import com.wbdata.offline.dto.DirtyWorkingTreeResponse;
-import com.wbdata.offline.exception.DirtyWorkingTreeException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
@@ -9,11 +8,11 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class GlobalExceptionHandlerTest {
+class OfflineExceptionHandlerTest {
 
     @Test
     void dirtyWorkingTreeException_returnsStructuredConflictBody() {
-        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        OfflineExceptionHandler handler = new OfflineExceptionHandler();
         DirtyWorkingTreeResponse details = new DirtyWorkingTreeResponse(
                 List.of("_flows/example/flow.yaml"),
                 List.of("_flows/example/flow.yaml", "README.md"),
