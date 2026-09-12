@@ -1,5 +1,5 @@
-import request from '../../utils/request';
-import { groupScopedPath } from '../../api/groupScoped';
+import request from '../utils/request';
+import { groupScopedPath } from './groupScoped';
 
 export interface GitConfig {
     id: number;

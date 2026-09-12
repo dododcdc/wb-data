@@ -7,7 +7,7 @@ import {
     deleteGitConfig,
     testGitConnection,
     type SaveGitConfigPayload,
-} from './gitSettingsApi';
+} from '../../api/gitSettings';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { SimpleSelect } from '../../components/SimpleSelect';

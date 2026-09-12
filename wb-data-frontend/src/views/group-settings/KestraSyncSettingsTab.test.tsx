@@ -22,7 +22,7 @@ const {
   updateGitSyncConfigStatus: vi.fn(),
 }));
 
-vi.mock('./gitSettingsApi', () => ({
+vi.mock('../../api/gitSettings', () => ({
   getGitConfig,
   getGitSyncConfigs,
   createGitSyncConfig,
