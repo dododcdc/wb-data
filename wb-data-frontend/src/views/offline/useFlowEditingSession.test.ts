@@ -81,6 +81,7 @@ function renderSessionHook(options?: {
     loadScheduleSnapshot?: () => Promise<void>;
     showFeedback?: ReturnType<typeof vi.fn>;
     refreshRepoStatus?: ReturnType<typeof vi.fn>;
+    resetExecutionAndSchedule?: ReturnType<typeof vi.fn>;
 }) {
     const loadScheduleSnapshot = options?.loadScheduleSnapshot ?? vi.fn().mockResolvedValue(undefined);
     const showFeedback = options?.showFeedback ?? vi.fn();
@@ -90,6 +91,7 @@ function renderSessionHook(options?: {
         loadScheduleSnapshot,
         showFeedback,
         refreshRepoStatus,
+        resetExecutionAndSchedule: options?.resetExecutionAndSchedule,
     }));
 }
 
@@ -485,6 +487,43 @@ describe('useFlowEditingSession', () => {
 
         expect(writeRecoverySnapshot).not.toHaveBeenCalled();
         expect(removeRecoverySnapshot).toHaveBeenCalledWith(1, '_flows/jack/demo/flow.yaml');
+    });
+
+    it('resets execution and schedule state when opening a different Flow', async () => {
+        const resetExecutionAndSchedule = vi.fn();
+        vi.mocked(getOfflineFlowDocument)
+            .mockResolvedValueOnce(makeFlowDocument())
+            .mockResolvedValueOnce(makeFlowDocument({
+                path: '_flows/jack/next/flow.yaml',
+                flowId: 'next',
+            }));
+        const { result } = renderSessionHook({ resetExecutionAndSchedule });
+
+        await act(async () => {
+            await result.current.openFlowDocument('_flows/jack/demo/flow.yaml');
+        });
+        expect(resetExecutionAndSchedule).not.toHaveBeenCalled();
+
+        await act(async () => {
+            await result.current.openFlowDocument('_flows/jack/next/flow.yaml');
+        });
+        expect(resetExecutionAndSchedule).toHaveBeenCalledTimes(1);
+        expect(result.current.activeFlowPath).toBe('_flows/jack/next/flow.yaml');
+    });
+
+    it('does not reset execution state when reopening the current Flow', async () => {
+        const resetExecutionAndSchedule = vi.fn();
+        vi.mocked(getOfflineFlowDocument).mockResolvedValue(makeFlowDocument());
+        const { result } = renderSessionHook({ resetExecutionAndSchedule });
+
+        await act(async () => {
+            await result.current.openFlowDocument('_flows/jack/demo/flow.yaml');
+        });
+        await act(async () => {
+            await result.current.openFlowDocument('_flows/jack/demo/flow.yaml');
+        });
+
+        expect(resetExecutionAndSchedule).not.toHaveBeenCalled();
     });
 
     it('resetAfterBranchSwitch clears active path, draft session, loading, node editor state, and pending draft', async () => {

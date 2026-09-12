@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 
@@ -39,10 +39,11 @@ export function useDataTable<T, TParams = Record<string, unknown>>({
 
     const queryParams = useMemo(() => ({
         ...params,
+        ...defaultParams,
         page,
         size: pageSize,
         keyword: keyword.trim() || undefined,
-    }), [params, page, pageSize, keyword]);
+    }), [params, defaultParams, page, pageSize, keyword]);
 
     // 当状态改变时更新 URL
     useEffect(() => {
@@ -64,6 +65,11 @@ export function useDataTable<T, TParams = Record<string, unknown>>({
         placeholderData: keepPreviousData,
     });
 
+    const setExtraParams = useCallback((newParams: Partial<TParams>) => {
+        setParams(prev => ({ ...prev, ...newParams }));
+        setPage(1);
+    }, []);
+
     return {
         ...query,
         data: query.data?.records ?? [],
@@ -83,9 +89,6 @@ export function useDataTable<T, TParams = Record<string, unknown>>({
             },
         },
         refresh: query.refetch,
-        setExtraParams: (newParams: Partial<TParams>) => {
-            setParams(prev => ({ ...prev, ...newParams }));
-            setPage(1);
-        },
+        setExtraParams,
     };
 }

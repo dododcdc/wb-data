@@ -1,13 +1,20 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import GroupSettingsPage from './GroupSettingsPage';
 
-const { showFeedback, addMembers } = vi.hoisted(() => ({
+const { showFeedback, addMembers, getMemberPage, authSnapshot } = vi.hoisted(() => ({
     showFeedback: vi.fn(),
     addMembers: vi.fn(),
+    getMemberPage: vi.fn(),
+    authSnapshot: {
+        currentGroup: { id: 1, name: 'Policy' },
+        permissions: ['group.settings', 'member.manage'],
+        systemAdmin: false,
+        userInfo: { id: 9 },
+    },
 }));
 
 vi.mock('../../hooks/useOperationFeedback', () => ({
@@ -18,18 +25,7 @@ vi.mock('../../hooks/useOperationFeedback', () => ({
 }));
 
 vi.mock('../../utils/auth', () => ({
-    useAuthStore: (selector: (state: {
-        currentGroup: { id: number; name: string };
-        permissions: string[];
-        systemAdmin: boolean;
-        userInfo: { id: number };
-    }) => unknown) =>
-        selector({
-            currentGroup: { id: 1, name: 'Policy' },
-            permissions: ['group.settings', 'member.manage'],
-            systemAdmin: false,
-            userInfo: { id: 9 },
-        }),
+    useAuthStore: (selector: (state: typeof authSnapshot) => unknown) => selector(authSnapshot),
 }));
 
 vi.mock('../../api/groupSettings', async () => {
@@ -42,13 +38,7 @@ vi.mock('../../api/groupSettings', async () => {
             description: '',
             createdAt: '2026-05-03T00:00:00Z',
         }),
-        getMemberPage: vi.fn().mockResolvedValue({
-            records: [],
-            total: 0,
-            pages: 0,
-            current: 1,
-            size: 10,
-        }),
+        getMemberPage,
         addMember: vi.fn(),
         addMembers,
         removeMember: vi.fn(),
@@ -99,29 +89,66 @@ vi.mock('./AddMemberDialog', () => ({
         ) : null,
 }));
 
-function renderWithProviders() {
-    const queryClient = new QueryClient({
+function createQueryClient() {
+    return new QueryClient({
         defaultOptions: {
             queries: { retry: false },
             mutations: { retry: false },
         },
     });
+}
 
-    return render(
-        <QueryClientProvider client={queryClient}>
-            <MemoryRouter>
-                <GroupSettingsPage />
-            </MemoryRouter>
-        </QueryClientProvider>,
-    );
+function renderWithProviders(queryClient = createQueryClient()) {
+    return {
+        queryClient,
+        ...render(
+            <QueryClientProvider client={queryClient}>
+                <MemoryRouter>
+                    <GroupSettingsPage />
+                </MemoryRouter>
+            </QueryClientProvider>,
+        ),
+    };
 }
 
 afterEach(() => {
     cleanup();
+    authSnapshot.currentGroup = { id: 1, name: 'Policy' };
     vi.clearAllMocks();
 });
 
 describe('GroupSettingsPage', () => {
+    beforeEach(() => {
+        getMemberPage.mockResolvedValue({
+            records: [],
+            total: 0,
+            pages: 0,
+            current: 1,
+            size: 10,
+        });
+    });
+
+    it('refetches members for the newly selected project group', async () => {
+        const { rerender, queryClient } = renderWithProviders();
+
+        await waitFor(() => {
+            expect(getMemberPage).toHaveBeenCalledWith(expect.objectContaining({ groupId: 1 }));
+        });
+
+        authSnapshot.currentGroup = { id: 2, name: 'Beta' };
+        rerender(
+            <QueryClientProvider client={queryClient}>
+                <MemoryRouter>
+                    <GroupSettingsPage />
+                </MemoryRouter>
+            </QueryClientProvider>,
+        );
+
+        await waitFor(() => {
+            expect(getMemberPage).toHaveBeenCalledWith(expect.objectContaining({ groupId: 2 }));
+        });
+    });
+
     it('keeps project settings focused on members and remote repository connection', async () => {
         renderWithProviders();
 
