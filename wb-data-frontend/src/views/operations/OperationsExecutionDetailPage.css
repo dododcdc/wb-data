@@ -264,6 +264,17 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
+    --logviewer-bg: #11100f;
+    --logviewer-text: #ede7dc;
+    --logviewer-muted: rgba(237, 231, 220, 0.54);
+    --logviewer-error: #ff8a8a;
+    --logviewer-warn: #f0bf69;
+    --logviewer-info: #a7c8ff;
+    --logviewer-task: rgba(237, 231, 220, 0.58);
+    --logviewer-hover: rgba(255, 255, 255, 0.05);
+    --logviewer-line-border: none;
+    --logviewer-highlight-bg: #f6d365;
+    --logviewer-highlight-text: #1b1712;
 }
 
 .operations-execution-log-tools {
@@ -338,75 +349,6 @@
     color: var(--color-text-primary);
     font: inherit;
     font-size: 0.82rem;
-}
-
-.operations-execution-log-list {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    min-height: 0;
-    margin: 0;
-    padding: 10px 0;
-    overflow: auto;
-    background: #11100f;
-    color: #ede7dc;
-    list-style: none;
-}
-
-.operations-execution-log-line {
-    display: grid;
-    grid-template-columns: 72px 54px minmax(96px, 160px) minmax(0, 1fr);
-    align-items: start;
-    gap: 10px;
-    min-height: 28px;
-    padding: 4px 14px;
-    font-family: var(--font-mono);
-    font-size: 0.76rem;
-    line-height: 1.55;
-}
-
-.operations-execution-log-line:hover {
-    background: rgba(255, 255, 255, 0.05);
-}
-
-.operations-execution-log-line time {
-    color: rgba(237, 231, 220, 0.54);
-}
-
-.operations-execution-log-level {
-    font-weight: 700;
-}
-
-.operations-execution-log-level--error {
-    color: #ff8a8a;
-}
-
-.operations-execution-log-level--warn {
-    color: #f0bf69;
-}
-
-.operations-execution-log-level--info {
-    color: #a7c8ff;
-}
-
-.operations-execution-log-task {
-    overflow: hidden;
-    color: rgba(237, 231, 220, 0.58);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.operations-execution-log-line p {
-    margin: 0;
-    min-width: 0;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
-}
-
-.operations-execution-log-line mark {
-    border-radius: 3px;
-    background: #f6d365;
-    color: #1b1712;
 }
 
 .operations-execution-log-loading {
@@ -522,11 +464,11 @@
         width: 100%;
     }
 
-    .operations-execution-log-line {
+    .operations-execution-logs .log-line {
         grid-template-columns: 64px 48px minmax(0, 1fr);
     }
 
-    .operations-execution-log-task {
+    .operations-execution-logs .log-line-task {
         display: none;
     }
 }

@@ -44,6 +44,19 @@ export function formatBrowserDateTime(value: string | Date | null | undefined) {
     return Number.isNaN(date.getTime()) ? '—' : formatLocalDateTime(date);
 }
 
+const timeOnlyFormatter = new Intl.DateTimeFormat('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+});
+
+export function formatTime(value: string | null | undefined) {
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : timeOnlyFormatter.format(date);
+}
+
 export function getBrowserTimeZoneName() {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || '浏览器本地时区';
 }
