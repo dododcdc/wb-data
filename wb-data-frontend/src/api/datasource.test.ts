@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DataSource } from './datasource';
+import type { DataSourceSavePayload } from './datasource';
 
 const requestMock = vi.hoisted(() => ({
     delete: vi.fn(),
@@ -26,7 +26,9 @@ describe('datasource API group scoping', () => {
     });
 
     it('uses the group-scoped route when updating an existing data source', async () => {
-        const payload: Partial<DataSource> = {
+        const payload: DataSourceSavePayload = {
+            name: 'hive',
+            type: 'HIVE',
             host: 'wb-data-hiveserver2',
             port: 10000,
         };

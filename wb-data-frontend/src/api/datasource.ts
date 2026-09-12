@@ -10,12 +10,24 @@ export interface DataSource {
     port?: number;
     databaseName?: string;
     username?: string;
-    password?: string;
     connectionParams: Record<string, unknown>;
     status: string;
     owner: string;
     createdAt: string;
     updatedAt: string;
+}
+
+export interface DataSourceSavePayload {
+    name: string;
+    type: string;
+    description?: string;
+    host?: string;
+    port?: number;
+    databaseName?: string;
+    username?: string;
+    password?: string;
+    connectionParams?: Record<string, unknown>;
+    owner?: string;
 }
 
 export interface PluginFieldDescriptor {
@@ -77,11 +89,11 @@ export const getDataSourceById = (id: number, groupId?: number | null) => {
     return request.get<unknown, DataSource>(path);
 };
 
-export const createDataSource = (data: Partial<DataSource>, groupId: number) => {
+export const createDataSource = (data: DataSourceSavePayload, groupId: number) => {
     return request.post<unknown, boolean>(groupScopedPath(groupId, '/datasources'), data);
 };
 
-export const updateDataSource = (id: number, data: Partial<DataSource>, groupId: number) => {
+export const updateDataSource = (id: number, data: DataSourceSavePayload, groupId: number) => {
     return request.put<unknown, boolean>(groupScopedPath(groupId, `/datasources/${id}`), data);
 };
 
