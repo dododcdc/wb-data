@@ -2,28 +2,30 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-compose_file="$repo_root/docker/docker-compose.transfer.yml"
+mysql_compose_file="$repo_root/docker/docker-compose.mysql.yml"
+transfer_compose_file="$repo_root/docker/docker-compose.transfer.yml"
 hive_compose_file="$repo_root/docker/docker-compose.hive.yml"
-metadata_mysql_host="${WB_DATA_METADATA_MYSQL_HOST:-127.0.0.1}"
-metadata_mysql_port="${WB_DATA_METADATA_MYSQL_PORT:-3306}"
 metadata_mysql_database="${WB_DATA_METADATA_MYSQL_DATABASE:-wb_data}"
-metadata_mysql_user="${WB_DATA_METADATA_MYSQL_USER:-root}"
-metadata_mysql_password="${DB_PASSWORD:-1111}"
+mysql_root_password="${WB_DATA_MYSQL_ROOT_PASSWORD:-1111}"
 backend_host_port="${WB_DATA_TRANSFER_BACKEND_HOST_PORT:-8080}"
 backend_internal_base_url="${WB_DATA_TRANSFER_INTERNAL_BASE_URL:-http://host.docker.internal:$backend_host_port}"
 kestra_url="${WB_DATA_KESTRA_BASE_URL:-http://localhost:8090}"
 kestra_username="${WB_DATA_KESTRA_USERNAME:-admin@kestra.io}"
 kestra_password="${WB_DATA_KESTRA_PASSWORD:-Admin1234!}"
 
-compose() {
-  docker compose -f "$compose_file" "$@"
+mysql_compose() {
+  docker compose -f "$mysql_compose_file" "$@"
+}
+
+mysql_in() {
+  mysql_compose exec -T -e MYSQL_PWD="$mysql_root_password" mysql mysql -h 127.0.0.1 -uroot "$@"
 }
 
 echo "Building WB-Data SeaTunnel image..."
-compose build wb-data-seatunnel
+docker compose -f "$transfer_compose_file" build wb-data-seatunnel
 
-echo "Starting transfer MySQL..."
-compose up -d wb-data-transfer-mysql
+echo "Starting Docker MySQL..."
+mysql_compose up -d
 
 echo "Starting existing Hive stack..."
 docker compose -f "$hive_compose_file" up -d
@@ -38,17 +40,19 @@ else
 fi
 
 echo "Waiting for MySQL..."
-for _ in $(seq 1 30); do
-  if compose exec -T wb-data-transfer-mysql mysqladmin ping -h localhost -uroot -pwbdata-root-dev --silent; then
+for _ in $(seq 1 40); do
+  if mysql_compose exec -T -e MYSQL_PWD="$mysql_root_password" mysql mysqladmin -h 127.0.0.1 -uroot ping --silent; then
     break
   fi
   sleep 2
 done
-compose exec -T wb-data-transfer-mysql mysqladmin ping -h localhost -uroot -pwbdata-root-dev --silent
+mysql_compose exec -T -e MYSQL_PWD="$mysql_root_password" mysql mysqladmin -h 127.0.0.1 -uroot ping --silent
+
+echo "Ensuring transfer_demo exists..."
+mysql_in < "$repo_root/scripts/dev/init/mysql/000_bootstrap.sql"
 
 echo "Applying MySQL transfer schema..."
-compose exec -T wb-data-transfer-mysql mysql -uroot -pwbdata-root-dev transfer_demo \
-  < "$repo_root/scripts/dev/init/transfer/mysql/001_schema.sql"
+mysql_in transfer_demo < "$repo_root/scripts/dev/init/transfer/mysql/001_schema.sql"
 
 echo "Waiting for Hive Metastore..."
 for _ in $(seq 1 45); do
@@ -95,33 +99,34 @@ done
 curl -sS -o /dev/null -u "$kestra_username:$kestra_password" "$kestra_url/api/v1/plugins"
 echo "Transfer tasks will call backend at $backend_internal_base_url"
 
-if ! mysql --protocol=TCP -h "$metadata_mysql_host" -P "$metadata_mysql_port" \
-  -u "$metadata_mysql_user" -p"$metadata_mysql_password" -Nse \
-  "SELECT 1 FROM wb_project_group WHERE name = 'policy' LIMIT 1" "$metadata_mysql_database" | grep -qx '1'; then
+if ! mysql_in -Nse "SELECT 1 FROM wb_project_group WHERE name = 'policy' LIMIT 1" "$metadata_mysql_database" | grep -qx '1'; then
   echo "Project group 'policy' is required before seeding transfer data sources." >&2
   exit 1
 fi
 
 echo "Seeding WB-Data transfer data sources..."
-mysql --protocol=TCP -h "$metadata_mysql_host" -P "$metadata_mysql_port" \
-  -u "$metadata_mysql_user" -p"$metadata_mysql_password" "$metadata_mysql_database" \
-  < "$repo_root/scripts/dev/seed-transfer-datasources.sql"
+mysql_in "$metadata_mysql_database" < "$repo_root/scripts/dev/seed-transfer-datasources.sql"
 
 cat <<'EOF'
 
 Transfer environment is ready.
 
-Manual validation:
-1. Start WB-Data with:
+Data source fields and host rewrite: docs/local-development.md
+Smoke steps: docs/local-integration-testing.md
+
+Start the backend with:
+   SPRING_PROFILES_ACTIVE=dev
    WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token
    WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:<backend-port>
    WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default
    WB_DATA_TRANSFER_DOCKER_VOLUMES=wb-data_hive-warehouse:/opt/hive/data/warehouse
-2. Open project group policy and confirm it_transfer_mysql and it_transfer_hive.
-3. Create a transfer node using transfer_orders_source and transfer_orders_target.
-4. Verify append and overwrite_table for MySQL, then overwrite_partition for Hive.
-5. Run a Hive-to-MySQL append transfer and check target row counts.
+   WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE=host.docker.internal
 
-Reset with:
-  docker compose -f docker/docker-compose.transfer.yml down -v
+Then confirm it_transfer_mysql / it_transfer_hive in project group policy,
+or run: WB_DATA_PASSWORD=<admin-password> scripts/dev/smoke-verify.sh
+
+Reset Hive volumes with:
+  docker compose -f docker/docker-compose.hive.yml down -v
+
+Do not down -v docker/docker-compose.mysql.yml; that volume holds wb_data.
 EOF

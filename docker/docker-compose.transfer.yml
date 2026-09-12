@@ -12,25 +12,3 @@ services:
         HIVE_JDBC_SHA1: ${WB_DATA_TRANSFER_HIVE_JDBC_SHA1:-a5b6b2f2afbb2b9d5b2bca9396d6e16da8c18edb}
     profiles:
       - build
-
-  wb-data-transfer-mysql:
-    image: ${WB_DATA_TRANSFER_MYSQL_IMAGE:-mysql:8.0}
-    container_name: wb-data-transfer-mysql
-    environment:
-      MYSQL_DATABASE: transfer_demo
-      MYSQL_USER: wbdata
-      MYSQL_PASSWORD: wbdata123
-      MYSQL_ROOT_PASSWORD: wbdata-root-dev
-    ports:
-      - "13306:3306"
-    volumes:
-      - wb-data-transfer-mysql-data:/var/lib/mysql
-      - ../scripts/dev/init/transfer/mysql/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-
-volumes:
-  wb-data-transfer-mysql-data:

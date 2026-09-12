@@ -37,7 +37,13 @@ wb-data/
 
 ## 本地启动
 
-前置依赖：JDK 21、Node.js 18+、Maven、MySQL。离线执行还需要一个可访问的 Kestra 实例。
+前置依赖：JDK 21、Node.js 18+、Maven、Docker。先起 MySQL：
+
+```bash
+docker compose -f docker/docker-compose.mysql.yml up -d
+```
+
+离线执行还需要一个可访问的 Kestra 实例。
 
 ```bash
 # 构建后端和插件
@@ -46,7 +52,7 @@ mvn clean install
 cd ..
 bash scripts/prepare-plugins.sh
 
-# 启动后端；本地开发使用 dev profile 提供本地默认值
+# 启动后端；本地开发使用 dev profile（含 host 改写默认值）
 # 首次启动空库时必须提供管理员账号
 cd wb-data-server/wb-data-backend
 SPRING_PROFILES_ACTIVE=dev \
@@ -65,10 +71,7 @@ npm run dev
 
 默认地址：前端 `http://127.0.0.1:5173`，后端 `http://127.0.0.1:8080`，Swagger UI `http://127.0.0.1:8080/swagger-ui.html`。
 
-更完整的配置和排障说明见：
-
-- [日常本地开发](docs/local-development.md)
-- [数据传输集成验证](docs/local-integration-testing.md)
+更完整的配置见 [日常本地开发](docs/local-development.md)（含本地数据源怎么填、离线任务的 host 改写）。传输冒烟见 [数据传输集成验证](docs/local-integration-testing.md)。
 
 ## 验证
 
