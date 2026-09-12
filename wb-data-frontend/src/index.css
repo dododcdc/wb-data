@@ -479,6 +479,7 @@
     background: var(--color-bg-primary);
     border: 1px solid var(--color-border);
     border-radius: 16px;
+    overflow: hidden;
     box-shadow: var(--shadow-xl);
     outline: none;
     animation: dialogContentShow 250ms cubic-bezier(0.16, 1, 0.3, 1);
