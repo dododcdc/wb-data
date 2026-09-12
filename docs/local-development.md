@@ -29,20 +29,24 @@ bash scripts/prepare-plugins.sh
 
 ## 启动后端
 
-默认配置来自 `wb-data-server/wb-data-backend/src/main/resources/application.yml`：
+配置分两层：主配置 `application.yml` 保持生产安全，敏感项（数据库密码、Kestra 凭据、插件目录、离线仓库目录）无默认值、必须通过环境变量注入；`application-dev.yml` 承接本地开发默认值，通过 `SPRING_PROFILES_ACTIVE=dev` 启用。
 
-| 配置 | 默认值 |
+dev profile 提供的本地默认值：
+
+| 配置 | dev 默认值 |
 | --- | --- |
 | 服务端口 | `8080` |
-| 元数据库 | `jdbc:mysql://localhost:3306/wb_data` |
-| Kestra | `http://localhost:8090` |
-| 离线仓库目录 | `output/offline-live/repos` |
-| 插件目录 | 仓库根目录下的 `plugins/` |
+| 元数据库 | `jdbc:mysql://localhost:3306/wb_data`，密码 `1111` |
+| Kestra | `http://localhost:8090`，账号 `admin@kestra.io` |
+| 离线仓库目录 | `output/offline-live/repos`（相对 `wb-data-backend` 启动目录） |
+| 插件目录 | `plugins/`（相对 `wb-data-backend` 启动目录，即仓库根 `plugins/`） |
+| CORS 允许来源 | `http://localhost:5173`、`http://127.0.0.1:5173` |
 
 首次启动空数据库时，必须通过环境变量创建第一个系统管理员：
 
 ```bash
 cd wb-data-server/wb-data-backend
+SPRING_PROFILES_ACTIVE=dev \
 DB_PASSWORD=<mysql-password> \
 INIT_ADMIN_USERNAME=admin \
 INIT_ADMIN_PASSWORD=<admin-password> \
@@ -50,6 +54,14 @@ java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
 ```
 
 如果 `wb_user` 已有数据，`INIT_ADMIN_*` 不会新增或覆盖账号。不要把真实密码写入仓库文件。
+
+需要从其他来源（如内网域名、Tailscale）访问前端时，通过 `WB_DATA_CORS_ORIGINS` 追加允许来源。该变量会整体替换默认值，需连同本地地址一起提供，例如：
+
+```bash
+WB_DATA_CORS_ORIGINS="http://localhost:5173,http://127.0.0.1:5173,https://your-domain.example.com"
+```
+
+个人域名属于开发者本机配置，不要提交到仓库。
 
 需要权限测试数据时，可显式启用 `dev` profile。该模式会创建 `sys_admin`、`ga_alpha`、`dev_alpha` 等测试账号，以及 `alpha`、`beta` 项目组：
 

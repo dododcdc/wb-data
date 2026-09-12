@@ -32,12 +32,16 @@ public class DevDataInitializer implements ApplicationRunner {
     @Value("${WB_DATA_SEED_DEV_DATA:false}")
     private boolean seedDevData;
 
-    @Value("${WB_DATA_DEV_DEFAULT_PASSWORD:Dev123456!}")
+    @Value("${WB_DATA_DEV_DEFAULT_PASSWORD:}")
     private String defaultPassword;
 
     @Override
     public void run(ApplicationArguments args) {
         if (!seedDevData) {
+            return;
+        }
+        if (defaultPassword == null || defaultPassword.isBlank()) {
+            log.warn("WB_DATA_SEED_DEV_DATA=true 但未配置 WB_DATA_DEV_DEFAULT_PASSWORD，跳过开发测试数据初始化");
             return;
         }
 
