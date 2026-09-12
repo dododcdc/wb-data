@@ -2,6 +2,8 @@ package com.wbdata.offline.service;
 
 import com.wbdata.offline.config.OfflineKestraProperties;
 import com.wbdata.offline.config.OfflineProperties;
+import com.wbdata.offline.config.OfflineTransferProperties;
+import com.wbdata.offline.config.TransferRunner;
 import com.wbdata.offline.dto.DebugExecutionRequest;
 import com.wbdata.offline.dto.FlowParameterSnapshot;
 import com.wbdata.offline.dto.OfflineExecutionDetailResponse;
@@ -47,6 +49,7 @@ public class OfflineExecutionService {
     private final OfflineRepoStatusService offlineRepoStatusService;
     private final FlowParameterSnapshotStore parameterSnapshotStore;
     private final ExecutionParameterSnapshotRegistry executionParameterSnapshotRegistry;
+    private final OfflineTransferProperties transferProperties;
     private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
     private final ExecutionParameterResolver parameterResolver = new ExecutionParameterResolver();
 
@@ -204,6 +207,9 @@ public class OfflineExecutionService {
     }
 
     private void validateTransferTaskRunner(String taskId) {
+        if (transferProperties.getRunner() != TransferRunner.DOCKER) {
+            return;
+        }
         if (!kestraClient.supportsTaskType(TRANSFER_DOCKER_TASK_RUNNER_TYPE)) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,

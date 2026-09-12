@@ -36,6 +36,8 @@ wbdata:
       internal-token: ${WB_DATA_TRANSFER_INTERNAL_TOKEN:}
       internal-base-url: ${WB_DATA_TRANSFER_INTERNAL_BASE_URL:}
       seatunnel-image: ${WB_DATA_TRANSFER_SEATUNNEL_IMAGE:wb-data-seatunnel:2.3.13}
+      seatunnel-home: ${WB_DATA_TRANSFER_SEATUNNEL_HOME:/opt/seatunnel}
+      runner: ${WB_DATA_TRANSFER_RUNNER:docker}
       docker-network: ${WB_DATA_TRANSFER_DOCKER_NETWORK:wb-data_default}
       docker-volumes: ${WB_DATA_TRANSFER_DOCKER_VOLUMES:}
       container-host-rewrite: ${WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE:}
