@@ -166,6 +166,14 @@ export function useFlowExecutionAndSchedule({
         }
     }, [activeFlowPath, executionRequestedByFilter, groupId, loadExecutionDetail, showFeedback]);
 
+    const openExecutionDialog = useCallback(() => {
+        setExecutions([]);
+        setActiveExecutionId(null);
+        setExecutionDetail(null);
+        setExecutionsLoading(true);
+        setExecutionDialogOpen(true);
+    }, []);
+
     useEffect(() => {
         if (!executionDialogOpen || !activeFlowPath) return;
         void refreshExecutions(null);
@@ -227,7 +235,7 @@ export function useFlowExecutionAndSchedule({
             setExecutionContextDialogOpen(false);
             setPlannedTime('');
             setParameterOverrides({});
-            setExecutionDialogOpen(true);
+            openExecutionDialog();
             await refreshExecutions(response.executionId);
         } catch (error) {
             showFeedback({
@@ -238,7 +246,7 @@ export function useFlowExecutionAndSchedule({
         } finally {
             setExecutionSubmitting(false);
         }
-    }, [activeFlowPath, canvasEdgesRef, canvasNodesRef, flowDocument, groupId, parameterOverrides, refreshExecutions, selectedTaskIds, showFeedback]);
+    }, [activeFlowPath, canvasEdgesRef, canvasNodesRef, flowDocument, groupId, openExecutionDialog, parameterOverrides, refreshExecutions, selectedTaskIds, showFeedback]);
 
     const execute = useCallback(async () => {
         if (!validateExecutionRequest()) return;
@@ -405,6 +413,7 @@ export function useFlowExecutionAndSchedule({
     return {
         executionDialogOpen,
         setExecutionDialogOpen,
+        openExecutionDialog,
         executionContextDialogOpen,
         setExecutionContextDialogOpen,
         executionTimeRequirement,

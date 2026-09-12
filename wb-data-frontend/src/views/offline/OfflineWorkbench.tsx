@@ -203,6 +203,7 @@ export default function OfflineWorkbench() {
     const {
         executionDialogOpen,
         setExecutionDialogOpen,
+        openExecutionDialog,
         executionContextDialogOpen,
         setExecutionContextDialogOpen,
         executionTimeRequirement,
@@ -685,7 +686,7 @@ export default function OfflineWorkbench() {
                         onOpenScheduleDialog={handleOpenScheduleDialog}
                         onOpenParameterDialog={() => setParameterDialogOpen(true)}
                         onExecute={() => void handleExecute()}
-                        onOpenExecutionDialog={() => setExecutionDialogOpen(true)}
+                        onOpenExecutionDialog={openExecutionDialog}
                         onAddNodeAtCanvasCenter={handleAddNodeAtCanvasCenter}
                         onDiscardStaleDraft={handleDiscardStaleDraft}
                         onRestoreStaleDraft={handleRestoreStaleDraft}
