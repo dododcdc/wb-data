@@ -48,7 +48,7 @@ export function useFlowExecutionAndSchedule({
     showFeedback,
 }: UseFlowExecutionAndScheduleParams) {
     const [executionDialogOpen, setExecutionDialogOpen] = useState(false);
-    const [executionContextDialogOpen, setExecutionContextDialogOpen] = useState(false);
+    const [executionContextDialogOpen, setExecutionContextDialogOpenState] = useState(false);
     const [plannedTime, setPlannedTime] = useState('');
     const [parameterOverrides, setParameterOverrides] = useState<Record<string, string>>({});
     const [executionSubmitting, setExecutionSubmitting] = useState(false);
@@ -87,18 +87,24 @@ export function useFlowExecutionAndSchedule({
         return () => groupIdRef.current === expectedGroupId && actionVersionRef.current === version;
     }, []);
 
+    const setExecutionContextDialogOpen = useCallback((open: boolean) => {
+        setExecutionContextDialogOpenState(open);
+        if (!open) {
+            setPlannedTime('');
+            setParameterOverrides({});
+        }
+    }, []);
+
     const resetExecutionAndSchedule = useCallback(() => {
         setSchedule(null);
         setScheduleCron('');
         setScheduleDialogOpen(false);
         setExecutionContextDialogOpen(false);
-        setPlannedTime('');
-        setParameterOverrides({});
         setExecutionDialogOpen(false);
         setExecutions([]);
         setActiveExecutionId(null);
         setExecutionDetail(null);
-    }, []);
+    }, [setExecutionContextDialogOpen]);
 
     const loadExecutionDetail = useCallback(async (executionId: string, silent = false) => {
         if (!groupId) return;
@@ -246,11 +252,12 @@ export function useFlowExecutionAndSchedule({
         } finally {
             setExecutionSubmitting(false);
         }
-    }, [activeFlowPath, canvasEdgesRef, canvasNodesRef, flowDocument, groupId, openExecutionDialog, parameterOverrides, refreshExecutions, selectedTaskIds, showFeedback]);
+    }, [activeFlowPath, canvasEdgesRef, canvasNodesRef, flowDocument, groupId, openExecutionDialog, parameterOverrides, refreshExecutions, selectedTaskIds, setExecutionContextDialogOpen, showFeedback]);
 
     const execute = useCallback(async () => {
         if (!validateExecutionRequest()) return;
         if (executionTimeRequirement.requiresConfiguration) {
+            setParameterOverrides({});
             if (executionTimeRequirement.requiresPlannedTime) {
                 setPlannedTime(defaultPlannedTimeValue(executionTimeRequirement.timezone));
             }
@@ -258,7 +265,7 @@ export function useFlowExecutionAndSchedule({
             return;
         }
         await submitExecution();
-    }, [executionTimeRequirement.requiresConfiguration, executionTimeRequirement.requiresPlannedTime, executionTimeRequirement.timezone, submitExecution, validateExecutionRequest]);
+    }, [executionTimeRequirement.requiresConfiguration, executionTimeRequirement.requiresPlannedTime, executionTimeRequirement.timezone, setExecutionContextDialogOpen, submitExecution, validateExecutionRequest]);
 
     const confirmExecution = useCallback(async () => {
         if (!validateExecutionRequest()) return;
@@ -323,6 +330,7 @@ export function useFlowExecutionAndSchedule({
         const loadVersion = scheduleLoadVersionRef.current + 1;
         scheduleLoadVersionRef.current = loadVersion;
         setSchedule(null);
+        setScheduleCron('');
 
         const draftSchedule = draftSession?.path === path
             ? draftSession.workingDraft.schedule

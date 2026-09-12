@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     ChevronLeft,
@@ -59,6 +59,10 @@ export default function GroupSettingsPage() {
     const addedMemberCountRef = useRef(0);
     const [activeTab, setActiveTab] = useState<'members' | 'git' | 'local' | 'kestra'>('members');
 
+    const memberTableParams = useMemo(() => (
+        groupId == null ? undefined : { groupId }
+    ), [groupId]);
+
     const {
         data: records,
         total,
@@ -67,21 +71,12 @@ export default function GroupSettingsPage() {
         pagination,
         search,
     } = useDataTable<MemberRecord, { groupId: number }>({
-        queryKey: ['group-settings-members'],
+        queryKey: ['group-settings-members', groupId],
         fetchFn: getMemberPage,
-        defaultParams: { groupId: groupId! },
+        defaultParams: memberTableParams,
         initialPageSize: DEFAULT_PAGE_SIZE,
         syncWithUrl: true,
     });
-
-    // 监听 groupId 变化
-    useEffect(() => {
-        if (groupId) {
-            // useDataTable doesn't automatically react to defaultParams change in current implementation
-            // but we can pass it as a separate param if we wanted.
-            // For now, assume groupId is stable or handle it via setExtraParams if needed.
-        }
-    }, [groupId]);
 
     // 处理搜索框本地输入与同步
     useEffect(() => {

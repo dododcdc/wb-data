@@ -267,7 +267,10 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         }
 
         const currentSession = draftSessionRef.current;
-        if (!options?.skipLeaveCurrent && currentSession && currentSession.path !== normalizedPath) {
+        const isSwitchingFlow = Boolean(
+            !options?.skipLeaveCurrent && currentSession && currentSession.path !== normalizedPath,
+        );
+        if (isSwitchingFlow && currentSession) {
             if (!options?.force && !options?.canLeaveDirty && hasFlowDraftChanges(currentSession)) {
                 return false;
             }
@@ -280,6 +283,9 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             if (!isCurrentGroupAction()) return false;
             applyFlowDocumentPayload(normalizedPath, payload, options);
             didApplyFlowDocument = true;
+            if (isSwitchingFlow) {
+                resetExecutionAndSchedule?.();
+            }
             await loadScheduleSnapshot(normalizedPath);
             if (!isCurrentGroupAction()) return false;
             return true;
@@ -305,6 +311,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         groupId,
         leaveCurrentFlow,
         loadScheduleSnapshot,
+        resetExecutionAndSchedule,
         showFeedback,
     ]);
 

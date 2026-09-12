@@ -104,6 +104,62 @@ describe('useFlowExecutionAndSchedule', () => {
         expect(result.current.schedule?.enabled).toBe(true);
     });
 
+    it('clears the previous cron before the next Flow schedule finishes loading', async () => {
+        const offlineApi = await import('../../api/offline');
+        const nextPath = '_flows/jack/next/flow.yaml';
+        let resolveSchedule: ((value: Awaited<ReturnType<typeof offlineApi.getOfflineSchedule>>) => void) | undefined;
+        vi.mocked(offlineApi.getOfflineSchedule).mockImplementation(() => new Promise((resolve) => {
+            resolveSchedule = resolve;
+        }));
+        const { result } = renderExecutionAndSchedule({
+            activeFlowPath: nextPath,
+            draftSession: makeSession({ ...makeDocument(), path: nextPath }),
+        });
+
+        act(() => {
+            result.current.setScheduleCron('0 5 * * *');
+        });
+
+        let loadPromise: Promise<void> | undefined;
+        act(() => {
+            loadPromise = result.current.loadScheduleSnapshot(nextPath);
+        });
+
+        expect(result.current.scheduleCron).toBe('');
+
+        await act(async () => {
+            resolveSchedule?.({
+                groupId: 1,
+                path: nextPath,
+                triggerId: 'schedule',
+                cron: '0 7 * * *',
+                timezone: 'Asia/Shanghai',
+                enabled: false,
+                contentHash: 'hash-next',
+                fileUpdatedAt: 2,
+            });
+            await loadPromise;
+        });
+
+        expect(result.current.scheduleCron).toBe('0 7 * * *');
+    });
+
+    it('does not keep the previous cron when schedule loading fails', async () => {
+        const offlineApi = await import('../../api/offline');
+        vi.mocked(offlineApi.getOfflineSchedule).mockRejectedValue(new Error('schedule unavailable'));
+        const { result } = renderExecutionAndSchedule();
+
+        act(() => {
+            result.current.setScheduleCron('0 5 * * *');
+        });
+
+        await act(async () => {
+            await result.current.loadScheduleSnapshot('_flows/jack/test/flow.yaml');
+        });
+
+        expect(result.current.scheduleCron).toBe('');
+    });
+
     it('does not reuse a different Flow draft schedule when switching flows', async () => {
         const offlineApi = await import('../../api/offline');
         const previousDocument = {
@@ -309,6 +365,50 @@ describe('useFlowExecutionAndSchedule', () => {
         expect(offlineApi.createOfflineDocumentDebugExecution).toHaveBeenCalledWith(
             expect.objectContaining({ parameterOverrides: { tenant_name: '' } }),
         );
+    });
+
+    it('discards parameter overrides when the execution context dialog is cancelled', async () => {
+        const document: OfflineFlowDocument = {
+            ...makeDocument(),
+            parameterBinding: {
+                parameterGroupId: 12,
+                code: 'daily_common',
+                name: '日常参数',
+                boundVersion: 3,
+                currentVersion: 3,
+                status: 'CURRENT',
+                definitions: [{
+                    key: 'tenant_name',
+                    valueSource: 'CONSTANT',
+                    constantValue: 'tom',
+                    offsetDays: 0,
+                    sortOrder: 0,
+                }],
+            },
+        };
+        const { result } = renderExecutionAndSchedule({
+            draftSession: makeSession(document),
+            flowDocument: document,
+        });
+
+        await act(async () => {
+            await result.current.execute();
+        });
+        act(() => {
+            result.current.setParameterOverrides({ tenant_name: 'override' });
+        });
+        act(() => {
+            result.current.setExecutionContextDialogOpen(false);
+        });
+
+        expect(result.current.parameterOverrides).toEqual({});
+
+        await act(async () => {
+            await result.current.execute();
+        });
+
+        expect(result.current.executionContextDialogOpen).toBe(true);
+        expect(result.current.parameterOverrides).toEqual({});
     });
 
     it('includes saved transfer configuration when debugging a selected transfer node', async () => {
