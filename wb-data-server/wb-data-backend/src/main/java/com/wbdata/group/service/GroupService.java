@@ -13,7 +13,6 @@ import com.wbdata.group.entity.WbProjectGroupMember;
 import com.wbdata.group.mapper.WbProjectGroupMapper;
 import com.wbdata.group.mapper.WbProjectGroupMemberMapper;
 import com.wbdata.offline.config.OfflineProperties;
-import com.wbdata.user.dto.GroupSimpleResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -36,15 +35,6 @@ public class GroupService {
     private final WbProjectGroupMapper groupMapper;
     private final WbProjectGroupMemberMapper groupMemberMapper;
     private final OfflineProperties offlineProperties;
-
-    public List<GroupSimpleResponse> listAll() {
-        LambdaQueryWrapper<WbProjectGroup> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(WbProjectGroup::getStatus, "active");
-        List<WbProjectGroup> groups = groupMapper.selectList(wrapper);
-        return groups.stream()
-                .map(GroupSimpleResponse::from)
-                .collect(Collectors.toList());
-    }
 
     public PageResult<GroupDetailResponse> listGroups(PageQuery query) {
         Page<WbProjectGroup> pageParam = query.toMyBatisPage();
