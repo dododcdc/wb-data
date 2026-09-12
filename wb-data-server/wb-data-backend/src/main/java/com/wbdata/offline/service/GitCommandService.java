@@ -1,7 +1,5 @@
 package com.wbdata.offline.service;
 
-import com.wbdata.git.service.GitConfigService;
-import com.wbdata.git.service.provider.GitRemoteProvider;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.dto.BranchItemResponse;
 import com.wbdata.offline.dto.BranchListResponse;
@@ -32,7 +30,7 @@ import java.util.concurrent.TimeUnit;
 public class GitCommandService {
 
     private final OfflineProperties offlineProperties;
-    private final GitConfigService gitConfigService;
+    private final OfflineGitRemotePort gitRemotePort;
     private final OfflineFlowDocumentService offlineFlowDocumentService;
     private final RepoLockManager repoLockManager;
     private ApplicationEventPublisher applicationEventPublisher = event -> {};
@@ -295,7 +293,6 @@ public class GitCommandService {
     }
 
     private PushResult pushUnlocked(Long groupId) {
-        GitRemoteProvider provider = gitConfigService.getProvider(groupId);
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
         ensureRepoExists(repoPath);
 
@@ -303,19 +300,19 @@ public class GitCommandService {
         String currentRemote = getCurrentRemote(repoPath);
 
         // 检测配置是否切换，切换时清理旧 remote
-        currentRemote = clearStaleRemote(repoPath, currentRemote, provider, repoName);
+        currentRemote = clearStaleRemote(repoPath, currentRemote, groupId, repoName);
 
         boolean remoteCreated = false;
         if (currentRemote == null) {
             // 首次推送：创建远程仓库 + 添加 remote
-            provider.createRepository(repoName, true);
-            String pushUrl = provider.buildPushUrl(repoName);
+            gitRemotePort.createRepository(groupId, repoName, true);
+            String pushUrl = gitRemotePort.buildPushUrl(groupId, repoName);
             runGit(repoPath, "remote", "add", "origin", pushUrl);
             currentRemote = pushUrl;
             remoteCreated = true;
         } else {
             // 已有 remote，检查远程仓库是否仍然存在
-            if (!provider.repositoryExists(repoName)) {
+            if (!gitRemotePort.repositoryExists(groupId, repoName)) {
                 return new PushResult(false, "远程仓库已不存在", null, false, true);
             }
         }
@@ -335,7 +332,7 @@ public class GitCommandService {
             }
         }
 
-        String displayUrl = provider.buildDisplayUrl(repoName);
+        String displayUrl = gitRemotePort.buildDisplayUrl(groupId, repoName);
         publishPushedEvent(groupId, repoPath);
         return new PushResult(true, "推送成功", displayUrl, remoteCreated, false);
     }
@@ -348,7 +345,6 @@ public class GitCommandService {
     }
 
     private PushResult rebuildUnlocked(Long groupId) {
-        GitRemoteProvider provider = gitConfigService.getProvider(groupId);
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
         ensureRepoExists(repoPath);
 
@@ -361,14 +357,14 @@ public class GitCommandService {
         }
 
         // 重建远程仓库
-        provider.createRepository(repoName, true);
-        String pushUrl = provider.buildPushUrl(repoName);
+        gitRemotePort.createRepository(groupId, repoName, true);
+        String pushUrl = gitRemotePort.buildPushUrl(groupId, repoName);
         runGit(repoPath, "remote", "add", "origin", pushUrl);
 
         // git push
         runGit(repoPath, "push", "-u", "origin", "HEAD");
 
-        String displayUrl = provider.buildDisplayUrl(repoName);
+        String displayUrl = gitRemotePort.buildDisplayUrl(groupId, repoName);
         publishPushedEvent(groupId, repoPath);
         return new PushResult(true, "推送成功", displayUrl, true, false);
     }
@@ -384,8 +380,7 @@ public class GitCommandService {
 
     /** 获取当前 remote URL（不含 token） */
     public String getRemoteUrl(Long groupId) {
-        GitRemoteProvider provider = gitConfigService.getProviderIfConfigured(groupId);
-        if (provider == null) {
+        if (!gitRemotePort.isConfigured(groupId)) {
             return null;
         }
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
@@ -393,7 +388,7 @@ public class GitCommandService {
         if (remote == null) {
             return null;
         }
-        return provider.buildDisplayUrl("wb-data-" + groupId);
+        return gitRemotePort.buildDisplayUrl(groupId, "wb-data-" + groupId);
     }
 
     /** 是否已关联远程仓库 */
@@ -403,23 +398,23 @@ public class GitCommandService {
     }
 
     /** 检测旧 remote 是否指向当前 provider/base_url/owner，错误则清理 */
-    private String clearStaleRemote(Path repoPath, String currentRemote, GitRemoteProvider provider, String repoName) {
+    private String clearStaleRemote(Path repoPath, String currentRemote, Long groupId, String repoName) {
         if (currentRemote == null) {
             return null;
         }
 
-        if (!isConfiguredRemote(currentRemote, provider, repoName)) {
+        if (!isConfiguredRemote(currentRemote, groupId, repoName)) {
             runGit(repoPath, "remote", "remove", "origin");
             return null;
         }
         return currentRemote;
     }
 
-    private boolean isConfiguredRemote(String currentRemote, GitRemoteProvider provider, String repoName) {
+    private boolean isConfiguredRemote(String currentRemote, Long groupId, String repoName) {
         String current = canonicalRemoteUrl(currentRemote);
         return !current.isBlank()
-                && (current.equals(canonicalRemoteUrl(provider.buildPushUrl(repoName)))
-                || current.equals(canonicalRemoteUrl(provider.buildDisplayUrl(repoName))));
+                && (current.equals(canonicalRemoteUrl(gitRemotePort.buildPushUrl(groupId, repoName)))
+                || current.equals(canonicalRemoteUrl(gitRemotePort.buildDisplayUrl(groupId, repoName))));
     }
 
     private String canonicalRemoteUrl(String remoteUrl) {
