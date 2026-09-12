@@ -83,7 +83,7 @@ API 层：12 个文件全部走 `utils/request.ts` 共享实例（Bearer 注入�
 - [ ] **P1-1 git ↔ offline 包级循环依赖**：`GitSyncConfigService.java:11-15` 依赖 offline 的 `KestraClient`/`GitCommandService`，`GitCommandService.java:3-4` 反向依赖 git 包。Spring 运行时绕开，编译期已成环。
 - [ ] **P1-2 common 反向依赖业务包**：`GlobalExceptionHandler.java:4-5` 引入 offline 的 DTO/异常，`WebMvcConfig.java:3` 引入 auth 的 resolver。地基压在上层建筑上。
 - [ ] **P1-3 offline 域体积失控**：后端 Top4 大文件全在 offline（`OfflineFlowDocumentService` 977 行、`OfflineFlowYamlSupport` 813、`GitCommandService` 705、`KestraHttpClient` 633）；前端 Top5 中 4 个在 views/offline（`TransferNodeDialog` 971、`OfflineWorkbench` 909、`useFlowEditingSession` 823、`FlowCanvas` 670；另有 `DataSourceForm` 748）。建议优先拆 `OfflineFlowDocumentService`。
-- [ ] **P1-4 execution 概念双轨制**：`/offline/executions` 与 `/operations/executions` 两套 API；`OperationsExecutionLogEntry` 与 `OfflineExecutionLogEntry` 逐字段相同仅改名；前端 `ExecutionDetailPage`（270 行）与 `OperationsExecutionDetailPage`（443 行）两份近似实现，`OperationsCenter.tsx:26` 反向 import offline 的 `executionPresentation`。需要裁决：共享 execution 抽象，或合并。
+- [x] **P1-4 execution 概念双轨制**（2026-09-12 按 B 方案"共享核心、保留两入口"整改）：① 后端 `LogEntry`/`TaskRun` 合并为共享 `ExecutionLogEntry`/`ExecutionTaskRun`，Kestra 客户端接口与模型抽到 `offline.kestra` 子包（实现 `KestraHttpClient` 因依赖包私有 YAML 支持留在 offline.service）；② 前端 `executionPresentation` 移到 `components/execution`，`OperationsExecutionDetailPage` 删除本地重写 helper，`isUserTaskId`/`computeLogLevelCounts` 三份合一；③ 两个详情页日志区统一共享虚拟化 `LogViewer`（颜色变量化，operations 深色主题经容器变量覆盖保留），**顺带修复日志高亮的 dangerouslySetInnerHTML XSS 隐患**。两轨场景语义（DEBUG vs 生产、停止 vs 重跑）经调研确认为真实分工，URL/权限/路由未动。
 - [ ] **P1-5 operations 无独立权限**：`router/index.tsx:177,248` 借用 `offline.read`，运维与开发权限未分离，后续收紧成本高。
 
 ### P2 一致性/卫生，可随手清理
