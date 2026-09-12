@@ -7,7 +7,7 @@ const requestMock = vi.hoisted(() => ({
     post: vi.fn(),
 }));
 
-vi.mock('../../utils/request', () => ({
+vi.mock('../utils/request', () => ({
     default: requestMock,
 }));
 
@@ -18,7 +18,7 @@ import {
     getGitSyncConfigs,
     testGitConnection,
     updateGitSyncConfigStatus,
-} from './gitSettingsApi';
+} from './gitSettings';
 
 describe('git settings API group-scoped routes', () => {
     beforeEach(() => {

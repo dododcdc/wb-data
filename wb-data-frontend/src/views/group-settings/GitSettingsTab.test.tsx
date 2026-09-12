@@ -18,7 +18,7 @@ const {
   testGitConnection: vi.fn(),
 }));
 
-vi.mock('./gitSettingsApi', () => ({
+vi.mock('../../api/gitSettings', () => ({
   getGitConfig,
   saveGitConfig,
   deleteGitConfig,

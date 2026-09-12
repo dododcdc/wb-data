@@ -11,7 +11,7 @@ import {
     triggerGitSyncConfig,
     updateGitSyncConfigStatus,
     type GitSyncConfig,
-} from './gitSettingsApi';
+} from '../../api/gitSettings';
 import { Button } from '../../components/ui/button';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 
