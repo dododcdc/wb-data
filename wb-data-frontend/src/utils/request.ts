@@ -19,6 +19,9 @@ request.interceptors.request.use(
 
 request.interceptors.response.use(
     (response) => {
+        if (response.config.responseType === 'blob') {
+            return response.data;
+        }
         const res = response.data;
         if (res.code === 200 || res.code === 0 || res.success) {
             return res.data;

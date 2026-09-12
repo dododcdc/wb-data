@@ -14,7 +14,7 @@ import {
     getQueryExportTaskDownloadUrl,
     QueryExportTask,
 } from '../../../api/query';
-import { getToken } from '../../../utils/auth';
+import request from '../../../utils/request';
 import {
     QUERY_EXECUTION_TIMEOUT_MS,
     PINNED_RESULT_LIMIT,
@@ -70,15 +70,17 @@ interface UseQueryExecutionParams {
 
 const DOWNLOAD_ERROR_MESSAGE = '导出文件下载失败，请稍后重试。';
 
-async function resolveDownloadErrorMessage(response: Response) {
-    const readableResponse = typeof response.clone === 'function' ? response.clone() : response;
-    const bodyText = (await readableResponse.text()).trim();
+async function resolveDownloadErrorMessage(error: unknown) {
+    const data = (error as { response?: { data?: unknown } }).response?.data;
+    if (!(data instanceof Blob)) return DOWNLOAD_ERROR_MESSAGE;
+
+    const bodyText = (await data.text()).trim();
     if (!bodyText) return DOWNLOAD_ERROR_MESSAGE;
 
     try {
-        const data = JSON.parse(bodyText) as { message?: unknown };
-        if (typeof data.message === 'string' && data.message.trim()) {
-            return data.message.trim();
+        const parsed = JSON.parse(bodyText) as { message?: unknown };
+        if (typeof parsed.message === 'string' && parsed.message.trim()) {
+            return parsed.message.trim();
         }
         return DOWNLOAD_ERROR_MESSAGE;
     } catch {
@@ -380,15 +382,9 @@ export function useQueryExecution(params: UseQueryExecutionParams) {
 
     const downloadExportTask = useCallback(async (taskId: string) => {
         try {
-            const response = await fetch(getQueryExportTaskDownloadUrl(taskId), {
-                headers: {
-                    Authorization: `Bearer ${getToken()}`,
-                },
+            const blob = await request.get<unknown, Blob>(getQueryExportTaskDownloadUrl(taskId), {
+                responseType: 'blob',
             });
-            if (!response.ok) {
-                throw new Error(await resolveDownloadErrorMessage(response));
-            }
-            const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
@@ -401,9 +397,7 @@ export function useQueryExecution(params: UseQueryExecutionParams) {
             showFeedback({
                 tone: 'error',
                 title: '下载失败',
-                detail: error instanceof Error && error.message
-                    ? error.message
-                    : DOWNLOAD_ERROR_MESSAGE,
+                detail: await resolveDownloadErrorMessage(error),
             });
         }
     }, [showFeedback]);

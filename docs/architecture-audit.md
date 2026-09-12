@@ -88,11 +88,11 @@ API 层：12 个文件全部走 `utils/request.ts` 共享实例（Bearer 注入�
 
 ### P2 一致性/卫生，可随手清理
 
-- [ ] **P2-1 V16 孤儿列**：`wb_parameter_definition` 的 `data_type`、`timezone`、`offset_amount`、`offset_unit` 未 DROP，实体已不含这些字段（按"不做向后兼容"原则可直接 V18 删列）。`version`/`revision` 双概念并存也值得裁决保留哪个。
+- [x] **P2-1 V16 孤儿列**（2026-09-12 随 V19 删除）：`wb_parameter_definition` 的 `data_type`、`timezone`、`offset_amount`、`offset_unit` 已 DROP。遗留：`version`/`revision` 双概念并存仍待裁决。
 - [ ] **P2-2 group 域拆进两个包**：项目组主端点 `GroupController` 在 `user/controller/`，设置在 `group/controller/`；且 group 包内 Service 风格不一（具体类 vs 接口+Impl）。
 - [ ] **P2-3 命名不一致**：`datasource` 表无 `wb_` 前缀；DTO 后缀混乱（部分无 Request/Response 后缀）；api 文件单复数混用（datasource.ts vs parameterGroups.ts）；views 仅 `group-settings` 用 kebab-case；页面后缀 List/Page/Center 三种并存；Flow 文档后端叫 document、前端混用 flow/draft/editingSession；前端"工作区"对应后端 repo。
-- [ ] **P2-4 重复实现**：选择器组件 5 套（ui/select、ui/combobox、ui/search-autocomplete、SimpleSelect、SearchableCombobox）；分页工具 3 套写法；`gitSettingsApi.ts` 落在 view 目录；`useQueryExecution.ts:383` 裸 fetch 下载并手工拼 Authorization 头；view 层多处直接 import `AxiosError`。
-- [ ] **P2-5 死目录/杂散文件**：`src/pages/GroupSettingsPage/` 仅剩 CLAUDE.md 的空壳；`docs/**` 误建目录（内含一个 CLAUDE.md）；`docs/refactor`、`docs/validation` 空目录；后端包内混入 `CLAUDE.md`（如 `group/entity/CLAUDE.md`、`user/dto/CLAUDE.md`）。
+- [x] **P2-4 重复实现**（2026-09-12 小项已收敛）：分页工具三套写法已统一到 `utils/pagination.ts`（group-settings 删复制实现，datasources 修复 `?size=5` 被静默重置的缺陷）；`gitSettingsApi.ts` 已挪入 `src/api/gitSettings.ts`；导出下载改走共享 axios 实例（request.ts 拦截器支持 blob 直通）。遗留：选择器组件 5 套合并（工作量大，单独专项）；view 层直接 import `AxiosError`。
+- [x] **P2-5 死目录/杂散文件**（2026-09-12 清理）：核实后这些 `CLAUDE.md` 均为 claude-mem 本地生成物，本就命中 `.gitignore` 的 `**/CLAUDE.md` 规则未入库；`docs/**`、`docs/refactor`、`docs/validation`、`src/pages/` 空壳同为本地残留。已全部本地删除，无仓库变更。
 
 ### P3 测试空洞
 
