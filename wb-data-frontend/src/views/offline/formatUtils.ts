@@ -10,25 +10,11 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
     hour12: false,
 });
 
-const timeOnlyFormatter = new Intl.DateTimeFormat('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-});
-
 export function formatDateTime(value: string | null | undefined) {
     if (!value) return '—';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return dateFormatter.format(date).replace(/\//g, '-');
-}
-
-export function formatTime(value: string | null | undefined) {
-    if (!value) return '—';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return timeOnlyFormatter.format(date);
 }
 
 export function formatDuration(start: string | null, end: string | null) {

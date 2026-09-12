@@ -26,6 +26,7 @@ import {
     isRunningStatus,
     isUserTaskId,
 } from '../../components/execution/executionPresentation';
+import LogViewer, { type LogViewerItem } from '../../components/execution/LogViewer';
 import './OperationsExecutionDetailPage.css';
 import { OperationsRerunDialog } from './OperationsRerunDialog';
 
@@ -51,43 +52,6 @@ function formatDuration(durationMs: number | null | undefined) {
 function pickDefaultTaskId(taskRuns: OperationsExecutionTaskRun[]) {
     const failedTask = taskRuns.find((task) => getStatusTone(task.status) === 'failed');
     return failedTask?.taskId ?? taskRuns[0]?.taskId ?? null;
-}
-
-function formatLogTime(timestamp: string | null | undefined) {
-    if (!timestamp) return '—';
-    return new Intl.DateTimeFormat('zh-CN', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-    }).format(new Date(timestamp));
-}
-
-function renderHighlightedMessage(message: string, query: string) {
-    const normalizedQuery = query.trim();
-    if (!normalizedQuery) return message;
-
-    const lowerMessage = message.toLowerCase();
-    const lowerQuery = normalizedQuery.toLowerCase();
-    const parts: React.ReactNode[] = [];
-    let cursor = 0;
-    let next = lowerMessage.indexOf(lowerQuery);
-
-    while (next !== -1) {
-        if (next > cursor) {
-            parts.push(message.slice(cursor, next));
-        }
-        const end = next + normalizedQuery.length;
-        parts.push(<mark key={`${next}-${end}`}>{message.slice(next, end)}</mark>);
-        cursor = end;
-        next = lowerMessage.indexOf(lowerQuery, cursor);
-    }
-
-    if (cursor < message.length) {
-        parts.push(message.slice(cursor));
-    }
-
-    return parts;
 }
 
 function TaskStatus({ status }: { status: string | null | undefined }) {
@@ -202,15 +166,20 @@ export default function OperationsExecutionDetailPage() {
 
     const logs = logsQuery.data ?? EMPTY_LOGS;
     const levelCounts = useMemo(() => computeLogLevelCounts(logs), [logs]);
-    const filteredLogs = useMemo(() => {
-        const query = searchText.trim().toLowerCase();
-        return logs.filter((log) => {
-            const level = log.level ?? 'INFO';
-            if (activeLevels.size > 0 && !activeLevels.has(level)) return false;
-            if (query && !(log.message ?? '').toLowerCase().includes(query)) return false;
-            return true;
-        });
-    }, [activeLevels, logs, searchText]);
+    const logItems = useMemo<LogViewerItem[]>(() => {
+        return logs
+            .filter((log) => {
+                const level = log.level ?? 'INFO';
+                return activeLevels.size === 0 || activeLevels.has(level);
+            })
+            .map((log, index) => ({
+                timestamp: log.timestamp ?? '',
+                level: log.level ?? 'INFO',
+                taskId: log.taskId ?? 'flow',
+                message: log.message ?? '',
+                index,
+            }));
+    }, [activeLevels, logs]);
 
     const canRerun = Boolean(detail?.rerunnable && (systemAdmin || permissions.includes('offline.write')));
     const isRefreshing = detailQuery.isRefetching || logsQuery.isRefetching;
@@ -374,23 +343,12 @@ export default function OperationsExecutionDetailPage() {
                                 <span>日志加载失败。</span>
                                 <button type="button" onClick={() => void logsQuery.refetch()}>重试</button>
                             </div>
-                        ) : filteredLogs.length === 0 ? (
-                            <div className="operations-execution-empty-inline">暂无日志。</div>
                         ) : (
-                            <ol className="operations-execution-log-list">
-                                {filteredLogs.map((log, index) => {
-                                    const level = log.level ?? 'INFO';
-                                    const message = log.message ?? '';
-                                    return (
-                                        <li key={`${log.timestamp ?? 'log'}-${index}`} className="operations-execution-log-line">
-                                            <time>{formatLogTime(log.timestamp)}</time>
-                                            <span className={`operations-execution-log-level operations-execution-log-level--${level.toLowerCase()}`}>{level}</span>
-                                            <span className="operations-execution-log-task" title={log.taskId ?? ''}>{log.taskId ?? 'flow'}</span>
-                                            <p>{renderHighlightedMessage(message, searchText)}</p>
-                                        </li>
-                                    );
-                                })}
-                            </ol>
+                            <LogViewer
+                                items={logItems}
+                                searchQuery={searchText}
+                                currentMatchPosition={-1}
+                            />
                         )}
                     </section>
                 </section>

@@ -13,7 +13,7 @@ import { isRunningStatus, isUserTaskId, computeLogLevelCounts } from '../../comp
 import ExecutionTopBar from './ExecutionTopBar';
 import ExecutionNodeTabs from './ExecutionNodeTabs';
 import LogToolbar from './LogToolbar';
-import LogViewer, { type LogViewerHandle, type LogViewerItem } from './LogViewer';
+import LogViewer, { type LogViewerHandle, type LogViewerItem } from '../../components/execution/LogViewer';
 import './ExecutionDetailPage.css';
 
 function getFirstVisibleTaskId(taskRuns: { taskId: string }[]) {

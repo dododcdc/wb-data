@@ -1,7 +1,8 @@
-// wb-data-frontend/src/views/offline/LogViewer.tsx
 import { useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
+import type { ReactNode } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
-import { formatTime } from './formatUtils';
+import { formatTime } from '../../lib/dateTime';
+import './LogViewer.css';
 
 export interface LogViewerItem {
     timestamp: string;
@@ -15,17 +16,37 @@ interface LogViewerProps {
     items: LogViewerItem[];
     searchQuery: string;
     currentMatchPosition: number;
-    onAtBottomChange: (atBottom: boolean) => void;
+    onAtBottomChange?: (atBottom: boolean) => void;
 }
 
-function highlightMatches(text: string, query: string, isCurrent: boolean) {
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(${escaped})`, 'gi');
-    const parts = text.split(regex);
-    const cls = isCurrent ? 'log-highlight-current' : 'log-highlight';
-    return parts.map((part) =>
-        regex.test(part) ? `<mark class="${cls}">${part}</mark>` : part
-    ).join('');
+function renderHighlightedMessage(text: string, query: string, isCurrent: boolean): ReactNode {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) return text;
+
+    const lowerText = text.toLowerCase();
+    const lowerQuery = normalizedQuery.toLowerCase();
+    const parts: ReactNode[] = [];
+    let cursor = 0;
+    let next = lowerText.indexOf(lowerQuery);
+
+    while (next !== -1) {
+        if (next > cursor) {
+            parts.push(text.slice(cursor, next));
+        }
+        const end = next + normalizedQuery.length;
+        parts.push(
+            <mark key={`${next}-${end}`} className={isCurrent ? 'log-highlight-current' : 'log-highlight'}>
+                {text.slice(next, end)}
+            </mark>,
+        );
+        cursor = end;
+        next = lowerText.indexOf(lowerQuery, cursor);
+    }
+
+    if (cursor < text.length) {
+        parts.push(text.slice(cursor));
+    }
+    return parts;
 }
 
 export interface LogViewerHandle {
@@ -41,7 +62,7 @@ const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer
 
     const handleAtBottomStateChange = useCallback(
         (atBottom: boolean) => {
-            onAtBottomChange(atBottom);
+            onAtBottomChange?.(atBottom);
         },
         [onAtBottomChange],
     );
@@ -65,12 +86,8 @@ const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer
                 <div className="log-line">
                     <span className="log-line-time">{formatTime(item.timestamp) || '—'}</span>
                     <span className={`log-line-level is-${item.level.toLowerCase()}`}>{item.level}</span>
-                    <p
-                        className="log-line-msg"
-                        dangerouslySetInnerHTML={{
-                            __html: searchQuery ? highlightMatches(item.message, searchQuery, isCurrentMatch) : item.message,
-                        }}
-                    />
+                    <span className="log-line-task" title={item.taskId}>{item.taskId}</span>
+                    <p className="log-line-msg">{renderHighlightedMessage(item.message, searchQuery, isCurrentMatch)}</p>
                 </div>
             );
         },

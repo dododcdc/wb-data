@@ -26,6 +26,15 @@ vi.mock('../../hooks/useOperationFeedback', () => ({
     useOperationFeedback: () => ({ showFeedback }),
 }));
 
+vi.mock('react-virtuoso', () => ({
+    Virtuoso: ({ data, itemContent }: {
+        data: unknown[];
+        itemContent: (index: number, item: unknown) => React.ReactNode;
+    }) => (
+        <div>{data.map((item, index) => <div key={index}>{itemContent(index, item)}</div>)}</div>
+    ),
+}));
+
 const getOperationsExecutionMock = vi.mocked(getOperationsExecution);
 const getOperationsExecutionLogsMock = vi.mocked(getOperationsExecutionLogs);
 const rerunOperationsExecutionMock = vi.mocked(rerunOperationsExecution);
