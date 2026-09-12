@@ -11,7 +11,7 @@ import com.wbdata.git.entity.WbGitSyncConfig;
 import com.wbdata.git.mapper.WbGitSyncConfigMapper;
 import com.wbdata.offline.config.OfflineKestraProperties;
 import com.wbdata.offline.service.GitCommandService;
-import com.wbdata.offline.service.KestraClient;
+import com.wbdata.offline.kestra.KestraClient;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;

@@ -1,8 +1,8 @@
-package com.wbdata.operations.dto;
+package com.wbdata.offline.kestra;
 
 import java.time.Instant;
 
-public record OperationsExecutionLogEntry(
+public record KestraLogEntry(
         Instant timestamp,
         String taskId,
         String level,

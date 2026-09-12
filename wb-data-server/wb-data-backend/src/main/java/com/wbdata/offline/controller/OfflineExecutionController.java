@@ -9,7 +9,7 @@ import com.wbdata.offline.dto.DebugDocumentExecutionRequest;
 import com.wbdata.offline.dto.DebugExecutionRequest;
 import com.wbdata.offline.dto.OfflineExecutionDetailResponse;
 import com.wbdata.offline.dto.OfflineExecutionListItem;
-import com.wbdata.offline.dto.OfflineExecutionLogEntry;
+import com.wbdata.offline.dto.ExecutionLogEntry;
 import com.wbdata.offline.dto.OfflineExecutionResponse;
 import com.wbdata.offline.dto.OfflineExecutionScriptResponse;
 import com.wbdata.offline.dto.SavedDebugExecutionRequest;
@@ -139,9 +139,9 @@ public class OfflineExecutionController {
 
     @Operation(summary = "查询执行日志")
     @GetMapping("/{executionId}/logs")
-    public Result<List<OfflineExecutionLogEntry>> getExecutionLogs(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
-                                                                   @PathVariable String executionId,
-                                                                   @RequestParam(required = false) String taskId) {
+    public Result<List<ExecutionLogEntry>> getExecutionLogs(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
+                                                            @PathVariable String executionId,
+                                                            @RequestParam(required = false) String taskId) {
         return Result.success(offlineExecutionService.getExecutionLogs(context.currentGroup().id(), executionId, taskId));
     }
 

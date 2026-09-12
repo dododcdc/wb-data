@@ -1,8 +1,8 @@
-package com.wbdata.offline.dto;
+package com.wbdata.offline.kestra;
 
 import java.time.Instant;
 
-public record OfflineExecutionTaskRun(
+public record KestraTaskRunSnapshot(
         String taskId,
         String status,
         Instant startDate,

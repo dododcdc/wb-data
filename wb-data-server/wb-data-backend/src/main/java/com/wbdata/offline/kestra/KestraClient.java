@@ -1,4 +1,4 @@
-package com.wbdata.offline.service;
+package com.wbdata.offline.kestra;
 
 public interface KestraClient {
 

@@ -260,6 +260,7 @@ export interface OfflineExecutionTaskRun {
     status: string;
     startDate: string | null;
     endDate: string | null;
+    durationMs?: number | null;
 }
 
 export interface ExecutionParameterValue {
