@@ -4,7 +4,7 @@ import { CircleAlert } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import type { OfflineFlowNodeKind } from '../../api/offline';
 import { getOfflineNodeKindClassName, getOfflineNodeKindLabel } from './offlineNodeKinds';
-import { getTaskStatusIcon, isRunningStatus } from './executionPresentation';
+import { getTaskStatusIcon, isRunningStatus } from '../../components/execution/executionPresentation';
 
 export interface FlowCanvasNodeData {
     taskId: string;

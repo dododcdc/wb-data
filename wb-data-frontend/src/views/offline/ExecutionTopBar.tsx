@@ -1,7 +1,7 @@
 // wb-data-frontend/src/views/offline/ExecutionTopBar.tsx
 import { useMemo } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { getExecutionPresentation, getExecutionStatusLabel } from './executionPresentation';
+import { getExecutionPresentation, getExecutionStatusLabel } from '../../components/execution/executionPresentation';
 import { formatDateTime, formatElapsed } from './formatUtils';
 
 interface ExecutionTopBarProps {

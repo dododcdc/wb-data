@@ -2,13 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     ArrowLeft,
-    CheckCircle2,
-    Clock,
-    LoaderCircle,
     RefreshCw,
     RotateCcw,
     Search,
-    XCircle,
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -22,40 +18,22 @@ import {
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { formatBrowserDateTime } from '../../lib/dateTime';
 import { useAuthStore } from '../../utils/auth';
+import {
+    computeLogLevelCounts,
+    getExecutionPresentation,
+    getExecutionStatusLabel,
+    getTaskStatusIcon,
+    isRunningStatus,
+    isUserTaskId,
+} from '../../components/execution/executionPresentation';
 import './OperationsExecutionDetailPage.css';
 import { OperationsRerunDialog } from './OperationsRerunDialog';
 
 const LEVELS = ['ERROR', 'WARN', 'INFO'] as const;
 const EMPTY_LOGS: OperationsExecutionLogEntry[] = [];
 
-function getStatusLabel(status: string | null | undefined) {
-    if (status === 'SUCCESS') return '成功';
-    if (status === 'FAILED') return '失败';
-    if (status === 'CANCELLED') return '已取消';
-    if (status === 'KILLED') return '已停止';
-    if (status === 'RUNNING') return '执行中';
-    if (status === 'RETRYING') return '重试中';
-    if (status === 'PAUSED') return '已暂停';
-    if (status === 'QUEUED' || status === 'CREATED') return '就绪';
-    return status || '未知';
-}
-
 function getStatusTone(status: string | null | undefined) {
-    if (status === 'SUCCESS') return 'success';
-    if (status === 'FAILED' || status === 'CANCELLED' || status === 'KILLED') return 'failed';
-    if (status === 'RUNNING' || status === 'RETRYING' || status === 'PAUSED') return 'running';
-    return 'neutral';
-}
-
-function getStatusIcon(status: string | null | undefined) {
-    if (status === 'SUCCESS') return CheckCircle2;
-    if (status === 'FAILED' || status === 'CANCELLED' || status === 'KILLED') return XCircle;
-    if (status === 'RUNNING' || status === 'RETRYING') return LoaderCircle;
-    return Clock;
-}
-
-function shouldSpinStatusIcon(status: string | null | undefined) {
-    return status === 'RUNNING' || status === 'RETRYING';
+    return getExecutionPresentation(status).dotTone;
 }
 
 function formatDuration(durationMs: number | null | undefined) {
@@ -70,21 +48,9 @@ function formatDuration(durationMs: number | null | undefined) {
     return minuteRest > 0 ? `${hours}h ${minuteRest}m` : `${hours}h`;
 }
 
-function isUserTaskRun(task: OperationsExecutionTaskRun) {
-    return task.taskId !== 'flow_dag' && !task.taskId.startsWith('parallel_');
-}
-
 function pickDefaultTaskId(taskRuns: OperationsExecutionTaskRun[]) {
     const failedTask = taskRuns.find((task) => getStatusTone(task.status) === 'failed');
     return failedTask?.taskId ?? taskRuns[0]?.taskId ?? null;
-}
-
-function countLevels(logs: OperationsExecutionLogEntry[]) {
-    return logs.reduce<Record<string, number>>((acc, entry) => {
-        const level = entry.level ?? 'INFO';
-        acc[level] = (acc[level] ?? 0) + 1;
-        return acc;
-    }, {});
 }
 
 function formatLogTime(timestamp: string | null | undefined) {
@@ -126,12 +92,12 @@ function renderHighlightedMessage(message: string, query: string) {
 
 function TaskStatus({ status }: { status: string | null | undefined }) {
     const tone = getStatusTone(status);
-    const Icon = getStatusIcon(status);
+    const Icon = getTaskStatusIcon(status);
 
     return (
         <span className={`operations-execution-status operations-execution-status--${tone}`}>
-            <Icon size={14} className={shouldSpinStatusIcon(status) ? 'operations-execution-spin' : undefined} />
-            {getStatusLabel(status)}
+            <Icon size={14} className={isRunningStatus(status) ? 'operations-execution-spin' : undefined} />
+            {getExecutionStatusLabel(status)}
         </span>
     );
 }
@@ -195,7 +161,7 @@ export default function OperationsExecutionDetailPage() {
 
     const detail = detailQuery.data ?? null;
     const visibleTaskRuns = useMemo(
-        () => detail?.taskRuns.filter(isUserTaskRun) ?? [],
+        () => detail?.taskRuns.filter((task) => isUserTaskId(task.taskId)) ?? [],
         [detail],
     );
     const defaultTaskId = useMemo(() => (detail ? pickDefaultTaskId(visibleTaskRuns) : undefined), [detail, visibleTaskRuns]);
@@ -235,7 +201,7 @@ export default function OperationsExecutionDetailPage() {
     });
 
     const logs = logsQuery.data ?? EMPTY_LOGS;
-    const levelCounts = useMemo(() => countLevels(logs), [logs]);
+    const levelCounts = useMemo(() => computeLogLevelCounts(logs), [logs]);
     const filteredLogs = useMemo(() => {
         const query = searchText.trim().toLowerCase();
         return logs.filter((log) => {
