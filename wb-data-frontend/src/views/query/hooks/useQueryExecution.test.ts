@@ -8,13 +8,13 @@ const {
     createQueryExportTaskMock,
     listQueryExportTasksMock,
     getQueryExportTaskDownloadUrlMock,
-    getTokenMock,
+    requestMock,
 } = vi.hoisted(() => ({
     executeQueryMock: vi.fn(),
     createQueryExportTaskMock: vi.fn(),
     listQueryExportTasksMock: vi.fn(),
     getQueryExportTaskDownloadUrlMock: vi.fn((taskId: string) => `/download/${taskId}`),
-    getTokenMock: vi.fn(() => 'token-1'),
+    requestMock: { get: vi.fn() },
 }));
 
 vi.mock('../../../api/query', () => ({
@@ -24,8 +24,8 @@ vi.mock('../../../api/query', () => ({
     getQueryExportTaskDownloadUrl: getQueryExportTaskDownloadUrlMock,
 }));
 
-vi.mock('../../../utils/auth', () => ({
-    getToken: getTokenMock,
+vi.mock('../../../utils/request', () => ({
+    default: requestMock,
 }));
 
 describe('useQueryExecution download feedback', () => {
@@ -33,12 +33,17 @@ describe('useQueryExecution download feedback', () => {
         vi.restoreAllMocks();
     });
 
+    function blobWithText(text: string) {
+        const blob = new Blob([text]);
+        blob.text = async () => text;
+        return blob;
+    }
+
     it('shows user-visible feedback when export download fails', async () => {
         listQueryExportTasksMock.mockResolvedValue([]);
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-            ok: false,
-            text: vi.fn().mockResolvedValue('{"message":"下载地址已失效"}'),
-        }));
+        requestMock.get.mockRejectedValue({
+            response: { data: blobWithText('{"message":"下载地址已失效"}') },
+        });
 
         const showFeedback = vi.fn();
         const params = {
@@ -76,10 +81,9 @@ describe('useQueryExecution download feedback', () => {
 
     it('falls back to the default message when the server response has no usable text', async () => {
         listQueryExportTasksMock.mockResolvedValue([]);
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-            ok: false,
-            text: vi.fn().mockResolvedValue('{"message":"   "}'),
-        }));
+        requestMock.get.mockRejectedValue({
+            response: { data: blobWithText('{"message":"   "}') },
+        });
 
         const showFeedback = vi.fn();
         const params = {
