@@ -23,7 +23,7 @@ import { Button } from '../../components/ui/button';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { formatBrowserDateTime, formatLocalDateTime, parseLocalDateTime } from '../../lib/dateTime';
 import { useAuthStore } from '../../utils/auth';
-import { getExecutionStatusLabel } from '../offline/executionPresentation';
+import { getExecutionStatusLabel } from '../../components/execution/executionPresentation';
 import './OperationsCenter.css';
 import { OperationsRerunDialog } from './OperationsRerunDialog';
 import { OperationsTimeFilter } from './OperationsTimeFilter';

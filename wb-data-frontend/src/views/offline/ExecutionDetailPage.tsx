@@ -9,7 +9,7 @@ import {
 } from '../../api/offline';
 import { useAuthStore } from '../../utils/auth';
 import { getErrorMessage } from '../../utils/error';
-import { isRunningStatus } from './executionPresentation';
+import { isRunningStatus, isUserTaskId, computeLogLevelCounts } from '../../components/execution/executionPresentation';
 import ExecutionTopBar from './ExecutionTopBar';
 import ExecutionNodeTabs from './ExecutionNodeTabs';
 import LogToolbar from './LogToolbar';
@@ -17,18 +17,7 @@ import LogViewer, { type LogViewerHandle, type LogViewerItem } from './LogViewer
 import './ExecutionDetailPage.css';
 
 function getFirstVisibleTaskId(taskRuns: { taskId: string }[]) {
-    return taskRuns.find(t => !t.taskId.startsWith('parallel_') && t.taskId !== 'flow_dag')?.taskId ?? '';
-}
-
-function computeLevelCounts(logs: OfflineExecutionLogEntry[]) {
-    const counts = { ERROR: 0, WARN: 0, INFO: 0 };
-    for (const entry of logs) {
-        const level = entry.level ?? 'INFO';
-        if (level in counts) {
-            counts[level as keyof typeof counts]++;
-        }
-    }
-    return counts;
+    return taskRuns.find(t => isUserTaskId(t.taskId))?.taskId ?? '';
 }
 
 function toDisplayItems(logs: OfflineExecutionLogEntry[], activeLevels: Set<string>): LogViewerItem[] {
@@ -195,7 +184,7 @@ export default function ExecutionDetailPage() {
         setCurrentMatchIndex(matchIndices.length > 0 ? 0 : -1);
     }, [matchIndices]);
 
-    const levelCounts = useMemo(() => computeLevelCounts(logs), [logs]);
+    const levelCounts = useMemo(() => computeLogLevelCounts(logs), [logs]);
 
     if (!groupId || !executionId) {
         return <div className="log-page-empty">缺少执行上下文，无法读取详情。</div>;

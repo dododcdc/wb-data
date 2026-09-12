@@ -78,3 +78,20 @@ export const taskStatusIcon = {
 export function getTaskStatusIcon(status: string | null | undefined) {
     return taskStatusIcon[status as keyof typeof taskStatusIcon] || Clock;
 }
+
+/** 是否为用户业务节点（排除 flow_dag 与 parallel_ 系统节点） */
+export function isUserTaskId(taskId: string) {
+    return taskId !== 'flow_dag' && !taskId.startsWith('parallel_');
+}
+
+/** 日志级别计数，固定 ERROR/WARN/INFO 三键；空 level 按 INFO 计。 */
+export function computeLogLevelCounts(logs: { level: string | null | undefined }[]) {
+    const counts = { ERROR: 0, WARN: 0, INFO: 0 };
+    for (const entry of logs) {
+        const level = entry.level ?? 'INFO';
+        if (level in counts) {
+            counts[level as keyof typeof counts]++;
+        }
+    }
+    return counts;
+}

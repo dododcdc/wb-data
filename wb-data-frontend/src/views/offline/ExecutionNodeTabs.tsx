@@ -1,6 +1,6 @@
 // wb-data-frontend/src/views/offline/ExecutionNodeTabs.tsx
 import { useRef, useEffect, useMemo, useState } from 'react';
-import { getTaskStatusIcon } from './executionPresentation';
+import { getTaskStatusIcon } from '../../components/execution/executionPresentation';
 import type { OfflineExecutionTaskRun } from '../../api/offline';
 
 interface ExecutionNodeTabsProps {

@@ -16,7 +16,7 @@ import {
 import type { FeedbackPayload } from '../../hooks/useOperationFeedback';
 import { getErrorMessage } from '../../utils/error';
 import { buildDraftExecutionRequest } from './draftExecution';
-import { isActiveStatus } from './executionPresentation';
+import { isActiveStatus } from '../../components/execution/executionPresentation';
 import { defaultPlannedTimeValue, getExecutionTimeRequirement } from './executionTimeContext';
 import { updateFlowScheduleDraft, type FlowDraftSession } from './flowDraftController';
 

@@ -19,7 +19,8 @@ import {
     getTaskStatusIcon,
     isRunningStatus,
     isStoppable,
-} from './executionPresentation';
+    isUserTaskId,
+} from '../../components/execution/executionPresentation';
 import './OfflineExecutionDialog.css';
 
 function formatDateTime(value: string | number | null | undefined) {
@@ -45,10 +46,6 @@ function formatDuration(durationMs: number | null) {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.floor(seconds % 60);
     return `${minutes}m ${remainingSeconds}s`;
-}
-
-function isUserTaskRun(taskId: string) {
-    return !taskId.startsWith('parallel_') && taskId !== 'flow_dag';
 }
 
 interface OfflineExecutionDialogProps {
@@ -94,7 +91,7 @@ export function OfflineExecutionDialog({
             { label: '仅我', value: 'ME' },
         ];
     const visibleTaskRuns = useMemo(
-        () => detail?.taskRuns?.filter((task) => isUserTaskRun(task.taskId)) ?? [],
+        () => detail?.taskRuns?.filter((task) => isUserTaskId(task.taskId)) ?? [],
         [detail],
     );
 
