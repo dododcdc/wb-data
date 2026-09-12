@@ -554,10 +554,16 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
 
                 <div className="dialog-body form-content">
                     {isLoadingDetails ? (
-                        <div className="form-loading-state" role="status" aria-live="polite">
-                            <div className="form-loading-spinner" aria-hidden="true" />
-                            <strong>正在加载数据源信息</strong>
-                            <p>稍等一下，正在同步当前配置。</p>
+                        <div className="form-loading-state" role="status">
+                            <span className="sr-only">正在加载数据源信息</span>
+                            <div className="form-loading-skeleton" aria-hidden="true">
+                                {Array.from({ length: 4 }).map((_, index) => (
+                                    <div className="form-loading-skeleton-field" key={index}>
+                                        <span className="skeleton-line form-loading-skeleton-label" />
+                                        <span className="skeleton-line form-loading-skeleton-input" />
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     ) : (
                         <div className="form-main-layout">

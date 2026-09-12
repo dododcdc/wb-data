@@ -195,7 +195,20 @@ export default function ExecutionDetailPage() {
     }
 
     if (detailBusy) {
-        return <div className="log-page-empty">正在读取执行详情...</div>;
+        return (
+            <div className="log-page" role="status">
+                <span className="sr-only">正在读取执行详情</span>
+                <div className="log-page-skeleton" aria-hidden="true">
+                    <span className="skeleton-line log-page-skeleton-bar" />
+                    <span className="skeleton-line log-page-skeleton-tabs" />
+                    <div className="log-page-skeleton-logs">
+                        {Array.from({ length: 8 }).map((_, i) => (
+                            <span key={i} className="skeleton-line log-page-skeleton-log-line" />
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     if (detailLoading) {

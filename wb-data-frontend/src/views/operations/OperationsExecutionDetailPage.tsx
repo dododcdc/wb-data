@@ -16,6 +16,7 @@ import {
     type OperationsExecutionTaskRun,
 } from '../../api/operations';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
+import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import { formatBrowserDateTime } from '../../lib/dateTime';
 import { useAuthStore } from '../../utils/auth';
 import {
@@ -188,6 +189,8 @@ export default function OperationsExecutionDetailPage() {
         void logsQuery.refetch();
     };
 
+    const detailBusy = useDelayedBusy(detailQuery.isLoading);
+
     if (!groupId || !executionId) {
         return (
             <div className="operations-execution-detail-page">
@@ -197,9 +200,25 @@ export default function OperationsExecutionDetailPage() {
     }
 
     if (detailQuery.isLoading) {
+        if (!detailBusy) {
+            return <div className="operations-execution-detail-page" />;
+        }
         return (
-            <div className="operations-execution-detail-page">
-                <div className="operations-execution-loading" role="status">正在加载执行详情...</div>
+            <div className="operations-execution-detail-page" role="status">
+                <span className="sr-only">正在加载执行详情</span>
+                <div className="operations-execution-skeleton" aria-hidden="true">
+                    <span className="skeleton-line operations-execution-skeleton-bar" />
+                    <div className="operations-execution-skeleton-metrics">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                            <span key={i} className="skeleton-line operations-execution-skeleton-metric" />
+                        ))}
+                    </div>
+                    <div className="operations-execution-skeleton-logs">
+                        {Array.from({ length: 8 }).map((_, i) => (
+                            <span key={i} className="skeleton-line operations-execution-skeleton-log" />
+                        ))}
+                    </div>
+                </div>
             </div>
         );
     }

@@ -322,9 +322,9 @@ export function OfflineWorkbenchSidebar({
                                     ) : null}
 
                                     {branch.loading ? (
-                                        <div className="offline-branch-menu-empty">
-                                            <LoaderCircle size={14} className="offline-spin" />
-                                            正在加载分支...
+                                        <div className="offline-branch-menu-empty" role="status">
+                                            <LoaderCircle size={14} className="offline-spin" aria-hidden="true" />
+                                            <span className="sr-only">正在加载分支</span>
                                         </div>
                                     ) : (
                                         <div className="offline-branch-list" aria-label="可切换分支">
@@ -445,7 +445,15 @@ export function OfflineWorkbenchSidebar({
 
             <section className="offline-rail-panel offline-rail-panel-grow">
                 {tree.loading ? (
-                    <div className="offline-rail-empty">正在加载项目树…</div>
+                    <div className="offline-rail-empty" role="status">
+                        <span className="sr-only">正在加载项目树</span>
+                        <div className="offline-rail-tree-skeleton" aria-hidden="true">
+                            <span className="skeleton-line offline-rail-tree-skeleton-row" />
+                            <span className="skeleton-line offline-rail-tree-skeleton-row is-indented" />
+                            <span className="skeleton-line offline-rail-tree-skeleton-row is-indented" />
+                            <span className="skeleton-line offline-rail-tree-skeleton-row" />
+                        </div>
+                    </div>
                 ) : !tree.data?.root.children.length ? (
                     <div className="offline-rail-empty">
                         {tree.data ? '当前仓库还没有可打开的 Flow。\n点击上方"新建"创建第一个 Flow。' : '当前仓库还没有可打开的 Flow。'}

@@ -236,7 +236,7 @@ export default function ParameterPreviewDialog({
                             : <Clock3 size={14} className="text-amber-500 shrink-0" />}
                         <div className="parameter-preview-banner-text">
                             {detailLoading
-                                ? '正在加载参数定义…'
+                                ? <span className="skeleton-line parameter-preview-banner-skeleton" role="status" aria-label="正在加载参数定义" />
                                 : !timeRequirements.hasTimeParameters
                                     ? '该参数组仅包含固定值，无需提供时间上下文。'
                                     : preview

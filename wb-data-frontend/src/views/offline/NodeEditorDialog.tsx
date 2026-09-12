@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type * as Monaco from 'monaco-editor';
-import { Braces, Database, X } from 'lucide-react';
+import { Braces, Database, LoaderCircle, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import {
     Dialog,
@@ -334,7 +334,7 @@ export function NodeEditorDialog({
                             }}
                         />
                     ) : (
-                        <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-400">编辑器加载中...</div>}>
+                        <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-400" role="status"><LoaderCircle size={20} className="offline-spin" aria-hidden="true" /><span className="sr-only">编辑器加载中</span></div>}>
                             <LazyEditor
                                 height="100%"
                                 width="100%"
