@@ -13,6 +13,7 @@ import {
 } from '../../components/ui/dialog';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
+import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import {
     getExecutionPresentation,
     getExecutionStatusLabel,
@@ -84,6 +85,8 @@ export function OfflineExecutionDialog({
     onRequestedByFilterChange,
 }: OfflineExecutionDialogProps) {
     const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
+    const listBusy = useDelayedBusy(loading);
+    const detailBusy = useDelayedBusy(detailLoading);
     const requestedByOptions = currentUserId == null
         ? [{ label: '全部用户', value: 'ALL' }]
         : [
@@ -147,8 +150,10 @@ export function OfflineExecutionDialog({
 
                 <div className="offline-execution-layout">
                     <section className="offline-execution-list">
-                        {loading ? (
+                        {listBusy ? (
                             <div className="offline-list-placeholder">正在加载执行记录...</div>
+                        ) : loading ? (
+                            <div className="offline-list-placeholder" aria-hidden="true" />
                         ) : executions.length === 0 ? (
                             <div className="offline-list-placeholder">当前 Flow 还没有执行记录。</div>
                         ) : (
@@ -179,8 +184,10 @@ export function OfflineExecutionDialog({
                     </section>
 
                     <section className="offline-execution-detail">
-                        {detailLoading ? (
+                        {detailBusy ? (
                             <div className="offline-list-placeholder">正在加载执行详情...</div>
+                        ) : detailLoading && !detail ? (
+                            <div className="offline-list-placeholder" aria-hidden="true" />
                         ) : !detail ? (
                             <div className="offline-list-placeholder">选择一条执行记录查看概览。</div>
                         ) : (

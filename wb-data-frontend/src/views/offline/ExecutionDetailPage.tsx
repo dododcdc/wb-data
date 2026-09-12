@@ -9,6 +9,7 @@ import {
 } from '../../api/offline';
 import { useAuthStore } from '../../utils/auth';
 import { getErrorMessage } from '../../utils/error';
+import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import { isRunningStatus, isUserTaskId, computeLogLevelCounts } from '../../components/execution/executionPresentation';
 import ExecutionTopBar from './ExecutionTopBar';
 import ExecutionNodeTabs from './ExecutionNodeTabs';
@@ -186,12 +187,19 @@ export default function ExecutionDetailPage() {
 
     const levelCounts = useMemo(() => computeLogLevelCounts(logs), [logs]);
 
+    const detailBusy = useDelayedBusy(detailLoading);
+    const logsBusy = useDelayedBusy(logsLoading);
+
     if (!groupId || !executionId) {
         return <div className="log-page-empty">缺少执行上下文，无法读取详情。</div>;
     }
 
-    if (detailLoading) {
+    if (detailBusy) {
         return <div className="log-page-empty">正在读取执行详情...</div>;
+    }
+
+    if (detailLoading) {
+        return null;
     }
 
     if (detailError) {
@@ -228,7 +236,7 @@ export default function ExecutionDetailPage() {
                 onNextMatch={handleNextMatch}
                 onPrevMatch={handlePrevMatch}
             />
-            {logsLoading ? (
+            {logsBusy ? (
                 <div className="log-viewer-loading">
                     <div className="log-viewer-skeleton">
                         {Array.from({ length: 12 }).map((_, i) => (
