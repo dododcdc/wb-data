@@ -19,6 +19,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -33,6 +34,7 @@ import java.util.concurrent.Executors;
 public class QueryExportServiceImpl implements QueryExportService {
     private static final int EXPORT_ROW_LIMIT = 100_000;
     private static final int MAX_VISIBLE_TASKS = 20;
+    private static final Duration TASK_TTL = Duration.ofHours(1);
 
     private final QueryService queryService;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
@@ -44,6 +46,7 @@ public class QueryExportServiceImpl implements QueryExportService {
 
     @Override
     public QueryExportTaskResponse createExportTask(Long dataSourceId, String sql, String database, String format) {
+        evictExpiredTasks();
         String normalizedFormat = normalizeFormat(format);
         String taskId = UUID.randomUUID().toString();
         Instant now = Instant.now();
@@ -56,6 +59,7 @@ public class QueryExportServiceImpl implements QueryExportService {
 
     @Override
     public List<QueryExportTaskResponse> listTasks() {
+        evictExpiredTasks();
         return tasks.values().stream()
                 .sorted(Comparator.comparing(ExportTask::updatedAt).reversed())
                 .limit(MAX_VISIBLE_TASKS)
@@ -65,6 +69,7 @@ public class QueryExportServiceImpl implements QueryExportService {
 
     @Override
     public QueryExportTaskResponse getTask(String taskId) {
+        evictExpiredTasks();
         return toResponse(requireTask(taskId));
     }
 
@@ -180,6 +185,33 @@ public class QueryExportServiceImpl implements QueryExportService {
         return format.toLowerCase();
     }
 
+    private void evictExpiredTasks() {
+        Instant now = Instant.now();
+        tasks.values().removeIf(task -> {
+            if (!isExpired(task, now)) {
+                return false;
+            }
+            deleteQuietly(task.filePath());
+            return true;
+        });
+    }
+
+    static boolean isExpired(ExportTask task, Instant now) {
+        boolean terminal = task.status() == ExportTaskStatus.SUCCESS || task.status() == ExportTaskStatus.FAILED;
+        return terminal && task.updatedAt().plus(TASK_TTL).isBefore(now);
+    }
+
+    private static void deleteQuietly(Path path) {
+        if (path == null) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException ignored) {
+            // 临时文件清理失败不影响主流程，交由操作系统临时目录策略兜底
+        }
+    }
+
     private ExportTask requireTask(String taskId) {
         ExportTask task = tasks.get(taskId);
         if (task == null) {
@@ -209,16 +241,18 @@ public class QueryExportServiceImpl implements QueryExportService {
     @PreDestroy
     void shutdown() {
         executor.shutdownNow();
+        tasks.values().forEach(task -> deleteQuietly(task.filePath()));
+        tasks.clear();
     }
 
-    private enum ExportTaskStatus {
+    enum ExportTaskStatus {
         PENDING,
         RUNNING,
         SUCCESS,
         FAILED
     }
 
-    private record ExportTask(
+    record ExportTask(
             String taskId,
             String format,
             ExportTaskStatus status,
