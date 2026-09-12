@@ -35,24 +35,41 @@ wb-data/
 └── docs/                      # 当前有效的开发与测试说明
 ```
 
-## 本地启动
+## 部署
 
-前置依赖：JDK 21、Node.js 18+、Maven、Docker。先起 MySQL：
+本地默认拓扑：前端和后端跑在宿主机，MySQL / Kestra / Hive 用仓库里的 Compose。数据源 host 填 `localhost`，不要填 `host.docker.internal`（界面「测试连接」会失败）。
+
+前置依赖：JDK 21、Node.js 18+、Maven、Docker。配置细节、数据源怎么填、host 改写原理见 [本地开发](docs/local-development.md)。
+
+### 场景对照
+
+| 场景 | 要起什么 | 后端 | host 改写 | 数据源 host |
+| --- | --- | --- | --- | --- |
+| 管理端 / 查询 / 测试连接 | MySQL + 前后端 | `dev` | 用不到 | `localhost` |
+| 画布执行 / SQL 节点 | 上面 + Kestra | `dev` | 要（`dev` 已默认） | `localhost` |
+| 数据传输 | 上面 + Hive + SeaTunnel 变量 | `dev` | 要（`dev` 已默认） | `localhost` |
+| 生产 | 待补充 | 不要开 `dev` | 不要设 | 真实地址 |
+
+`SPRING_PROFILES_ACTIVE=dev` 时，`WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE` 默认已是 `host.docker.internal`。下面离线 / 传输的命令仍写出该变量，方便对照；未开 `dev` 时必须显式加上，否则 SQL / 传输节点会 Connection refused。
+
+### 本地开发
+
+先构建后端和插件（各场景共用）：
+
+```bash
+cd wb-data-server
+mvn clean install
+cd ..
+bash scripts/prepare-plugins.sh
+```
+
+#### 管理端与查询
 
 ```bash
 docker compose -f docker/docker-compose.mysql.yml up -d
 ```
 
-离线执行还需要一个可访问的 Kestra 实例。
-
 ```bash
-# 构建后端和插件
-cd wb-data-server
-mvn clean install
-cd ..
-bash scripts/prepare-plugins.sh
-
-# 启动后端；本地开发使用 dev profile（含 host 改写默认值）
 # 首次启动空库时必须提供管理员账号
 cd wb-data-server/wb-data-backend
 SPRING_PROFILES_ACTIVE=dev \
@@ -63,7 +80,6 @@ java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
 ```
 
 ```bash
-# 启动前端
 cd wb-data-frontend
 npm install
 npm run dev
@@ -71,7 +87,56 @@ npm run dev
 
 默认地址：前端 `http://127.0.0.1:5173`，后端 `http://127.0.0.1:8080`，Swagger UI `http://127.0.0.1:8080/swagger-ui.html`。
 
-更完整的配置见 [日常本地开发](docs/local-development.md)（含本地数据源怎么填、离线任务的 host 改写）。传输冒烟见 [数据传输集成验证](docs/local-integration-testing.md)。
+这组命令只覆盖管理端、自助查询、数据源「测试连接」。`wb_user` 已有数据时，`INIT_ADMIN_*` 不会新增或覆盖账号。
+
+#### 离线执行（SQL / 画布）
+
+在上一节基础上再起 Kestra：
+
+```bash
+WB_DATA_KESTRA_DB_PASSWORD=<postgres-password> \
+WB_DATA_KESTRA_USERNAME=<kestra-username> \
+WB_DATA_KESTRA_PASSWORD=<kestra-password> \
+docker compose -f docker/docker-compose.kestra.yml up -d --build
+```
+
+后端与 Kestra 使用同一组账号。启动后端时带上改写（`dev` 已有默认值）：
+
+```bash
+cd wb-data-server/wb-data-backend
+SPRING_PROFILES_ACTIVE=dev \
+DB_PASSWORD=<mysql-password> \
+WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE=host.docker.internal \
+java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
+```
+
+Kestra 在 Docker 里执行 SQL。数据源仍填 `localhost`，由改写在编译 JDBC URL 时换成 `host.docker.internal`，端口不变。
+
+#### 数据传输
+
+再起 Hive，并补上 SeaTunnel 回连后端的变量：
+
+```bash
+docker compose -f docker/docker-compose.hive.yml up -d
+```
+
+```bash
+cd wb-data-server/wb-data-backend
+SPRING_PROFILES_ACTIVE=dev \
+DB_PASSWORD=<mysql-password> \
+WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
+WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:8080 \
+WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default \
+WB_DATA_TRANSFER_DOCKER_VOLUMES=wb-data_hive-warehouse:/opt/hive/data/warehouse \
+WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE=host.docker.internal \
+java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
+```
+
+冒烟步骤见 [数据传输集成验证](docs/local-integration-testing.md)。
+
+### 生产环境
+
+待补充。
 
 ## 验证
 
@@ -86,3 +151,9 @@ npm run build
 cd wb-data-server
 mvn clean install
 ```
+
+## 更多文档
+
+- [本地开发](docs/local-development.md)
+- [数据传输集成验证](docs/local-integration-testing.md)
+- [测试策略](docs/testing-strategy.md)
