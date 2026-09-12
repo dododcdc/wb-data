@@ -1,0 +1,6 @@
+CREATE DATABASE IF NOT EXISTS transfer_demo
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE USER IF NOT EXISTS 'wbdata'@'%' IDENTIFIED BY 'wbdata123';
+GRANT ALL PRIVILEGES ON transfer_demo.* TO 'wbdata'@'%';
+FLUSH PRIVILEGES;

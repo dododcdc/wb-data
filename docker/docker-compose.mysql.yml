@@ -1,0 +1,26 @@
+name: wb-data
+
+services:
+  mysql:
+    image: ${WB_DATA_MYSQL_IMAGE:-mysql:8.0}
+    container_name: wb-data-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: wb_data
+      MYSQL_ROOT_PASSWORD: ${WB_DATA_MYSQL_ROOT_PASSWORD:-1111}
+    ports:
+      - "3306:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - wb-data-mysql-data:/var/lib/mysql
+      - ../scripts/dev/init/mysql/000_bootstrap.sql:/docker-entrypoint-initdb.d/000_bootstrap.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  wb-data-mysql-data:

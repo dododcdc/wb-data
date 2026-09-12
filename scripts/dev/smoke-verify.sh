@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Automated transfer smoke verification (L3).
 # Prerequisite: scripts/dev/transfer-smoke.sh has prepared the environment
-# (SeaTunnel image, transfer MySQL, Hive, Kestra, seeded data sources) and the
+# (SeaTunnel image, Docker MySQL, Hive, Kestra, seeded data sources) and the
 # backend is running with the WB_DATA_TRANSFER_* variables described in
 # docs/local-integration-testing.md.
 #
@@ -16,7 +16,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-compose_file="$repo_root/docker/docker-compose.transfer.yml"
+compose_file="$repo_root/docker/docker-compose.mysql.yml"
 backend="${WB_DATA_BACKEND_BASE_URL:-http://127.0.0.1:8080}"
 username="${WB_DATA_USERNAME:-admin}"
 password="${WB_DATA_PASSWORD:?请先提供后端登录密码，例如 WB_DATA_PASSWORD=xxx scripts/dev/smoke-verify.sh}"
@@ -27,7 +27,7 @@ for cmd in curl jq docker; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "缺少依赖: $cmd" >&2; exit 1; }
 done
 
-for container in wb-data-transfer-mysql wb-data-hiveserver2 wb-data-kestra; do
+for container in wb-data-mysql wb-data-hiveserver2 wb-data-kestra; do
   status="$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null || echo missing)"
   if [ "$status" != "running" ]; then
     echo "容器 $container 未运行（当前: $status）。先执行 scripts/dev/transfer-smoke.sh 准备环境。" >&2
@@ -64,8 +64,8 @@ expect_ok() {
 }
 
 mysql_query() {
-  docker compose -f "$compose_file" exec -T wb-data-transfer-mysql \
-    mysql -uroot -pwbdata-root-dev -Nse "$1" transfer_demo 2>/dev/null | tr -d '[:space:]'
+  docker compose -f "$compose_file" exec -T -e MYSQL_PWD="${DB_PASSWORD:-1111}" mysql \
+    mysql -h 127.0.0.1 -uroot -Nse "$1" transfer_demo 2>/dev/null | tr -d '[:space:]'
 }
 
 hive_query() {
@@ -75,8 +75,8 @@ hive_query() {
 }
 
 reset_mysql_fixture() {
-  docker compose -f "$compose_file" exec -T wb-data-transfer-mysql \
-    mysql -uroot -pwbdata-root-dev transfer_demo \
+  docker compose -f "$compose_file" exec -T -e MYSQL_PWD="${DB_PASSWORD:-1111}" mysql \
+    mysql -h 127.0.0.1 -uroot transfer_demo \
     < "$repo_root/scripts/dev/init/transfer/mysql/001_schema.sql" 2>/dev/null
 }
 
@@ -202,7 +202,7 @@ API_MYSQL_DS_ID="$(jq -r --arg name "$api_ds_name" '.data.records[] | select(.na
 if [ -z "$API_MYSQL_DS_ID" ]; then
   resp="$(api POST "/api/v1/groups/$GROUP_ID/datasources" "$(jq -nc '{
       name: "smoke_it_mysql_api", type: "MYSQL", description: "smoke-verify 通过 API 创建",
-      host: "localhost", port: 13306, databaseName: "transfer_demo",
+      host: "localhost", port: 3306, databaseName: "transfer_demo",
       username: "wbdata", password: "wbdata123"
     }')")"
   expect_ok "$resp" "创建数据源 $api_ds_name"
@@ -223,7 +223,7 @@ fi
 echo "  ✓ 数据源状态 ENABLED"
 
 resp="$(api POST "/api/v1/groups/$GROUP_ID/datasources/test-connection" "$(jq -nc '{
-    type: "MYSQL", host: "localhost", port: 13306, databaseName: "transfer_demo",
+    type: "MYSQL", host: "localhost", port: 3306, databaseName: "transfer_demo",
     username: "wbdata", password: "wbdata123"
   }')")"
 expect_ok "$resp" "测试连接 $api_ds_name"
@@ -273,7 +273,7 @@ assert_eq "$(mysql_query 'SELECT COUNT(*) FROM transfer_orders_target')" "4" "�
 
 echo "==> 场景 G：SQL 节点使用 localhost 数据源（容器主机改写）"
 # 场景 0 的数据源 host=localhost，只有配置 WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE 后，
-# Kestra 进程内执行的 SQL 节点才能连上宿主机 MySQL。
+# Kestra 进程内执行的 SQL 节点才能连上映射到宿主机 3306 的 Docker MySQL。
 sql_node="$(jq -nc --argjson ds "$API_MYSQL_DS_ID" '{
   taskId: "sql_loopback",
   kind: "SQL",

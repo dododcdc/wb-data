@@ -9,6 +9,8 @@ wbdata:
     dir: ${WB_DATA_PLUGIN_DIR:${user.dir}/../../plugins}
   offline:
     repo-base-dir: ${WB_DATA_OFFLINE_REPO_BASE_DIR:${user.dir}/../../output/offline-live/repos}
+    transfer:
+      container-host-rewrite: ${WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE:host.docker.internal}
     kestra:
       username: ${WB_DATA_KESTRA_USERNAME:admin@kestra.io}
       password: ${WB_DATA_KESTRA_PASSWORD:Admin1234!}

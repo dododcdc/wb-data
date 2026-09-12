@@ -2,6 +2,18 @@
 
 项目能力、技术栈和启动入口以 [README.md](README.md) 为准。日常环境配置见 [本地开发](docs/local-development.md)，数据传输验证见 [数据传输集成验证](docs/local-integration-testing.md)。
 
+## 本地离线执行（必读）
+
+本地 Kestra 跑在 Docker 里。只要 `SPRING_PROFILES_ACTIVE=dev`，host 改写默认就是 `host.docker.internal`，**不要**把数据源 host 填成 `host.docker.internal`（界面「测试连接」会失败）。
+
+未开 `dev` profile、却要跑画布执行 / 传输时，启动后端必须带：
+
+```bash
+WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE=host.docker.internal
+```
+
+漏了这个，SQL / 传输节点会 Connection refused。生产不要设该变量。详情见 [本地开发 · 离线任务怎么连库](docs/local-development.md#离线任务怎么连库)。
+
 ## 代码约定
 
 ### 前端（`wb-data-frontend/`）

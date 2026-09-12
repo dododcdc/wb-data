@@ -8,7 +8,7 @@ SELECT
     'MYSQL',
     'Local JDBC transfer source and target tables',
     'localhost',
-    13306,
+    3306,
     'transfer_demo',
     'wbdata',
     'wbdata123',
@@ -63,3 +63,8 @@ ON DUPLICATE KEY UPDATE
     connection_params = VALUES(connection_params),
     status = VALUES(status),
     updated_by = VALUES(updated_by);
+
+UPDATE datasource
+SET port = 3306
+WHERE port = 13306
+  AND host IN ('localhost', '127.0.0.1');
