@@ -1,7 +1,5 @@
 package com.wbdata.offline.service;
 
-import com.wbdata.git.service.GitConfigService;
-import com.wbdata.git.service.provider.GitRemoteProvider;
 import com.wbdata.offline.config.OfflineProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -28,7 +26,7 @@ class GitCommandServiceTest {
         properties.setRepoBaseDir(tempDir.toString());
         properties.setRepoDirPrefix("wb-data-");
         OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
-        GitCommandService service = new GitCommandService(properties, Mockito.mock(GitConfigService.class), flowDocumentService, new RepoLockManager());
+        GitCommandService service = new GitCommandService(properties, Mockito.mock(OfflineGitRemotePort.class), flowDocumentService, new RepoLockManager());
 
         Path repo = properties.resolveRepoPath(1L);
         initRepo(repo);
@@ -55,7 +53,7 @@ class GitCommandServiceTest {
         properties.setRepoBaseDir(tempDir.toString());
         properties.setRepoDirPrefix("wb-data-");
         OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
-        GitCommandService service = new GitCommandService(properties, Mockito.mock(GitConfigService.class), flowDocumentService, new RepoLockManager());
+        GitCommandService service = new GitCommandService(properties, Mockito.mock(OfflineGitRemotePort.class), flowDocumentService, new RepoLockManager());
 
         Path repo = properties.resolveRepoPath(1L);
         initRepo(repo);
@@ -82,17 +80,15 @@ class GitCommandServiceTest {
         properties.setRepoBaseDir(tempDir.toString());
         properties.setRepoDirPrefix("wb-data-");
         OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
-        GitConfigService gitConfigService = Mockito.mock(GitConfigService.class);
-        GitRemoteProvider provider = Mockito.mock(GitRemoteProvider.class);
-        when(gitConfigService.getProvider(1L)).thenReturn(provider);
-        when(provider.repositoryExists("wb-data-1")).thenReturn(true);
-        GitCommandService service = new GitCommandService(properties, gitConfigService, flowDocumentService, new RepoLockManager());
+        OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
+        when(gitRemotePort.repositoryExists(1L, "wb-data-1")).thenReturn(true);
+        GitCommandService service = new GitCommandService(properties, gitRemotePort, flowDocumentService, new RepoLockManager());
 
         Path repo = properties.resolveRepoPath(1L);
         Path remote = tempDir.resolve("remote.git");
         git(tempDir, "init", "--bare", remote.toString());
-        when(provider.buildDisplayUrl("wb-data-1")).thenReturn(remote.toUri().toString());
-        when(provider.buildPushUrl("wb-data-1")).thenReturn(remote.toUri().toString());
+        when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
+        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
         initRepo(repo);
         write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
         git(repo, "add", "-A");
@@ -115,19 +111,17 @@ class GitCommandServiceTest {
         properties.setRepoBaseDir(tempDir.toString());
         properties.setRepoDirPrefix("wb-data-");
         OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
-        GitConfigService gitConfigService = Mockito.mock(GitConfigService.class);
-        GitRemoteProvider provider = Mockito.mock(GitRemoteProvider.class);
-        when(gitConfigService.getProvider(1L)).thenReturn(provider);
-        when(provider.repositoryExists("wb-data-1")).thenReturn(true);
-        GitCommandService service = new GitCommandService(properties, gitConfigService, flowDocumentService, new RepoLockManager());
+        OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
+        when(gitRemotePort.repositoryExists(1L, "wb-data-1")).thenReturn(true);
+        GitCommandService service = new GitCommandService(properties, gitRemotePort, flowDocumentService, new RepoLockManager());
         List<Object> events = new ArrayList<>();
         service.setApplicationEventPublisher(events::add);
 
         Path repo = properties.resolveRepoPath(1L);
         Path remote = tempDir.resolve("remote.git");
         git(tempDir, "init", "--bare", remote.toString());
-        when(provider.buildDisplayUrl("wb-data-1")).thenReturn(remote.toUri().toString());
-        when(provider.buildPushUrl("wb-data-1")).thenReturn(remote.toUri().toString());
+        when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
+        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
         initRepo(repo);
         write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
         git(repo, "add", "-A");
@@ -152,19 +146,17 @@ class GitCommandServiceTest {
         properties.setRepoBaseDir(tempDir.toString());
         properties.setRepoDirPrefix("wb-data-");
         OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
-        GitConfigService gitConfigService = Mockito.mock(GitConfigService.class);
-        GitRemoteProvider provider = Mockito.mock(GitRemoteProvider.class);
-        when(gitConfigService.getProvider(1L)).thenReturn(provider);
-        when(provider.repositoryExists("wb-data-1")).thenReturn(true);
-        GitCommandService service = new GitCommandService(properties, gitConfigService, flowDocumentService, new RepoLockManager());
+        OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
+        when(gitRemotePort.repositoryExists(1L, "wb-data-1")).thenReturn(true);
+        GitCommandService service = new GitCommandService(properties, gitRemotePort, flowDocumentService, new RepoLockManager());
 
         Path repo = properties.resolveRepoPath(1L);
         Path oldRemote = tempDir.resolve("old-remote.git");
         Path newRemote = tempDir.resolve("new-remote.git");
         git(tempDir, "init", "--bare", oldRemote.toString());
         git(tempDir, "init", "--bare", newRemote.toString());
-        when(provider.buildDisplayUrl("wb-data-1")).thenReturn(newRemote.toUri().toString());
-        when(provider.buildPushUrl("wb-data-1")).thenReturn(newRemote.toUri().toString());
+        when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(newRemote.toUri().toString());
+        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(newRemote.toUri().toString());
 
         initRepo(repo);
         write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
@@ -186,18 +178,16 @@ class GitCommandServiceTest {
         properties.setRepoBaseDir(tempDir.toString());
         properties.setRepoDirPrefix("wb-data-");
         OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
-        GitConfigService gitConfigService = Mockito.mock(GitConfigService.class);
-        GitRemoteProvider provider = Mockito.mock(GitRemoteProvider.class);
-        when(gitConfigService.getProvider(1L)).thenReturn(provider);
-        when(provider.repositoryExists("wb-data-1")).thenReturn(true);
-        GitCommandService service = new GitCommandService(properties, gitConfigService, flowDocumentService, new RepoLockManager());
+        OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
+        when(gitRemotePort.repositoryExists(1L, "wb-data-1")).thenReturn(true);
+        GitCommandService service = new GitCommandService(properties, gitRemotePort, flowDocumentService, new RepoLockManager());
 
         Path repo = properties.resolveRepoPath(1L);
         Path remote = tempDir.resolve("remote.git");
         Path otherClone = tempDir.resolve("other-clone");
         git(tempDir, "init", "--bare", remote.toString());
-        when(provider.buildDisplayUrl("wb-data-1")).thenReturn(remote.toUri().toString());
-        when(provider.buildPushUrl("wb-data-1")).thenReturn(remote.toUri().toString());
+        when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
+        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
         initRepo(repo);
         write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
         git(repo, "add", "-A");

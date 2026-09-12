@@ -1,6 +1,5 @@
 package com.wbdata.offline.service;
 
-import com.wbdata.git.service.GitConfigService;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.exception.DirtyWorkingTreeException;
 import org.junit.jupiter.api.Test;
@@ -250,7 +249,7 @@ class GitCommandServiceBranchTest {
     private GitCommandService service(OfflineProperties properties) {
         return new GitCommandService(
                 properties,
-                Mockito.mock(GitConfigService.class),
+                Mockito.mock(OfflineGitRemotePort.class),
                 Mockito.mock(OfflineFlowDocumentService.class),
                 new RepoLockManager()
         );
