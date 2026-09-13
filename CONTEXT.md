@@ -36,7 +36,7 @@ _避免使用_：editingSession；也不要把已保存但未提交的改动叫�
 
 **节点（Node）**
 
-任务中的一个执行单元，例如 SQL、Hive SQL、Shell 或数据传输节点。引擎里对应 Kestra Task；用户侧只叫节点。
+任务中的一个执行单元，例如 MySQL、PostgreSQL、ClickHouse、Hive SQL、Shell 或数据传输节点。引擎里对应 Kestra Task；用户侧只叫节点。
 
 _避免使用_：任务、流程任务、task。
 

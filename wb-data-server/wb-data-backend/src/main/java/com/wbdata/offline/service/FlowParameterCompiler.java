@@ -25,7 +25,7 @@ final class FlowParameterCompiler {
         Map<String, String> taskExpressions = new LinkedHashMap<>();
 
         for (OfflineFlowNode node : nodes) {
-            if (!"SQL".equalsIgnoreCase(node.kind())) {
+            if (!OfflineFlowNodeKinds.isJdbcSql(node.kind())) {
                 continue;
             }
             String sql = scriptContents.get(node.scriptPath());

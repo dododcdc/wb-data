@@ -1,5 +1,6 @@
 package com.wbdata.offline.service;
 
+import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.offline.config.OfflineTransferProperties;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.Yaml;
@@ -98,6 +99,61 @@ class OfflineFlowYamlSupportTest {
 
         assertThat(yaml).doesNotContain("&id", "*id");
         assertThat(yaml).contains("volumes:\n        - wb-data_hive-warehouse:/opt/hive/data/warehouse");
+    }
+
+    @Test
+    void parseDocument_upgradesLegacySqlKindFromDataSourceType() {
+        OfflineFlowYamlSupport support = new OfflineFlowYamlSupport();
+        String yaml = """
+                id: orders
+                namespace: pg-1
+                tasks:
+                  - id: flow_dag
+                    type: io.kestra.plugin.core.flow.Dag
+                    tasks:
+                      - task:
+                          id: query
+                          type: io.wbdata.kestra.jdbc.mysql.Query
+                          description: "[wbdata-meta] dataSourceId=1;dataSourceType=MYSQL;nodeKind=SQL"
+                          url: jdbc:mysql://db.example:3306/warehouse
+                          username: analyst
+                          password: secret
+                          sql: "{{ read('scripts/query.sql') }}"
+                """;
+
+        OfflineFlowNode node = support.parseDocument(yaml)
+                .stages().getFirst().nodes().getFirst();
+
+        assertThat(node.kind()).isEqualTo("MYSQL");
+        assertThat(node.dataSourceType()).isEqualTo("MYSQL");
+        assertThat(node.scriptPath()).isEqualTo("scripts/query.sql");
+    }
+
+    @Test
+    void compileAndParseGraph_roundTripsMysqlNodeKind() {
+        OfflineFlowYamlSupport support = new OfflineFlowYamlSupport();
+        DataSource mysql = new DataSource();
+        mysql.setId(1L);
+        mysql.setType("MYSQL");
+        mysql.setHost("db.example");
+        mysql.setPort(3306);
+        mysql.setDatabaseName("warehouse");
+        mysql.setUsername("analyst");
+        mysql.setPassword("secret");
+
+        String yaml = support.compileGraph(
+                support.buildEmptyFlowYaml("orders", "pg-1"),
+                List.of(new OfflineFlowNode(
+                        "query", "MYSQL", "scripts/query.sql", 1L, "MYSQL", null
+                )),
+                List.of(),
+                Map.of(1L, mysql)
+        );
+
+        assertThat(yaml).contains("nodeKind=MYSQL");
+        OfflineFlowNode node = support.parseDocument(yaml)
+                .stages().getFirst().nodes().getFirst();
+        assertThat(node.kind()).isEqualTo("MYSQL");
     }
 
 }

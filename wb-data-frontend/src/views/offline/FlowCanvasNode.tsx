@@ -4,6 +4,7 @@ import { CircleAlert } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import type { OfflineFlowNodeKind } from '../../api/offline';
 import { getOfflineNodeKindClassName, getOfflineNodeKindLabel } from './offlineNodeKinds';
+import { NodeKindIcon } from './nodeKindIcons';
 import { getTaskStatusIcon, isRunningStatus } from '../../components/execution/executionPresentation';
 
 export interface FlowCanvasNodeData {
@@ -169,8 +170,12 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
                             </TooltipContent>
                         </Tooltip>
                 )}
-                <span className={`flow-canvas-node-kind is-${getOfflineNodeKindClassName(data.kind)}`}>
-                    {getOfflineNodeKindLabel(data.kind)}
+                <span
+                    className={`flow-canvas-node-kind is-icon is-${getOfflineNodeKindClassName(data.kind)}`}
+                    title={getOfflineNodeKindLabel(data.kind)}
+                    aria-label={getOfflineNodeKindLabel(data.kind)}
+                >
+                    <NodeKindIcon kind={data.kind} size={14} />
                 </span>
                 
                 {/* Status Indicator */}

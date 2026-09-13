@@ -29,5 +29,23 @@ describe('FlowCanvasNode', () => {
 
         expect(node?.classList.contains('is-transfer')).toBe(false);
         expect(kindBadge?.classList.contains('is-transfer')).toBe(true);
+        expect(kindBadge?.getAttribute('aria-label')).toBe('Transfer');
+        expect(kindBadge?.querySelector('svg')).toBeTruthy();
+    });
+
+    it('renders a kind icon instead of the text label', () => {
+        const data: FlowCanvasNodeData = {
+            taskId: 'sql_node_1',
+            kind: 'MYSQL',
+            selected: false,
+            onToggleSelection: vi.fn(),
+        };
+
+        const { container } = render(<FlowCanvasNode data={data} />);
+        const kindBadge = container.querySelector('.flow-canvas-node-kind');
+
+        expect(kindBadge?.classList.contains('is-mysql')).toBe(true);
+        expect(kindBadge?.getAttribute('aria-label')).toBe('MySQL');
+        expect(kindBadge?.querySelector('svg')).toBeTruthy();
     });
 });

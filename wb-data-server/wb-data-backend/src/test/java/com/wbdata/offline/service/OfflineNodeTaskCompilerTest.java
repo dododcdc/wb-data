@@ -4,12 +4,14 @@ import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.config.TransferRunner;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SuppressWarnings("unchecked")
 class OfflineNodeTaskCompilerTest {
@@ -124,7 +126,7 @@ class OfflineNodeTaskCompilerTest {
         assertThat(sqlTask).containsExactlyInAnyOrderEntriesOf(Map.of(
                 "id", "sql_1",
                 "type", "io.wbdata.kestra.jdbc.mysql.Query",
-                "description", "[wbdata-meta] dataSourceId=1;dataSourceType=MYSQL;nodeKind=SQL",
+                "description", "[wbdata-meta] dataSourceId=1;dataSourceType=MYSQL;nodeKind=MYSQL",
                 "url", "jdbc:mysql://db.example:3306/warehouse",
                 "username", "analyst",
                 "password", "existing-password",
@@ -210,5 +212,33 @@ class OfflineNodeTaskCompilerTest {
         ), Map.of(1L, mysql));
 
         assertThat(task).containsEntry("url", "jdbc:mysql://127.0.0.1:3306/warehouse");
+    }
+
+    @Test
+    void compile_writesJdbcKindMetadataAndRejectsMismatchedDataSource() {
+        OfflineNodeTaskCompiler compiler = new OfflineNodeTaskCompiler();
+        DataSource mysql = dataSource(1L, "MYSQL");
+        DataSource postgres = dataSource(2L, "POSTGRESQL");
+        postgres.setPort(5432);
+
+        Map<String, Object> mysqlTask = compiler.compile(null, new OfflineFlowNode(
+                "mysql_1", "MYSQL", "scripts/mysql_1.sql", 1L, "MYSQL", null
+        ), Map.of(1L, mysql));
+        Map<String, Object> postgresTask = compiler.compile(null, new OfflineFlowNode(
+                "pg_1", "POSTGRESQL", "scripts/pg_1.sql", 2L, "POSTGRESQL", null
+        ), Map.of(2L, postgres));
+
+        assertThat(mysqlTask).containsEntry("type", "io.wbdata.kestra.jdbc.mysql.Query");
+        assertThat(mysqlTask).containsEntry("description",
+                "[wbdata-meta] dataSourceId=1;dataSourceType=MYSQL;nodeKind=MYSQL");
+        assertThat(postgresTask).containsEntry("type", "io.wbdata.kestra.jdbc.postgresql.Query");
+        assertThat(postgresTask).containsEntry("description",
+                "[wbdata-meta] dataSourceId=2;dataSourceType=POSTGRESQL;nodeKind=POSTGRESQL");
+
+        assertThatThrownBy(() -> compiler.compile(null, new OfflineFlowNode(
+                "mysql_1", "MYSQL", "scripts/mysql_1.sql", 2L, "POSTGRESQL", null
+        ), Map.of(2L, postgres)))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("只能绑定 MYSQL 数据源");
     }
 }

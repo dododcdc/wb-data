@@ -685,6 +685,7 @@ final class OfflineFlowYamlSupport {
                 nodeKind = scriptPath.endsWith(".sql") ? "SQL" : "SHELL";
             }
         }
+        nodeKind = OfflineFlowNodeKinds.canonicalize(nodeKind, dataSourceType);
 
         return new OfflineFlowNode(
                 taskId,

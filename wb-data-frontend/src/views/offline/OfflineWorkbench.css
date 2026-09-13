@@ -431,7 +431,188 @@ button.offline-tree-row {
     position: relative;
     flex: 1;
     min-height: 0;
+    min-width: 0;
     overflow: hidden;
+}
+
+.offline-canvas-stage {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+}
+
+.offline-node-palette {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    width: 216px;
+    border-left: 1px solid var(--color-border);
+    background: var(--color-bg-primary);
+}
+
+.offline-node-palette.is-collapsed {
+    width: 40px;
+}
+
+.offline-node-palette-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px;
+    height: 48px;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.offline-node-palette.is-collapsed .offline-node-palette-header {
+    justify-content: center;
+    padding: 10px 6px;
+    border-bottom: none;
+}
+
+.offline-node-palette-header > div {
+    min-width: 0;
+}
+
+.offline-node-palette-header strong {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 650;
+    line-height: 1.2;
+    color: var(--color-text-primary);
+}
+
+.offline-node-palette-header p {
+    margin: 1px 0 0;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    color: var(--color-text-muted);
+}
+
+.offline-node-palette-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.offline-node-palette-toggle:hover {
+    background: var(--color-surface-secondary);
+    color: var(--color-text-primary);
+}
+
+.offline-node-palette-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 10px;
+    list-style: none;
+    overflow-y: auto;
+}
+
+.offline-node-palette-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 9px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg-secondary, rgba(255, 255, 255, 0.55));
+    cursor: grab;
+    user-select: none;
+}
+
+.offline-node-palette-item:hover:not(.is-disabled) {
+    background: var(--color-surface-secondary);
+}
+
+.offline-node-palette-item:active:not(.is-disabled) {
+    cursor: grabbing;
+}
+
+.offline-node-palette-item.is-disabled {
+    cursor: default;
+    opacity: 0.45;
+}
+
+.offline-node-palette-item-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    color: var(--color-text-secondary);
+}
+
+.offline-node-palette-item.is-mysql .offline-node-palette-item-icon {
+    background: var(--badge-mysql-bg);
+    color: var(--badge-mysql-fg);
+}
+
+.offline-node-palette-item.is-postgresql .offline-node-palette-item-icon {
+    background: var(--badge-postgresql-bg);
+    color: var(--badge-postgresql-fg);
+}
+
+.offline-node-palette-item.is-clickhouse .offline-node-palette-item-icon {
+    background: var(--badge-clickhouse-bg);
+    color: var(--badge-clickhouse-fg);
+}
+
+.offline-node-palette-item.is-hive-sql .offline-node-palette-item-icon {
+    background: var(--badge-hive-bg);
+    color: var(--badge-hive-fg);
+}
+
+.offline-node-kind-mask {
+    display: block;
+    flex-shrink: 0;
+    background-color: currentColor;
+    -webkit-mask: var(--kind-mask) center / contain no-repeat;
+    mask: var(--kind-mask) center / contain no-repeat;
+}
+
+.offline-node-palette-item.is-shell .offline-node-palette-item-icon,
+.offline-node-palette-item.is-transfer .offline-node-palette-item-icon {
+    background: var(--color-bg-tertiary);
+}
+
+.offline-node-palette-item.is-transfer .offline-node-palette-item-icon {
+    color: inherit;
+}
+
+.offline-node-palette-item-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.offline-node-palette-item-copy strong {
+    font-size: 0.8rem;
+    font-weight: 650;
+    color: var(--color-text-primary);
+}
+
+.offline-node-palette-item-copy em {
+    font-style: normal;
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* ReactFlow canvas container */
@@ -537,9 +718,28 @@ button.offline-tree-row {
     flex-shrink: 0;
 }
 
-.flow-canvas-node-kind.is-sql {
+.flow-canvas-node-kind.is-icon {
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 6px;
+}
+
+.flow-canvas-node-kind.is-sql,
+.flow-canvas-node-kind.is-postgresql {
     background: var(--badge-postgresql-bg);
     color: var(--badge-postgresql-fg);
+}
+
+.flow-canvas-node-kind.is-mysql {
+    background: var(--badge-mysql-bg);
+    color: var(--badge-mysql-fg);
+}
+
+.flow-canvas-node-kind.is-clickhouse {
+    background: var(--badge-clickhouse-bg);
+    color: var(--badge-clickhouse-fg);
 }
 
 .flow-canvas-node-kind.is-hive-sql {

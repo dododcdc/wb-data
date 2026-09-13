@@ -72,7 +72,7 @@ afterEach(() => {
 
 const makeSqlNode = (overrides?: Partial<OfflineFlowNode>): OfflineFlowNode => ({
     taskId: 'sql_1',
-    kind: 'SQL',
+    kind: 'MYSQL',
     scriptContent: 'select 1',
     dataSourceId: 7,
     ...overrides,

@@ -66,7 +66,16 @@ vi.mock('./FlowCanvas', () => ({
         flowCanvasRenderSpy(flowDocument);
         const transferNode = flowDocument.stages.flatMap((stage) => stage.nodes).find((node) => node.kind === 'TRANSFER');
         return (
-            <div data-testid="flow-canvas">
+            <div
+                data-testid="flow-canvas"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                    const kind = event.dataTransfer.getData('nodeKind');
+                    if (kind) {
+                        onAddNode(kind as OfflineFlowNodeKind, { x: 120, y: 80 });
+                    }
+                }}
+            >
                 {flowDocument.path}
                 <span data-testid="transfer-node-count">
                     {flowDocument.stages.flatMap((stage) => stage.nodes).filter((node) => node.kind === 'TRANSFER').length}
@@ -623,7 +632,7 @@ describe('OfflineWorkbench commit UI', () => {
         expect(screen.queryByRole('button', { name: '推送' })).toBeNull();
     });
 
-    it('adds a transfer node from the toolbar', async () => {
+    it('adds a transfer node by dragging from the node palette', async () => {
         authState.currentGroup = { id: 1, name: 'Team' };
         authState.permissions = ['offline.write'];
 
@@ -631,7 +640,19 @@ describe('OfflineWorkbench commit UI', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
 
-        fireEvent.click(screen.getByRole('button', { name: '添加传输节点' }));
+        const dataTransfer = {
+            data: {} as Record<string, string>,
+            setData(type: string, value: string) {
+                this.data[type] = value;
+            },
+            getData(type: string) {
+                return this.data[type] ?? '';
+            },
+            effectAllowed: 'uninitialized',
+            dropEffect: 'none',
+        };
+        fireEvent.dragStart(screen.getByLabelText('Transfer，拖到画布添加'), { dataTransfer });
+        fireEvent.drop(screen.getByTestId('flow-canvas'), { dataTransfer });
 
         await waitFor(() => {
             expect(screen.getByTestId('transfer-node-count').textContent).toBe('1');

@@ -184,6 +184,24 @@ describe('addFlowNode', () => {
 
         expect(result.document.layout.shell_node_3).toEqual({ x: 148, y: 248 });
     });
+
+    it('adds a MySQL node with a sql script and preset data source type', () => {
+        const result = expectOk(addFlowNode({
+            document: makeDocument(),
+            kind: 'MYSQL',
+            position: { x: 640, y: 320 },
+            selectedTaskIds: [],
+            maxNodes: 20,
+        }));
+
+        expect(result.node).toMatchObject({
+            taskId: 'mysql_node_1',
+            kind: 'MYSQL',
+            dataSourceType: 'MYSQL',
+            scriptPath: 'scripts/jack/demo/mysql_node_1.sql',
+        });
+        expect(result.node.scriptContent).toContain('SELECT 1');
+    });
 });
 
 describe('applyFlowCanvasNodes', () => {

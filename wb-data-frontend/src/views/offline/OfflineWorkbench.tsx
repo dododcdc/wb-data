@@ -10,7 +10,6 @@ import {
 import {
     getOfflineRepoTree,
     type FlowParameterBinding,
-    type OfflineFlowNodeKind,
     type OfflineRepoTreeResponse,
 } from '../../api/offline';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
@@ -36,7 +35,6 @@ import { OfflineExecutionDialog } from './OfflineExecutionDialog';
 import { ExecutionTimeContextDialog } from './ExecutionTimeContextDialog';
 import { OfflineRepositoryDialogs } from './OfflineRepositoryDialogs';
 import { OfflineWorkbenchMainPanel } from './OfflineWorkbenchMainPanel';
-import { resolveViewportCenterFlowPosition } from './flowCanvasViewport';
 import { preloadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
@@ -76,7 +74,6 @@ export default function OfflineWorkbench() {
     const [commitMessage, setCommitMessage] = useState('');
     const [committing, setCommitting] = useState(false);
     const [parameterDialogOpen, setParameterDialogOpen] = useState(false);
-    const canvasBoardRef = useRef<HTMLElement | null>(null);
     const loadScheduleSnapshotRef = useRef<((path: string) => Promise<void>) | null>(null);
     const resetExecutionAndScheduleRef = useRef<(() => void) | null>(null);
     const refreshRepoStatusRef = useRef<(() => Promise<void>) | null>(null);
@@ -86,9 +83,6 @@ export default function OfflineWorkbench() {
         resetExecutionAndScheduleRef.current?.();
     }, []);
     const refreshRepoStatusBridge = useCallback(() => refreshRepoStatusRef.current?.() ?? Promise.resolve(), []);
-    const setCanvasBoardElement = useCallback((element: HTMLElement | null) => {
-        canvasBoardRef.current = element;
-    }, []);
 
     useEffect(() => {
         if (!groupId) return;
@@ -543,24 +537,6 @@ export default function OfflineWorkbench() {
             : []);
     }, [flowDocument, setDraftSelectedTaskIds]);
 
-    const handleAddNodeAtCanvasCenter = useCallback((kind: OfflineFlowNodeKind) => {
-        if (!flowDocument) return;
-        const board = canvasBoardRef.current;
-        const viewport = board?.querySelector<HTMLElement>('.react-flow__viewport') ?? null;
-        const viewportTransform = viewport
-            ? viewport.style.transform || window.getComputedStyle(viewport).transform
-            : null;
-        const boardRect = board?.getBoundingClientRect();
-        const center = boardRect
-            ? resolveViewportCenterFlowPosition({
-                width: boardRect.width,
-                height: boardRect.height,
-                transform: viewportTransform,
-            })
-            : { x: 300, y: 200 };
-        addNode(kind, center);
-    }, [addNode, flowDocument]);
-
     const handleRepoCommit = useCallback(async (mode: 'save-and-commit' | 'saved-only') => {
         if (!groupId) return;
         setCommitting(true);
@@ -679,7 +655,6 @@ export default function OfflineWorkbench() {
                         commitDirty={flowCommitDirty}
                         committing={committing}
                         staleDraft={!!staleDraft}
-                        canvasBoardRef={setCanvasBoardElement}
                         onSelectAllNodes={handleSelectAllNodes}
                         onSaveFlow={() => void handleSaveFlow()}
                         onOpenFlowCommitDialog={handleOpenFlowCommitDialog}
@@ -687,7 +662,6 @@ export default function OfflineWorkbench() {
                         onOpenParameterDialog={() => setParameterDialogOpen(true)}
                         onExecute={() => void handleExecute()}
                         onOpenExecutionDialog={openExecutionDialog}
-                        onAddNodeAtCanvasCenter={handleAddNodeAtCanvasCenter}
                         onDiscardStaleDraft={handleDiscardStaleDraft}
                         onRestoreStaleDraft={handleRestoreStaleDraft}
                         onNodesChange={updateCanvasNodes}

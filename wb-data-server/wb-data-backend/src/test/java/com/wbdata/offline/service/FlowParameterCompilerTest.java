@@ -167,6 +167,6 @@ class FlowParameterCompilerTest {
     }
 
     private OfflineFlowNode sqlNode(String taskId) {
-        return new OfflineFlowNode(taskId, "SQL", "scripts/query.sql", 1L, "MYSQL", null);
+        return new OfflineFlowNode(taskId, "MYSQL", "scripts/query.sql", 1L, "MYSQL", null);
     }
 }
