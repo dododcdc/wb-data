@@ -270,6 +270,43 @@
     flex-shrink: 0;
 }
 
+
+/* Read-only detail values — same rhythm as inputs, no editable chrome */
+.datasource-detail-value {
+    display: flex;
+    align-items: center;
+    min-height: 38px;
+    padding: 0;
+    box-sizing: border-box;
+    width: 100%;
+    color: var(--color-text-primary);
+    font-size: 0.92rem;
+    font-weight: 500;
+    line-height: 1.5;
+    word-break: break-word;
+    border: none;
+    background: transparent;
+}
+
+.datasource-detail-value.is-multiline {
+    align-items: flex-start;
+    min-height: 72px;
+    padding: 10px 0;
+    white-space: pre-wrap;
+}
+
+.datasource-detail-empty {
+    color: var(--color-text-muted);
+    font-weight: 400;
+}
+
+.datasource-detail-password {
+    color: var(--color-text-secondary);
+    letter-spacing: 0.18em;
+    font-family: var(--font-mono);
+    font-weight: 600;
+}
+
 @media (max-width: 1100px) {
 
     .form-side-panel {
@@ -370,4 +407,47 @@
     to {
         transform: rotate(360deg);
     }
+}
+
+
+.form-input-help-action {
+    display: inline-flex;
+    align-self: flex-start;
+    margin-top: 6px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-link);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.form-input-help-action:hover {
+    color: var(--color-link-hover);
+    text-decoration: underline;
+}
+
+
+.datasource-password-mask {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--color-bg-secondary) 55%, #FFFFFF);
+    color: var(--color-text-muted);
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    letter-spacing: 0.12em;
+    text-align: left;
+    cursor: text;
+}
+
+.datasource-password-mask:hover,
+.datasource-password-mask:focus-visible {
+    border-color: var(--color-border-strong);
+    outline: none;
 }

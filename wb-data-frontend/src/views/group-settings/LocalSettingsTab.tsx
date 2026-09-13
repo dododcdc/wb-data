@@ -74,10 +74,11 @@ export default function LocalSettingsTab({ groupId, canEdit }: LocalSettingsTabP
         },
         onError: (err: unknown) => {
             const error = err as { message?: string };
+            const message = error?.message?.trim();
             showFeedback({
                 tone: 'error',
-                title: '创建分支失败',
-                detail: error?.message || '请重试',
+                title: message || '创建分支失败',
+                detail: '',
             });
         },
     });
@@ -96,10 +97,11 @@ export default function LocalSettingsTab({ groupId, canEdit }: LocalSettingsTabP
                 // Trigger force delete confirm
                 setForceDelete(true);
             } else {
+                const message = error?.message?.trim();
                 showFeedback({
                     tone: 'error',
-                    title: '删除分支失败',
-                    detail: error?.message || '请重试',
+                    title: message || '删除分支失败',
+                    detail: '',
                 });
                 setPendingDeleteBranch(null);
             }
@@ -116,10 +118,11 @@ export default function LocalSettingsTab({ groupId, canEdit }: LocalSettingsTabP
         },
         onError: (err: unknown) => {
             const error = err as { message?: string };
+            const message = error?.message?.trim();
             showFeedback({
                 tone: 'error',
-                title: '合并分支失败',
-                detail: error?.message || '请重试',
+                title: message || '合并分支失败',
+                detail: '',
             });
         },
     });

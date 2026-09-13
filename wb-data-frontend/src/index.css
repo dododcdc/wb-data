@@ -5,6 +5,7 @@
 @import "@fontsource-variable/source-serif-4";
 @import "./components/ui/form-input-group.css";
 @import "./styles/animations.css";
+@import "./styles/admin-list.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -145,9 +146,9 @@
   --color-accent: #D97757;
   --color-accent-glow: rgba(217, 119, 87, 0.12);
 
-  /* ── Focus ── */
-  --color-focus: #4A90D9;
-  --color-focus-glow: rgba(74, 144, 217, 0.15);
+  /* ── Focus (brand coral, aligned with DESIGN) ── */
+  --color-focus: var(--color-brand);
+  --color-focus-glow: rgba(217, 119, 87, 0.18);
 
   /* ── Text ── */
   --color-text-primary: #1A1A1A;

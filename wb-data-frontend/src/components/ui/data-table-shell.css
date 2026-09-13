@@ -4,61 +4,109 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    min-height: 220px;
+    gap: 8px;
+    min-height: 180px;
     padding: 28px 20px;
     text-align: center;
+    border: 1px solid var(--color-border);
+    border-radius: var(--admin-list-radius, 12px);
+    background: var(--admin-list-board-bg);
 }
 
 .dt-error {
     align-items: flex-start;
-    min-height: 100px;
-    margin-top: 18px;
-    border: 1px solid rgba(180, 35, 24, 0.15);
-    border-radius: 8px;
+    min-height: 88px;
+    margin-top: 0;
+    border-color: rgba(180, 35, 24, 0.15);
     background: rgba(180, 35, 24, 0.04);
     color: var(--color-error);
 }
 
 .dt-empty {
-    margin-top: 18px;
+    margin-top: 0;
     color: var(--color-text-muted);
 }
 
 .dt-empty-icon {
     color: var(--color-text-muted);
-    opacity: 0.8;
+    opacity: 0.7;
+}
+
+.dt-empty-icon svg {
+    width: 22px;
+    height: 22px;
 }
 
 .dt-empty h3,
 .dt-error strong {
     margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 550;
+    color: var(--color-text-primary);
+}
+
+.dt-error strong {
+    color: var(--color-error);
 }
 
 .dt-empty p,
 .dt-error p {
     margin: 0;
+    max-width: 360px;
     color: var(--color-text-muted);
+    font-size: 0.8125rem;
+    line-height: 1.45;
 }
 
 .dt-shell {
     position: relative;
-    margin-top: 8px;
+    margin-top: 0;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--admin-list-radius, 12px);
+    background: var(--admin-list-board-bg);
+}
+
+/* When shell sits inside a panel that already provides the board chrome */
+.datasource-table-panel > .dt-shell,
+.user-table-panel > .dt-shell,
+.group-table-panel > .dt-shell {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.datasource-table-panel > .dt-empty,
+.datasource-table-panel > .dt-error,
+.user-table-panel > .dt-empty,
+.user-table-panel > .dt-error,
+.group-table-panel > .dt-empty,
+.group-table-panel > .dt-error {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    min-height: 200px;
+}
+
+/* Parameter page: shell is the board; flatten bottom when pagination follows */
+.parameter-table-shell.dt-shell:has(+ .parameter-pagination) {
+    border-bottom: none;
+    border-radius: var(--admin-list-radius, 12px) var(--admin-list-radius, 12px) 0 0;
 }
 
 .dt-shell.is-refreshing .dt-scroll {
-    filter: saturate(0.9);
+    filter: saturate(0.92);
 }
 
 .dt-inline-error {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 18px;
-    margin-bottom: 14px;
-    padding: 12px 14px;
+    gap: 14px;
+    margin: 10px 12px 0;
+    padding: 10px 12px;
     border: 1px solid rgba(180, 35, 24, 0.12);
-    border-radius: 14px;
+    border-radius: 8px;
     background: rgba(180, 35, 24, 0.045);
     color: var(--color-error);
 }
@@ -66,6 +114,7 @@
 .dt-inline-error strong,
 .dt-inline-error p {
     margin: 0;
+    font-size: 0.8125rem;
 }
 
 .dt-progress {
@@ -73,11 +122,12 @@
     top: 0;
     left: 0;
     right: 0;
-    height: 3px;
+    height: 2px;
     overflow: hidden;
-    border-radius: 999px;
+    border-radius: 0;
     opacity: 0;
     pointer-events: none;
+    z-index: 2;
 }
 
 .dt-progress::after {
@@ -101,7 +151,7 @@
 }
 
 .dt-scroll {
-    max-height: clamp(320px, calc(100vh - 272px), 680px);
+    max-height: clamp(320px, calc(100vh - 248px), 720px);
     overflow-y: auto;
     overflow-x: auto;
 }
@@ -112,7 +162,7 @@
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    padding-top: 18px;
+    padding-top: 14px;
     pointer-events: none;
     opacity: 0;
     transition: opacity var(--transition-fast);
@@ -127,20 +177,20 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    min-height: 34px;
-    padding: 0 14px;
+    min-height: 30px;
+    padding: 0 12px;
     border: 1px solid rgba(217, 119, 87, 0.18);
     border-radius: 999px;
-    background: rgba(248, 247, 244, 0.92);
+    background: rgba(248, 247, 244, 0.94);
     color: var(--color-text-secondary);
     font-size: var(--text-sm);
-    font-weight: 600;
+    font-weight: 550;
     box-shadow: var(--shadow-sm);
 }
 
 .dt-refresh-dot {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     background: var(--color-brand);
     box-shadow: 0 0 0 0 rgba(217, 119, 87, 0.28);
@@ -161,7 +211,7 @@
 
 @media (max-width: 900px) {
     .dt-scroll {
-        max-height: clamp(280px, calc(100vh - 236px), 560px);
+        max-height: clamp(280px, calc(100vh - 220px), 580px);
     }
 }
 

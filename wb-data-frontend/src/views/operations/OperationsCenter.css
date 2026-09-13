@@ -6,42 +6,36 @@
 .operations-center__shell {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    max-width: 1440px;
-    margin: 0 auto;
+    gap: 12px;
+    max-width: none;
+    margin: 0;
 }
 
+/* Title block removed from TSX; keep selectors inert for safety */
 .operations-center__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
+    display: none;
 }
 
 .operations-center__title {
-    margin: 0;
-    color: var(--color-text-primary);
-    font-size: 1.55rem;
-    font-weight: 750;
-    line-height: 1.2;
-    letter-spacing: 0;
+    display: none;
 }
 
 .operations-filter {
     display: grid;
     grid-template-columns:
-        minmax(180px, 240px)
-        minmax(220px, 1fr)
-        minmax(142px, 170px)
-        minmax(172px, 190px)
-        minmax(172px, 190px)
+        minmax(160px, 220px)
+        minmax(200px, 1fr)
+        minmax(132px, 160px)
+        minmax(160px, 180px)
+        minmax(160px, 180px)
         auto;
     align-items: end;
-    gap: 12px;
-    padding: 14px;
+    gap: 10px;
+    min-height: var(--admin-list-toolbar-height, 40px);
+    padding: 10px 12px;
     border: 1px solid var(--color-border);
-    border-radius: 8px;
-    background: var(--color-bg-primary);
+    border-radius: var(--admin-list-radius, 12px);
+    background: var(--admin-list-board-bg);
 }
 
 .operations-filter__field--time-range {
@@ -63,9 +57,9 @@
 }
 
 .operations-filter__field > span {
-    color: var(--color-text-secondary);
-    font-size: 0.78rem;
-    font-weight: 650;
+    color: var(--color-text-muted);
+    font-size: 0.6875rem;
+    font-weight: 500;
 }
 
 .operations-filter__select,
@@ -78,7 +72,7 @@
     background: var(--color-input-bg);
     color: var(--color-text-primary);
     font: inherit;
-    font-size: 0.86rem;
+    font-size: 0.8125rem;
 }
 
 .operations-filter__select {
@@ -124,8 +118,8 @@
 .operations-table {
     overflow-x: auto;
     border: 1px solid var(--color-border);
-    border-radius: 8px;
-    background: var(--color-bg-primary);
+    border-radius: var(--admin-list-radius, 12px) var(--admin-list-radius, 12px) 0 0;
+    background: var(--admin-list-board-bg);
 }
 
 .operations-table table {
@@ -137,17 +131,28 @@
 
 .operations-table th,
 .operations-table td {
-    padding: 12px 14px;
+    padding: 10px 14px;
     border-bottom: 1px solid var(--color-border-subtle);
     text-align: left;
     vertical-align: middle;
-    font-size: 0.86rem;
+    font-size: var(--admin-list-td-size, 0.875rem);
+}
+
+.operations-table td {
+    height: var(--admin-list-row-height, 46px);
+}
+
+.operations-table td:not(.operations-actions) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .operations-table th {
     color: var(--color-text-secondary);
-    font-weight: 650;
-    background: var(--color-bg-secondary);
+    font-size: var(--admin-list-th-size, 0.8125rem);
+    font-weight: 600;
+    background: var(--admin-list-header-bg, var(--color-bg-secondary));
 }
 
 .operations-table tr:last-child td {
@@ -155,7 +160,7 @@
 }
 
 .operations-table tbody tr:hover {
-    background: var(--color-accent-glow);
+    background: var(--color-bg-hover);
 }
 
 .operations-row {
@@ -189,6 +194,12 @@
 
 .operations-col-actions {
     width: 8%;
+    text-align: right;
+}
+
+.operations-table th:last-child,
+.operations-table td:last-child {
+    text-align: right;
 }
 
 .operations-flow,
@@ -200,7 +211,7 @@
 }
 
 .operations-flow {
-    font-weight: 750;
+    font-weight: 500;
 }
 
 .operations-branch {
@@ -221,13 +232,13 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 58px;
-    height: 26px;
-    padding: 0 9px;
+    min-width: 52px;
+    height: 22px;
+    padding: 0 8px;
     border: 1px solid transparent;
     border-radius: 999px;
-    font-size: 0.76rem;
-    font-weight: 750;
+    font-size: 0.6875rem;
+    font-weight: 500;
     white-space: nowrap;
 }
 
@@ -258,29 +269,30 @@
 .operations-actions {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 6px;
+    justify-content: flex-end;
+    gap: 4px;
 }
 
 .operations-icon-action {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     padding: 0;
-    border: 1px solid var(--color-border);
+    border: 1px solid transparent;
     border-radius: 8px;
-    background: var(--color-bg-primary);
-    color: var(--color-text-primary);
+    background: transparent;
+    color: var(--color-text-secondary);
     cursor: pointer;
     text-decoration: none;
     transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
 }
 
 .operations-icon-action:hover {
-    border-color: var(--color-border-strong);
-    background: var(--color-bg-secondary);
+    border-color: var(--color-border);
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
 }
 
 .operations-icon-action:focus-visible {
@@ -297,20 +309,26 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 14px;
-    padding: 2px 0 0;
+    gap: 12px;
+    min-height: 44px;
+    margin-top: 0;
+    padding: 8px 14px;
+    border: 1px solid var(--color-border);
+    border-top: none;
+    border-radius: 0 0 var(--admin-list-radius, 12px) var(--admin-list-radius, 12px);
+    background: color-mix(in srgb, var(--admin-list-board-bg) 88%, var(--color-bg-secondary));
 }
 
 .operations-page-info {
     display: inline-flex;
     align-items: center;
-    min-height: 32px;
-    padding: 0 12px;
-    border-radius: 999px;
-    background: var(--color-bg-secondary);
-    color: var(--color-text-secondary);
-    font-size: 0.84rem;
-    font-weight: 650;
+    min-height: 28px;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+    font-weight: 500;
     white-space: nowrap;
 }
 
@@ -352,15 +370,20 @@
 .operations-empty,
 .operations-error {
     border: 1px solid var(--color-border);
-    border-radius: 8px;
-    background: var(--color-bg-primary);
+    border-radius: var(--admin-list-radius, 12px);
+    background: var(--admin-list-board-bg);
 }
 
 .operations-empty,
 .operations-error {
-    padding: 40px 24px;
-    color: var(--color-text-secondary);
-    font-size: 0.92rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 180px;
+    padding: 28px 20px;
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    text-align: center;
 }
 
 .operations-error {
@@ -378,8 +401,8 @@
     grid-template-columns: 1.2fr 1.35fr 0.75fr 1fr 1fr;
     gap: 18px;
     align-items: center;
-    min-height: 58px;
-    padding: 0 16px;
+    min-height: 46px;
+    padding: 0 14px;
     border-bottom: 1px solid var(--color-border-subtle);
 }
 

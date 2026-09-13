@@ -297,7 +297,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             showFeedback({
                 tone: 'error',
                 title: '任务打开失败',
-                detail: getErrorMessage(error, '请检查路径是否存在，或稍后再试。'),
+                detail: getErrorMessage(error, ''),
             });
             return false;
         } finally {
@@ -628,7 +628,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             showFeedback({
                 tone: 'error',
                 title: '保存失败',
-                detail: getErrorMessage(error, '本地脚本文件保存失败，请稍后重试。'),
+                detail: getErrorMessage(error, ''),
             });
             return false;
         } finally {
@@ -755,8 +755,8 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         } catch (error) {
             if (!isCurrentGroupAction()) return;
             const detail = isSaveConflictError(error)
-                ? '服务器版本再次发生变化，请确认后重试覆盖保存。'
-                : getErrorMessage(error, '暂时无法基于最新版本覆盖保存，请稍后重试。');
+                ? '服务器版本再次变化，请确认后重试'
+                : getErrorMessage(error, '');
             showFeedback({
                 tone: 'error',
                 title: '覆盖保存失败',

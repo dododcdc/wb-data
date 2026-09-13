@@ -15,6 +15,7 @@ import {
     createDataSource,
     getDataSourceById,
     getDataSourcePlugins,
+    testExistingConnection,
     testNewConnection,
     updateDataSource,
 } from '../../api/datasource';
@@ -30,6 +31,7 @@ interface DataSourceFormProps {
     onOpenChange: (details: { open: boolean }) => void;
     dataSourceId: number | null;
     groupId?: number;
+    readOnly?: boolean;
     onSuccess: (details: DataSourceFormSuccessDetails) => void;
 }
 
@@ -130,6 +132,11 @@ function applyPluginDefaults(
     };
 
     for (const field of PLUGIN_EDITABLE_FIELDS) {
+        // Never invent a password default — edit forms keep password empty until the user types one.
+        if (field === 'password') {
+            continue;
+        }
+
         const currentValue = previousState[field];
         const previousDefault = getPluginFieldDefaultValue(previousDescriptor, field);
         const nextDefault = getPluginFieldDefaultValue(nextDescriptor, field);
@@ -181,21 +188,202 @@ function getFieldLayoutClass(field: PluginFieldDescriptor) {
     return 'form-input-group';
 }
 
-function getFieldPlaceholder(field: PluginFieldDescriptor, isEdit: boolean) {
-    if (isEdit && field.key === 'password') {
-        return '留空则保持当前密码';
+function getFieldPlaceholder(field: PluginFieldDescriptor, isEdit: boolean, readOnly: boolean) {
+    if (field.key === 'password') {
+        if (readOnly) {
+            return '********';
+        }
+        if (isEdit) {
+            return '留空则保持当前密码';
+        }
     }
 
     return field.placeholder;
 }
 
-export default function DataSourceForm({ open, onOpenChange, dataSourceId, groupId, onSuccess }: DataSourceFormProps) {
+const SECRET_PARAM_KEY = /password|secret|token|credential|passwd|private[_-]?key/i;
+const MASKED_PASSWORD = '••••••••';
+
+function formatPlainValue(value: unknown): string {
+    if (value === null || value === undefined) {
+        return '';
+    }
+    if (typeof value === 'string') {
+        return value.trim();
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+    }
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return '';
+    }
+}
+
+function isSecretConnectionParam(key: string, field?: PluginFieldDescriptor) {
+    return field?.inputType === 'password' || SECRET_PARAM_KEY.test(key);
+}
+
+function DetailValue({
+    value,
+    multiline = false,
+    masked = false,
+}: {
+    value?: unknown;
+    multiline?: boolean;
+    masked?: boolean;
+}) {
+    if (masked) {
+        return (
+            <div className="datasource-detail-value datasource-detail-password">
+                {MASKED_PASSWORD}
+            </div>
+        );
+    }
+
+    const text = formatPlainValue(value);
+    if (!text) {
+        return <div className="datasource-detail-value datasource-detail-empty">—</div>;
+    }
+
+    return (
+        <div className={`datasource-detail-value${multiline ? ' is-multiline' : ''}`}>
+            {text}
+        </div>
+    );
+}
+
+function DataSourceDetailSheet({
+    formData,
+    selectedPlugin,
+    loadError,
+    pluginError,
+}: {
+    formData: FormState;
+    selectedPlugin?: DataSourcePluginDescriptor;
+    loadError: string;
+    pluginError: Error | null;
+}) {
+    const connectionFields = selectedPlugin?.fields.filter((field) => field.section === 'connection') ?? [];
+    const connectionParamFields = selectedPlugin?.fields.filter((field) => field.section === 'connectionParams') ?? [];
+    const authenticationFields = selectedPlugin?.fields.filter((field) => field.section === 'authentication') ?? [];
+
+    return (
+        <div className="form-main-layout">
+            <div className="form-side-panel">
+                <div className="side-panel-section">
+                    <h3 className="sub-section-title">标识与类型</h3>
+                    <div className="form-input-group">
+                        <label>数据源名称</label>
+                        <DetailValue value={formData.name} />
+                    </div>
+                    <div className="form-input-group">
+                        <label>数据库类型</label>
+                        <div className="datasource-detail-value">
+                            {formData.type ? (
+                                <span className={`type-badge ${formData.type.toLowerCase()}`}>{formData.type}</span>
+                            ) : (
+                                <span className="datasource-detail-empty">—</span>
+                            )}
+                        </div>
+                    </div>
+                    {pluginError ? (
+                        <p className="config-section-tip">
+                            数据源插件加载失败：{pluginError.message}
+                        </p>
+                    ) : null}
+                    {loadError ? (
+                        <div className="form-feedback form-feedback-error">
+                            <AlertCircle size={14} />
+                            <span>{loadError}</span>
+                        </div>
+                    ) : null}
+                    <div className="form-input-group">
+                        <label>负责人</label>
+                        <DetailValue value={formData.owner} />
+                    </div>
+                    <div className="form-input-group">
+                        <label>备注描述</label>
+                        <DetailValue value={formData.description} multiline />
+                    </div>
+                </div>
+            </div>
+
+            <div className="form-main-panel">
+                <div className="config-section">
+                    <h3 className="sub-section-title">连接配置</h3>
+                    {selectedPlugin?.helperText ? (
+                        <p className="config-section-tip">{selectedPlugin.helperText}</p>
+                    ) : null}
+                    <div className="field-grid">
+                        {connectionFields.map((field) => {
+                            if (!isPluginEditableField(field.key)) {
+                                return null;
+                            }
+
+                            const fieldKey = field.key;
+
+                            return (
+                                <div key={fieldKey} className={getFieldLayoutClass(field)}>
+                                    <label>{field.label}</label>
+                                    <DetailValue
+                                        value={formData[fieldKey]}
+                                        masked={field.inputType === 'password' || fieldKey === 'password'}
+                                    />
+                                </div>
+                            );
+                        })}
+                        {connectionParamFields.map((field) => (
+                            <div key={field.key} className={getFieldLayoutClass(field)}>
+                                <label>{field.label}</label>
+                                <DetailValue
+                                    value={formData.connectionParams[field.key]}
+                                    masked={isSecretConnectionParam(field.key, field)}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="panel-divider" />
+
+                <div className="config-section">
+                    <h3 className="sub-section-title">身份核验</h3>
+                    <div className="field-grid">
+                        {authenticationFields.map((field) => {
+                            if (!isPluginEditableField(field.key)) {
+                                return null;
+                            }
+
+                            const fieldKey = field.key;
+
+                            return (
+                                <div key={fieldKey} className={getFieldLayoutClass(field)}>
+                                    <label>{field.label}</label>
+                                    <DetailValue
+                                        value={formData[fieldKey]}
+                                        masked={field.inputType === 'password' || fieldKey === 'password'}
+                                    />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export default function DataSourceForm({ open, onOpenChange, dataSourceId, groupId, readOnly = false, onSuccess }: DataSourceFormProps) {
     const isEdit = Boolean(dataSourceId);
+    const isView = readOnly && isEdit;
     const detailRequestIdRef = useRef(0);
     const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
 
     const [formData, setFormData] = useState<FormState>(createEmptyFormState);
     const [fieldErrors, setFieldErrors] = useState<Partial<Record<FormField, string | true>>>({});
+    const [passwordDirty, setPasswordDirty] = useState(false);
     const [isLoadingDetails, setIsLoadingDetails] = useState(false);
     const [loadError, setLoadError] = useState('');
 
@@ -242,6 +430,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
             setTestMessage('');
             setSaveError('');
             setLoadError('');
+            setPasswordDirty(false);
             if (isEdit && dataSourceId) {
                 setIsLoadingDetails(true);
                 setFormData(createEmptyFormState());
@@ -261,7 +450,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                             port: res.port ? String(res.port) : '',
                             databaseName: res.databaseName || '',
                             username: res.username || '',
-                            password: '',
+                            password: readOnly ? '********' : '',
                             connectionParams: normalizeConnectionParams((res.connectionParams || {}) as Record<string, unknown>),
                         });
                     })
@@ -282,7 +471,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                 setFormData(createEmptyFormState());
             }
         }
-    }, [dataSourceId, groupId, isEdit, open, refetchPlugins]);
+    }, [dataSourceId, groupId, isEdit, open, readOnly, refetchPlugins]);
 
     useEffect(() => {
         if (!open || pluginDescriptors.length === 0 || (isEdit && isLoadingDetails)) {
@@ -338,6 +527,9 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
     };
 
     const handlePluginFieldChange = (field: PluginEditableField, value: string) => {
+        if (field === 'password') {
+            setPasswordDirty(true);
+        }
         handleChange(field, value);
     };
 
@@ -449,8 +641,41 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
         return Object.keys(nextErrors).length === 0;
     };
 
+    const runExistingConnectionTest = async () => {
+        if (!dataSourceId || groupId == null) {
+            return;
+        }
+
+        setTesting(true);
+        setTestResult('none');
+        setTestMessage('正在验证连接配置，请稍等...');
+        setSaveError('');
+        try {
+            const result = await testExistingConnection(dataSourceId, groupId);
+            setTestResult(result.success ? 'success' : 'fail');
+            setTestMessage(result.message || (result.success ? '连接成功' : '连接失败'));
+        } catch (error) {
+            setTestResult('fail');
+            setTestMessage(getErrorMessage(error, '连接失败'));
+        } finally {
+            setTesting(false);
+        }
+    };
+
     const onTestConnection = async () => {
         if (!supportsConnectionTest || !selectedPlugin || isLoadingDetails) {
+            return;
+        }
+
+        if (isView) {
+            await runExistingConnectionTest();
+            return;
+        }
+
+        // Edit keeps stored secrets unless the user explicitly changed the password field
+        // (empty string OR browser autofill without a user edit should not hit test-new).
+        if (isEdit && dataSourceId && !passwordDirty) {
+            await runExistingConnectionTest();
             return;
         }
 
@@ -474,17 +699,17 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
             };
             const result = await testNewConnection(requestPayload, groupId!);
             setTestResult(result.success ? 'success' : 'fail');
-            setTestMessage(result.message || (result.success ? '连接测试通过，可以继续保存。' : '连接测试失败，请检查连接配置。'));
+            setTestMessage(result.message || (result.success ? '连接成功' : '连接失败'));
         } catch (error) {
             setTestResult('fail');
-            setTestMessage(getErrorMessage(error, '连接校验失败，请稍后重试'));
+            setTestMessage(getErrorMessage(error, '连接失败'));
         } finally {
             setTesting(false);
         }
     };
 
     const onSave = async () => {
-        if (!selectedPlugin || isLoadingDetails) {
+        if (isView || !selectedPlugin || isLoadingDetails) {
             return;
         }
 
@@ -534,7 +759,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
             }
         } catch (error) {
             console.error(error);
-            setSaveError(getErrorMessage(error, '保存失败，请检查表单后重试'));
+            setSaveError(getErrorMessage(error, '保存失败'));
         } finally {
             setSaving(false);
         }
@@ -545,10 +770,12 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
             <DialogContent ref={(el) => { setDialogEl(el); }} style={{ maxWidth: '960px' }}>
                 <DialogHeader>
                     <DialogTitle>
-                        {isEdit ? '编辑数据源' : '新建数据源'}
+                        {isView ? '数据源详情' : isEdit ? '编辑数据源' : '新建数据源'}
                     </DialogTitle>
                     <DialogDescription className="sr-only">
-                        Form to configure settings for a data source connection.
+                        {isView
+                            ? 'View read-only data source connection details.'
+                            : 'Form to configure settings for a data source connection.'}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -565,6 +792,13 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                 ))}
                             </div>
                         </div>
+                    ) : isView ? (
+                        <DataSourceDetailSheet
+                            formData={formData}
+                            selectedPlugin={selectedPlugin}
+                            loadError={loadError}
+                            pluginError={pluginError}
+                        />
                     ) : (
                         <div className="form-main-layout">
                             <div className="form-side-panel">
@@ -572,7 +806,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                     <h3 className="sub-section-title">标识与类型</h3>
                                     <div className={`form-input-group ${fieldErrors.name ? 'has-error' : ''}`}>
                                         <label htmlFor="ds-name">数据源名称 <span className="required">*</span></label>
-                                        <input id="ds-name" type="text" value={formData.name} onChange={e => handleChange('name', e.target.value)} placeholder="如：生产环境主库" />
+                                        <input id="ds-name" type="text" value={formData.name} onChange={e => handleChange('name', e.target.value)} placeholder="如：生产环境主库" disabled={isView} readOnly={isView} />
                                         {typeof fieldErrors.name === 'string' ? <span className="form-input-error">{fieldErrors.name}</span> : null}
                                     </div>
                                     <div className={`form-input-group ${fieldErrors.type ? 'has-error' : ''}`}>
@@ -581,7 +815,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                             id="datasource-form-type-select"
                                             value={effectiveType}
                                             onChange={handleTypeChange}
-                                            disabled={pluginQuery.isLoading || typeOptions.length === 0}
+                                            disabled={isView || pluginQuery.isLoading || typeOptions.length === 0}
                                             options={typeOptions}
                                             placeholder="选择数据库类型"
                                             menuContainer={dialogEl}
@@ -601,7 +835,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                     ) : null}
                                     <div className="form-input-group">
                                         <label htmlFor="ds-owner">负责人</label>
-                                        <input id="ds-owner" type="text" value={formData.owner} onChange={e => handleChange('owner', e.target.value)} placeholder="项目负责人姓名" />
+                                        <input id="ds-owner" type="text" value={formData.owner} onChange={e => handleChange('owner', e.target.value)} placeholder="项目负责人姓名" disabled={isView} readOnly={isView} />
                                     </div>
                                     <div className="form-input-group">
                                         <label htmlFor="ds-description">备注描述</label>
@@ -611,6 +845,8 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                             onChange={e => handleChange('description', e.target.value)}
                                             placeholder="简要描述业务用途..."
                                             rows={3}
+                                            disabled={isView}
+                                            readOnly={isView}
                                         />
                                     </div>
                                 </div>
@@ -639,9 +875,12 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                                     <input
                                                         id={`ds-conn-${fieldKey}`}
                                                         type={field.inputType === 'password' ? 'password' : 'text'}
+                                                        autoComplete={field.inputType === 'password' || field.key === 'password' ? 'new-password' : 'off'}
                                                         value={formData[fieldKey]}
                                                         onChange={(event) => handlePluginFieldChange(fieldKey, event.target.value)}
-                                                        placeholder={getFieldPlaceholder(field, isEdit)}
+                                                        placeholder={getFieldPlaceholder(field, isEdit, isView)}
+                                                        disabled={isView}
+                                                        readOnly={isView}
                                                     />
                                                     {typeof fieldErrors[fieldKey] === 'string' ? <span className="form-input-error">{fieldErrors[fieldKey]}</span> : null}
                                                 </div>
@@ -659,9 +898,12 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                                     <input
                                                         id={`ds-conn-param-${field.key}`}
                                                         type={field.inputType === 'password' ? 'password' : 'text'}
+                                                        autoComplete={field.inputType === 'password' || field.key === 'password' ? 'new-password' : 'off'}
                                                         value={String(formData.connectionParams[field.key] ?? '')}
                                                         onChange={(event) => handleConnectionParamFieldChange(field, event.target.value)}
                                                         placeholder={field.placeholder}
+                                                        disabled={isView}
+                                                        readOnly={isView}
                                                     />
                                                     {typeof fieldErrors[fieldKey] === 'string' ? <span className="form-input-error">{fieldErrors[fieldKey]}</span> : null}
                                                 </div>
@@ -682,6 +924,45 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
 
                                             const fieldKey = field.key;
 
+                                            if (fieldKey === 'password' && isEdit && !isView) {
+                                                return (
+                                                    <div key={fieldKey} className={`${getFieldLayoutClass(field)} ${fieldErrors[fieldKey] ? 'has-error' : ''}`}>
+                                                        <label htmlFor="ds-auth-password">{field.label}</label>
+                                                        {passwordDirty ? (
+                                                            <input
+                                                                id="ds-auth-password"
+                                                                type="password"
+                                                                name="wb-data-ds-new-password"
+                                                                autoComplete="new-password"
+                                                                value={formData.password}
+                                                                onChange={(event) => handlePluginFieldChange('password', event.target.value)}
+                                                                onBlur={() => {
+                                                                    if (!formData.password.trim()) {
+                                                                        setPasswordDirty(false);
+                                                                    }
+                                                                }}
+                                                                placeholder="请输入新密码"
+                                                                autoFocus
+                                                            />
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                id="ds-auth-password"
+                                                                className="datasource-password-mask"
+                                                                aria-label="当前密码已保存，点击后可输入新密码"
+                                                                onClick={() => {
+                                                                    setPasswordDirty(true);
+                                                                    handleChange('password', '');
+                                                                }}
+                                                            >
+                                                                <span aria-hidden="true">{MASKED_PASSWORD}</span>
+                                                            </button>
+                                                        )}
+                                                        {typeof fieldErrors[fieldKey] === 'string' ? <span className="form-input-error">{fieldErrors[fieldKey]}</span> : null}
+                                                    </div>
+                                                );
+                                            }
+
                                             return (
                                                 <div key={fieldKey} className={`${getFieldLayoutClass(field)} ${fieldErrors[fieldKey] ? 'has-error' : ''}`}>
                                                     <label htmlFor={`ds-auth-${fieldKey}`}>
@@ -691,14 +972,15 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                                     <input
                                                         id={`ds-auth-${fieldKey}`}
                                                         type={field.inputType === 'password' ? 'password' : 'text'}
+                                                        name={fieldKey === 'password' ? 'wb-data-ds-password' : undefined}
+                                                        autoComplete={field.inputType === 'password' || field.key === 'password' ? 'new-password' : 'off'}
                                                         value={formData[fieldKey]}
                                                         onChange={(event) => handlePluginFieldChange(fieldKey, event.target.value)}
-                                                        placeholder={getFieldPlaceholder(field, isEdit)}
+                                                        placeholder={getFieldPlaceholder(field, isEdit, isView)}
+                                                        disabled={isView}
+                                                        readOnly={isView}
                                                     />
                                                     {typeof fieldErrors[fieldKey] === 'string' ? <span className="form-input-error">{fieldErrors[fieldKey]}</span> : null}
-                                                    {isEdit && fieldKey === 'password' ? (
-                                                        <span className="form-input-help">留空则保持当前密码不变</span>
-                                                    ) : null}
                                                 </div>
                                             );
                                         })}
@@ -741,11 +1023,13 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                     </div>
                     <div className="footer-right" style={{ display: 'flex', gap: 12 }}>
                         <Button variant="outline" onClick={() => onOpenChange({ open: false })} disabled={saving}>
-                            取消
+                            {isView ? '关闭' : '取消'}
                         </Button>
-                        <Button variant="default" onClick={onSave} disabled={saving || isLoadingDetails || !selectedPlugin}>
-                            {saving ? '保存中...' : '确认保存'}
-                        </Button>
+                        {!isView ? (
+                            <Button variant="default" onClick={onSave} disabled={saving || isLoadingDetails || !selectedPlugin}>
+                                {saving ? '保存中...' : '确认保存'}
+                            </Button>
+                        ) : null}
                     </div>
                 </DialogFooter>
             </DialogContent>

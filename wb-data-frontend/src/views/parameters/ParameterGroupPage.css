@@ -1,19 +1,19 @@
 .parameter-page {
     display: flex;
     width: 100%;
-    max-width: 1120px;
-    margin: 0 auto;
+    margin: 0;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
     min-height: calc(100vh - 104px);
 }
 
 .parameter-toolbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding-top: 4px;
+    justify-content: flex-start;
+    gap: 10px;
+    min-height: var(--admin-list-toolbar-height, 40px);
+    padding: 0;
 }
 
 .parameter-toolbar-filters {
@@ -21,12 +21,15 @@
     align-items: center;
     gap: 10px;
     flex: 1;
+    min-width: 0;
 }
 
 .parameter-toolbar-actions {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
+    margin-left: auto;
 }
 
 .parameter-pagination select {
@@ -55,19 +58,19 @@
 .parameter-search {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     width: min(360px, 100%);
-    height: 38px;
-    padding: 0 13px;
+    height: 36px;
+    padding: 0 12px;
     border: 1px solid var(--color-border);
-    border-radius: 11px;
-    background: var(--color-bg-primary);
+    border-radius: 10px;
+    background: var(--admin-list-board-bg);
     color: var(--color-text-muted);
 }
 
 .parameter-search:focus-within {
     border-color: var(--color-focus);
-    box-shadow: 0 0 0 4px var(--color-focus-glow);
+    box-shadow: 0 0 0 3px var(--color-focus-glow);
 }
 
 .parameter-search svg {
@@ -84,20 +87,25 @@
 }
 
 .parameter-table-shell {
-    min-height: 360px;
+    min-height: 240px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--admin-list-radius, 12px);
+    background: var(--admin-list-board-bg);
+    overflow: hidden;
 }
 
 .parameter-first-empty {
     display: grid;
-    min-height: 320px;
+    min-height: 200px;
     place-items: center;
     align-content: center;
-    gap: 8px;
-    border: 1px dashed var(--color-border);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--color-bg-secondary) 42%, transparent);
+    gap: 6px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--admin-list-radius, 12px);
+    background: var(--admin-list-board-bg);
     color: var(--color-text-muted);
     text-align: center;
+    padding: 28px 20px;
 }
 
 .parameter-first-empty > svg {
@@ -129,8 +137,8 @@
 
 .parameter-status-select {
     width: 132px;
-    height: 38px;
-    background: var(--color-bg-primary);
+    height: 36px;
+    background: var(--admin-list-board-bg);
 }
 
 .parameter-table {
@@ -140,25 +148,39 @@
 }
 
 .parameter-table th {
-    padding: 11px 14px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 10px 14px;
     border-bottom: 1px solid var(--color-border);
-    background: var(--color-bg-secondary);
-    color: var(--color-text-secondary);
-    font-size: 0.78rem;
-    font-weight: 650;
+    background: var(--admin-list-header-bg, var(--color-bg-secondary));
+    color: var(--color-text-muted);
+    font-size: var(--admin-list-th-size, 0.8125rem);
+    font-weight: 600;
     text-align: left;
 }
 
 .parameter-table td {
-    padding: 12px 14px;
+    height: var(--admin-list-row-height, 46px);
+    padding: 10px 14px;
     border-bottom: 1px solid var(--color-border-subtle);
     color: var(--color-text-secondary);
-    font-size: 0.875rem;
+    font-size: var(--admin-list-td-size, 0.875rem);
     vertical-align: middle;
 }
 
+.parameter-table td:not(.parameter-actions) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.parameter-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
 .parameter-table tbody tr:hover {
-    background: var(--color-accent-glow);
+    background: var(--color-bg-hover);
 }
 
 .parameter-name-cell {
@@ -168,7 +190,8 @@
 
 .parameter-name-cell strong {
     color: var(--color-text-primary);
-    font-size: 0.92rem;
+    font-size: 0.875rem;
+    font-weight: 500;
 }
 
 .parameter-name-cell span {
@@ -184,11 +207,11 @@
 .parameter-status {
     display: inline-flex;
     align-items: center;
-    min-height: 24px;
-    padding: 2px 8px;
+    min-height: 22px;
+    padding: 0 8px;
     border-radius: 999px;
-    font-size: 0.75rem;
-    font-weight: 650;
+    font-size: 0.6875rem;
+    font-weight: 500;
 }
 
 .parameter-version {
@@ -218,9 +241,23 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 14px;
+    flex-wrap: wrap;
+    gap: 12px;
+    min-height: 44px;
+    margin-top: 0;
+    padding: 8px 14px;
+    border: 1px solid var(--color-border);
+    border-top: none;
+    border-radius: 0 0 var(--admin-list-radius, 12px) var(--admin-list-radius, 12px);
+    background: color-mix(in srgb, var(--admin-list-board-bg) 88%, var(--color-bg-secondary));
     color: var(--color-text-muted);
-    font-size: 0.79rem;
+    font-size: 0.8125rem;
+}
+
+.parameter-pagination > span:first-child {
+    margin-right: auto;
+    color: var(--color-text-muted);
+    font-weight: 500;
 }
 
 .parameter-pagination label,

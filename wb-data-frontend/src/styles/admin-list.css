@@ -1,0 +1,207 @@
+/* Shared Stripe-like density for admin list pages.
+   Keep warm parchment + coral tokens from index.css. */
+
+:root {
+    --admin-list-row-height: 46px;
+    --admin-list-toolbar-height: 40px;
+    --admin-list-radius: 12px;
+    --admin-list-th-size: 0.8125rem; /* 13px */
+    --admin-list-td-size: 0.875rem;
+    --admin-list-cell-pad-y: 10px;
+    --admin-list-cell-pad-x: 14px;
+    --admin-list-board-bg: color-mix(in srgb, var(--color-bg-primary) 55%, #FFFFFF);
+    --admin-list-header-bg: color-mix(in srgb, var(--color-bg-secondary) 88%, var(--admin-list-board-bg));
+}
+
+.admin-list-page {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.admin-list-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    min-height: var(--admin-list-toolbar-height);
+    padding: 0;
+}
+
+.admin-list-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.admin-list-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--admin-list-radius);
+    background: var(--admin-list-board-bg);
+}
+
+.admin-list-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.admin-list-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: var(--admin-list-cell-pad-y) var(--admin-list-cell-pad-x);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--admin-list-header-bg);
+    color: var(--color-text-secondary);
+    font-family: var(--font-sans);
+    font-size: var(--admin-list-th-size);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1.3;
+    text-align: left;
+    text-transform: none;
+}
+
+.admin-list-table td {
+    height: var(--admin-list-row-height);
+    padding: var(--admin-list-cell-pad-y) var(--admin-list-cell-pad-x);
+    border-bottom: 1px solid var(--color-border-subtle);
+    color: var(--color-text-primary);
+    font-size: var(--admin-list-td-size);
+    vertical-align: middle;
+}
+
+.admin-list-table td:not(.admin-list-actions-column):not([class*="actions-column"]):not(.parameter-actions) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-list-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.admin-list-table tbody tr:hover {
+    background: var(--color-bg-hover);
+}
+
+.admin-list-table tbody tr:hover td:first-child {
+    box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-brand) 35%, transparent);
+}
+
+.admin-list-name {
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.3;
+}
+
+.admin-list-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 44px;
+    margin-top: 0;
+    padding: 8px 14px;
+    border-top: 1px solid var(--color-border);
+    background: color-mix(in srgb, var(--admin-list-board-bg) 88%, var(--color-bg-secondary));
+}
+
+.admin-list-page-info {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.admin-list-status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-width: 64px;
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    line-height: 1;
+}
+
+.admin-list-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+}
+
+.admin-list-actions-column {
+    text-align: right;
+    width: 120px;
+}
+
+.admin-list-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 360px;
+    max-width: 480px;
+    min-width: 0;
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--admin-list-board-bg);
+    color: var(--color-text-muted);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.admin-list-search:hover {
+    border-color: var(--color-border-strong);
+}
+
+.admin-list-search:focus-within {
+    border-color: var(--color-focus);
+    box-shadow: 0 0 0 3px var(--color-focus-glow);
+}
+
+.admin-list-search input {
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.4;
+    font-family: var(--font-sans);
+}
+
+.admin-list-search input::placeholder {
+    color: var(--color-input-placeholder);
+}
+
+
+.admin-list-mono {
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 400;
+    letter-spacing: 0;
+    line-height: 1.35;
+    font-variant-numeric: tabular-nums;
+}

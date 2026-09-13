@@ -330,7 +330,7 @@ export default function OperationsCenter() {
             void queryClient.invalidateQueries({ queryKey: ['operations-executions'] });
         },
         onError: () => {
-            showFeedback({ tone: 'error', title: '重跑触发失败', detail: '请稍后再试。' });
+            showFeedback({ tone: 'error', title: '重跑触发失败', detail: '' });
         },
         onSettled: () => {
             setPendingRerunId(null);

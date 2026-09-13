@@ -108,17 +108,18 @@ export default function GroupSettingsPage() {
             setIsAddMemberOpen(false);
             showFeedback({
                 tone: 'success',
-                title: '成员已添加',
-                detail: `已添加 ${addedMemberCountRef.current} 名成员。`,
+                title: `已添加 ${addedMemberCountRef.current} 名成员`,
+                detail: '',
             });
             void queryClient.invalidateQueries({ queryKey: ['group-settings-members'] });
         },
         onError: (error) => {
             setIsAddMemberOpen(false);
+            const message = (error as { message?: string } | null)?.message?.trim();
             showFeedback({
                 tone: 'error',
-                title: '添加成员失败',
-                detail: (error as { message?: string } | null)?.message ?? '无法添加成员，请稍后重试。',
+                title: message || '添加成员失败',
+                detail: '',
             });
         },
     });
@@ -129,19 +130,22 @@ export default function GroupSettingsPage() {
         onSuccess: (_result, variables) => {
             const member = changeRoleMember;
             setChangeRoleMember(null);
+            const name = member?.displayName ?? '成员';
+            const roleLabel = getRoleLabel(variables.role);
             showFeedback({
                 tone: 'success',
-                title: '角色已变更',
-                detail: `${member?.displayName ?? '成员'} 的角色已变更为 ${getRoleLabel(variables.role)}。`,
+                title: `${name} 已设为${roleLabel}`,
+                detail: '',
             });
             void queryClient.invalidateQueries({ queryKey: ['group-settings-members'] });
         },
         onError: (error) => {
             setChangeRoleMember(null);
+            const message = (error as { message?: string } | null)?.message?.trim();
             showFeedback({
                 tone: 'error',
-                title: '角色变更失败',
-                detail: (error as { message?: string } | null)?.message ?? '角色变更失败，请稍后重试。',
+                title: message || '角色变更失败',
+                detail: '',
             });
         },
     });
@@ -152,19 +156,21 @@ export default function GroupSettingsPage() {
             setPendingRemoveId(memberId);
         },
         onSuccess: () => {
+            const name = pendingRemoveTarget?.displayName ?? '成员';
             showFeedback({
                 tone: 'success',
-                title: '成员已移除',
-                detail: `${pendingRemoveTarget?.displayName ?? '成员'} 已从项目组移除。`,
+                title: `${name} 已移除`,
+                detail: '',
             });
             void queryClient.invalidateQueries({ queryKey: ['group-settings-members'] });
             setPendingRemoveTarget(null);
         },
         onError: (error) => {
+            const message = (error as { message?: string } | null)?.message?.trim();
             showFeedback({
                 tone: 'error',
-                title: '移除成员失败',
-                detail: (error as { message?: string } | null)?.message ?? '无法移除该成员，请稍后重试。',
+                title: message || '移除成员失败',
+                detail: '',
             });
         },
         onSettled: () => {
