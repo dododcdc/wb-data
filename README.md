@@ -39,6 +39,8 @@ wb-data/
 
 本地默认拓扑：前端和后端跑在宿主机，MySQL / Kestra / Hive / ClickHouse 用仓库里的 Compose。数据源 host 填 `localhost`，不要填 `host.docker.internal`（界面「测试连接」会失败）。
 
+临时给人看（无 VPS / 无自购域名）：本机 Nginx 托管前端 `dist`、反代 `/api` 到 Jar，再用 Tailscale Funnel 暴露 `*.ts.net`。步骤与开关 Funnel、更新约定见 [演示部署（Grok Bot + Funnel）](docs/demo-deploy-grokbot.md)。GitHub Actions 自动部署暂不做。
+
 前置依赖：JDK 21、Node.js 18+、Maven、Docker。配置细节、数据源怎么填、host 改写原理见 [本地开发](docs/local-development.md)。
 
 ### 场景对照
@@ -49,6 +51,7 @@ wb-data/
 | 画布执行 / SQL 节点 | 上面 + Kestra | `dev` | 要（`dev` 已默认） | `localhost` |
 | 数据传输 | 上面 + Hive + SeaTunnel 变量 | `dev` | 要（`dev` 已默认） | `localhost` |
 | 生产 | 待补充 | 不要开 `dev` | 不要设 | 真实地址 |
+| 临时公网演示（本机 Nginx + Jar + Funnel） | 见 [演示部署](docs/demo-deploy-grokbot.md) | 演示可用 `dev` | 按本地开发 | 演示库 / localhost |
 
 `SPRING_PROFILES_ACTIVE=dev` 时，`WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE` 默认已是 `host.docker.internal`。下面离线 / 传输的命令仍写出该变量，方便对照；未开 `dev` 时必须显式加上，否则 SQL / 传输节点会 Connection refused。
 
