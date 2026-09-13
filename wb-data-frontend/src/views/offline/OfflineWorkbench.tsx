@@ -727,7 +727,6 @@ export default function OfflineWorkbench() {
                 onRefresh={() => void refreshExecutions(activeExecutionId)}
                 onSelectExecution={(executionId) => void loadExecutionDetail(executionId)}
                 onStopAll={() => void handleStopAllExecutions()}
-                onOpenTaskLogs={(executionId, taskId) => window.open(`/offline/executions/${encodeURIComponent(executionId)}?taskId=${encodeURIComponent(taskId)}`, '_blank')}
                 onRequestedByFilterChange={(requestedBy) => {
                     setExecutionRequestedByFilter(requestedBy);
                     void refreshExecutions(activeExecutionId, requestedBy);

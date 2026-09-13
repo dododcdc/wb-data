@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Copy, History, LoaderCircle, RefreshCcw, TerminalSquare, X } from 'lucide-react';
 
 import type {
@@ -22,6 +22,7 @@ import {
     isStoppable,
     isUserTaskId,
 } from '../../components/execution/executionPresentation';
+import { ExecutionTaskLogPanel } from './ExecutionTaskLogPanel';
 import './OfflineExecutionDialog.css';
 
 function formatDateTime(value: string | number | null | undefined) {
@@ -63,7 +64,6 @@ interface OfflineExecutionDialogProps {
     onRefresh: () => void;
     onSelectExecution: (executionId: string) => void;
     onStopAll: () => void;
-    onOpenTaskLogs: (executionId: string, taskId: string) => void;
     onRequestedByFilterChange: (requestedBy: number | null) => void;
 }
 
@@ -81,10 +81,10 @@ export function OfflineExecutionDialog({
     onRefresh,
     onSelectExecution,
     onStopAll,
-    onOpenTaskLogs,
     onRequestedByFilterChange,
 }: OfflineExecutionDialogProps) {
     const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
+    const [logTaskId, setLogTaskId] = useState<string | null>(null);
     const listBusy = useDelayedBusy(loading);
     const detailBusy = useDelayedBusy(detailLoading);
     const requestedByOptions = currentUserId == null
@@ -98,9 +98,17 @@ export function OfflineExecutionDialog({
         [detail],
     );
 
+    useEffect(() => {
+        if (!open) setLogTaskId(null);
+    }, [open]);
+
+    useEffect(() => {
+        setLogTaskId(null);
+    }, [activeExecutionId]);
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent ref={(el) => { setDialogEl(el); }} className="offline-execution-dialog" hideClose>
+            <DialogContent ref={(el) => { setDialogEl(el); }} className="offline-execution-dialog" hideClose aria-describedby={undefined}>
                 <DialogTitle className="sr-only">执行结果</DialogTitle>
                 <div className="dialog-toolbar offline-dialog-toolbar">
                     <div className="offline-execution-toolbar-left">
@@ -177,7 +185,10 @@ export function OfflineExecutionDialog({
                                         key={item.executionId}
                                         type="button"
                                         className={`offline-execution-row is-${presentation.dotTone}${item.executionId === activeExecutionId ? ' is-active' : ''}`}
-                                        onClick={() => onSelectExecution(item.executionId)}
+                                        onClick={() => {
+                                            setLogTaskId(null);
+                                            onSelectExecution(item.executionId);
+                                        }}
                                     >
                                         <div className="offline-execution-row-main">
                                             <div className="offline-execution-row-title">
@@ -197,7 +208,14 @@ export function OfflineExecutionDialog({
                     </section>
 
                     <section className="offline-execution-detail">
-                        {detailBusy ? (
+                        {logTaskId && detail ? (
+                            <ExecutionTaskLogPanel
+                                executionId={detail.executionId}
+                                taskId={logTaskId}
+                                running={isRunningStatus(detail.status)}
+                                onBack={() => setLogTaskId(null)}
+                            />
+                        ) : detailBusy ? (
                             <div className="offline-execution-detail-skeleton" role="status">
                                 <span className="sr-only">正在加载执行详情</span>
                                 <span className="skeleton-line offline-execution-detail-skeleton-title" aria-hidden="true" />
@@ -338,7 +356,7 @@ export function OfflineExecutionDialog({
                                                                     variant="ghost"
                                                                     size="sm"
                                                                     style={{ height: '24px', padding: '0 8px', fontSize: '0.72rem' }}
-                                                                    onClick={() => onOpenTaskLogs(detail.executionId, task.taskId)}
+                                                                    onClick={() => setLogTaskId(task.taskId)}
                                                                 >
                                                                     日志
                                                                 </Button>

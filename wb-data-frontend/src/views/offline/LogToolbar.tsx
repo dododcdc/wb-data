@@ -1,6 +1,7 @@
 // wb-data-frontend/src/views/offline/LogToolbar.tsx
 import { useState, useCallback } from 'react';
 import { ArrowDownToLine, X, ChevronUp, ChevronDown } from 'lucide-react';
+import './LogToolbar.css';
 
 interface LogToolbarProps {
     levelCounts: { ERROR: number; WARN: number; INFO: number };
