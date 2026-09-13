@@ -9,7 +9,7 @@ import {
 } from '../../../api/transfer';
 import type { TransferDataSourceType } from './transferTypes';
 
-export const supportedTransferDataSourceTypes: TransferDataSourceType[] = ['MYSQL', 'POSTGRESQL', 'STARROCKS', 'HIVE'];
+export const supportedTransferDataSourceTypes: TransferDataSourceType[] = ['MYSQL', 'POSTGRESQL', 'CLICKHOUSE', 'HIVE'];
 
 export interface TransferAsyncResource<T> {
     data: T;

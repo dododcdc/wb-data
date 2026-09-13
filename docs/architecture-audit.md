@@ -97,7 +97,7 @@ API 层：12 个文件全部走 `utils/request.ts` 共享实例（Bearer 注入�
 ### P3 测试空洞
 
 - [x] ~~后端 `query`、`user` 两个核心包零测试~~（2026-09-12 补齐，共 31 个用例）：query 域新增 `QueryServiceImplTest`、`MetadataServiceImplTest`、`QueryControllerPermissionTest`（另有 P0-4 的 `QueryExportServiceImplTest`）；user 域新增 `UserServiceTest`、`UserControllerPermissionTest`、`GroupControllerPermissionTest`。
-- [ ] 插件 `wb-data-plugin-api`、`postgresql`、`starrocks` 零测试。
+- [ ] 插件 `wb-data-plugin-api`、`postgresql` 零测试；`clickhouse` 已有 JDBC URL 用例。
 - [ ] 前端 `dashboard`、`users`、`core`（登录/兜底页）零测试。
 - [ ] 全仓 TODO/FIXME 零命中——没有就地标注已知问题的习惯，建议整改期间开始标注。
 

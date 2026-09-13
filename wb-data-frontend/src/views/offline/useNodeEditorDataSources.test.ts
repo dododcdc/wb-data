@@ -34,7 +34,7 @@ describe('useNodeEditorDataSources preload cache', () => {
             page: 1,
             keyword: '',
             status: 'ENABLED',
-            type: 'MYSQL,POSTGRESQL,STARROCKS',
+            type: 'MYSQL,POSTGRESQL,CLICKHOUSE',
         }));
         expect(datasourceApi.getDataSourcePage).toHaveBeenCalledWith(expect.objectContaining({
             groupId: 1,

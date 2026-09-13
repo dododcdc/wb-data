@@ -78,8 +78,9 @@ final class OfflineNodeTaskCompiler {
     static String resolveKestraQueryTaskType(String dataSourceType) {
         String normalizedType = dataSourceType == null ? "" : dataSourceType.trim().toUpperCase();
         return switch (normalizedType) {
-            case "MYSQL", "STARROCKS" -> WB_DATA_JDBC_TASK_PREFIX + "mysql.Query";
+            case "MYSQL" -> WB_DATA_JDBC_TASK_PREFIX + "mysql.Query";
             case "POSTGRESQL" -> WB_DATA_JDBC_TASK_PREFIX + "postgresql.Query";
+            case "CLICKHOUSE" -> WB_DATA_JDBC_TASK_PREFIX + "clickhouse.Query";
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "暂不支持的数据源类型: " + dataSourceType);
         };
     }
@@ -292,8 +293,9 @@ final class OfflineNodeTaskCompiler {
         String normalizedType = dataSourceType == null ? "" : dataSourceType.trim().toUpperCase();
         String databaseSegment = databaseName == null || databaseName.isBlank() ? "" : "/" + databaseName;
         return switch (normalizedType) {
-            case "MYSQL", "STARROCKS" -> String.format("jdbc:mysql://%s:%d%s", effectiveHost, port, databaseSegment);
+            case "MYSQL" -> String.format("jdbc:mysql://%s:%d%s", effectiveHost, port, databaseSegment);
             case "POSTGRESQL" -> String.format("jdbc:postgresql://%s:%d%s", effectiveHost, port, databaseSegment);
+            case "CLICKHOUSE" -> String.format("jdbc:clickhouse://%s:%d%s", effectiveHost, port, databaseSegment);
             case "HIVE" -> String.format("jdbc:hive2://%s:%d%s", effectiveHost, port, databaseSegment);
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "暂不支持的数据源类型: " + dataSourceType);
         };

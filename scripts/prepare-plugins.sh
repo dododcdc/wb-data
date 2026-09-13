@@ -10,7 +10,7 @@ mkdir -p "${PLUGINS_DIR}"
 cd "${MAVEN_DIR}"
 
 mvn -q \
-  -pl wb-data-plugin-mysql,wb-data-plugin-hive,wb-data-plugin-postgresql,wb-data-plugin-starrocks \
+  -pl wb-data-plugin-mysql,wb-data-plugin-hive,wb-data-plugin-postgresql,wb-data-plugin-clickhouse \
   -am \
   -DskipTests \
   install
@@ -18,6 +18,6 @@ mvn -q \
 cp -f "${MAVEN_DIR}"/wb-data-plugin-mysql/target/*-plugin.jar "${PLUGINS_DIR}/"
 cp -f "${MAVEN_DIR}"/wb-data-plugin-hive/target/*-plugin.jar "${PLUGINS_DIR}/"
 cp -f "${MAVEN_DIR}"/wb-data-plugin-postgresql/target/*-plugin.jar "${PLUGINS_DIR}/"
-cp -f "${MAVEN_DIR}"/wb-data-plugin-starrocks/target/*-plugin.jar "${PLUGINS_DIR}/"
+cp -f "${MAVEN_DIR}"/wb-data-plugin-clickhouse/target/*-plugin.jar "${PLUGINS_DIR}/"
 
 echo "Prepared plugin jars in ${PLUGINS_DIR}"

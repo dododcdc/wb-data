@@ -17,7 +17,7 @@ export function isSqlEditorNodeKind(kind: OfflineFlowNodeKind) {
 export function getAllowedDataSourceTypes(kind: OfflineFlowNodeKind): string[] {
     switch (kind) {
         case 'SQL':
-            return ['MYSQL', 'POSTGRESQL', 'STARROCKS'];
+            return ['MYSQL', 'POSTGRESQL', 'CLICKHOUSE'];
         case 'HIVE_SQL':
             return ['HIVE'];
         case 'SHELL':

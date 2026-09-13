@@ -16,6 +16,7 @@
         <mysql.driver.version>9.2.0</mysql.driver.version>
         <postgresql.driver.version>42.7.5</postgresql.driver.version>
         <hive.jdbc.version>4.2.0</hive.jdbc.version>
+        <clickhouse.driver.version>0.6.5</clickhouse.driver.version>
         <maven.compiler.plugin.version>3.11.0</maven.compiler.plugin.version>
         <maven.shade.plugin.version>3.5.2</maven.shade.plugin.version>
     </properties>
@@ -26,7 +27,7 @@
         <module>wb-data-plugin-mysql</module>
         <module>wb-data-plugin-hive</module>
         <module>wb-data-plugin-postgresql</module>
-        <module>wb-data-plugin-starrocks</module>
+        <module>wb-data-plugin-clickhouse</module>
         <module>wb-data-kestra-plugin</module>
         <module>wb-data-backend</module>
     </modules>
