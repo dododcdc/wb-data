@@ -170,6 +170,7 @@
 .gs-members-content {
     display: flex;
     flex-direction: column;
+    gap: 12px;
 }
 
 .gs-members-search-row {
