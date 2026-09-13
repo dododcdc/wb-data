@@ -88,9 +88,9 @@ API 层：12 个文件全部走 `utils/request.ts` 共享实例（Bearer 注入�
 
 ### P2 一致性/卫生，可随手清理
 
-- [x] **P2-1 V16 孤儿列**（2026-09-12 随 V19 删除）：`wb_parameter_definition` 的 `data_type`、`timezone`、`offset_amount`、`offset_unit` 已 DROP。遗留：`version`/`revision` 双概念并存仍待裁决。
+- [x] **P2-1 V16 孤儿列**（2026-09-12 随 V19 删除）：`wb_parameter_definition` 的 `data_type`、`timezone`、`offset_amount`、`offset_unit` 已 DROP。`version`/`revision` 已裁决为两个概念：前者是定义内容版本，后者是并发修订号，见 [CONTEXT.md](../CONTEXT.md)。
 - [ ] **P2-2 group 域拆进两个包**：项目组主端点 `GroupController` 在 `user/controller/`，设置在 `group/controller/`；且 group 包内 Service 风格不一（具体类 vs 接口+Impl）。
-- [ ] **P2-3 命名不一致**：`datasource` 表无 `wb_` 前缀；DTO 后缀混乱（部分无 Request/Response 后缀）；api 文件单复数混用（datasource.ts vs parameterGroups.ts）；views 仅 `group-settings` 用 kebab-case；页面后缀 List/Page/Center 三种并存；Flow 文档后端叫 document、前端混用 flow/draft/editingSession；前端"工作区"对应后端 repo。
+- [ ] **P2-3 命名不一致**：领域近义词已锁定在 [CONTEXT.md](../CONTEXT.md)（任务 / 任务文档 / 节点 / 草稿；本地仓库 / 工作树 / 工作区；调试执行 / 运维执行；version / revision）。界面文案已改为「任务 / 节点 / 执行」（2026-09-13）；代码与 Kestra 仍用 Flow / Task。仍待随手清理：`datasource` 表无 `wb_` 前缀、DTO 后缀混乱、api 单复数混用、`editingSession`、工作树被叫成“工作区”。不单独开命名专项。
 - [x] **P2-4 重复实现**（2026-09-12 小项已收敛）：分页工具三套写法已统一到 `utils/pagination.ts`（group-settings 删复制实现，datasources 修复 `?size=5` 被静默重置的缺陷）；`gitSettingsApi.ts` 已挪入 `src/api/gitSettings.ts`；导出下载改走共享 axios 实例（request.ts 拦截器支持 blob 直通）。遗留：选择器组件 5 套合并（工作量大，单独专项）；view 层直接 import `AxiosError`。
 - [x] **P2-5 死目录/杂散文件**（2026-09-12 清理）：核实后这些 `CLAUDE.md` 均为 claude-mem 本地生成物，本就命中 `.gitignore` 的 `**/CLAUDE.md` 规则未入库；`docs/**`、`docs/refactor`、`docs/validation`、`src/pages/` 空壳同为本地残留。已全部本地删除，无仓库变更。
 

@@ -84,7 +84,7 @@ export function buildSaveFlowDocumentRequest(
         draftDocument.parameterBinding,
     );
     if (!draftDocument.runtimeTimezone) {
-        throw new Error('Flow 运行时区不能为空，请先选择运行时区');
+        throw new Error('任务运行时区不能为空，请先选择运行时区');
     }
 
     return {

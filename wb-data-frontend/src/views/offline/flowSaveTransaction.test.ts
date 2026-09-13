@@ -117,7 +117,7 @@ describe('flowSaveTransaction', () => {
         const session = makeSession(makeFlowDocument({ runtimeTimezone: null }));
 
         expect(() => buildSaveFlowDocumentRequest(1, session))
-            .toThrow('Flow 运行时区不能为空');
+            .toThrow('任务运行时区不能为空');
     });
 
     it('serializes a newly staged parameter group binding', () => {

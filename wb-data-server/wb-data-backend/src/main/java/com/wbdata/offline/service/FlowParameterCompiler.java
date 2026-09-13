@@ -118,12 +118,12 @@ final class FlowParameterCompiler {
                                     String runtimeTimezone) {
         resolveTimeBasis(definition);
         if (runtimeTimezone == null || runtimeTimezone.isBlank()) {
-            throw badRequest("Flow 运行时区不能为空");
+            throw badRequest("任务运行时区不能为空");
         }
         try {
             ZoneId.of(runtimeTimezone);
         } catch (RuntimeException ex) {
-            throw badRequest("Flow 运行时区不合法");
+            throw badRequest("任务运行时区不合法");
         }
         String format = definition.format();
         if (format == null || format.isBlank()) {

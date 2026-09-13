@@ -371,7 +371,7 @@ describe('ParameterGroupPage', () => {
         fireEvent.click(await screen.findByRole('button', { name: '预览日常公共参数' }));
 
         expect(await screen.findByText('小明')).toBeTruthy();
-        expect(screen.queryByRole('combobox', { name: 'Flow 运行时区' })).toBeNull();
+        expect(screen.queryByRole('combobox', { name: '任务运行时区' })).toBeNull();
         expect(screen.queryByRole('button', { name: '计算预览' })).toBeNull();
         expect(previewParameterGroupMock).not.toHaveBeenCalled();
     });

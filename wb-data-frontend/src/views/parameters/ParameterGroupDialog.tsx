@@ -417,7 +417,7 @@ export default function ParameterGroupDialog({
                         <code className="parameter-breaking-change-keys">
                             {removedKeysToConfirm.map((key) => `\${${key}}`).join('、')}
                         </code>
-                        <span>已有 Flow 的当前快照不会变化；Flow 更新到这个版本前，需要先修改对应引用。</span>
+                        <span>已有任务的当前快照不会变化；任务更新到这个版本前，需要先修改对应引用。</span>
                     </span>
                 )}
                 confirmText="仍然保存"

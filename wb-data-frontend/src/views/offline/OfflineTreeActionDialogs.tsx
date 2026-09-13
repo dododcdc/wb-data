@@ -249,7 +249,7 @@ function CreateDialog({
     action,
     repoTree,
 }: {
-    kind: 'Flow' | '文件夹';
+    kind: '任务' | '文件夹';
     action: CreateAction;
     repoTree: OfflineRepoTreeResponse | null;
 }) {
@@ -271,7 +271,7 @@ function CreateDialog({
         action.onNameChange('');
         action.onParentPathChange('');
     };
-    const isFlow = kind === 'Flow';
+    const isFlow = kind === '任务';
 
     return (
         <Dialog open={action.open} onOpenChange={(open) => {
@@ -283,15 +283,15 @@ function CreateDialog({
         }}>
             <DialogContent style={{ maxWidth: isFlow ? '520px' : '460px' }}>
                 <DialogHeader>
-                    <DialogTitle>新建 {kind}</DialogTitle>
+                    <DialogTitle>新建{kind}</DialogTitle>
                     <DialogDescription>
-                        {isFlow ? '输入 Flow 名称并配置运行时区，将自动创建空白的 Flow 文件' : '输入文件夹名称，将在指定路径下创建文件夹'}
+                        {isFlow ? '输入任务名称并配置运行时区，将自动创建空白任务' : '输入文件夹名称，将在指定路径下创建文件夹'}
                     </DialogDescription>
                 </DialogHeader>
                 <div className="dialog-body">
                     <div style={{ marginBottom: 16 }}>
                         <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
-                            {isFlow ? 'Flow 名称' : '文件夹名称'}
+                            {isFlow ? '任务名称' : '文件夹名称'}
                         </label>
                         <Input
                             value={action.name}
@@ -370,13 +370,13 @@ function CreateDialog({
     );
 }
 
-function RenameDialog({ kind, action }: { kind: 'Flow' | '文件夹'; action: RenameAction }) {
+function RenameDialog({ kind, action }: { kind: '任务' | '文件夹'; action: RenameAction }) {
     return (
         <Dialog open={action.open} onOpenChange={action.onOpenChange}>
             <DialogContent style={{ maxWidth: '420px' }}>
                 <DialogHeader>
-                    <DialogTitle>重命名 {kind}</DialogTitle>
-                    <DialogDescription>将{kind === 'Flow' ? '' : '文件夹'}「{action.originalName}」重命名为：</DialogDescription>
+                    <DialogTitle>重命名{kind}</DialogTitle>
+                    <DialogDescription>将{kind === '任务' ? '' : '文件夹'}「{action.originalName}」重命名为：</DialogDescription>
                 </DialogHeader>
                 <div className="dialog-body" style={{ marginTop: 12 }}>
                     <Input
@@ -416,14 +416,14 @@ export function OfflineTreeActionDialogs({
 
     return (
         <>
-            <CreateDialog kind="Flow" action={createFlow} repoTree={repoTree} />
+            <CreateDialog kind="任务" action={createFlow} repoTree={repoTree} />
             <CreateDialog kind="文件夹" action={createFolder} repoTree={repoTree} />
 
             <ConfirmDialog
                 open={deleteFlow.open}
                 onOpenChange={(open) => { if (!deleteFlow.pending) deleteFlow.onOpenChange(open); }}
-                title="确认删除 Flow"
-                description={`确定要删除 Flow「${deleteFlow.name}」吗？此操作不可恢复。`}
+                title="确认删除任务"
+                description={`确定要删除任务「${deleteFlow.name}」吗？此操作不可恢复。`}
                 confirmText="删除"
                 cancelText="取消"
                 variant="destructive"
@@ -445,7 +445,7 @@ export function OfflineTreeActionDialogs({
             />
 
             <RenameDialog kind="文件夹" action={renameFolder} />
-            <RenameDialog kind="Flow" action={renameFlow} />
+            <RenameDialog kind="任务" action={renameFlow} />
 
             {contextMenu.open && contextMenu.position ? (
                 <div
@@ -456,7 +456,7 @@ export function OfflineTreeActionDialogs({
                     {(node?.kind === 'DIRECTORY' || node?.kind === 'ROOT') && canWrite ? (
                         <>
                             <button type="button" className="offline-context-menu-item" onClick={() => contextMenu.onOpenNewFlow(node)}>
-                                <FileCode2 size={13} />新建 Flow
+                                <FileCode2 size={13} />新建任务
                             </button>
                             <button type="button" className="offline-context-menu-item" onClick={() => contextMenu.onOpenNewFolder(node)}>
                                 <FolderPlus size={13} />新建文件夹

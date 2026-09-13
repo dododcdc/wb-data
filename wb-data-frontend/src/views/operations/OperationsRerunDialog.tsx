@@ -137,13 +137,13 @@ export function OperationsRerunDialog({
                             {snapshotChanged ? (
                                 <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-700" role="alert">
                                     <TriangleAlert className="mt-0.5 shrink-0" size={16} />
-                                    原执行之后 Flow 的参数已更新，重跑将使用当前参数值（计划时间仍沿用原执行）。
+                                    原执行之后任务的参数已更新，重跑将使用当前参数值（计划时间仍沿用原执行）。
                                 </div>
                             ) : null}
                             {snapshotUnavailable ? (
                                 <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-700" role="alert">
                                     <TriangleAlert className="mt-0.5 shrink-0" size={16} />
-                                    原执行的参数快照不可用，无法展示当时的参数值；重跑将按当前 Flow 参数执行。
+                                    原执行的参数快照不可用，无法展示当时的参数值；重跑将按当前任务参数执行。
                                 </div>
                             ) : null}
                         </>

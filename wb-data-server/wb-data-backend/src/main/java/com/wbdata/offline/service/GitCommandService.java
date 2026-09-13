@@ -199,7 +199,7 @@ public class GitCommandService {
     }
 
     /**
-     * 提交当前 Flow 关联文件的改动
+     * 提交当前任务 关联文件的改动
      */
     public CommitResult commitCurrentFlow(Long groupId, String flowPath, String commitMessage) {
         return repoLockManager.withLock(groupId, () -> commitCurrentFlowUnlocked(groupId, flowPath, commitMessage));
@@ -214,12 +214,12 @@ public class GitCommandService {
 
         String scopedStatus = runGitWithPaths(repoPath, List.of("status", "--porcelain"), trackedFiles).trim();
         if (scopedStatus.isEmpty()) {
-            return new CommitResult(true, "当前 Flow 暂无改动需提交");
+            return new CommitResult(true, "当前任务 暂无改动需提交");
         }
 
         runGitWithPaths(repoPath, List.of("add", "-A"), trackedFiles);
         runGitWithPaths(repoPath, List.of("commit", "-m", normalizeCommitMessage(commitMessage)), trackedFiles);
-        return new CommitResult(true, "当前 Flow 版本提交成功");
+        return new CommitResult(true, "当前任务 版本提交成功");
     }
 
     public boolean hasFlowChanges(Long groupId, String flowPath) {
@@ -244,7 +244,7 @@ public class GitCommandService {
         String staged = runGit(repoPath, "diff", "--cached", "--name-only");
         for (String line : staged.lines().filter(s -> !s.isBlank()).toList()) {
             if (!tracked.contains(line.trim())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "检测到当前 Flow 之外的文件已暂存，请先完成仓库级提交");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "检测到当前任务 之外的文件已暂存，请先完成仓库级提交");
             }
         }
     }

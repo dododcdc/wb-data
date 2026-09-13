@@ -256,7 +256,7 @@ export function useOfflineRepositoryWorkflow({
                     tone: 'error',
                     title: '工作区有未提交改动',
                     detail: dirtyDetails.changedFlows.length > 0
-                        ? `还有 ${dirtyDetails.changedFlows.length} 个已保存但未提交的 Flow，请提交仓库改动后再切换分支。`
+                        ? `还有 ${dirtyDetails.changedFlows.length} 个已保存但未提交的任务，请提交仓库改动后再切换分支。`
                         : '请提交仓库改动后再切换分支。',
                 });
                 return;

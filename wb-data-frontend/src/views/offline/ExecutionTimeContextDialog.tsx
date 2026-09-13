@@ -72,8 +72,8 @@ export function ExecutionTimeContextDialog({
                     <DialogTitle>{requiresPlannedTime ? '选择参考计划时间' : '执行参数设置'}</DialogTitle>
                     <DialogDescription>
                         {requiresPlannedTime
-                            ? `当前 Flow 定义了 ${parameterKeys.map((key) => `\${${key}}`).join('、')} 等计划时间参数。请选择这次执行要模拟的计划时间。`
-                            : '本次调试执行将使用当前 Flow 绑定的参数。您也可以临时提供覆盖值。'}
+                            ? `当前任务定义了 ${parameterKeys.map((key) => `\${${key}}`).join('、')} 等计划时间参数。请选择这次执行要模拟的计划时间。`
+                            : '本次调试执行将使用当前任务绑定的参数。您也可以临时提供覆盖值。'}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -91,7 +91,7 @@ export function ExecutionTimeContextDialog({
                                 onChange={onPlannedTimeChange}
                             />
                             <p className="mt-1.5 text-xs text-muted-foreground">
-                                按 Flow 运行时区 {timezone ?? 'Asia/Shanghai'} 解释；执行开始时间会在 Kestra 真正开始本次执行时自动记录。
+                                按任务运行时区 {timezone ?? 'Asia/Shanghai'} 解释；执行开始时间会在 Kestra 真正开始本次执行时自动记录。
                             </p>
                         </div>
                     ) : null}

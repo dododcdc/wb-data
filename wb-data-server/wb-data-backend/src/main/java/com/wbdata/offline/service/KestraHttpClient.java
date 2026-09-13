@@ -82,7 +82,7 @@ public class KestraHttpClient implements KestraClient {
             return;
         }
         if (!shouldRetryFlowUpdate(createResponse)) {
-            throw toKestraException(createResponse, "创建 Flow 失败");
+            throw toKestraException(createResponse, "创建任务失败");
         }
 
         HttpResponse<byte[]> updateResponse = send(
@@ -94,7 +94,7 @@ public class KestraHttpClient implements KestraClient {
                 "application/json"
         );
         if (!isSuccessful(updateResponse.statusCode())) {
-            throw toKestraException(updateResponse, "更新 Flow 失败");
+            throw toKestraException(updateResponse, "更新任务失败");
         }
     }
 
@@ -109,7 +109,7 @@ public class KestraHttpClient implements KestraClient {
                 "application/json"
         );
         if (!(response.statusCode() == 200 || response.statusCode() == 204 || response.statusCode() == 404)) {
-            throw toKestraException(response, "删除 Flow 失败");
+            throw toKestraException(response, "删除任务失败");
         }
     }
 
@@ -124,7 +124,7 @@ public class KestraHttpClient implements KestraClient {
                 "application/json"
         );
         if (!isSuccessful(response.statusCode())) {
-            throw toKestraException(response, "校验 Flow 失败");
+            throw toKestraException(response, "校验任务失败");
         }
         try {
             JsonNode root = objectMapper.readTree(response.body());

@@ -86,7 +86,7 @@ export function OfflineWorkbenchMainPanel({
         return (
             <main className="offline-main-panel h-full animate-enter animate-enter-delay-1">
                 <div className="offline-empty-state">
-                    <p>从左侧项目树选择一个 Flow</p>
+                    <p>从左侧项目树选择一个任务</p>
                 </div>
             </main>
         );

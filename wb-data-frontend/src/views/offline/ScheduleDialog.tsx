@@ -81,15 +81,15 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                             <h3 className="sub-section-title">核心设置</h3>
                             
                             <div className="form-input-group">
-                                <label htmlFor="flow-runtime-timezone">Flow 运行时区</label>
+                                <label htmlFor="flow-runtime-timezone">任务运行时区</label>
                                 <input
                                     id="flow-runtime-timezone"
-                                    aria-label="Flow 运行时区"
+                                    aria-label="任务运行时区"
                                     value={timezone}
                                     readOnly
                                     disabled
                                 />
-                                <small>运行时区在创建 Flow 时确定，调度与时间参数共同使用该时区。</small>
+                                <small>运行时区在创建任务时确定，调度与时间参数共同使用该时区。</small>
                             </div>
 
                             <div className="form-input-group">

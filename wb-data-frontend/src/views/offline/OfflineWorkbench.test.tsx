@@ -470,7 +470,7 @@ async function openFlowDeleteDialog() {
         clientY: 80,
     });
     fireEvent.click(await screen.findByRole('button', { name: '删除' }));
-    return screen.findByRole('dialog', { name: '确认删除 Flow' });
+    return screen.findByRole('dialog', { name: '确认删除任务' });
 }
 
 async function openFolderDeleteDialog() {
@@ -598,7 +598,7 @@ describe('OfflineWorkbench commit UI', () => {
         await waitFor(() => {
             expect(screen.queryByRole('dialog', { name: '任务参数' })).toBeNull();
         });
-        fireEvent.click(screen.getByRole('button', { name: '保存' }));
+        fireEvent.click(screen.getByRole('button', { name: '保存任务' }));
 
         await waitFor(() => {
             expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledWith(expect.objectContaining({
@@ -618,7 +618,7 @@ describe('OfflineWorkbench commit UI', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
 
-        expect(screen.getByRole('button', { name: '提交当前 Flow' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: '提交当前任务' })).toBeTruthy();
         expect(screen.queryByRole('button', { name: '提交仓库改动' })).toBeNull();
         expect(screen.queryByRole('button', { name: '推送' })).toBeNull();
     });
@@ -802,7 +802,7 @@ describe('OfflineWorkbench commit UI', () => {
         fireEvent.click(await screen.findByRole('button', { name: /切换分支，当前 main/ }));
         fireEvent.click(await screen.findByRole('button', { name: /切换到 dev/ }));
 
-        expect(await screen.findByText('还有已保存但未提交的 Flow')).toBeTruthy();
+        expect(await screen.findByText('还有已保存但未提交的任务')).toBeTruthy();
         expect(screen.getByText('example')).toBeTruthy();
         expect(screen.getByRole('button', { name: '打开提交仓库改动' })).toBeTruthy();
     });
@@ -840,7 +840,7 @@ describe('OfflineWorkbench commit UI', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
 
-        fireEvent.click(screen.getByRole('button', { name: '提交当前 Flow' }));
+        fireEvent.click(screen.getByRole('button', { name: '提交当前任务' }));
         fireEvent.change(await screen.findByPlaceholderText(/简要描述本次修改/), { target: { value: 'flow commit' } });
         fireEvent.click(screen.getByRole('button', { name: '提交' }));
 
@@ -891,7 +891,7 @@ describe('OfflineWorkbench commit UI', () => {
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: '模拟连续新增和重命名' }));
-        fireEvent.click(screen.getByRole('button', { name: '保存' }));
+        fireEvent.click(screen.getByRole('button', { name: '保存任务' }));
 
         await waitFor(() => {
             expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalled();
@@ -927,7 +927,7 @@ describe('OfflineWorkbench commit UI', () => {
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: '模拟新增后重命名新增节点' }));
-        fireEvent.click(screen.getByRole('button', { name: '保存' }));
+        fireEvent.click(screen.getByRole('button', { name: '保存任务' }));
 
         await waitFor(() => {
             expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalled();
@@ -961,7 +961,7 @@ describe('OfflineWorkbench commit UI', () => {
             expect(feedbackSpy).toHaveBeenCalledWith({
                 tone: 'info',
                 title: '节点数量已达上限',
-                detail: '离线 Flow 最多支持 20 个节点，请精简流程设计。',
+                detail: '离线任务最多支持 20 个节点，请精简任务设计。',
             });
         });
     });
@@ -981,7 +981,7 @@ describe('OfflineWorkbench commit UI', () => {
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: '模拟悬空连线' }));
-        fireEvent.click(screen.getByRole('button', { name: '保存' }));
+        fireEvent.click(screen.getByRole('button', { name: '保存任务' }));
 
         await waitFor(() => {
             expect(feedbackSpy).toHaveBeenCalledWith({
@@ -1022,7 +1022,7 @@ describe('OfflineWorkbench commit UI', () => {
 
         fireEvent.click(screen.getByRole('button', { name: '调度' }));
         const scheduleDialog = await screen.findByRole('dialog', { name: '调度配置' });
-        const timezoneInput = within(scheduleDialog).getByLabelText<HTMLInputElement>('Flow 运行时区');
+        const timezoneInput = within(scheduleDialog).getByLabelText<HTMLInputElement>('任务运行时区');
         expect(timezoneInput.value).toBe('Asia/Shanghai');
         expect(timezoneInput.disabled).toBe(true);
         const cronInputs = scheduleDialog.querySelectorAll<HTMLInputElement>('.offline-segmented-cron-input');
@@ -1034,7 +1034,7 @@ describe('OfflineWorkbench commit UI', () => {
         await waitFor(() => {
             expect(screen.queryByRole('dialog', { name: '调度配置' })).toBeNull();
         });
-        fireEvent.click(screen.getByRole('button', { name: '保存' }));
+        fireEvent.click(screen.getByRole('button', { name: '保存任务' }));
 
         await waitFor(() => {
             expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledWith(expect.objectContaining({
@@ -1048,7 +1048,7 @@ describe('OfflineWorkbench commit UI', () => {
             }));
         });
 
-        fireEvent.click(screen.getByRole('button', { name: '提交当前 Flow' }));
+        fireEvent.click(screen.getByRole('button', { name: '提交当前任务' }));
         fireEvent.change(await screen.findByPlaceholderText(/简要描述本次修改/), { target: { value: 'schedule flow commit' } });
         fireEvent.click(screen.getByRole('button', { name: '提交' }));
 
@@ -1243,7 +1243,7 @@ describe('OfflineWorkbench destructive confirmations', () => {
         renderOfflineWorkbench();
 
         const dialog = await openFlowDeleteDialog();
-        expect(screen.getByRole('heading', { name: '确认删除 Flow' })).toBeTruthy();
+        expect(screen.getByRole('heading', { name: '确认删除任务' })).toBeTruthy();
 
         fireEvent.click(screen.getByRole('button', { name: '删除' }));
 
@@ -1253,7 +1253,7 @@ describe('OfflineWorkbench destructive confirmations', () => {
         });
 
         fireEvent.keyDown(dialog, { key: 'Escape' });
-        expect(screen.getByRole('dialog', { name: '确认删除 Flow' })).toBeTruthy();
+        expect(screen.getByRole('dialog', { name: '确认删除任务' })).toBeTruthy();
 
         await act(async () => {
             deleteDeferred.resolve(makeDeleteResponse());
@@ -1261,7 +1261,7 @@ describe('OfflineWorkbench destructive confirmations', () => {
         });
 
         await waitFor(() => {
-            expect(screen.queryByRole('dialog', { name: '确认删除 Flow' })).toBeNull();
+            expect(screen.queryByRole('dialog', { name: '确认删除任务' })).toBeNull();
         });
     });
 

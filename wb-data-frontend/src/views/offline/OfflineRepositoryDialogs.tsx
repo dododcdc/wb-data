@@ -78,8 +78,8 @@ export function OfflineRepositoryDialogs({
                 title="放弃画布草稿并切换分支"
                 description={
                     pendingBranchSwitch
-                        ? `当前 Flow 有未保存的画布草稿。切换到 ${pendingBranchSwitch} 前需要放弃这些草稿。`
-                        : '当前 Flow 有未保存的画布草稿，切换分支前需要放弃这些草稿。'
+                        ? `当前任务有未保存的画布草稿。切换到 ${pendingBranchSwitch} 前需要放弃这些草稿。`
+                        : '当前任务有未保存的画布草稿，切换分支前需要放弃这些草稿。'
                 }
                 confirmText="放弃草稿并切换"
                 variant="destructive"

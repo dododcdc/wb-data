@@ -165,7 +165,7 @@ export function useFlowExecutionAndSchedule({
             showFeedback({
                 tone: 'error',
                 title: '执行记录读取失败',
-                detail: getErrorMessage(error, '暂时无法读取当前 Flow 的执行记录。'),
+                detail: getErrorMessage(error, '暂时无法读取当前任务的执行记录。'),
             });
         } finally {
             setExecutionsLoading(false);
@@ -203,7 +203,7 @@ export function useFlowExecutionAndSchedule({
             showFeedback({
                 tone: 'error',
                 title: '请先处理当前节点编辑',
-                detail: '请先点击应用暂存或关闭节点编辑器，再执行当前 Flow。',
+                detail: '请先点击应用暂存或关闭节点编辑器，再执行当前任务。',
             });
             return false;
         }
@@ -317,7 +317,7 @@ export function useFlowExecutionAndSchedule({
             showFeedback({
                 tone: 'error',
                 title: '停止全部执行失败',
-                detail: getErrorMessage(error, '暂时无法停止当前 Flow 的执行。'),
+                detail: getErrorMessage(error, '暂时无法停止当前任务的执行。'),
             });
         } finally {
             setExecutionActionPending(null);
@@ -414,7 +414,7 @@ export function useFlowExecutionAndSchedule({
         showFeedback({
             tone: 'success',
             title: enabled ? '调度开启已暂存' : '调度关闭已暂存',
-            detail: '保存 Flow 后生效。',
+            detail: '保存任务后生效。',
         });
     }, [activeFlowPath, draftSession, groupId, scheduleCron, scheduleTimezone, setDraftSession, showFeedback]);
 

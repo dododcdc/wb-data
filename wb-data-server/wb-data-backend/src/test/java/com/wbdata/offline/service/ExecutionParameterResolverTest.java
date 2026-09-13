@@ -157,7 +157,7 @@ class ExecutionParameterResolverTest {
                 Set.of()
         ))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Flow 运行时区不能为空");
+                .hasMessageContaining("任务运行时区不能为空");
     }
 
     @Test

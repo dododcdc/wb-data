@@ -103,7 +103,7 @@ export function OfflineCanvasToolbar({
             </label>
 
             <ToolbarButton
-                label="保存"
+                label="保存任务"
                 disabled={editDisabled || !dirty || saving}
                 onClick={onSave}
             >
@@ -114,7 +114,7 @@ export function OfflineCanvasToolbar({
             </ToolbarButton>
 
             <ToolbarButton
-                label="提交当前 Flow"
+                label="提交当前任务"
                 disabled={editDisabled || !(dirty || commitDirty) || committing}
                 onClick={onCommit}
             >

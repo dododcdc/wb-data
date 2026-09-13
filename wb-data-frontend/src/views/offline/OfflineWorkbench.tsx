@@ -486,7 +486,7 @@ export default function OfflineWorkbench() {
         showFeedback(validation.feedback ?? {
             tone: 'success',
             title: '已更新当前草稿',
-            detail: '当前修改仅保留在本机恢复稿中，点击“保存 Flow”后才会写入本地仓库。',
+            detail: '当前修改仅保留在本机恢复稿中，点击“保存任务”后才会写入本地仓库。',
         });
     }, [activeNodeId, flowDocument, saveNodeEditorDraft, showFeedback]);
 
@@ -533,7 +533,7 @@ export default function OfflineWorkbench() {
         showFeedback({
             tone: 'success',
             title: binding ? '参数组已暂存' : '已暂存解除绑定',
-            detail: '点击“保存”后写入当前 Flow。',
+            detail: '点击“保存任务”后写入当前任务。',
         });
     }, [setDraftSession, showFeedback]);
 

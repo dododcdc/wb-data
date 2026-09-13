@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-@Tag(name = "离线开发", description = "Flow 调度配置")
+@Tag(name = "离线开发", description = "任务 调度配置")
 @RestController
 @RequestMapping({"/api/v1/offline/schedules", "/api/v1/groups/{groupId}/offline/schedules"})
 @RequiredArgsConstructor
@@ -31,14 +31,14 @@ public class OfflineScheduleController {
 
     private final OfflineScheduleService offlineScheduleService;
 
-    @Operation(summary = "读取 Flow 调度配置")
+    @Operation(summary = "读取任务调度配置")
     @GetMapping
     public Result<OfflineScheduleResponse> getSchedule(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
                                                        @RequestParam String path) {
         return Result.success(offlineScheduleService.getSchedule(context.currentGroup().id(), path));
     }
 
-    @Operation(summary = "更新 Flow 调度配置")
+    @Operation(summary = "更新任务调度配置")
     @PutMapping
     public Result<OfflineScheduleResponse> updateSchedule(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
                                                           @Valid @RequestBody UpdateOfflineScheduleRequest request) {
@@ -52,7 +52,7 @@ public class OfflineScheduleController {
         return Result.success(offlineScheduleService.updateSchedule(normalizedRequest));
     }
 
-    @Operation(summary = "启用/停用 Flow 调度")
+    @Operation(summary = "启用/停用任务调度")
     @PatchMapping("/status")
     public Result<OfflineScheduleResponse> updateScheduleStatus(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
                                                                 @Valid @RequestBody UpdateOfflineScheduleStatusRequest request) {
