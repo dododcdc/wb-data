@@ -27,12 +27,12 @@ public class ExecutionParameterSnapshotRegistry {
         if (snapshot.schemaVersion() != 2
                 || snapshot.runtimeTimezone() == null
                 || snapshot.runtimeTimezone().isBlank()) {
-            throw new IllegalArgumentException("执行参数快照必须包含 任务运行时区并使用 schemaVersion 2");
+            throw new IllegalArgumentException("执行参数快照必须包含任务运行时区并使用 schemaVersion 2");
         }
         try {
             ZoneId.of(snapshot.runtimeTimezone());
         } catch (RuntimeException ex) {
-            throw new IllegalArgumentException("执行参数快照中的 任务运行时区不合法", ex);
+            throw new IllegalArgumentException("执行参数快照中的任务运行时区不合法", ex);
         }
         try {
             String json = objectMapper.writeValueAsString(snapshot);

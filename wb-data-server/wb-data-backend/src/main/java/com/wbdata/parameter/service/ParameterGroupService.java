@@ -244,10 +244,10 @@ public class ParameterGroupService {
         }
         List<ZoneOffset> validOffsets = runtimeTimezone.getRules().getValidOffsets(value);
         if (validOffsets.isEmpty()) {
-            throw badRequest(fieldName + "在 任务运行时区中不存在，请换一个时间");
+            throw badRequest(fieldName + "在任务运行时区中不存在，请换一个时间");
         }
         if (validOffsets.size() > 1) {
-            throw badRequest(fieldName + "在 任务运行时区中不唯一，请换一个时间");
+            throw badRequest(fieldName + "在任务运行时区中不唯一，请换一个时间");
         }
         return value.atOffset(validOffsets.getFirst());
     }

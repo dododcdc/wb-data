@@ -66,12 +66,12 @@ public class FlowParameterSnapshotStore {
 
     private void validateRuntimeTimezone(String runtimeTimezone) {
         if (runtimeTimezone == null || runtimeTimezone.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "参数快照缺少 任务运行时区");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "参数快照缺少任务运行时区");
         }
         try {
             ZoneId.of(runtimeTimezone);
         } catch (RuntimeException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "参数快照中的 任务运行时区不合法");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "参数快照中的任务运行时区不合法");
         }
     }
 
