@@ -1,15 +1,13 @@
 /* eslint-disable react-refresh/only-export-components */
-import { lazy, Suspense, useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
-import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
-import { getAuthContext } from '../api/auth';
+import { lazy } from 'react';
+import { createBrowserRouter, Outlet } from 'react-router-dom';
 import { useAuthStore } from '../utils/auth';
 import DashboardSkeleton from '../views/dashboard/DashboardSkeleton';
 import DataSourceListSkeleton from '../views/datasources/DataSourceListSkeleton';
 import Layout from '../views/layout/Layout';
 import QuerySkeleton from '../views/query/QuerySkeleton';
 import RouteErrorPage from '../views/core/RouteErrorPage';
-import RouteLoadingPage from '../views/core/RouteLoadingPage';
+import { AuthGuard, withRouteSuspense } from './AuthGuard';
 import {
     loadDashboardModule,
     loadDataSourceListModule,
@@ -43,37 +41,6 @@ const GroupSettings = lazy(loadGroupSettingsModule);
 const NotFound = lazy(loadNotFoundModule);
 const NoGroupState = lazy(loadNoGroupStateModule);
 const Unauthorized = lazy(loadUnauthorizedModule);
-
-function withRouteSuspense(element: ReactNode, fallback: ReactNode = <RouteLoadingPage />) {
-    return <Suspense fallback={fallback}>{element}</Suspense>;
-}
-
-function AuthGuard() {
-    const token = useAuthStore((s) => s.token);
-    const contextLoaded = useAuthStore((s) => s.contextLoaded);
-    const [failed, setFailed] = useState(false);
-
-    useEffect(() => {
-        if (!token || useAuthStore.getState().contextLoaded) return;
-
-        let cancelled = false;
-        getAuthContext()
-            .then((ctx) => {
-                if (!cancelled) useAuthStore.getState().setAuthContext(ctx);
-            })
-            .catch(() => {
-                if (!cancelled) {
-                    useAuthStore.getState().clearAuth();
-                    setFailed(true);
-                }
-            });
-        return () => { cancelled = true; };
-    }, [token, contextLoaded]);
-
-    if (!token || failed) return <Navigate to="/login" replace />;
-    if (!contextLoaded) return <RouteLoadingPage />;
-    return <Outlet />;
-}
 
 /**
  * Requires a current project group to be set.

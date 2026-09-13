@@ -821,3 +821,68 @@
     color: var(--color-text-muted);
     opacity: 0.7;
 }
+
+.offline-execution-log-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    margin: -12px -20px;
+    background: #fbfaf7;
+}
+
+.offline-execution-log-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 36px;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--color-border);
+    background: rgba(255, 255, 255, 0.88);
+    flex-shrink: 0;
+}
+
+.offline-execution-log-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: none;
+    background: none;
+    padding: 2px 6px;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.offline-execution-log-back:hover {
+    color: var(--color-text-primary);
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.offline-execution-log-task {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.offline-execution-log-pending {
+    flex: 1;
+    min-height: 0;
+}
+
+.offline-execution-log-panel .log-viewer,
+.offline-execution-log-panel .log-viewer-loading,
+.offline-execution-log-panel .log-viewer-error,
+.offline-execution-log-panel .log-viewer-empty {
+    flex: 1;
+    min-height: 0;
+}
+
+.offline-tasks-list-row .col-actions button {
+    opacity: 1;
+}
