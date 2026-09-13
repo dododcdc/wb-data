@@ -81,6 +81,6 @@ class FlowParameterSnapshotStoreTest {
         Files.writeString(path, "{\"schemaVersion\":2,\"groupCode\":\"daily\",\"groupVersion\":1,\"definitions\":[]}");
         assertThatThrownBy(() -> store.read(tempDir, "_flows/example/flow.yaml"))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("缺少 任务运行时区");
+                .hasMessageContaining("缺少任务运行时区");
     }
 }

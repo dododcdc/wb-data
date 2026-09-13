@@ -32,7 +32,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
-@Tag(name = "离线开发", description = "任务 调试执行与执行结果")
+@Tag(name = "离线开发", description = "任务调试执行与执行结果")
 @RestController
 @RequestMapping({"/api/v1/offline/executions", "/api/v1/groups/{groupId}/offline/executions"})
 @RequiredArgsConstructor

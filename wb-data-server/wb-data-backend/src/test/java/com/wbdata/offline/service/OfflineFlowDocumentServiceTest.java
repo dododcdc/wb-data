@@ -474,15 +474,17 @@ class OfflineFlowDocumentServiceTest {
         ExecutionParameterSnapshotRegistry snapshotRegistry = mock(ExecutionParameterSnapshotRegistry.class);
         when(snapshotRegistry.register(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn("snapshot-1");
+        FlowParameterSnapshotStore parameterSnapshotStore = new FlowParameterSnapshotStore(new ObjectMapper());
+        TransferConfigFileService transferConfigFileService = new TransferConfigFileService(new ObjectMapper());
         return new OfflineFlowDocumentService(
                 properties,
                 new OfflineFlowContentService(properties, repoLockManager, kestraFlowFileService),
-                dataSourceService,
                 repoLockManager,
                 kestraFlowFileService,
-                new TransferConfigFileService(new ObjectMapper()),
-                parameterGroupService,
-                new FlowParameterSnapshotStore(new ObjectMapper()),
+                transferConfigFileService,
+                parameterSnapshotStore,
+                new FlowParameterBindingAssembler(parameterGroupService, parameterSnapshotStore),
+                new FlowGraphDraftBuilder(dataSourceService, transferConfigFileService),
                 snapshotRegistry,
                 new OfflineTransferProperties()
         );

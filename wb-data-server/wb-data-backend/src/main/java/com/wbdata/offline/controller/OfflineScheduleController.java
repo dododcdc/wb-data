@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-@Tag(name = "离线开发", description = "任务 调度配置")
+@Tag(name = "离线开发", description = "任务调度配置")
 @RestController
 @RequestMapping({"/api/v1/offline/schedules", "/api/v1/groups/{groupId}/offline/schedules"})
 @RequiredArgsConstructor
