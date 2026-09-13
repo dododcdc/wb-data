@@ -161,7 +161,7 @@ export default function OperationsExecutionDetailPage() {
             void queryClient.invalidateQueries({ queryKey: ['operations-execution', groupId, executionId] });
         },
         onError: () => {
-            showFeedback({ tone: 'error', title: '重跑触发失败', detail: '请稍后再试。' });
+            showFeedback({ tone: 'error', title: '重跑触发失败', detail: '' });
         },
     });
 

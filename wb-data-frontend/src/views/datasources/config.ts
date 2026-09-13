@@ -39,7 +39,7 @@ export function parseStatusParam(value: string | null) {
 export function formatConnection(host?: string, port?: number, databaseName?: string) {
     const hostPart = host || '--';
     const portPart = port ? `:${port}` : '';
-    const dbPart = databaseName ? ` / ${databaseName}` : '';
+    const dbPart = databaseName ? `/${databaseName}` : '';
     return `${hostPart}${portPart}${dbPart}`;
 }
 

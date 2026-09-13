@@ -128,8 +128,8 @@ export function useOfflineTreeMutations({
         } catch (error) {
             showFeedback({
                 tone: 'error',
-                title: '创建任务失败',
-                detail: getErrorMessage(error, '请稍后重试'),
+                title: getErrorMessage(error, '创建任务失败'),
+                detail: '',
             });
         } finally {
             setNewFlowCreating(false);
@@ -152,8 +152,8 @@ export function useOfflineTreeMutations({
         } catch (error) {
             showFeedback({
                 tone: 'error',
-                title: '创建文件夹失败',
-                detail: getErrorMessage(error, '请稍后重试'),
+                title: getErrorMessage(error, '创建文件夹失败'),
+                detail: '',
             });
         } finally {
             setNewFolderCreating(false);
@@ -176,8 +176,8 @@ export function useOfflineTreeMutations({
         } catch (error) {
             showFeedback({
                 tone: 'error',
-                title: '删除任务失败',
-                detail: getErrorMessage(error, '请稍后重试'),
+                title: getErrorMessage(error, '删除任务失败'),
+                detail: '',
             });
         } finally {
             setDeleteFlowLoading(false);
@@ -209,8 +209,8 @@ export function useOfflineTreeMutations({
         } catch (error) {
             showFeedback({
                 tone: 'error',
-                title: '重命名任务失败',
-                detail: getErrorMessage(error, '请稍后重试'),
+                title: getErrorMessage(error, '重命名任务失败'),
+                detail: '',
             });
         } finally {
             setRenameFlowLoading(false);
@@ -250,8 +250,8 @@ export function useOfflineTreeMutations({
         } catch (error) {
             showFeedback({
                 tone: 'error',
-                title: '删除文件夹失败',
-                detail: getErrorMessage(error, '请稍后重试'),
+                title: getErrorMessage(error, '删除文件夹失败'),
+                detail: '',
             });
         } finally {
             setDeleteFolderLoading(false);
@@ -287,8 +287,8 @@ export function useOfflineTreeMutations({
         } catch (error) {
             showFeedback({
                 tone: 'error',
-                title: '重命名文件夹失败',
-                detail: getErrorMessage(error, '请稍后重试'),
+                title: getErrorMessage(error, '重命名文件夹失败'),
+                detail: '',
             });
         } finally {
             setRenameFolderLoading(false);

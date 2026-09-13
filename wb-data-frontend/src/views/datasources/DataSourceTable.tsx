@@ -1,4 +1,4 @@
-import { Database, Edit3, Power, Trash2 } from 'lucide-react';
+import { Cable, Database, Edit3, FileText, Power, Trash2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { DataSource } from '../../api/datasource';
 import { formatConnection, formatTimestamp, getStatusLabel } from './config';
@@ -10,11 +10,14 @@ interface DataSourceTableProps {
     canWrite: boolean;
     isRefreshing: boolean;
     errorMessage: string;
+    onView: (id: number) => void;
+    onTest: (dataSource: DataSource) => void;
     onEdit: (id: number) => void;
     onDelete: (dataSource: DataSource) => void;
     onToggleStatus: (dataSource: DataSource) => void;
     deletePendingId: number | null;
     statusPendingId: number | null;
+    testPendingId: number | null;
 }
 
 export function DataSourceTable(props: DataSourceTableProps) {
@@ -23,11 +26,14 @@ export function DataSourceTable(props: DataSourceTableProps) {
         canWrite,
         isRefreshing,
         errorMessage,
+        onView,
+        onTest,
         onEdit,
         onDelete,
         onToggleStatus,
         deletePendingId,
         statusPendingId,
+        testPendingId,
     } = props;
 
     return (
@@ -48,17 +54,14 @@ export function DataSourceTable(props: DataSourceTableProps) {
                         <th>状态</th>
                         <th className="datasource-owner-column">负责人</th>
                         <th className="datasource-updated-column">更新时间</th>
-                        {canWrite && <th className="datasource-actions-column">操作</th>}
+                        <th className="datasource-actions-column">操作</th>
                     </tr>
                 </thead>
                 <tbody>
                     {data.map((item) => (
                         <tr key={item.id}>
                             <td>
-                                <div className="datasource-name-cell">
-                                    <strong className="datasource-name-main">{item.name}</strong>
-                                    <span className="datasource-description">{item.description || '暂无描述'}</span>
-                                </div>
+                                <strong className="datasource-name-main">{item.name}</strong>
                             </td>
                             <td>
                                 <span className={`type-badge ${item.type.toLowerCase()}`}>{item.type}</span>
@@ -72,55 +75,88 @@ export function DataSourceTable(props: DataSourceTableProps) {
                             </td>
                             <td className="datasource-owner datasource-owner-column">{item.owner || '--'}</td>
                             <td className="datasource-updated-at datasource-updated-column">{formatTimestamp(item.updatedAt)}</td>
-                            {canWrite && (
-                                <td className="datasource-actions-column">
-                                    <div className="datasource-actions">
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button
-                                                    variant="outline" size="icon"
-                                                    onClick={() => onEdit(item.id)}
-                                                    aria-label="编辑数据源"
-                                                    type="button"
-                                                >
-                                                    <Edit3 size={16} />
-                                                </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">编辑数据源</TooltipContent>
-                                        </Tooltip>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button
-                                                    variant="outline" size="icon"
-                                                    disabled={statusPendingId === item.id}
-                                                    onClick={() => onToggleStatus(item)}
-                                                    aria-label={item.status === 'ENABLED' ? '停用数据源' : '启用数据源'}
-                                                    type="button"
-                                                >
-                                                    <Power size={16} />
-                                                </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                {item.status === 'ENABLED' ? '停用' : '启用'}
-                                            </TooltipContent>
-                                        </Tooltip>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    className="datasource-icon-btn danger"
-                                                    disabled={deletePendingId === item.id}
-                                                    onClick={() => onDelete(item)}
-                                                    aria-label="删除数据源"
-                                                    type="button"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">删除数据源</TooltipContent>
-                                        </Tooltip>
-                                    </div>
-                                </td>
-                            )}
+                            <td className="datasource-actions-column">
+                                <div className="datasource-actions">
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                onClick={() => onView(item.id)}
+                                                aria-label="详情"
+                                                type="button"
+                                            >
+                                                <FileText size={16} />
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="tooltip-content" side="bottom">详情</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                disabled={testPendingId === item.id}
+                                                onClick={() => onTest(item)}
+                                                aria-label="测试连接"
+                                                type="button"
+                                            >
+                                                <Cable size={16} />
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="tooltip-content" side="bottom">测试连接</TooltipContent>
+                                    </Tooltip>
+                                    {canWrite && (
+                                        <>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="icon"
+                                                        onClick={() => onEdit(item.id)}
+                                                        aria-label="编辑数据源"
+                                                        type="button"
+                                                    >
+                                                        <Edit3 size={16} />
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent className="tooltip-content" side="bottom">编辑数据源</TooltipContent>
+                                            </Tooltip>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="icon"
+                                                        disabled={statusPendingId === item.id}
+                                                        onClick={() => onToggleStatus(item)}
+                                                        aria-label={item.status === 'ENABLED' ? '停用数据源' : '启用数据源'}
+                                                        type="button"
+                                                    >
+                                                        <Power size={16} />
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent className="tooltip-content" side="bottom">
+                                                    {item.status === 'ENABLED' ? '停用' : '启用'}
+                                                </TooltipContent>
+                                            </Tooltip>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <button
+                                                        className="datasource-icon-btn danger"
+                                                        disabled={deletePendingId === item.id}
+                                                        onClick={() => onDelete(item)}
+                                                        aria-label="删除数据源"
+                                                        type="button"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </TooltipTrigger>
+                                                <TooltipContent className="tooltip-content" side="bottom">删除数据源</TooltipContent>
+                                            </Tooltip>
+                                        </>
+                                    )}
+                                </div>
+                            </td>
                         </tr>
                     ))}
                 </tbody>

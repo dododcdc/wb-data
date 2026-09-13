@@ -53,7 +53,7 @@ export function validateSqlNodeDataSourceRequirement({
             feedback: {
                 tone: 'error',
                 title: '请先选择数据源',
-                detail: `${kindLabel} 节点在保存或提交前必须绑定数据源。`,
+                detail: `${kindLabel} 节点必须绑定数据源`,
             },
         };
     }
@@ -62,8 +62,8 @@ export function validateSqlNodeDataSourceRequirement({
         allowed: true,
         feedback: {
             tone: 'info',
-            title: '建议选择数据源',
-            detail: `当前 ${kindLabel} 节点暂未绑定数据源，后续保存或提交前必须补齐。`,
+            title: '建议绑定数据源',
+            detail: '保存或提交前需补齐',
         },
     };
 }

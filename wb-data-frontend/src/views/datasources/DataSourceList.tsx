@@ -10,8 +10,10 @@ import {
     deleteDataSource,
     getDataSourcePage,
     PageResult,
+    testExistingConnection,
     updateDataSourceStatus,
 } from '../../api/datasource';
+import { getErrorMessage } from '../../utils/error';
 import { useAuthStore } from '../../utils/auth';
 import DataSourceForm from './DataSourceForm';
 import DataSourceListSkeleton from './DataSourceListSkeleton';
@@ -61,9 +63,11 @@ export default function DataSourceList() {
     const [isComposing, setIsComposing] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
+    const [formMode, setFormMode] = useState<'create' | 'edit' | 'view'>('create');
     const [suppressPaginationHover, setSuppressPaginationHover] = useState(false);
     const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
     const [pendingStatusId, setPendingStatusId] = useState<number | null>(null);
+    const [pendingTestId, setPendingTestId] = useState<number | null>(null);
     const [pendingDeleteTarget, setPendingDeleteTarget] = useState<DataSource | null>(null);
 
     const currentPage = parsePageParam(searchParams.get('page'));
@@ -274,6 +278,49 @@ export default function DataSourceList() {
         toggleStatusMutation.mutate({ id: item.id, status: nextStatus });
     };
 
+    const handleView = (id: number) => {
+        setEditingId(id);
+        setFormMode('view');
+        setIsFormOpen(true);
+    };
+
+    const handleEdit = (id: number) => {
+        setEditingId(id);
+        setFormMode('edit');
+        setIsFormOpen(true);
+    };
+
+    const handleCreate = () => {
+        setEditingId(null);
+        setFormMode('create');
+        setIsFormOpen(true);
+    };
+
+    const handleTestConnection = async (item: DataSource) => {
+        if (groupId == null || pendingTestId != null) {
+            return;
+        }
+
+        setPendingTestId(item.id);
+        try {
+            const result = await testExistingConnection(item.id, groupId);
+            showFeedback({
+                tone: result.success ? 'success' : 'error',
+                title: result.message?.trim()
+                    || (result.success ? '连接测试成功' : '连接测试失败'),
+                detail: '',
+            });
+        } catch (error) {
+            showFeedback({
+                tone: 'error',
+                title: getErrorMessage(error, '连接测试失败'),
+                detail: '',
+            });
+        } finally {
+            setPendingTestId(null);
+        }
+    };
+
     const queryError = pageQuery.error as { message?: string } | null;
     const errorMessage = queryError?.message ?? '';
 
@@ -302,7 +349,7 @@ export default function DataSourceList() {
                 </div>
                 <div className="datasource-toolbar-actions">
                     {canWrite && (
-                        <Button variant="default" onClick={() => { setEditingId(null); setIsFormOpen(true); }} type="button">
+                        <Button variant="default" onClick={handleCreate} type="button">
                             <DatabaseZap size={16} />
                             新建数据源
                         </Button>
@@ -318,12 +365,12 @@ export default function DataSourceList() {
                     errorMessage={errorMessage}
                     isRefreshing={isRefreshing}
                     onDelete={handleDelete}
-                    onEdit={(id) => {
-                        setEditingId(id);
-                        setIsFormOpen(true);
-                    }}
+                    onEdit={handleEdit}
+                    onTest={handleTestConnection}
                     onToggleStatus={handleToggleStatus}
+                    onView={handleView}
                     statusPendingId={pendingStatusId}
+                    testPendingId={pendingTestId}
                 />
                 <DataSourcePagination
                     currentPage={currentPage}
@@ -338,11 +385,20 @@ export default function DataSourceList() {
 
             <DataSourceForm
                 open={isFormOpen}
-                onOpenChange={(details) => setIsFormOpen(details.open)}
+                onOpenChange={(details) => {
+                    setIsFormOpen(details.open);
+                    if (!details.open) {
+                        setFormMode('create');
+                        setEditingId(null);
+                    }
+                }}
                 dataSourceId={editingId}
                 groupId={groupId}
+                readOnly={formMode === 'view'}
                 onSuccess={(details) => {
                     setIsFormOpen(false);
+                    setFormMode('create');
+                    setEditingId(null);
                     if (details.action === 'edit' && details.dataSourceId != null) {
                         patchCachedDataSourcePages(queryClient, (current) => ({
                             ...current,

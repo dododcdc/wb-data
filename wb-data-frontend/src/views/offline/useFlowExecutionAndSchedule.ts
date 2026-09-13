@@ -134,7 +134,7 @@ export function useFlowExecutionAndSchedule({
                 showFeedback({
                     tone: 'error',
                     title: '执行详情读取失败',
-                    detail: getErrorMessage(error, '暂时无法读取执行详情。'),
+                    detail: getErrorMessage(error, ''),
                 });
             }
         } finally {
@@ -165,7 +165,7 @@ export function useFlowExecutionAndSchedule({
             showFeedback({
                 tone: 'error',
                 title: '执行记录读取失败',
-                detail: getErrorMessage(error, '暂时无法读取当前任务的执行记录。'),
+                detail: getErrorMessage(error, ''),
             });
         } finally {
             setExecutionsLoading(false);
@@ -202,16 +202,16 @@ export function useFlowExecutionAndSchedule({
         if (nodeEditorOpen) {
             showFeedback({
                 tone: 'error',
-                title: '请先处理当前节点编辑',
-                detail: '请先点击应用暂存或关闭节点编辑器，再执行当前任务。',
+                title: '请先完成或关闭节点编辑',
+                detail: '',
             });
             return false;
         }
         if (selectedTaskIds.length === 0) {
             showFeedback({
                 tone: 'error',
-                title: '请选择要执行的节点',
-                detail: '请在画布上勾选需要参与调试的节点。',
+                title: '请先勾选要调试的节点',
+                detail: '',
             });
             return false;
         }
@@ -247,7 +247,7 @@ export function useFlowExecutionAndSchedule({
             showFeedback({
                 tone: 'error',
                 title: '调试执行失败',
-                detail: getErrorMessage(error, '暂时无法触发调试执行。'),
+                detail: getErrorMessage(error, ''),
             });
         } finally {
             setExecutionSubmitting(false);
@@ -288,14 +288,14 @@ export function useFlowExecutionAndSchedule({
             showFeedback({
                 tone: 'info',
                 title: '已请求停止执行',
-                detail: `执行 ${executionId} 正在等待 Kestra 收敛状态。`,
+                detail: '等待执行状态更新',
             });
             await refreshExecutions(executionId);
         } catch (error) {
             showFeedback({
                 tone: 'error',
                 title: '停止执行失败',
-                detail: getErrorMessage(error, '暂时无法停止当前执行。'),
+                detail: getErrorMessage(error, ''),
             });
         } finally {
             setExecutionActionPending(null);
@@ -317,7 +317,7 @@ export function useFlowExecutionAndSchedule({
             showFeedback({
                 tone: 'error',
                 title: '停止全部执行失败',
-                detail: getErrorMessage(error, '暂时无法停止当前任务的执行。'),
+                detail: getErrorMessage(error, ''),
             });
         } finally {
             setExecutionActionPending(null);

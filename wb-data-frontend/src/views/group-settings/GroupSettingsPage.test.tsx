@@ -182,8 +182,8 @@ describe('GroupSettingsPage', () => {
         await waitFor(() => {
             expect(showFeedback).toHaveBeenCalledWith({
                 tone: 'success',
-                title: '成员已添加',
-                detail: '已添加 2 名成员。',
+                title: '已添加 2 名成员',
+                detail: '',
             });
         });
     });

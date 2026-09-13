@@ -143,7 +143,7 @@ export function useOfflineRepositoryWorkflow({
             showFeedback({
                 tone: 'error',
                 title: '仓库状态读取失败',
-                detail: getErrorMessage(error, '暂时无法读取本地仓库状态。'),
+                detail: getErrorMessage(error, ''),
             });
         } finally {
             if (isCurrentGroupAction()) {
@@ -185,7 +185,7 @@ export function useOfflineRepositoryWorkflow({
             showFeedback({
                 tone: 'error',
                 title: '分支列表读取失败',
-                detail: getErrorMessage(error, '暂时无法读取本地分支。'),
+                detail: getErrorMessage(error, ''),
             });
         } finally {
             setBranchLoading(false);
