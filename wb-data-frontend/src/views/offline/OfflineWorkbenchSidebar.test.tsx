@@ -93,11 +93,20 @@ function renderSidebar(treeData: OfflineRepoTreeResponse) {
 }
 
 describe('OfflineWorkbenchSidebar', () => {
+    it('shows the project-group root even when the tree has no tasks', () => {
+        const view = renderSidebar(createTree([]));
+        const root = view.container.querySelector('button.offline-tree-root-label');
+
+        expect(root?.textContent).toContain('policy');
+        expect(screen.queryByText(/还没有可打开的任务/)).toBeNull();
+    });
+
     it('keeps the project tree collapsed when refreshed data arrives', () => {
         const view = renderSidebar(createTree(['existing']));
+        const root = view.container.querySelector('button.offline-tree-root-label');
 
         expect(screen.getByRole('button', { name: 'existing' })).toBeTruthy();
-        fireEvent.click(screen.getByRole('button', { name: 'policy' }));
+        fireEvent.click(root!);
         expect(screen.queryByRole('button', { name: 'existing' })).toBeNull();
 
         view.rerenderTree(createTree(['existing', 'test1']));

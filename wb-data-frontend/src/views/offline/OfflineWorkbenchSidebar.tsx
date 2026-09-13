@@ -454,9 +454,9 @@ export function OfflineWorkbenchSidebar({
                             <span className="skeleton-line offline-rail-tree-skeleton-row" />
                         </div>
                     </div>
-                ) : !tree.data?.root.children.length ? (
+                ) : !tree.data?.root ? (
                     <div className="offline-rail-empty">
-                        {tree.data ? '当前仓库还没有可打开的任务。\n点击上方"新建"创建第一个任务。' : '当前仓库还没有可打开的任务。'}
+                        当前仓库还没有可打开的任务。
                     </div>
                 ) : (
                     <div className="offline-tree-shell">
