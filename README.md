@@ -4,7 +4,7 @@ WB-Data 是一个面向数据团队的一站式协作平台，把数据源管理
 
 ## 当前能力
 
-- 数据源管理：通过插件加载 MySQL、PostgreSQL、Hive 和 StarRocks 驱动。
+- 数据源管理：通过插件加载 MySQL、PostgreSQL、Hive 和 ClickHouse 驱动。
 - 自助查询：SQL 编辑、执行、结果查看与导出。
 - 离线开发：基于 React Flow 编排 Shell、SQL、HiveSQL 和数据传输节点。
 - 调度与版本：Kestra 执行和调度、Flow 保存、Git 提交与推送、多分支切换。
@@ -18,7 +18,7 @@ WB-Data 是一个面向数据团队的一站式协作平台，把数据源管理
 | 前端 | React 18、TypeScript、Vite、Tailwind CSS v4、shadcn/ui、Zustand、React Flow |
 | 后端 | Java 21、Spring Boot 3、MyBatis-Plus、Flyway |
 | 执行与版本 | Kestra、Git |
-| 数据源插件 | MySQL、PostgreSQL、Hive、StarRocks |
+| 数据源插件 | MySQL、PostgreSQL、Hive、ClickHouse |
 
 ## 项目结构
 
@@ -37,7 +37,7 @@ wb-data/
 
 ## 部署
 
-本地默认拓扑：前端和后端跑在宿主机，MySQL / Kestra / Hive 用仓库里的 Compose。数据源 host 填 `localhost`，不要填 `host.docker.internal`（界面「测试连接」会失败）。
+本地默认拓扑：前端和后端跑在宿主机，MySQL / Kestra / Hive / ClickHouse 用仓库里的 Compose。数据源 host 填 `localhost`，不要填 `host.docker.internal`（界面「测试连接」会失败）。
 
 前置依赖：JDK 21、Node.js 18+、Maven、Docker。配置细节、数据源怎么填、host 改写原理见 [本地开发](docs/local-development.md)。
 

@@ -1,4 +1,4 @@
-export type TransferDataSourceType = 'MYSQL' | 'POSTGRESQL' | 'STARROCKS' | 'HIVE';
+export type TransferDataSourceType = 'MYSQL' | 'POSTGRESQL' | 'CLICKHOUSE' | 'HIVE';
 
 export type TransferMappingKind = 'source_field' | 'static_value' | 'source_expression';
 

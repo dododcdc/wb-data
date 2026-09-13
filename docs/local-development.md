@@ -1,13 +1,13 @@
 # 本地开发
 
-日常开发：前端和后端跑在宿主机。MySQL、Kestra、Hive 用仓库里的 Compose 起。数据传输冒烟步骤见 [数据传输集成验证](local-integration-testing.md)。
+日常开发：前端和后端跑在宿主机。MySQL、Kestra、Hive、ClickHouse 用仓库里的 Compose 起。数据传输冒烟步骤见 [数据传输集成验证](local-integration-testing.md)。
 
 ## 前置依赖
 
 - JDK 21
 - Node.js 18+
 - Maven
-- Docker（MySQL、Kestra、Hive 都走 Compose）
+- Docker（MySQL、Kestra、Hive、ClickHouse 都走 Compose）
 - 离线执行 / 调度：仓库内的 Kestra Compose
 - 传输 / Hive 样例：再加 Hive Compose
 
@@ -145,6 +145,19 @@ docker compose -f docker/docker-compose.hive.yml up -d
 
 这是可丢弃的本地测试设施。SeaTunnel 镜像仍由 `docker/docker-compose.transfer.yml` 的 build profile 构建，不再单独起 MySQL。
 
+## 可选：ClickHouse
+
+```bash
+docker compose -f docker/docker-compose.clickhouse.yml up -d
+```
+
+| 容器 | 宿主机端口 | 容器内端口 |
+| --- | --- | --- |
+| ClickHouse HTTP / JDBC | `8123` | `8123` |
+| ClickHouse native | `9000` | `9000` |
+
+Kestra 自己还有一个 `wb-data-kestra-postgres`（宿主机 `5433`），那是 Kestra 元数据库，不是 WB-Data 的 PostgreSQL 数据源。
+
 ## 本地数据源怎么填
 
 界面 **host 填 `localhost` 或 `127.0.0.1`**，端口填宿主机映射端口。不要填 Docker 服务名，也不要在 host 里填 `host.docker.internal`：后端在宿主机上做「测试连接」，这个名字在部分机器上会被代理或 VPN 劫持。
@@ -153,6 +166,7 @@ docker compose -f docker/docker-compose.hive.yml up -d
 | --- | --- | --- | --- | --- | --- | --- |
 | 元数据 / 传输测试 MySQL | MySQL | `localhost` | `3306` | `wb_data` 或 `transfer_demo` | `root` 或 `wbdata` | `1111` 或 `wbdata123` |
 | Hive | Hive | `localhost` | `10000` | `default` | `hive` | 留空 |
+| ClickHouse | ClickHouse | `localhost` | `8123` | `default` | `wbdata` | `wbdata123` |
 
 Hive 还有一项 **Hive Metastore URI**，传输写 Hive 时必填：
 

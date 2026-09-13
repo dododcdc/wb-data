@@ -21,7 +21,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class TransferMetadataService {
 
-    private static final Set<String> SUPPORTED_TYPES = Set.of("MYSQL", "POSTGRESQL", "STARROCKS", "HIVE");
+    private static final Set<String> SUPPORTED_TYPES = Set.of("MYSQL", "POSTGRESQL", "CLICKHOUSE", "HIVE");
     private static final List<TransferWriteModeOption> NON_PARTITIONED_WRITE_MODES = List.of(
             new TransferWriteModeOption("append", "Append"),
             new TransferWriteModeOption("overwrite_table", "Overwrite table"));

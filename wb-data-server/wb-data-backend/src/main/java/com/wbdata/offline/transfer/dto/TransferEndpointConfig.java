@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Pattern;
 
 public record TransferEndpointConfig(
         @NotNull Long dataSourceId,
-        @NotBlank @Pattern(regexp = "MYSQL|POSTGRESQL|STARROCKS|HIVE") String dataSourceType,
+        @NotBlank @Pattern(regexp = "MYSQL|POSTGRESQL|CLICKHOUSE|HIVE") String dataSourceType,
         String database,
         @NotBlank String table,
         @Pattern(regexp = "(?is)^(?!.*;)(?!\\s*(?:select|from|insert|update|delete|drop|alter|truncate)\\b).*$",

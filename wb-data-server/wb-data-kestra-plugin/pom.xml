@@ -78,6 +78,17 @@
             </exclusions>
         </dependency>
         <dependency>
+            <groupId>io.kestra.plugin</groupId>
+            <artifactId>plugin-jdbc-clickhouse</artifactId>
+            <version>${kestra.jdbc.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.kestra.plugin</groupId>
+                    <artifactId>plugin-jdbc</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
             <groupId>io.kestra</groupId>
             <artifactId>core</artifactId>
             <version>${kestra.version}</version>

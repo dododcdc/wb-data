@@ -19,14 +19,16 @@ public final class JdbcDriverCatalog {
         String type = normalize(dataSource.getType());
         String database = databaseName == null || databaseName.isBlank() ? "" : "/" + databaseName;
         String prefix = switch (type) {
-            case "MYSQL", "STARROCKS" -> "jdbc:mysql://";
+            case "MYSQL" -> "jdbc:mysql://";
             case "POSTGRESQL" -> "jdbc:postgresql://";
+            case "CLICKHOUSE" -> "jdbc:clickhouse://";
             case "HIVE" -> "jdbc:hive2://";
             default -> throw new IllegalArgumentException("Unsupported data source type: " + dataSource.getType());
         };
         String driver = switch (type) {
-            case "MYSQL", "STARROCKS" -> "com.mysql.cj.jdbc.Driver";
+            case "MYSQL" -> "com.mysql.cj.jdbc.Driver";
             case "POSTGRESQL" -> "org.postgresql.Driver";
+            case "CLICKHOUSE" -> "com.clickhouse.jdbc.ClickHouseDriver";
             case "HIVE" -> "org.apache.hive.jdbc.HiveDriver";
             default -> throw new IllegalArgumentException("Unsupported data source type: " + dataSource.getType());
         };

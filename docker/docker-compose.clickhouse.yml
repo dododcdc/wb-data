@@ -1,0 +1,29 @@
+name: wb-data
+
+services:
+  clickhouse:
+    image: ${WB_DATA_CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:24.8}
+    container_name: wb-data-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: wbdata
+      CLICKHOUSE_PASSWORD: ${WB_DATA_CLICKHOUSE_PASSWORD:-wbdata123}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - wb-data-clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8123/ping | grep -q Ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  wb-data-clickhouse-data:

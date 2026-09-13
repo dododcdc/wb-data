@@ -65,9 +65,9 @@
     color: var(--badge-postgresql-fg);
   }
 
-  .type-badge.starrocks {
-    background-color: var(--badge-starrocks-bg);
-    color: var(--badge-starrocks-fg);
+  .type-badge.clickhouse {
+    background-color: var(--badge-clickhouse-bg);
+    color: var(--badge-clickhouse-fg);
   }
 
   .type-badge.oracle {
@@ -203,8 +203,8 @@
   --badge-hive-fg: #8B6914;
   --badge-postgresql-bg: #E8EDF5;
   --badge-postgresql-fg: #3D5A99;
-  --badge-starrocks-bg: #E6F2EF;
-  --badge-starrocks-fg: #2A7A6B;
+  --badge-clickhouse-bg: #E6F2EF;
+  --badge-clickhouse-fg: #2A7A6B;
   --badge-oracle-bg: #FDF0ED;
   --badge-oracle-fg: #C4613F;
   --badge-sqlserver-bg: #F0ECF5;
@@ -347,8 +347,8 @@
   --badge-hive-fg: #E8C85A;
   --badge-postgresql-bg: #1E2840;
   --badge-postgresql-fg: #8BAAF0;
-  --badge-starrocks-bg: #1A3530;
-  --badge-starrocks-fg: #5EDBCB;
+  --badge-clickhouse-bg: #1A3530;
+  --badge-clickhouse-fg: #5EDBCB;
   --badge-oracle-bg: #3A201A;
   --badge-oracle-fg: #F0A888;
   --badge-sqlserver-bg: #2A2040;

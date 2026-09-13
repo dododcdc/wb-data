@@ -6,7 +6,7 @@ public final class SqlIdentifierQuoter {
 
     public String quote(String dataSourceType, String identifier) {
         String quote = switch (normalize(dataSourceType)) {
-            case "MYSQL", "STARROCKS", "HIVE" -> "`";
+            case "MYSQL", "CLICKHOUSE", "HIVE" -> "`";
             case "POSTGRESQL" -> "\"";
             default -> throw new IllegalArgumentException("Unsupported data source type: " + dataSourceType);
         };
