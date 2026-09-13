@@ -244,10 +244,10 @@ public class ParameterGroupService {
         }
         List<ZoneOffset> validOffsets = runtimeTimezone.getRules().getValidOffsets(value);
         if (validOffsets.isEmpty()) {
-            throw badRequest(fieldName + "在 Flow 运行时区中不存在，请换一个时间");
+            throw badRequest(fieldName + "在 任务运行时区中不存在，请换一个时间");
         }
         if (validOffsets.size() > 1) {
-            throw badRequest(fieldName + "在 Flow 运行时区中不唯一，请换一个时间");
+            throw badRequest(fieldName + "在 任务运行时区中不唯一，请换一个时间");
         }
         return value.atOffset(validOffsets.getFirst());
     }
@@ -491,11 +491,11 @@ public class ParameterGroupService {
     }
 
     private ZoneId parseTimezone(String timezone) {
-        String normalized = normalizeRequired(timezone, "Flow 运行时区不能为空");
+        String normalized = normalizeRequired(timezone, "任务运行时区不能为空");
         try {
             return ZoneId.of(normalized);
         } catch (RuntimeException ex) {
-            throw badRequest("Flow 运行时区不合法");
+            throw badRequest("任务运行时区不合法");
         }
     }
 

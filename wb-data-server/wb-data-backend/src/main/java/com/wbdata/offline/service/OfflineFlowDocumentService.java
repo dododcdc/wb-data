@@ -108,7 +108,7 @@ public class OfflineFlowDocumentService {
         try {
             return readSnapshot(groupId, path).response();
         } catch (IOException ex) {
-            throw new IllegalStateException("读取 Flow 文档失败", ex);
+            throw new IllegalStateException("读取任务文档失败", ex);
         }
     }
 
@@ -184,7 +184,7 @@ public class OfflineFlowDocumentService {
 
             return readSnapshot(request.groupId(), request.path()).response();
         } catch (IOException ex) {
-            throw new IllegalStateException("保存 Flow 文档失败", ex);
+            throw new IllegalStateException("保存任务文档失败", ex);
         }
     }
 
@@ -214,7 +214,7 @@ public class OfflineFlowDocumentService {
             }
             return List.copyOf(files);
         } catch (IOException ex) {
-            throw new IllegalStateException("解析 Flow 关联文件失败", ex);
+            throw new IllegalStateException("解析任务关联文件失败", ex);
         }
     }
 
@@ -257,7 +257,7 @@ public class OfflineFlowDocumentService {
             compiledYaml = applyParameterSnapshotId(request.groupId(), compiledYaml, parameterSnapshot);
             return new CompiledFlowDraft(compiledYaml, draft.namespaceFileContents());
         } catch (IOException ex) {
-            throw new IllegalStateException("编译 Flow 文档失败", ex);
+            throw new IllegalStateException("编译任务文档失败", ex);
         }
     }
 
@@ -639,13 +639,13 @@ public class OfflineFlowDocumentService {
 
     private String requireRuntimeTimezone(String runtimeTimezone) {
         if (runtimeTimezone == null || runtimeTimezone.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 运行时区不能为空");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务运行时区不能为空");
         }
         String normalized = runtimeTimezone.trim();
         try {
             ZoneId.of(normalized);
         } catch (RuntimeException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 运行时区不合法");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务运行时区不合法");
         }
         return normalized;
     }
@@ -663,7 +663,7 @@ public class OfflineFlowDocumentService {
         }
         existingTimezone = requireRuntimeTimezone(existingTimezone);
         if (!existingTimezone.equals(requestedTimezone)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 运行时区创建后不能修改");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务运行时区创建后不能修改");
         }
         return existingTimezone;
     }
@@ -703,7 +703,7 @@ public class OfflineFlowDocumentService {
 
             ParameterGroupResponse group = parameterGroupService.get(groupId, binding.parameterGroupId());
             if ("ARCHIVED".equals(group.status())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "已归档的参数组不能绑定到 Flow");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "已归档的参数组不能绑定到任务");
             }
             if (!group.version().equals(binding.expectedVersion())) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "参数组版本已变化，请刷新后重试");

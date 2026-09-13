@@ -39,7 +39,7 @@ export function UnsavedChangesDialog({
 
                         <div className="uc-body">
                             <DialogPrimitive.Description className="uc-description">
-                                离开此页面将导致所有未保存的修改丢失。您希望在离开前保存当前 Flow 的修改吗？
+                                离开此页面将导致所有未保存的修改丢失。您希望在离开前保存当前任务的修改吗？
                             </DialogPrimitive.Description>
                         </div>
 

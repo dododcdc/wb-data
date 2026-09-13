@@ -240,7 +240,7 @@ class ParameterGroupServiceTest {
                 Map.of()
         )))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("计划时间在 Flow 运行时区中不存在");
+                .hasMessageContaining("计划时间在 任务运行时区中不存在");
     }
 
     @Test
@@ -257,7 +257,7 @@ class ParameterGroupServiceTest {
                 Map.of()
         )))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("执行开始时间在 Flow 运行时区中不唯一");
+                .hasMessageContaining("执行开始时间在 任务运行时区中不唯一");
     }
 
     @Test

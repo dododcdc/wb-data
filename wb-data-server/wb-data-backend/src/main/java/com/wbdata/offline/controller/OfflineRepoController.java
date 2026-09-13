@@ -117,7 +117,7 @@ public class OfflineRepoController {
         return Result.success(null);
     }
 
-    @Operation(summary = "提交当前 Flow 的改动打标版本")
+    @Operation(summary = "提交当前任务 的改动打标版本")
     @PostMapping("/repo/commit/flow")
     public Result<CommitResponse> commitCurrentFlow(
             @RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
@@ -131,7 +131,7 @@ public class OfflineRepoController {
         return Result.success(new CommitResponse(result.success(), result.message()));
     }
 
-    @Operation(summary = "获取当前 Flow 的改动状态")
+    @Operation(summary = "获取当前任务 的改动状态")
     @GetMapping("/repo/commit/flow/status")
     public Result<OfflineFlowCommitStatusResponse> getFlowCommitStatus(
             @RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,

@@ -66,12 +66,12 @@ public class FlowParameterSnapshotStore {
 
     private void validateRuntimeTimezone(String runtimeTimezone) {
         if (runtimeTimezone == null || runtimeTimezone.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "参数快照缺少 Flow 运行时区");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "参数快照缺少 任务运行时区");
         }
         try {
             ZoneId.of(runtimeTimezone);
         } catch (RuntimeException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "参数快照中的 Flow 运行时区不合法");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "参数快照中的 任务运行时区不合法");
         }
     }
 
@@ -81,12 +81,12 @@ public class FlowParameterSnapshotStore {
 
     public Path resolve(Path repoPath, String flowPath) {
         if (flowPath == null || flowPath.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 路径不能为空");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务路径不能为空");
         }
         Path flowFile = Path.of(flowPath).normalize();
         if (flowFile.isAbsolute() || flowFile.getParent() == null
                 || !"flow.yaml".equals(flowFile.getFileName().toString())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 路径不合法");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务路径不合法");
         }
         Path resolved = repoPath.resolve(flowFile.getParent()).resolve(FILE_NAME).normalize();
         if (!resolved.startsWith(repoPath)) {

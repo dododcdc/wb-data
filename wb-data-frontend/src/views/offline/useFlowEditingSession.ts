@@ -296,7 +296,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             }
             showFeedback({
                 tone: 'error',
-                title: 'Flow 打开失败',
+                title: '任务打开失败',
                 detail: getErrorMessage(error, '请检查路径是否存在，或稍后再试。'),
             });
             return false;
@@ -428,7 +428,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         }
 
         if (failureReason === 'max-nodes') {
-            showFeedback({ tone: 'info', title: '节点数量已达上限', detail: '离线 Flow 最多支持 20 个节点，请精简流程设计。' });
+            showFeedback({ tone: 'info', title: '节点数量已达上限', detail: '离线任务最多支持 20 个节点，请精简任务设计。' });
         }
     }, [setDraftSessionSync, showFeedback, syncCanvasRefsFromDocument]);
 
@@ -611,7 +611,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             if (!silent) {
                 showFeedback({
                     tone: 'success',
-                    title: 'Flow 已保存',
+                    title: '任务已保存',
                     detail: '',
                 });
             }
@@ -670,7 +670,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             }
             return result.success;
         } catch {
-            showFeedback({ tone: 'error', title: '当前 Flow 提交失败', detail: '' });
+            showFeedback({ tone: 'error', title: '当前任务提交失败', detail: '' });
             return false;
         }
     }, [
@@ -749,7 +749,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             if (!isCurrentGroupAction()) return;
             showFeedback({
                 tone: 'success',
-                title: 'Flow 已保存',
+                title: '任务已保存',
                 detail: '',
             });
         } catch (error) {

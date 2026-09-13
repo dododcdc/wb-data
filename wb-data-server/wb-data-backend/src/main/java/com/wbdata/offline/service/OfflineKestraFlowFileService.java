@@ -47,16 +47,16 @@ public class OfflineKestraFlowFileService {
 
     private Path resolveRepoFile(Path repoPath, String path) {
         if (path == null || path.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 路径不能为空");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务路径不能为空");
         }
         Path relativePath = Path.of(path).normalize();
         if (relativePath.isAbsolute()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 路径不合法");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务路径不合法");
         }
 
         Path resolvedPath = repoPath.resolve(relativePath).normalize();
         if (!resolvedPath.startsWith(repoPath)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 路径不合法");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务路径不合法");
         }
         return resolvedPath;
     }

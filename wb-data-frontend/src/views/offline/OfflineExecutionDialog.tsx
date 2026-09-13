@@ -152,7 +152,7 @@ export function OfflineExecutionDialog({
                     <div className="offline-execution-empty-state">
                         <History size={44} strokeWidth={1.2} aria-hidden="true" />
                         <strong>还没有执行记录</strong>
-                        <p>点击画布工具栏的「执行」运行当前 Flow</p>
+                        <p>点击画布工具栏的「执行」运行当前任务</p>
                     </div>
                 ) : (
                 <div className="offline-execution-layout">

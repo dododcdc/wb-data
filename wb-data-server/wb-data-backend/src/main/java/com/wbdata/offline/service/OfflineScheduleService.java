@@ -23,7 +23,7 @@ public class OfflineScheduleService {
         OfflineFlowContentResponse current = offlineFlowContentService.getFlowContent(groupId, path);
         OfflineFlowYamlSupport.ScheduleData schedule = yamlSupport.readSchedule(current.content());
         if (schedule == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Flow 尚未配置调度");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "任务尚未配置调度");
         }
         return toResponse(groupId, path, current, schedule);
     }
@@ -50,13 +50,13 @@ public class OfflineScheduleService {
     private String requireRuntimeTimezone(String flowSource) {
         String runtimeTimezone = yamlSupport.readLabel(flowSource, "wbdataRuntimeTimezone");
         if (runtimeTimezone == null || runtimeTimezone.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 运行时区不能为空");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务运行时区不能为空");
         }
         String normalized = runtimeTimezone.trim();
         try {
             ZoneId.of(normalized);
         } catch (RuntimeException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 运行时区不合法");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务运行时区不合法");
         }
         return normalized;
     }

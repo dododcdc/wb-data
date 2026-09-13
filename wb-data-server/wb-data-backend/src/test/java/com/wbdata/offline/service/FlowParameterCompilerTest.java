@@ -58,7 +58,7 @@ class FlowParameterCompilerTest {
                 Map.of("scripts/query.sql", "select * from users where day=${v_day}")
         ))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Flow 运行时区不能为空");
+                .hasMessageContaining("任务运行时区不能为空");
     }
 
     @Test

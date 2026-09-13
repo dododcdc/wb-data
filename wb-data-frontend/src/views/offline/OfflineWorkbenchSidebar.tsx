@@ -290,7 +290,7 @@ export function OfflineWorkbenchSidebar({
                                         <div className="offline-branch-dirty-warning">
                                             <AlertTriangle size={14} />
                                             <div>
-                                                <strong>还有已保存但未提交的 Flow</strong>
+                                                <strong>还有已保存但未提交的任务</strong>
                                                 {branch.dirtyState.changedFlowDetails.length > 0 ? (
                                                     <ul>
                                                         {branch.dirtyState.changedFlowDetails.slice(0, 5).map((flow) => (
@@ -376,7 +376,7 @@ export function OfflineWorkbenchSidebar({
                                     {creation.menuOpen ? (
                                         <div className="offline-new-item-menu animate-in fade-in zoom-in-95" onMouseLeave={() => creation.onMenuOpenChange(false)}>
                                             <button type="button" className="offline-new-item-menu-item" onClick={creation.onOpenNewFlow}>
-                                                <FileCode2 size={13} />新建 Flow
+                                                <FileCode2 size={13} />新建任务
                                             </button>
                                             <button type="button" className="offline-new-item-menu-item" onClick={creation.onOpenNewFolder}>
                                                 <FolderPlus size={13} />新建文件夹
@@ -456,7 +456,7 @@ export function OfflineWorkbenchSidebar({
                     </div>
                 ) : !tree.data?.root.children.length ? (
                     <div className="offline-rail-empty">
-                        {tree.data ? '当前仓库还没有可打开的 Flow。\n点击上方"新建"创建第一个 Flow。' : '当前仓库还没有可打开的 Flow。'}
+                        {tree.data ? '当前仓库还没有可打开的任务。\n点击上方"新建"创建第一个任务。' : '当前仓库还没有可打开的任务。'}
                     </div>
                 ) : (
                     <div className="offline-tree-shell">

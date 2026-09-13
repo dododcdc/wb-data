@@ -178,7 +178,7 @@ final class OfflineFlowYamlSupport {
         Map<String, Object> root = loadRoot(source);
         Map<String, Object> trigger = findScheduleTrigger(root);
         if (trigger == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 尚未配置调度");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务尚未配置调度");
         }
         if (enabled) {
             trigger.remove("disabled");

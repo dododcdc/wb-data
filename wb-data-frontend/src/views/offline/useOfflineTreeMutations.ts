@@ -122,13 +122,13 @@ export function useOfflineTreeMutations({
             setNewFlowDialogOpen(false);
             setNewFlowName('');
             setNewFlowParentPath('');
-            showFeedback({ tone: 'success', title: 'Flow 创建成功', detail: '' });
+            showFeedback({ tone: 'success', title: '任务创建成功', detail: '' });
             await refreshRepoTree();
             await openFlowDocument(path);
         } catch (error) {
             showFeedback({
                 tone: 'error',
-                title: '创建 Flow 失败',
+                title: '创建任务失败',
                 detail: getErrorMessage(error, '请稍后重试'),
             });
         } finally {
@@ -171,12 +171,12 @@ export function useOfflineTreeMutations({
                 setActiveFlowPath(null);
                 setDraftSession(null);
             }
-            showFeedback({ tone: 'success', title: 'Flow 已删除', detail: '' });
+            showFeedback({ tone: 'success', title: '任务已删除', detail: '' });
             await refreshRepoTree();
         } catch (error) {
             showFeedback({
                 tone: 'error',
-                title: '删除 Flow 失败',
+                title: '删除任务失败',
                 detail: getErrorMessage(error, '请稍后重试'),
             });
         } finally {
@@ -201,7 +201,7 @@ export function useOfflineTreeMutations({
             if (activeFlowPath === oldPath) {
                 setActiveFlowPath(newPath);
             }
-            showFeedback({ tone: 'success', title: 'Flow 已重命名', detail: `${renameFlowOriginalName} → ${newName}` });
+            showFeedback({ tone: 'success', title: '任务已重命名', detail: `${renameFlowOriginalName} → ${newName}` });
             await refreshRepoTree();
             if (activeFlowPath === newPath || activeFlowPath === oldPath) {
                 await openFlowDocument(newPath !== oldPath ? newPath : oldPath);
@@ -209,7 +209,7 @@ export function useOfflineTreeMutations({
         } catch (error) {
             showFeedback({
                 tone: 'error',
-                title: '重命名 Flow 失败',
+                title: '重命名任务失败',
                 detail: getErrorMessage(error, '请稍后重试'),
             });
         } finally {

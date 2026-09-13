@@ -96,7 +96,7 @@ export default function ParameterPreviewDialog({
     const calculate = async () => {
         if (!parameterGroup || !detail || !timeRequirements.hasTimeParameters) return;
         if (!runtimeTimezone) {
-            setError('请选择 Flow 运行时区');
+            setError('请选择任务运行时区');
             return;
         }
         if (timeRequirements.requiresPlannedTime && !plannedTime) {
@@ -241,7 +241,7 @@ export default function ParameterPreviewDialog({
                                     ? '该参数组仅包含固定值，无需提供时间上下文。'
                                     : preview
                                         ? <>时间参数已按 <code>{runtimeTimezone}</code> 和你提供的时间上下文计算。</>
-                                        : '时间参数尚未计算。请明确提供 Flow 运行时区和所需时间后再计算。'}
+                                        : '时间参数尚未计算。请明确提供任务运行时区和所需时间后再计算。'}
                         </div>
                     </div>
 
@@ -282,11 +282,11 @@ export default function ParameterPreviewDialog({
                                     </div>
                                 ) : null}
                                 <div className="parameter-preview-field">
-                                    <span>Flow 运行时区 <b>*</b></span>
+                                    <span>任务运行时区 <b>*</b></span>
                                     <SimpleSelect
-                                        ariaLabel="Flow 运行时区"
+                                        ariaLabel="任务运行时区"
                                         value={runtimeTimezone}
-                                        placeholder="选择 Flow 运行时区"
+                                        placeholder="选择任务运行时区"
                                         className="parameter-select"
                                         options={timezoneOptions}
                                         onChange={setRuntimeTimezone}

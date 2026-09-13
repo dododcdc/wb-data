@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-@Tag(name = "离线开发", description = "Flow 内容读写")
+@Tag(name = "离线开发", description = "任务 内容读写")
 @RestController
 @RequestMapping({"/api/v1/offline/flows", "/api/v1/groups/{groupId}/offline/flows"})
 @RequiredArgsConstructor
@@ -38,14 +38,14 @@ public class OfflineFlowController {
     private final OfflineFlowContentService offlineFlowContentService;
     private final OfflineFlowDocumentService offlineFlowDocumentService;
 
-    @Operation(summary = "读取 Flow 内容")
+    @Operation(summary = "读取任务内容")
     @GetMapping("/content")
     public Result<OfflineFlowContentResponse> getFlowContent(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
                                                              @RequestParam String path) {
         return Result.success(offlineFlowContentService.getFlowContent(context.currentGroup().id(), path));
     }
 
-    @Operation(summary = "保存 Flow 内容")
+    @Operation(summary = "保存任务内容")
     @PutMapping("/content")
     public Result<OfflineFlowContentResponse> saveFlowContent(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
                                                               @Valid @RequestBody SaveOfflineFlowRequest request) {
@@ -59,14 +59,14 @@ public class OfflineFlowController {
         return Result.success(offlineFlowContentService.saveFlowContent(normalizedRequest));
     }
 
-    @Operation(summary = "读取结构化 Flow 文档")
+    @Operation(summary = "读取结构化任务文档")
     @GetMapping("/document")
     public Result<OfflineFlowDocumentResponse> getFlowDocument(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
                                                                @RequestParam String path) {
         return Result.success(offlineFlowDocumentService.getFlowDocument(context.currentGroup().id(), path));
     }
 
-    @Operation(summary = "保存结构化 Flow 文档")
+    @Operation(summary = "保存结构化任务文档")
     @PutMapping("/document")
     public Result<OfflineFlowDocumentResponse> saveFlowDocument(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
                                                                 @Valid @RequestBody SaveOfflineFlowDocumentRequest request) {
@@ -86,7 +86,7 @@ public class OfflineFlowController {
         return Result.success(offlineFlowDocumentService.saveFlowDocument(normalizedRequest));
     }
 
-    @Operation(summary = "删除 Flow（物理删除）")
+    @Operation(summary = "删除任务（物理删除）")
     @DeleteMapping
     public Result<Void> deleteFlow(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
                                    @Valid @RequestBody DeleteOfflineFlowRequest request) {
@@ -94,7 +94,7 @@ public class OfflineFlowController {
         return Result.success(null);
     }
 
-    @Operation(summary = "重命名 Flow")
+    @Operation(summary = "重命名任务")
     @PostMapping("/rename")
     public Result<Void> renameFlow(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
                                    @Valid @RequestBody RenameOfflineFlowRequest request) {

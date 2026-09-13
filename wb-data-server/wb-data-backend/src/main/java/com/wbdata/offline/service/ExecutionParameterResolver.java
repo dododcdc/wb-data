@@ -28,7 +28,7 @@ public final class ExecutionParameterResolver {
             return Map.of();
         }
         if (snapshot == null) {
-            throw badRequest("当前 Flow 未绑定参数组，不能设置执行参数");
+            throw badRequest("当前任务 未绑定参数组，不能设置执行参数");
         }
 
         Map<String, FlowParameterDefinitionSnapshot> definitions = new LinkedHashMap<>();
@@ -46,7 +46,7 @@ public final class ExecutionParameterResolver {
             String key = override.getKey();
             FlowParameterDefinitionSnapshot definition = key == null ? null : definitions.get(key);
             if (definition == null) {
-                throw badRequest("执行参数未在 Flow 参数快照中定义: " + key);
+                throw badRequest("执行参数未在任务参数快照中定义: " + key);
             }
             if (override.getValue() == null) {
                 throw badRequest("V1 不支持 null 执行参数: " + definition.key());
@@ -114,7 +114,7 @@ public final class ExecutionParameterResolver {
                                      Instant referenceTime,
                                      String runtimeTimezone) {
         if (runtimeTimezone == null || runtimeTimezone.isBlank()) {
-            throw badRequest("Flow 运行时区不能为空");
+            throw badRequest("任务运行时区不能为空");
         }
         var time = referenceTime.atZone(ZoneId.of(runtimeTimezone))
                 .plusDays(definition.offsetDays() == null ? 0 : definition.offsetDays());

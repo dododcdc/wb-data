@@ -105,7 +105,7 @@ public class OfflineExecutionService {
         if (snapshotId != null) {
             return executionParameterSnapshotRegistry.find(request.groupId(), snapshotId)
                     .orElseThrow(() -> new ResponseStatusException(
-                            HttpStatus.BAD_REQUEST, "Flow 引用的执行参数快照不存在"));
+                            HttpStatus.BAD_REQUEST, "任务引用的执行参数快照不存在"));
         }
         Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
         try {
@@ -113,7 +113,7 @@ public class OfflineExecutionService {
                     .map(FlowParameterSnapshotStore.SnapshotFile::snapshot)
                     .orElse(null);
         } catch (IOException ex) {
-            throw new IllegalStateException("读取 Flow 参数快照失败", ex);
+            throw new IllegalStateException("读取任务参数快照失败", ex);
         }
     }
 
@@ -126,7 +126,7 @@ public class OfflineExecutionService {
         }
         if (request.plannedTime() == null) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "当前 Flow 包含计划时间参数，请选择参考计划时间");
+                    HttpStatus.BAD_REQUEST, "当前任务 包含计划时间参数，请选择参考计划时间");
         }
         ZoneId runtimeZone = resolveRuntimeZone(snapshot);
         List<ZoneOffset> validOffsets = runtimeZone.getRules().getValidOffsets(request.plannedTime());
@@ -151,15 +151,15 @@ public class OfflineExecutionService {
 
     private ZoneId resolveRuntimeZone(FlowParameterSnapshot snapshot) {
         if (snapshot == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前 Flow 缺少参数快照");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前任务 缺少参数快照");
         }
         if (snapshot.runtimeTimezone() == null || snapshot.runtimeTimezone().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前 Flow 缺少运行时区");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前任务 缺少运行时区");
         }
         try {
             return ZoneId.of(snapshot.runtimeTimezone());
         } catch (RuntimeException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 运行时区不合法");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务运行时区不合法");
         }
     }
 

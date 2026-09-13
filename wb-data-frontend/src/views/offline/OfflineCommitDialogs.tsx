@@ -138,7 +138,7 @@ export function OfflineCommitDialogs(props: OfflineCommitDialogsProps) {
             <CommitDialogShell
                 open={flowCommitOpen}
                 title="提交改动"
-                description="提交当前 Flow 的已保存内容，或先保存当前草稿再提交。"
+                description="提交当前任务的已保存内容，或先保存当前草稿再提交。"
                 commitMessage={commitMessage}
                 committing={committing}
                 draftDirty={flowDraftDirty}

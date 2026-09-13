@@ -181,11 +181,11 @@ public class OperationsExecutionService {
                         ? null
                         : parameterSnapshotRegistry.find(groupId, currentSnapshotId)
                         .orElseThrow(() -> new ResponseStatusException(
-                                HttpStatus.BAD_REQUEST, "当前 Flow 的参数快照已不可用，无法重跑"));
+                                HttpStatus.BAD_REQUEST, "当前任务 的参数快照已不可用，无法重跑"));
         if (reuseManualOverrides && !originalOverrideKeys.isEmpty()) {
             if (currentSnapshot == null) {
                 throw new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST, "当前 Flow 没有参数定义，无法沿用原执行的手动覆盖值");
+                        HttpStatus.BAD_REQUEST, "当前任务 没有参数定义，无法沿用原执行的手动覆盖值");
             }
             for (String overrideKey : originalOverrideKeys) {
                 String value = originalInputs.get(overrideKey);
@@ -194,7 +194,7 @@ public class OperationsExecutionService {
                 }
                 if (!definesParameter(currentSnapshot, overrideKey)) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "参数 " + overrideKey + " 在当前 Flow 参数中已不存在，无法沿用覆盖值重跑");
+                            "参数 " + overrideKey + " 在当前任务 参数中已不存在，无法沿用覆盖值重跑");
                 }
                 rerunInputs.put(overrideKey, value);
             }

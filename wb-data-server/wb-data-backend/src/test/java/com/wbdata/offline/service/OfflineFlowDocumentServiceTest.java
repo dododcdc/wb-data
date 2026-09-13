@@ -625,7 +625,7 @@ class OfflineFlowDocumentServiceTest {
                 null
         )))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Flow 运行时区不能为空");
+                .hasMessageContaining("任务运行时区不能为空");
     }
 
     @Test
@@ -683,7 +683,7 @@ class OfflineFlowDocumentServiceTest {
 
         assertThatThrownBy(() -> service.saveFlowDocument(timezoneChange))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Flow 运行时区创建后不能修改");
+                .hasMessageContaining("任务运行时区创建后不能修改");
         assertThat(service.getFlowDocument(1L, "_flows/example/flow.yaml").runtimeTimezone())
                 .isEqualTo("Asia/Shanghai");
     }

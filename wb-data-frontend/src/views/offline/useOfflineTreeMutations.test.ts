@@ -90,7 +90,7 @@ describe('useOfflineTreeMutations', () => {
         }));
         expect(params.refreshRepoTree).toHaveBeenCalled();
         expect(params.openFlowDocument).toHaveBeenCalledWith('_flows/jack/new_flow/flow.yaml');
-        expect(params.showFeedback).toHaveBeenCalledWith({ tone: 'success', title: 'Flow 创建成功', detail: '' });
+        expect(params.showFeedback).toHaveBeenCalledWith({ tone: 'success', title: '任务创建成功', detail: '' });
     });
 
     it('creates a Flow preserving the default runtime timezone', async () => {

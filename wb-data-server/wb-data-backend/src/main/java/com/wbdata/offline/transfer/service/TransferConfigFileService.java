@@ -92,7 +92,7 @@ public class TransferConfigFileService {
         Path normalized = Path.of(flowPath).normalize();
         Path parent = normalized.getParent();
         if (parent == null || parent.getFileName() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow 路径不合法");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务路径不合法");
         }
         return parent.getFileName().toString();
     }

@@ -34,7 +34,7 @@ public class OfflineFlowContentService {
         try {
             return readFlowContent(groupId, path, flowPath);
         } catch (IOException ex) {
-            throw new IllegalStateException("读取 Flow 文件失败", ex);
+            throw new IllegalStateException("读取任务文件失败", ex);
         }
     }
 
@@ -60,30 +60,30 @@ public class OfflineFlowContentService {
             kestraFlowFileService.syncFlowFile(repoPath, request.path());
             return readFlowContent(request.groupId(), request.path(), flowPath);
         } catch (IOException ex) {
-            throw new IllegalStateException("保存 Flow 文件失败", ex);
+            throw new IllegalStateException("保存任务文件失败", ex);
         }
     }
 
     private Path resolveFlowPath(Path repoPath, String path) {
         if (path == null || path.isBlank()) {
-            throw new IllegalArgumentException("Flow 路径不能为空");
+            throw new IllegalArgumentException("任务路径不能为空");
         }
 
         Path relativePath = Path.of(path).normalize();
         if (relativePath.isAbsolute() || !"flow.yaml".equals(relativePath.getFileName().toString())) {
-            throw new IllegalArgumentException("Flow 路径不合法");
+            throw new IllegalArgumentException("任务路径不合法");
         }
 
         Path resolvedPath = repoPath.resolve(relativePath).normalize();
         if (!resolvedPath.startsWith(repoPath)) {
-            throw new IllegalArgumentException("Flow 路径不合法");
+            throw new IllegalArgumentException("任务路径不合法");
         }
         return resolvedPath;
     }
 
     private OfflineFlowContentResponse readFlowContent(Long groupId, String path, Path flowPath) throws IOException {
         if (!Files.isRegularFile(flowPath)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Flow 文件不存在");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "任务文件不存在");
         }
 
         String content = Files.readString(flowPath, StandardCharsets.UTF_8);
@@ -106,7 +106,7 @@ public class OfflineFlowContentService {
         Path flowPath = resolveFlowPath(repoPath, path);
         Path flowDir = flowPath.getParent();
         if (flowDir == null || !flowDir.startsWith(repoPath)) {
-            throw new IllegalArgumentException("Flow 路径不合法");
+            throw new IllegalArgumentException("任务路径不合法");
         }
 
         // Extract flow directory name (e.g., "_flows/demo" -> "demo")
@@ -126,7 +126,7 @@ public class OfflineFlowContentService {
 
             Files.deleteIfExists(kestraFlowFileService.resolveFlowFile(repoPath, path));
         } catch (IOException ex) {
-            throw new IllegalStateException("删除 Flow 失败", ex);
+            throw new IllegalStateException("删除任务失败", ex);
         }
     }
 
@@ -139,7 +139,7 @@ public class OfflineFlowContentService {
         Path flowPath = resolveFlowPath(repoPath, path);
         Path flowDir = flowPath.getParent();
         if (flowDir == null || !flowDir.startsWith(repoPath)) {
-            throw new IllegalArgumentException("Flow 路径不合法");
+            throw new IllegalArgumentException("任务路径不合法");
         }
 
         // Extract old flow directory name (e.g., "_flows/demo" -> "demo")
@@ -174,7 +174,7 @@ public class OfflineFlowContentService {
                 }
             }
         } catch (IOException ex) {
-            throw new IllegalStateException("重命名 Flow 失败", ex);
+            throw new IllegalStateException("重命名任务失败", ex);
         }
     }
 
