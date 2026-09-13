@@ -1,11 +1,11 @@
-import type { RefCallback } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { AlertTriangle } from 'lucide-react';
 
-import type { OfflineFlowDocument, OfflineFlowNodeKind } from '../../api/offline';
+import type { OfflineFlowDocument } from '../../api/offline';
 import { Button } from '../../components/ui/button';
 import FlowCanvas from './FlowCanvas';
 import { OfflineCanvasToolbar } from './OfflineCanvasToolbar';
+import { OfflineNodePalette } from './OfflineNodePalette';
 
 interface OfflineWorkbenchMainPanelProps {
     activeFlowPath: string | null;
@@ -23,7 +23,6 @@ interface OfflineWorkbenchMainPanelProps {
     commitDirty: boolean;
     committing: boolean;
     staleDraft: boolean;
-    canvasBoardRef: RefCallback<HTMLElement>;
     onSelectAllNodes: (selected: boolean) => void;
     onSaveFlow: () => void;
     onOpenFlowCommitDialog: () => void;
@@ -31,7 +30,6 @@ interface OfflineWorkbenchMainPanelProps {
     onOpenParameterDialog: () => void;
     onExecute: () => void;
     onOpenExecutionDialog: () => void;
-    onAddNodeAtCanvasCenter: (kind: OfflineFlowNodeKind) => void;
     onDiscardStaleDraft: () => void;
     onRestoreStaleDraft: () => void;
     onNodesChange: Parameters<typeof FlowCanvas>[0]['onNodesChange'];
@@ -61,7 +59,6 @@ export function OfflineWorkbenchMainPanel({
     commitDirty,
     committing,
     staleDraft,
-    canvasBoardRef,
     onSelectAllNodes,
     onSaveFlow,
     onOpenFlowCommitDialog,
@@ -69,7 +66,6 @@ export function OfflineWorkbenchMainPanel({
     onOpenParameterDialog,
     onExecute,
     onOpenExecutionDialog,
-    onAddNodeAtCanvasCenter,
     onDiscardStaleDraft,
     onRestoreStaleDraft,
     onNodesChange,
@@ -113,7 +109,6 @@ export function OfflineWorkbenchMainPanel({
                 onOpenParameters={onOpenParameterDialog}
                 onExecute={onExecute}
                 onOpenExecutions={onOpenExecutionDialog}
-                onAddNode={onAddNodeAtCanvasCenter}
             />
 
             {staleDraft ? (
@@ -136,25 +131,28 @@ export function OfflineWorkbenchMainPanel({
                 </section>
             ) : null}
 
-            <section className="offline-canvas-board" ref={canvasBoardRef}>
-                <ReactFlowProvider key={activeFlowPath}>
-                    <FlowCanvas
-                        flowDocument={flowDocument}
-                        selectedTaskIds={selectedTaskIds}
-                        activeNodeId={activeNodeId}
-                        nodeIssues={nodeIssues}
-                        nodeStatuses={nodeStatuses}
-                        onNodesChange={onNodesChange}
-                        onEdgesChange={onEdgesChange}
-                        onNodeLayoutCommit={onNodeLayoutCommit}
-                        onSelectNode={onSelectNode}
-                        onToggleTaskSelection={onToggleTaskSelection}
-                        onReplaceTaskSelection={onReplaceTaskSelection}
-                        onDoubleClickNode={onDoubleClickNode}
-                        onAddNode={onAddNode}
-                        onRenameNode={onRenameNode}
-                    />
-                </ReactFlowProvider>
+            <section className="offline-canvas-stage">
+                <section className="offline-canvas-board">
+                    <ReactFlowProvider key={activeFlowPath}>
+                        <FlowCanvas
+                            flowDocument={flowDocument}
+                            selectedTaskIds={selectedTaskIds}
+                            activeNodeId={activeNodeId}
+                            nodeIssues={nodeIssues}
+                            nodeStatuses={nodeStatuses}
+                            onNodesChange={onNodesChange}
+                            onEdgesChange={onEdgesChange}
+                            onNodeLayoutCommit={onNodeLayoutCommit}
+                            onSelectNode={onSelectNode}
+                            onToggleTaskSelection={onToggleTaskSelection}
+                            onReplaceTaskSelection={onReplaceTaskSelection}
+                            onDoubleClickNode={onDoubleClickNode}
+                            onAddNode={onAddNode}
+                            onRenameNode={onRenameNode}
+                        />
+                    </ReactFlowProvider>
+                </section>
+                <OfflineNodePalette disabled={!canWrite} />
             </section>
         </main>
     );

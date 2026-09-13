@@ -21,8 +21,10 @@ import {
     buildNodeEditorDataSourceOptions,
 } from './nodeEditorDataSourceRules';
 import {
+    getOfflineNodeKindClassName,
     getOfflineNodeKindDescription,
     getOfflineNodeKindLabel,
+    isJdbcSqlNodeKind,
     isSqlEditorNodeKind,
 } from './offlineNodeKinds';
 
@@ -176,7 +178,7 @@ export function NodeEditorDialog({
 
     if (!activeNode) return null;
     const isSqlNode = isSqlEditorNodeKind(activeNode.kind);
-    const supportsParameters = activeNode.kind === 'SQL';
+    const supportsParameters = isJdbcSqlNodeKind(activeNode.kind);
     const isTransferNode = activeNode.kind === 'TRANSFER';
 
     const handleAttemptClose = () => onOpenChange(false);
@@ -194,12 +196,8 @@ export function NodeEditorDialog({
                         {/* Identity Section */}
                         <div className="flex items-center gap-3">
                             <div className={cn(
-                                "px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase border",
-                                activeNode.kind === 'SQL'
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                                    : activeNode.kind === 'HIVE_SQL'
-                                        ? "bg-amber-50 text-amber-700 border-amber-100"
-                                        : "bg-gray-100 text-gray-600 border-gray-200"
+                                "flow-canvas-node-kind",
+                                `is-${getOfflineNodeKindClassName(activeNode.kind)}`,
                             )}>
                                 {getOfflineNodeKindLabel(activeNode.kind)}
                             </div>
@@ -236,7 +234,9 @@ export function NodeEditorDialog({
                                         loadingMore={dataSourcesLoadingMore}
                                         hasMore={dataSourcesHasMore}
                                         onLoadMore={loadMoreDataSources}
-                                        placeholder={activeNode.kind === 'HIVE_SQL' ? '选择 Hive 数据源...' : '选择数据源...'}
+                                        placeholder={activeNode.kind === 'HIVE_SQL'
+                                            ? '选择 Hive 数据源...'
+                                            : `选择 ${getOfflineNodeKindLabel(activeNode.kind)} 数据源...`}
                                     />
                                 </div>
                             </div>

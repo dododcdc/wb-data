@@ -67,7 +67,14 @@ export interface OfflineFlowContent {
     fileUpdatedAt: number;
 }
 
-export type OfflineFlowNodeKind = 'SQL' | 'HIVE_SQL' | 'SHELL' | 'TRANSFER';
+export type OfflineFlowNodeKind =
+    | 'SQL'
+    | 'MYSQL'
+    | 'POSTGRESQL'
+    | 'CLICKHOUSE'
+    | 'HIVE_SQL'
+    | 'SHELL'
+    | 'TRANSFER';
 
 export interface OfflineFlowNode {
     taskId: string;

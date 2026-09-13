@@ -63,7 +63,7 @@ final class OfflineNodeTaskCompiler {
         task.putIfAbsent("id", node.taskId());
         task.remove("disabled");
         adapterFor(node.kind()).compile(task, node, dataSourceMap);
-        if (manageParameters && "SQL".equalsIgnoreCase(node.kind())
+        if (manageParameters && OfflineFlowNodeKinds.isJdbcSql(node.kind())
                 && task.get("type") instanceof String type
                 && isJdbcQueryTaskType(type)) {
             if (jdbcParametersExpression == null) {
@@ -94,7 +94,7 @@ final class OfflineNodeTaskCompiler {
         if ("TRANSFER".equalsIgnoreCase(kind)) {
             return transferAdapter;
         }
-        if ("SQL".equalsIgnoreCase(kind)) {
+        if (OfflineFlowNodeKinds.isJdbcSql(kind)) {
             return sqlAdapter;
         }
         if ("HIVE_SQL".equalsIgnoreCase(kind)) {
@@ -151,12 +151,19 @@ final class OfflineNodeTaskCompiler {
 
             clearShellTaskFields(task);
             String type = dataSource.getType().toUpperCase();
+            String requiredType = OfflineFlowNodeKinds.requiredDataSourceType(node.kind());
+            if (requiredType != null && !requiredType.equals(type)) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "节点 " + node.taskId() + " 只能绑定 " + requiredType + " 数据源"
+                );
+            }
             task.put("type", resolveKestraQueryTaskType(type));
             task.put("description", OfflineTaskMetadataCodec.mergeDataSource(
                     readOptionalString(task, "description"),
                     dataSource.getId(),
                     type,
-                    "SQL"
+                    OfflineFlowNodeKinds.canonicalize(node.kind(), type)
             ));
             task.put("url", buildJdbcUrl(dataSource.getHost(), dataSource.getPort(), dataSource.getDatabaseName(), type));
             task.put("username", dataSource.getUsername());

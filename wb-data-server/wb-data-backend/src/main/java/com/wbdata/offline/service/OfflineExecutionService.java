@@ -183,7 +183,7 @@ public class OfflineExecutionService {
                 validateTransferTaskRunner(node.taskId());
                 continue;
             }
-            if (!"SQL".equalsIgnoreCase(node.kind())) {
+            if (!OfflineFlowNodeKinds.isJdbcSql(node.kind())) {
                 continue;
             }
             if (node.dataSourceType() == null || node.dataSourceType().isBlank()) {

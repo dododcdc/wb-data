@@ -87,20 +87,16 @@ function getCachedDataSourcePage(params: CachedDataSourcePageParams) {
 }
 
 export function prefetchNodeEditorDataSources(groupId: number) {
-    return Promise.all([
-        getCachedDataSourcePage({
-            groupId,
-            page: 1,
-            keyword: '',
-            allowedDataSourceTypes: getAllowedDataSourceTypes('SQL'),
-        }),
-        getCachedDataSourcePage({
-            groupId,
-            page: 1,
-            keyword: '',
-            allowedDataSourceTypes: getAllowedDataSourceTypes('HIVE_SQL'),
-        }),
-    ]).then(() => undefined);
+    return Promise.all(
+        (['MYSQL', 'POSTGRESQL', 'CLICKHOUSE', 'HIVE_SQL'] as const).map((kind) => (
+            getCachedDataSourcePage({
+                groupId,
+                page: 1,
+                keyword: '',
+                allowedDataSourceTypes: getAllowedDataSourceTypes(kind),
+            })
+        )),
+    ).then(() => undefined);
 }
 
 export function useNodeEditorDataSources(_params: UseNodeEditorDataSourcesParams): UseNodeEditorDataSourcesResult {

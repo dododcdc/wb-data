@@ -34,9 +34,11 @@ export function validateSqlNodeDataSourceRequirement({
             feedback: {
                 tone: 'error',
                 title: '数据源类型不匹配',
-                detail: kind === 'SQL'
-                    ? 'SQL 节点仅支持 MySQL、PostgreSQL、ClickHouse 数据源。'
-                    : 'HiveSQL 节点只能绑定 Hive 数据源。',
+                detail: kind === 'HIVE_SQL'
+                    ? 'HiveSQL 节点只能绑定 Hive 数据源。'
+                    : kind === 'SQL'
+                        ? 'SQL 节点仅支持 MySQL、PostgreSQL、ClickHouse 数据源。'
+                        : `${kindLabel} 节点只能绑定 ${kindLabel} 数据源。`,
             },
         };
     }

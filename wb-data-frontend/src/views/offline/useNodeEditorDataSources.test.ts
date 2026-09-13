@@ -14,7 +14,7 @@ describe('useNodeEditorDataSources preload cache', () => {
         vi.clearAllMocks();
     });
 
-    it('reuses prefetched first pages for SQL and HiveSQL node editors', async () => {
+    it('reuses prefetched first pages for jdbc and HiveSQL node editors', async () => {
         const datasourceApi = await import('../../api/datasource');
         const { prefetchNodeEditorDataSources } = await import('./useNodeEditorDataSources');
         vi.mocked(datasourceApi.getDataSourcePage).mockResolvedValue({
@@ -28,13 +28,19 @@ describe('useNodeEditorDataSources preload cache', () => {
         await prefetchNodeEditorDataSources(1);
         await prefetchNodeEditorDataSources(1);
 
-        expect(datasourceApi.getDataSourcePage).toHaveBeenCalledTimes(2);
+        expect(datasourceApi.getDataSourcePage).toHaveBeenCalledTimes(4);
         expect(datasourceApi.getDataSourcePage).toHaveBeenCalledWith(expect.objectContaining({
             groupId: 1,
             page: 1,
             keyword: '',
             status: 'ENABLED',
-            type: 'MYSQL,POSTGRESQL,CLICKHOUSE',
+            type: 'MYSQL',
+        }));
+        expect(datasourceApi.getDataSourcePage).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'POSTGRESQL',
+        }));
+        expect(datasourceApi.getDataSourcePage).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'CLICKHOUSE',
         }));
         expect(datasourceApi.getDataSourcePage).toHaveBeenCalledWith(expect.objectContaining({
             groupId: 1,

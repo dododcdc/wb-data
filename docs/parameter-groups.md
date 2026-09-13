@@ -33,7 +33,7 @@ where name = ${xxx}
 | --- | --- |
 | 作用域 | 参数组属于项目组，不跨项目组共享 |
 | 绑定粒度 | 一个 Flow 可以按顺序绑定多个参数组，不做节点级绑定；列表越靠前优先级越高，靠后参数组中的同名定义被覆盖 |
-| 可见范围 | Flow 内全部节点可见同一组参数；V1 只允许 SQL 节点消费参数 |
+| 可见范围 | Flow 内全部节点可见同一组参数；V1 只允许 JDBC SQL 节点（MySQL / PostgreSQL / ClickHouse）消费参数 |
 | 更新语义 | 参数组修改后不自动改变已保存或已发布 Flow |
 | 生效动作 | 用户重新保存 Flow 时绑定当前版本并重新生成文件；提交、推送并同步后才影响 Kestra |
 | 发布记录 | Flow 保存参数组代码、版本和完整定义快照 |
@@ -415,7 +415,7 @@ parameters: '{{ {"xxx": inputs.xxx, "v_plan_day": (inputs.v_plan_day ?? ((inputs
 
 官方 Kestra JDBC 插件使用简单正则替换整个 SQL，会误伤字符串、注释和 `::type` 中的冒号。WB-Data 因此提供 `io.wbdata.kestra.jdbc.*.Query` 自定义任务；后端与任务共用同一个 SQL 模板模块，把真正的 `${key}` 编译为 `?` 和有序参数，再调用 `PreparedStatement.setObject`。普通字符串 `'a:tom,b:jack'`、注释中的冒号和 PostgreSQL `::type` 均原样保留。旧的裸 `:key` 写法不再被识别为参数，按普通文本原样传给数据库。
 
-V1 的参数编译只处理 SQL 节点。Hive SQL、Shell 和传输节点保持原有脚本语义，界面不向这些节点提供参数插入入口；尤其不能把 Shell 自身的 `${VAR}` 环境变量误判为参数组引用。让各类节点都能消费参数是明确的后续方向（V2）：支持某类节点时，应为该节点明确定义语法和转义规则。
+V1 的参数编译只处理 JDBC SQL 节点（MySQL / PostgreSQL / ClickHouse）。Hive SQL、Shell 和传输节点保持原有脚本语义，界面不向这些节点提供参数插入入口；尤其不能把 Shell 自身的 `${VAR}` 环境变量误判为参数组引用。让各类节点都能消费参数是明确的后续方向（V2）：支持某类节点时，应为该节点明确定义语法和转义规则。
 
 ### 8.3 Kestra 映射
 

@@ -1,19 +1,14 @@
 import {
     Braces,
-    Database,
-    FileCode2,
     GitCommitHorizontal,
     History,
     LoaderCircle,
     Play,
     Save,
     Settings2,
-    TerminalSquare,
-    Waypoints,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import type { OfflineFlowNodeKind } from '../../api/offline';
 import type { FlowParameterBinding } from '../../api/offline';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { isExecuteButtonDisabled } from './executionToolbarState';
@@ -37,7 +32,6 @@ interface OfflineCanvasToolbarProps {
     onOpenParameters: () => void;
     onExecute: () => void;
     onOpenExecutions: () => void;
-    onAddNode: (kind: OfflineFlowNodeKind) => void;
 }
 
 interface ToolbarButtonProps {
@@ -85,7 +79,6 @@ export function OfflineCanvasToolbar({
     onOpenParameters,
     onExecute,
     onOpenExecutions,
-    onAddNode,
 }: OfflineCanvasToolbarProps) {
     const active = activeFlowPath !== null;
     const editDisabled = !active || !canWrite;
@@ -154,24 +147,6 @@ export function OfflineCanvasToolbar({
 
             <ToolbarButton label="执行结果" disabled={!active} onClick={onOpenExecutions}>
                 <History size={16} />
-            </ToolbarButton>
-
-            <span className="offline-toolbar-divider" />
-
-            <ToolbarButton label="添加 SQL 节点" disabled={editDisabled} onClick={() => onAddNode('SQL')}>
-                <FileCode2 size={16} />
-            </ToolbarButton>
-
-            <ToolbarButton label="添加 HiveSQL 节点" disabled={editDisabled} onClick={() => onAddNode('HIVE_SQL')}>
-                <Database size={16} />
-            </ToolbarButton>
-
-            <ToolbarButton label="添加 Shell 节点" disabled={editDisabled} onClick={() => onAddNode('SHELL')}>
-                <TerminalSquare size={16} />
-            </ToolbarButton>
-
-            <ToolbarButton label="添加传输节点" disabled={editDisabled} onClick={() => onAddNode('TRANSFER')}>
-                <Waypoints size={16} />
             </ToolbarButton>
 
             {timezone ? (

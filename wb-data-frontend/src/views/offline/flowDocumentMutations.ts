@@ -10,6 +10,7 @@ import {
     buildEdgesFromCanvasEdges,
 } from './flowCanvasState';
 import {
+    getDefaultDataSourceType,
     getOfflineNodeDefaultScript,
     getOfflineNodeScriptExtension,
 } from './offlineNodeKinds';
@@ -277,11 +278,13 @@ export function addFlowNode(input: AddFlowNodeInput): AddFlowNodeResult {
         newTaskId = `${input.kind.toLowerCase()}_node_${index}`;
     }
 
+    const dataSourceType = getDefaultDataSourceType(input.kind);
     const node: OfflineFlowNode = {
         taskId: newTaskId,
         kind: input.kind,
         scriptPath: buildScriptPath(input.document.path, newTaskId, input.kind),
         scriptContent: getOfflineNodeDefaultScript(input.kind),
+        ...(dataSourceType ? { dataSourceType } : {}),
     };
     const document = cloneFlowDocument(input.document);
 

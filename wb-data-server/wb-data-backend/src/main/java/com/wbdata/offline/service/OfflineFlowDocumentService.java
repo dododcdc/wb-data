@@ -267,10 +267,10 @@ public class OfflineFlowDocumentService {
 
         // SQL / HiveSQL 节点必须绑定数据源
         for (var node : graphDraft.nodes()) {
-            if (("SQL".equalsIgnoreCase(node.kind()) || "HIVE_SQL".equalsIgnoreCase(node.kind()))
+            if (OfflineFlowNodeKinds.requiresDataSource(node.kind())
                     && node.dataSourceId() == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "节点 " + node.taskId() + " 是 SQL 类型，保存前必须绑定数据源");
+                        "节点 " + node.taskId() + " 保存前必须绑定数据源");
             }
         }
 
