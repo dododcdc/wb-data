@@ -9,7 +9,7 @@
 
 ```text
 朋友浏览器
-  → https://cursor.tail84596d.ts.net   (Tailscale Funnel，按需开关)
+  → https://wenbin.tail84596d.ts.net   (Tailscale Funnel，按需开关)
     → 本机 Nginx :80
          ├─ /          → 前端 dist 静态文件
          └─ /api/      → 反代 http://127.0.0.1:8080
@@ -17,9 +17,9 @@
                    → Docker：MySQL（必选）；Kestra / Hive / ClickHouse（按演示范围）
 ```
 
-同域由 Nginx 托管页面并反代 `/api`，浏览器不跨源，一般**不必**再配 `WB_DATA_CORS_ORIGINS`。若有人仍直连 `:5173` 开发服，继续用本地开发文档里的 CORS 说明。
+同域由 Nginx 托管页面并反代 `/api`。浏览器对 POST 仍会带 `Origin: https://…ts.net`，Spring CORS **必须**把 Funnel 域名写进 `WB_DATA_CORS_ORIGINS`，否则登录会报 `Invalid CORS request`。本地 `5173` 开发服也请一并保留。
 
-当前 Tailscale 本机 DNS：`cursor.tail84596d.ts.net`（以 `tailscale status` 为准）。
+当前 Tailscale 本机 DNS：`wenbin.tail84596d.ts.net`（以 `tailscale status` 为准）。
 
 ## 演示范围建议
 
@@ -123,12 +123,34 @@ npm run build
 cd /workspace/wb-data/wb-data-server/wb-data-backend
 SPRING_PROFILES_ACTIVE=dev \
 DB_PASSWORD=<mysql-password> \
+WB_DATA_CORS_ORIGINS="http://localhost:5173,http://127.0.0.1:5173,https://wenbin.tail84596d.ts.net" \
 java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
 ```
 
 需要种子账号时再加 `WB_DATA_SEED_DEV_DATA=true` 与 `WB_DATA_DEV_DEFAULT_PASSWORD=...`（见本地开发文档）。
 
 建议用 `systemd` 用户单元或 `tmux`/`nohup` 保活，避免关掉终端就停。端口占用时先停掉开发用的旧 Java / Vite（`:8080` / `:5173`），避免和 Nginx 演示栈抢后端。
+
+## 离线执行（Kestra）
+
+画布点「执行」会调本机 Kestra（`http://127.0.0.1:8090`）。
+
+本机若已开 Tailscale Funnel，Docker **桥接网络里容器互访可能失败**（容器解析得到对方 IP，TCP 却超时）。演示环境可用 host 网络覆盖：
+
+```bash
+cd /workspace/wb-data
+WB_DATA_KESTRA_DB_PASSWORD=<pg-password> \
+WB_DATA_KESTRA_USERNAME=admin@kestra.io \
+WB_DATA_KESTRA_PASSWORD=<kestra-password> \
+sudo -E docker compose \
+  -f docker/docker-compose.kestra.yml \
+  -f docker/docker-compose.kestra.host-override.yml \
+  up -d
+```
+
+覆盖文件把 Kestra 绑在宿主机网络，元库走 `127.0.0.1:5433`，HTTP 监听 `8090`（避免和后端 `8080` 冲突）。后端需能访问该地址，账号与 Compose 一致（`dev` profile 默认 `admin@kestra.io` / `Admin1234!`，生产请改环境变量）。
+
+启动后可用：`curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8090/`
 
 ## 打开 / 关闭公网（Funnel）
 
@@ -140,7 +162,7 @@ sudo tailscale funnel --bg 80
 tailscale funnel status
 ```
 
-朋友访问：`https://cursor.tail84596d.ts.net`（以 status 里的 DNS 名为准）。
+朋友访问：`https://wenbin.tail84596d.ts.net`（以 status 里的 DNS 名为准）。
 
 看完关掉：
 
