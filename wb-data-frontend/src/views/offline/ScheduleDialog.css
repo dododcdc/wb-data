@@ -278,3 +278,29 @@
     margin-left: 8px;
 }
 
+
+/* Sync / remote risk alerts — match admin precheck tip style */
+.offline-schedule-alerts {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.offline-schedule-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    color: #b45309;
+    background: color-mix(in srgb, #f59e0b 8%, #fffbeb);
+    border: 1px solid color-mix(in srgb, #f59e0b 20%, transparent);
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+.offline-schedule-alert-icon {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
