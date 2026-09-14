@@ -6,7 +6,7 @@
 
 export const DEFAULT_DATASOURCE_STORAGE_KEY = 'query-default-datasource-id';
 export const LAST_DATASOURCE_STORAGE_KEY = 'query-last-datasource-id';
-export const LAST_DATABASE_BY_DATASOURCE_STORAGE_KEY = 'query-last-database-by-datasource';
+export const LAST_DATABASE_BY_DATASOURCE_STORAGE_KEY = 'query-last-database-by-datasource-v2';
 
 // ==================== DataSource Storage ====================
 
@@ -68,6 +68,8 @@ export function shouldPreferDefaultDataSourceOnMount(): boolean {
 // ==================== Database Utilities ====================
 
 export function mergeDatabaseOptions(databases: string[], fallbackDatabase?: string): string[] {
+    // Only keep names returned by the metadata API. Never inject an unknown
+    // fallback (e.g. the previous datasource's database) into the options list.
     const merged: string[] = [];
 
     const pushUnique = (database?: string) => {
@@ -77,8 +79,46 @@ export function mergeDatabaseOptions(databases: string[], fallbackDatabase?: str
         merged.push(normalized);
     };
 
-    pushUnique(fallbackDatabase);
     databases.forEach(pushUnique);
+    void fallbackDatabase;
 
     return merged;
+}
+
+/** Pick a database that actually exists in the loaded list. */
+export function pickSelectedDatabase(
+    databases: string[],
+    preferred?: string,
+    connectionDefault?: string,
+): string {
+    const list = mergeDatabaseOptions(databases);
+    const findInList = (name?: string) => {
+        const normalized = name?.trim();
+        if (!normalized) return '';
+        return list.find(item => item.toLowerCase() === normalized.toLowerCase()) ?? '';
+    };
+
+    // Prefer the datasource-configured database, then per-datasource memory, then first.
+    return findInList(connectionDefault) || findInList(preferred) || list[0] || '';
+}
+
+/**
+ * Resolve which database to select after a metadata load.
+ * On datasource switch, ignore per-DS memory entirely — shared engines can list the
+ * previous schema, so a sticky remembered name must not beat the connection default.
+ * Switch policy is strictly: connectionDefault || list[0] (never remembered).
+ */
+export function resolveDatabaseAfterLoad(
+    databases: string[],
+    options: {
+        connectionDefault?: string;
+        rememberedDatabase?: string;
+        ignoreRemembered?: boolean;
+    },
+): string {
+    if (options.ignoreRemembered) {
+        // Switch / ignore-remembered: never consult memory — only connection default or first.
+        return pickSelectedDatabase(databases, undefined, options.connectionDefault);
+    }
+    return pickSelectedDatabase(databases, options.rememberedDatabase, options.connectionDefault);
 }
