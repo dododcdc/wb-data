@@ -1,3 +1,5 @@
+import { CronExpressionParser } from 'cron-parser';
+
 export const POPULAR_TIMEZONES = [
     'Asia/Shanghai',
     'Asia/Hong_Kong',
@@ -52,4 +54,15 @@ export function formatPreviewTime(iso: string, timezone: string): string {
     const map: Record<string, string> = {};
     parts.forEach((p) => { if (p.type !== 'literal') map[p.type] = p.value; });
     return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}`;
+}
+
+/** Returns true when cron parses successfully for the given timezone. */
+export function isValidCronExpression(cron: string, timezone?: string): boolean {
+    const expression = cron.trim() || '0 2 * * *';
+    try {
+        CronExpressionParser.parse(expression, { tz: timezone || undefined });
+        return true;
+    } catch {
+        return false;
+    }
 }

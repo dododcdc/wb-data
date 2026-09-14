@@ -155,6 +155,7 @@ export default function OfflineWorkbench() {
     } = flowEditing;
     const {
         repoStatus,
+        remoteStatus,
         repoLoading,
         branchLabel,
         canSwitchBranch,
@@ -728,6 +729,8 @@ export default function OfflineWorkbench() {
                 timezone={scheduleTimezone || ''}
                 saving={scheduleSaving}
                 flowId={flowDocument?.flowId ?? null}
+                hasRemote={remoteStatus?.hasRemote ?? repoStatus?.hasRemote ?? true}
+                hasLocalOrUnpushedChanges={isDirty || !!repoStatus?.dirty || !!repoStatus?.ahead}
                 onOpenChange={(open) => {
                     setScheduleDialogOpen(open);
                     if (open && activeFlowPath) {

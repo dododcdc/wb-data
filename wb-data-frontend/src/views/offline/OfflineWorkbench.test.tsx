@@ -1046,6 +1046,11 @@ describe('OfflineWorkbench commit UI', () => {
         const timezoneInput = within(scheduleDialog).getByLabelText<HTMLInputElement>('任务运行时区');
         expect(timezoneInput.value).toBe('Asia/Shanghai');
         expect(timezoneInput.disabled).toBe(true);
+        expect(within(scheduleDialog).getByText('开或关都只写入草稿；推送到远程后才会真正生效')).toBeTruthy();
+        await waitFor(() => {
+            expect(within(scheduleDialog).getByText('尚未配置 Git 远程')).toBeTruthy();
+        });
+        expect((within(scheduleDialog).getByRole('switch', { name: '启用调度' }) as HTMLButtonElement).disabled).toBe(false);
         const cronInputs = scheduleDialog.querySelectorAll<HTMLInputElement>('.offline-segmented-cron-input');
         fireEvent.change(cronInputs[0], { target: { value: '' } });
         fireEvent.change(cronInputs[1], { target: { value: '' } });

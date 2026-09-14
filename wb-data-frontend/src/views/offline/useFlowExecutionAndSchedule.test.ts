@@ -221,6 +221,41 @@ describe('useFlowExecutionAndSchedule', () => {
         }));
     });
 
+    it('rejects enabling schedule when cron is invalid', async () => {
+        const { result, params } = renderExecutionAndSchedule();
+
+        act(() => {
+            result.current.setScheduleCron('not a cron');
+        });
+        await act(async () => {
+            await result.current.toggleSchedule(true);
+        });
+
+        expect(params.setDraftSession).not.toHaveBeenCalled();
+        expect(params.showFeedback).toHaveBeenCalledWith({
+            tone: 'error',
+            title: 'Cron 表达式无效，无法开启调度',
+            detail: '',
+        });
+    });
+
+    it('allows disabling schedule even when cron is invalid', async () => {
+        const { result, params } = renderExecutionAndSchedule();
+
+        act(() => {
+            result.current.setScheduleCron('%%%');
+        });
+        await act(async () => {
+            await result.current.toggleSchedule(false);
+        });
+
+        expect(params.setDraftSession).toHaveBeenCalled();
+        expect(params.showFeedback).toHaveBeenCalledWith(expect.objectContaining({
+            tone: 'success',
+            title: '调度关闭已暂存',
+        }));
+    });
+
     it('executes with the current draft document and selected nodes', async () => {
         const offlineApi = await import('../../api/offline');
         vi.mocked(offlineApi.createOfflineDocumentDebugExecution).mockResolvedValue({

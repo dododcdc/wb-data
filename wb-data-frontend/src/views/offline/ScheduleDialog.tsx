@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { CronExpressionParser } from 'cron-parser';
-import { LoaderCircle } from 'lucide-react';
+import { AlertTriangle, LoaderCircle } from 'lucide-react';
 import {
     Dialog,
     DialogContent,
@@ -23,6 +23,8 @@ interface ScheduleDialogProps {
     timezone: string;
     saving: boolean;
     flowId: string | null;
+    hasRemote?: boolean;
+    hasLocalOrUnpushedChanges?: boolean;
     onOpenChange: (open: boolean) => void;
     onCronChange: (cron: string) => void;
     onSave: () => void;
@@ -37,6 +39,8 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
         timezone,
         saving,
         flowId,
+        hasRemote = true,
+        hasLocalOrUnpushedChanges = false,
         onOpenChange,
         onCronChange,
         onSave,
@@ -61,6 +65,20 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
         }
     }, [cron, timezone]);
 
+    const cronInvalid = preview.type === 'error';
+    const enabled = schedule?.enabled ?? false;
+    // Allow turning OFF even with invalid cron; block turning ON.
+    const switchDisabled = saving || (cronInvalid && !enabled);
+
+    const handleToggle = () => {
+        const next = !enabled;
+        if (next && cronInvalid) return;
+        onToggle(next);
+    };
+
+    const showNoRemoteAlert = !hasRemote;
+    const showDriftAlert = hasLocalOrUnpushedChanges;
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent
@@ -77,6 +95,23 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
 
                 <div className="dialog-body form-content">
                     <div className="form-main-panel" style={{ padding: '24px 32px' }}>
+                        {(showNoRemoteAlert || showDriftAlert) ? (
+                            <div className="offline-schedule-alerts" role="status">
+                                {showNoRemoteAlert ? (
+                                    <div className="offline-schedule-alert" role="alert">
+                                        <AlertTriangle size={14} className="offline-schedule-alert-icon" aria-hidden="true" />
+                                        <span>尚未配置 Git 远程</span>
+                                    </div>
+                                ) : null}
+                                {showDriftAlert ? (
+                                    <div className="offline-schedule-alert" role="alert">
+                                        <AlertTriangle size={14} className="offline-schedule-alert-icon" aria-hidden="true" />
+                                        <span>有未推送或本地变更，界面调度可能与远程不一致</span>
+                                    </div>
+                                ) : null}
+                            </div>
+                        ) : null}
+
                         <div className="config-section">
                             <h3 className="sub-section-title">核心设置</h3>
                             
@@ -131,15 +166,17 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                             <div className="offline-schedule-toggle-card">
                                 <div className="offline-schedule-toggle-info">
                                     <span className="offline-schedule-toggle-label">启用自动调度</span>
-                                    <span className="offline-schedule-toggle-hint">开启后，任务将根据上述配置自动触发执行</span>
+                                    <span className="offline-schedule-toggle-hint">
+                                        开或关都只写入草稿；推送到远程后才会真正生效
+                                    </span>
                                 </div>
                                 <button
                                     type="button"
                                     role="switch"
                                     aria-label="启用调度"
-                                    aria-checked={schedule?.enabled ?? false}
-                                    disabled={saving}
-                                    onClick={() => onToggle(!(schedule?.enabled ?? false))}
+                                    aria-checked={enabled}
+                                    disabled={switchDisabled}
+                                    onClick={handleToggle}
                                     className="offline-switch"
                                 >
                                     <span className="offline-switch-thumb" aria-hidden="true" />
@@ -150,14 +187,12 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                 </div>
 
                 <DialogFooter className="console-form-footer">
-                    <div className="footer-left">
-                        <p className="test-note" style={{ margin: 0 }}>配置仅在“保存”并“推送”后生效</p>
-                    </div>
+                    <div className="footer-left" />
                     <div className="footer-right">
                         <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
                             取消
                         </Button>
-                        <Button variant="default" onClick={onSave} disabled={saving || preview.type === 'error'}>
+                        <Button variant="default" onClick={onSave} disabled={saving || cronInvalid}>
                             {saving ? <LoaderCircle size={14} className="offline-spin" style={{ marginRight: 8 }} /> : null}
                             {saving ? '正在暂存...' : '暂存配置'}
                         </Button>

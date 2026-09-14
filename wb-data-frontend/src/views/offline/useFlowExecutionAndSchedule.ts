@@ -19,6 +19,7 @@ import { buildDraftExecutionRequest } from './draftExecution';
 import { isActiveStatus } from '../../components/execution/executionPresentation';
 import { defaultPlannedTimeValue, getExecutionTimeRequirement } from './executionTimeContext';
 import { updateFlowScheduleDraft, type FlowDraftSession } from './flowDraftController';
+import { isValidCronExpression } from './ScheduleUtils';
 
 interface UseFlowExecutionAndScheduleParams {
     groupId: number | null;
@@ -379,6 +380,14 @@ export function useFlowExecutionAndSchedule({
 
     const stageSchedule = useCallback(async () => {
         if (!draftSession) return;
+        if (!isValidCronExpression(scheduleCron, scheduleTimezone)) {
+            showFeedback({
+                tone: 'error',
+                title: 'Cron 表达式无效，无法暂存',
+                detail: '',
+            });
+            return;
+        }
         const nextSession = updateFlowScheduleDraft(draftSession, {
             cron: scheduleCron,
             timezone: scheduleTimezone,
@@ -395,6 +404,15 @@ export function useFlowExecutionAndSchedule({
 
     const toggleSchedule = useCallback(async (enabled: boolean) => {
         if (!draftSession) return;
+        // Block enabling with invalid cron; allow disabling so users can turn schedule off.
+        if (enabled && !isValidCronExpression(scheduleCron, scheduleTimezone)) {
+            showFeedback({
+                tone: 'error',
+                title: 'Cron 表达式无效，无法开启调度',
+                detail: '',
+            });
+            return;
+        }
         const nextSession = updateFlowScheduleDraft(draftSession, {
             cron: scheduleCron,
             timezone: scheduleTimezone,
@@ -414,7 +432,7 @@ export function useFlowExecutionAndSchedule({
         showFeedback({
             tone: 'success',
             title: enabled ? '调度开启已暂存' : '调度关闭已暂存',
-            detail: '保存任务后生效。',
+            detail: '推送到远程后才会真正生效。',
         });
     }, [activeFlowPath, draftSession, groupId, scheduleCron, scheduleTimezone, setDraftSession, showFeedback]);
 
