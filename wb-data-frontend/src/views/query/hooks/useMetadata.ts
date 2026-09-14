@@ -30,6 +30,7 @@ import {
     getStoredLastDatabaseByDataSource,
     shouldPreferDefaultDataSourceOnMount,
     mergeDatabaseOptions,
+    resolveDatabaseAfterLoad,
 } from '../storageUtils';
 
 // ==================== Hook ====================
@@ -90,6 +91,15 @@ export function useMetadata(groupId: number | undefined) {
     const loadingColumnsRef = useRef(loadingColumns);
     const columnLoadPromisesRef = useRef<Map<string, Promise<ColumnMetadata[] | null>>>(new Map());
     const preferDefaultDataSourceOnMountRef = useRef(shouldPreferDefaultDataSourceOnMount());
+    const prevSelectedDsIdRef = useRef(selectedDsId);
+    /** Keep memory map out of the databases-load effect deps (ref only). */
+    const lastDatabaseByDsRef = useRef(lastDatabaseByDs);
+    /** connectionDefault captured at apply/switch time so the load effect cannot lose it. */
+    const pendingConnectionDefaultRef = useRef<string | undefined>(undefined);
+    /** When true, loadDatabases must ignore per-DS remembered database. */
+    const ignoreRememberedDbRef = useRef(false);
+    /** Request id that owns the current pending connection-default / ignore-remembered flags. */
+    const pendingDbLoadRequestIdRef = useRef(0);
 
     // ==================== Derived values ====================
 
@@ -124,8 +134,12 @@ export function useMetadata(groupId: number | undefined) {
 
     const selectedDbOption = useMemo(() => {
         if (!selectedDb) return null;
+        // Never surface a stale label that is not in the current datasource's list.
+        if (!databases.some(db => db.toLowerCase() === selectedDb.toLowerCase())) {
+            return null;
+        }
         return { label: selectedDb, value: selectedDb };
-    }, [selectedDb]);
+    }, [databases, selectedDb]);
 
     // ==================== Persistence helpers ====================
 
@@ -167,22 +181,50 @@ export function useMetadata(groupId: number | undefined) {
     }, [dataSources, selectedDs, selectedDsId]);
 
     const applySelectedDataSource = useCallback((dataSourceId: string, option?: DataSource | null) => {
+        // True switch between two datasources (not the initial empty → first selection).
+        const switchingDataSource = Boolean(selectedDsId) && Boolean(dataSourceId) && dataSourceId !== selectedDsId;
+
+        const resolvedOption =
+            option
+            ?? dataSources.find(ds => String(ds.id) === dataSourceId)
+            ?? (selectedDs && String(selectedDs.id) === dataSourceId ? selectedDs : null)
+            ?? null;
+
+        // Capture configured databaseName at switch/apply time so the async load
+        // effect cannot observe a null getActiveDataSource and lose connectionDefault.
+        pendingConnectionDefaultRef.current = resolvedOption?.databaseName;
+        ignoreRememberedDbRef.current = switchingDataSource;
+
+        // Always drop per-DS memory for the target on switch so a contaminated
+        // sticky name (e.g. previous shared-server schema) cannot win on later
+        // non-switch loads until the user explicitly picks a DB on that DS.
+        if (switchingDataSource && dataSourceId) {
+            if (lastDatabaseByDsRef.current[dataSourceId]) {
+                const nextMemory = { ...lastDatabaseByDsRef.current };
+                delete nextMemory[dataSourceId];
+                lastDatabaseByDsRef.current = nextMemory;
+                setLastDatabaseByDs(nextMemory);
+                persistLastDatabaseByDataSource(nextMemory);
+            }
+        }
+
         setSelectedDsId(dataSourceId);
         setDsKeyword('');
+        // Clear immediately so the previous datasource's database cannot linger
+        // in the combobox or get persisted under the new datasource id.
+        setSelectedDb('');
+        setDatabases([]);
+        setDbKeyword('');
 
         if (!dataSourceId) {
+            pendingConnectionDefaultRef.current = undefined;
+            ignoreRememberedDbRef.current = false;
             setSelectedDs(null);
             return;
         }
 
-        if (option) {
-            setSelectedDs(option);
-            return;
-        }
-
-        const fallback = dataSources.find(ds => String(ds.id) === dataSourceId) || null;
-        setSelectedDs(fallback);
-    }, [dataSources]);
+        setSelectedDs(resolvedOption);
+    }, [dataSources, persistLastDatabaseByDataSource, selectedDs, selectedDsId]);
 
     // ==================== Data loading functions ====================
 
@@ -234,16 +276,55 @@ export function useMetadata(groupId: number | undefined) {
         }
     };
 
-    const loadDatabases = async (id: number, fallbackDatabase?: string) => {
+    const loadDatabases = async (
+        id: number,
+        preferredDatabase?: string,
+        connectionDefault?: string,
+        ignoreRemembered: boolean = false,
+    ) => {
         const requestId = ++databasesRequestIdRef.current;
+        pendingDbLoadRequestIdRef.current = requestId;
         setLoadingDatabases(true);
         try {
+            // Never pick with an empty connectionDefault when the DS has one —
+            // page/list payloads or Combobox-stripped options can omit databaseName.
+            let effectiveConnectionDefault = connectionDefault?.trim() || '';
+            if (!effectiveConnectionDefault) {
+                try {
+                    const dsDetail = await getDataSourceById(id, groupId);
+                    if (requestId !== databasesRequestIdRef.current) return;
+                    if (activeDsIdRef.current !== String(id)) return;
+                    effectiveConnectionDefault = dsDetail.databaseName?.trim() || '';
+                    if (effectiveConnectionDefault) {
+                        pendingConnectionDefaultRef.current = effectiveConnectionDefault;
+                        setSelectedDs((prev) => {
+                            if (prev && String(prev.id) === String(id)) {
+                                return { ...prev, databaseName: effectiveConnectionDefault };
+                            }
+                            return prev ?? dsDetail;
+                        });
+                    }
+                } catch (fetchError) {
+                    console.error('Failed to fetch datasource default database', fetchError);
+                }
+            }
+
             const data = await getMetadataDatabases(id);
             if (requestId !== databasesRequestIdRef.current) return;
             if (activeDsIdRef.current !== String(id)) return;
-            const mergedDatabases = mergeDatabaseOptions(data, fallbackDatabase);
-            setDatabases(mergedDatabases);
-            setSelectedDb(mergedDatabases[0] ?? '');
+            const loadedDatabases = mergeDatabaseOptions(data);
+            setDatabases(loadedDatabases);
+            setSelectedDb(resolveDatabaseAfterLoad(loadedDatabases, {
+                connectionDefault: effectiveConnectionDefault || undefined,
+                // On switch, never pass remembered — resolve policy is connectionDefault || list[0].
+                rememberedDatabase: ignoreRemembered ? undefined : preferredDatabase,
+                ignoreRemembered,
+            }));
+            // Clear switch/pending markers only after this matching request is applied.
+            if (pendingDbLoadRequestIdRef.current === requestId) {
+                pendingConnectionDefaultRef.current = undefined;
+                ignoreRememberedDbRef.current = false;
+            }
         } catch (error) {
             console.error('Failed to load databases', error);
         } finally {
@@ -385,6 +466,7 @@ export function useMetadata(groupId: number | undefined) {
     useEffect(() => { activeDbRef.current = selectedDb; }, [selectedDb]);
     useEffect(() => { loadingColumnsRef.current = loadingColumns; }, [loadingColumns]);
     useEffect(() => { tableKeywordCommittedRef.current = tableKeywordCommitted; }, [selectedDb, selectedDsId, tableKeywordCommitted]);
+    useEffect(() => { lastDatabaseByDsRef.current = lastDatabaseByDs; }, [lastDatabaseByDs]);
 
     // Persist last selected data source
     useEffect(() => {
@@ -395,6 +477,11 @@ export function useMetadata(groupId: number | undefined) {
 
     // Persist last database per data source
     useEffect(() => {
+        const dataSourceChanged = prevSelectedDsIdRef.current !== selectedDsId;
+        prevSelectedDsIdRef.current = selectedDsId;
+        // When the datasource just changed, selectedDb may still be the previous
+        // datasource's value for one render — do not save that under the new id.
+        if (dataSourceChanged) return;
         if (!selectedDsId || !selectedDb) return;
         if (lastDatabaseByDs[selectedDsId] === selectedDb) return;
 
@@ -490,11 +577,21 @@ export function useMetadata(groupId: number | undefined) {
         }
     }, [applySelectedDataSource, dataSources, dsKeyword, preferredStoredDataSourceId, selectedDs, selectedDsId]);
 
-    // Load databases + dialect when data source changes
+    // Load databases + dialect only when the selected datasource id changes.
+    // Do NOT re-fetch when lastDatabaseByDs / getActiveDataSource identity changes —
+    // that re-entry race was clearing switch markers and letting a sticky remembered
+    // name win with connectionDefault undefined.
     useEffect(() => {
         if (selectedDsId) {
-            const activeDataSource = getActiveDataSource();
-            const preferredDatabase = lastDatabaseByDs[selectedDsId];
+            const ignoreRemembered = ignoreRememberedDbRef.current;
+            const connectionDefault =
+                pendingConnectionDefaultRef.current
+                ?? (selectedDs && String(selectedDs.id) === selectedDsId ? selectedDs.databaseName : undefined)
+                ?? dataSources.find(ds => String(ds.id) === selectedDsId)?.databaseName;
+            // On switch: ignore memory entirely. Otherwise use per-DS memory.
+            const preferredDatabase = ignoreRemembered
+                ? undefined
+                : lastDatabaseByDsRef.current[selectedDsId];
 
             setDbKeyword('');
             setSelectedDb('');
@@ -504,9 +601,11 @@ export function useMetadata(groupId: number | undefined) {
             setTableKeyword('');
             setTableKeywordCommitted('');
             setTableTotal(0);
-            loadDatabases(Number(selectedDsId), preferredDatabase || activeDataSource?.databaseName);
+            loadDatabases(Number(selectedDsId), preferredDatabase, connectionDefault, ignoreRemembered);
             loadDialect(Number(selectedDsId));
         } else {
+            pendingConnectionDefaultRef.current = undefined;
+            ignoreRememberedDbRef.current = false;
             setDatabases([]);
             setSelectedDb('');
             setDbKeyword('');
@@ -518,7 +617,10 @@ export function useMetadata(groupId: number | undefined) {
             setDialectMetadata(null);
             setSelectedDs(null);
         }
-    }, [getActiveDataSource, lastDatabaseByDs, selectedDsId]);
+        // Intentionally only selectedDsId: memory map + active DS are read via refs /
+        // values captured at apply time so switch markers stay valid for the request.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedDsId]);
 
     // Reset metadata when database changes
     useEffect(() => {

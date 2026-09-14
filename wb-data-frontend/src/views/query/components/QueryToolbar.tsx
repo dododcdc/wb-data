@@ -111,7 +111,12 @@ export function QueryToolbar({
                             value={String(selectedDsId)}
                             selectedOption={selectedDsOption}
                             onChange={(val, option) => {
-                                applySelectedDataSource(val, (option?.raw as DataSource | undefined) ?? null);
+                                // Combobox may drop custom fields like `raw`; fall back to options list.
+                                const raw =
+                                    (option?.raw as DataSource | undefined)
+                                    ?? (dataSourceOptions.find(o => o.value === val)?.raw as DataSource | undefined)
+                                    ?? null;
+                                applySelectedDataSource(val, raw);
                             }}
                             onInputChange={(val) => setDsKeyword(val)}
                             loading={loadingDs}
@@ -131,6 +136,7 @@ export function QueryToolbar({
                         <>
                             <span className="breadcrumb-divider">/</span>
                             <DataSourceSelect
+                                key={selectedDsId ?? 'no-ds'}
                                 options={databaseOptions}
                                 value={selectedDb ?? undefined}
                                 selectedOption={selectedDbOption}
