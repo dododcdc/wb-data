@@ -371,6 +371,30 @@ button.offline-tree-row {
     gap: 8px;
 }
 
+.offline-canvas-save-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    white-space: nowrap;
+    user-select: none;
+    color: var(--color-text-secondary, #6b675f);
+}
+
+.offline-canvas-save-indicator.is-saved {
+    color: var(--color-text-secondary, #6b675f);
+}
+
+.offline-canvas-save-indicator.is-pending {
+    color: var(--color-text-secondary, #6b675f);
+}
+
+.offline-canvas-save-indicator.is-error {
+    color: var(--color-danger, #c0392b);
+    cursor: default;
+}
+
 .offline-canvas-timezone-badge {
     display: inline-flex;
     align-items: center;

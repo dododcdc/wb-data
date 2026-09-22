@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,7 +6,7 @@ import type { DataSource } from '../../../api/datasource';
 import type { TransferTableMetadataResponse } from '../../../api/transfer';
 import { TransferNodeDialog } from './TransferNodeDialog';
 import type { TransferAsyncResource, TransferPagedResource } from './useTransferMetadata';
-import type { TransferConfig } from './transferTypes';
+import type { TransferConfig, TransferEndpointConfig } from './transferTypes';
 
 interface EndpointMetadata {
     databases: TransferAsyncResource<string[]>;
@@ -69,6 +69,18 @@ const dataSources: DataSource[] = [
         type: 'POSTGRESQL',
         description: '',
         databaseName: 'archive',
+        connectionParams: {},
+        status: 'ENABLED',
+        owner: 'admin',
+        createdAt: '',
+        updatedAt: '',
+    },
+    {
+        id: 4,
+        name: 'clickhouse_target',
+        type: 'CLICKHOUSE',
+        description: '',
+        databaseName: 'analytics',
         connectionParams: {},
         status: 'ENABLED',
         owner: 'admin',
@@ -138,6 +150,36 @@ const validTransfer: TransferConfig = {
     partitions: [{ target: 'dayno', kind: 'static_value', value: '20260719' }],
 };
 
+function makeSqlTransfer(target: Partial<TransferEndpointConfig> = {}): TransferConfig {
+    metadata = {
+        ...metadata,
+        source: { ...metadata.source, tables: pagedResource(['orders', 'payments']) },
+        target: {
+            ...metadata.target,
+            databases: resource(['transfer_demo', 'archive', 'analytics', 'default']),
+            metadata: resource({ ...sourceMetadata, columns: targetMetadata.columns }),
+        },
+    };
+    return {
+        ...validTransfer,
+        target: {
+            dataSourceId: 1,
+            dataSourceType: 'MYSQL',
+            database: 'transfer_demo',
+            table: 'orders_target',
+            writeMode: 'append',
+            ...target,
+        },
+        partitions: [],
+    };
+}
+
+async function selectEndpointOption(label: string, side: 'source' | 'target', option: string) {
+    const selector = screen.getAllByLabelText(label)[side === 'source' ? 0 : 1];
+    fireEvent.click(selector.parentElement?.querySelector('[data-slot="combobox-trigger"]') as HTMLElement);
+    fireEvent.click(await screen.findByRole('option', { name: option }));
+}
+
 afterEach(() => {
     cleanup();
     metadata = makeMetadata();
@@ -145,6 +187,245 @@ afterEach(() => {
 });
 
 describe('TransferNodeDialog', () => {
+    describe('target SQL', () => {
+        it.each(['MYSQL', 'POSTGRESQL', 'CLICKHOUSE', 'HIVE'] as const)(
+            'shows compact SQL controls only on supported targets: %s',
+            (dataSourceType) => {
+                const dataSource = dataSources.find((item) => item.type === dataSourceType)!;
+                const value = makeSqlTransfer({
+                    dataSourceId: dataSource.id,
+                    dataSourceType,
+                    database: dataSource.databaseName,
+                });
+                const onChange = vi.fn();
+                render(<TransferNodeDialog groupId={1} value={value} onChange={onChange} />);
+
+                const sourcePanel = screen.getByRole('heading', { name: '来源' }).closest('section')!;
+                const targetPanel = screen.getByRole('heading', { name: '目标' }).closest('section')!;
+                expect(within(sourcePanel).queryByRole('button', { name: /前置 SQL|后置 SQL/ })).toBeNull();
+                for (const label of ['前置 SQL', '后置 SQL']) {
+                    const toggle = within(targetPanel).queryByRole('button', { name: `${label} 0/5` });
+                    if (dataSourceType === 'HIVE') {
+                        expect(toggle).toBeNull();
+                    } else {
+                        expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+                        expect(document.getElementById(toggle!.getAttribute('aria-controls')!)).toHaveProperty('hidden', true);
+                        expect(within(targetPanel).queryByRole('button', { name: `添加${label}` })).toBeNull();
+                    }
+                }
+                expect(within(targetPanel).queryByRole('textbox')).toBeNull();
+                expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ target: value.target }));
+            },
+        );
+
+        describe.each([['preSql', '前置 SQL'], ['postSql', '后置 SQL']] as const)('%s', (key, label) => {
+            it('adds up to five editors with focus, deletes and renumbers them', () => {
+                const onChange = vi.fn();
+                const onDraftChange = vi.fn();
+                render(<TransferNodeDialog groupId={1} value={makeSqlTransfer()} onChange={onChange} onDraftChange={onDraftChange} />);
+                const toggle = screen.getByRole('button', { name: `${label} 0/5` });
+                fireEvent.click(toggle);
+                const addButton = screen.getByRole('button', { name: `添加${label}` });
+                const statements: string[] = [];
+                for (let index = 0; index < 5; index += 1) {
+                    onChange.mockClear();
+                    fireEvent.click(addButton);
+                    const input = screen.getByRole('textbox', { name: `${label} 第 ${index + 1} 条` });
+                    expect(document.activeElement).toBe(input);
+                    expect(input.getAttribute('aria-invalid')).toBe('true');
+                    expect(onChange).not.toHaveBeenCalled();
+                    expect(onDraftChange).toHaveBeenLastCalledWith(expect.any(Object), expect.objectContaining({ valid: false }));
+                    statements.push(`UPDATE orders_target\nSET id = ${index + 1};`);
+                    fireEvent.change(input, { target: { value: statements[index] } });
+                    expect(input.getAttribute('aria-invalid')).toBe('false');
+                }
+                expect(toggle.textContent).toContain('5/5');
+                expect(addButton).toHaveProperty('disabled', true);
+                fireEvent.click(addButton);
+                expect(screen.getAllByRole('textbox', { name: new RegExp(`${label} 第`) })).toHaveLength(5);
+                expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+                    target: expect.objectContaining({ [key]: statements }),
+                }));
+
+                fireEvent.click(screen.getByRole('button', { name: `删除${label}第 2 条` }));
+                expect(screen.getByRole('textbox', { name: `${label} 第 2 条` })).toHaveProperty('value', statements[2]);
+                expect(addButton).toHaveProperty('disabled', false);
+                expect(toggle.textContent).toContain('4/5');
+                expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({
+                    target: expect.objectContaining({ [key]: statements.filter((_, index) => index !== 1) }),
+                }), expect.objectContaining({ valid: true }));
+
+                for (let index = 0; index < 4; index += 1) {
+                    fireEvent.click(screen.getByRole('button', { name: `删除${label}第 1 条` }));
+                }
+                expect(toggle.textContent).toContain('0/5');
+                expect(screen.queryByRole('textbox', { name: new RegExp(`${label} 第`) })).toBeNull();
+                expect(document.activeElement).toBe(addButton);
+                expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({
+                    target: expect.objectContaining({ [key]: [] }),
+                }), expect.objectContaining({ valid: true }));
+            });
+
+            it.each([5, 6])('shows all %i saved statements and blocks over-limit output until corrected', (count) => {
+                const statements = Array.from({ length: count }, (_, index) => `SELECT ${index + 1};`);
+                const onChange = vi.fn();
+                const onDraftChange = vi.fn();
+                render(<TransferNodeDialog groupId={1} value={makeSqlTransfer({ [key]: statements })} onChange={onChange} onDraftChange={onDraftChange} />);
+                const toggle = screen.getByRole('button', { name: new RegExp(`^${label} ${count}/5`) });
+                expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({
+                    target: expect.objectContaining({ [key]: statements }),
+                }), expect.objectContaining({ valid: count <= 5 }));
+                if (count === 6) expect(onChange).not.toHaveBeenCalled();
+                fireEvent.click(toggle);
+                expect(screen.getAllByRole('textbox', { name: new RegExp(`${label} 第`) })).toHaveLength(count);
+                expect(screen.getByRole('button', { name: `添加${label}` })).toHaveProperty('disabled', true);
+                if (count === 6) {
+                    expect(toggle.textContent).toContain('超出上限');
+                    fireEvent.click(screen.getByRole('button', { name: `删除${label}第 6 条` }));
+                }
+                expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+                    target: expect.objectContaining({ [key]: statements.slice(0, 5) }),
+                }));
+            });
+
+            it.each(['', ' \n\t '])('preserves an invalid saved empty item and blocks valid output: %j', (sql) => {
+                const onChange = vi.fn();
+                const onDraftChange = vi.fn();
+                render(<TransferNodeDialog groupId={1} value={makeSqlTransfer({ [key]: [sql] })} onChange={onChange} onDraftChange={onDraftChange} />);
+
+                const toggle = screen.getByRole('button', { name: new RegExp(`^${label} 1/5`) });
+                expect(toggle.textContent).toContain('有空项');
+                expect(onChange).not.toHaveBeenCalled();
+                expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({
+                    target: expect.objectContaining({ [key]: [sql] }),
+                }), expect.objectContaining({ valid: false, errors: [`目标${label}第 1 条不能为空`] }));
+                fireEvent.click(toggle);
+                const input = screen.getByRole('textbox', { name: `${label} 第 1 条` });
+                expect(input).toHaveProperty('value', sql);
+                expect(input.getAttribute('aria-invalid')).toBe('true');
+                expect(screen.getByText('请输入 SQL 或删除此项')).toBeTruthy();
+                fireEvent.change(input, { target: { value: 'SELECT 1' } });
+                expect(onChange).toHaveBeenCalled();
+            });
+        });
+
+        it('echoes drafts and restores multiline SQL verbatim without remounting an IME editor', () => {
+            const preSql = ["  UPDATE orders_target\nSET status = '就绪';  "];
+            const postSql = ['  ANALYZE orders_target;\n'];
+            const initial = { ...makeSqlTransfer({ preSql, postSql }), fieldMappings: [] };
+            const onDraftChange = vi.fn();
+            const onChange = vi.fn();
+            let saved = initial as TransferConfig;
+            function EchoingParent() {
+                const [value, setValue] = useState<TransferConfig>(initial);
+                return <TransferNodeDialog groupId={1} value={value} onChange={onChange} onDraftChange={(draft, state) => {
+                    onDraftChange(draft, state);
+                    saved = draft;
+                    setValue(draft);
+                }} />;
+            }
+            const { unmount } = render(<EchoingParent />);
+            expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({
+                target: expect.objectContaining({ preSql, postSql }),
+                fieldMappings: [{ target: 'id', kind: 'source_field', source: 'id' }],
+            }), expect.objectContaining({ valid: true }));
+            fireEvent.click(screen.getByRole('button', { name: '前置 SQL 1/5' }));
+            fireEvent.click(screen.getByRole('button', { name: '后置 SQL 1/5' }));
+            expect(screen.getByText(/每项仅填写一条 SQL，可换行；按编号顺序执行/)).toBeTruthy();
+            expect(screen.getByText(/更换目标数据源、数据库或表会清空前后 SQL/)).toBeTruthy();
+            expect(screen.getByText('传输前执行，前置 SQL 失败则不进行传输。')).toBeTruthy();
+            expect(screen.getByText('仅传输成功后执行。后置 SQL 失败会使节点失败，但不回滚已写入数据，请自行处理。')).toBeTruthy();
+            const editor = screen.getByRole('textbox', { name: '前置 SQL 第 1 条' });
+            expect(editor).toHaveProperty('value', preSql[0]);
+            expect(screen.getByRole('textbox', { name: '后置 SQL 第 1 条' })).toHaveProperty('value', postSql[0]);
+            editor.focus();
+            fireEvent.compositionStart(editor);
+            for (const text of ['zhong', '中', '中文']) {
+                const sql = `  UPDATE orders_target\nSET status = '${text}'\nWHERE id = 1;  `;
+                fireEvent.change(editor, { target: { value: sql } });
+                expect(screen.getByRole('textbox', { name: '前置 SQL 第 1 条' })).toBe(editor);
+                expect(document.activeElement).toBe(editor);
+                expect(editor).toHaveProperty('value', sql);
+                expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({
+                    target: expect.objectContaining({ preSql: [sql], postSql }),
+                }), expect.objectContaining({ valid: true }));
+            }
+            fireEvent.compositionEnd(editor, { data: '中文' });
+            fireEvent.keyDown(editor, { key: 'Enter' });
+            expect(document.activeElement).toBe(editor);
+            const editedPostSql = '  UPDATE orders_target\nSET id = 2;\n';
+            fireEvent.change(screen.getByRole('textbox', { name: '后置 SQL 第 1 条' }), { target: { value: editedPostSql } });
+            expect(saved.target.postSql).toEqual([editedPostSql]);
+            expect(onChange).toHaveBeenLastCalledWith(saved);
+            const persisted: TransferConfig = JSON.parse(JSON.stringify(saved));
+            unmount();
+            render(<TransferNodeDialog groupId={1} value={persisted} onChange={vi.fn()} />);
+            fireEvent.click(screen.getByRole('button', { name: '前置 SQL 1/5' }));
+            fireEvent.click(screen.getByRole('button', { name: '后置 SQL 1/5' }));
+            expect(screen.getByRole('textbox', { name: '前置 SQL 第 1 条' })).toHaveProperty('value', persisted.target.preSql?.[0]);
+            expect(screen.getByRole('textbox', { name: '后置 SQL 第 1 条' })).toHaveProperty('value', editedPostSql);
+        });
+
+        describe.each(['source', 'target'] as const)('changing %s', (side) => {
+            it.each([
+                ['数据源', 'postgres_archive (POSTGRESQL)'],
+                ['数据库', 'analytics'],
+                ['表', 'dwd_payments'],
+            ])('%s clears SQL only when target identity changes', async (label, option) => {
+                const sql = { preSql: [' DELETE FROM staging;\n'], postSql: [' ANALYZE orders_target;\n'] };
+                const value = makeSqlTransfer(sql);
+                const onDraftChange = vi.fn();
+                render(<TransferNodeDialog groupId={1} value={value} onChange={vi.fn()} onDraftChange={onDraftChange} />);
+                await selectEndpointOption(label, side, label === '表' && side === 'source' ? 'payments' : option);
+
+                expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({
+                    target: expect.objectContaining(side === 'source' ? sql : { preSql: undefined, postSql: undefined }),
+                }), expect.any(Object));
+            });
+        });
+
+        it.each([
+            ['数据源', 'mysql_source (MYSQL)'],
+            ['数据库', 'transfer_demo'],
+            ['表', 'orders_target'],
+        ])('preserves SQL when reselecting the same target %s', async (label, option) => {
+            const value = makeSqlTransfer({ preSql: ['SELECT 1'], postSql: ['SELECT 2'] });
+            const onDraftChange = vi.fn();
+            render(<TransferNodeDialog groupId={1} value={value} onChange={vi.fn()} onDraftChange={onDraftChange} />);
+            const callCount = onDraftChange.mock.calls.length;
+            await selectEndpointOption(label, 'target', option);
+
+            expect(onDraftChange).toHaveBeenCalledTimes(callCount);
+            expect(onDraftChange).toHaveBeenLastCalledWith(value, expect.objectContaining({ valid: true }));
+        });
+
+        it('preserves SQL through metadata refresh and reconciliation', () => {
+            const sql = { preSql: ['  SELECT 1;\n'], postSql: ['  SELECT 2;\n'] };
+            const value = makeSqlTransfer(sql);
+            const onDraftChange = vi.fn();
+            const onChange = vi.fn();
+            const { rerender } = render(<TransferNodeDialog groupId={1} value={value} onChange={onChange} onDraftChange={onDraftChange} />);
+            fireEvent.click(screen.getByRole('button', { name: '刷新字段结构' }));
+            expect(metadata.source.metadata.retry).toHaveBeenCalledOnce();
+            expect(metadata.target.metadata.retry).toHaveBeenCalledOnce();
+            const readyMetadata = metadata;
+            metadata = {
+                ...metadata,
+                source: { ...metadata.source, metadata: resource(null, { loading: true }) },
+                target: { ...metadata.target, metadata: resource(null, { loading: true }) },
+            };
+            rerender(<TransferNodeDialog groupId={1} value={value} onChange={onChange} onDraftChange={onDraftChange} />);
+            metadata = readyMetadata;
+            rerender(<TransferNodeDialog groupId={1} value={value} onChange={onChange} onDraftChange={onDraftChange} />);
+
+            expect(onDraftChange.mock.calls.length).toBeGreaterThan(1);
+            for (const [draft] of onDraftChange.mock.calls) expect(draft.target).toMatchObject(sql);
+            expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({
+                target: expect.objectContaining(sql),
+            }), expect.objectContaining({ valid: true }));
+        });
+    });
+
     it('filters datasource, database, and table options from searchable selectors', async () => {
         render(<TransferNodeDialog groupId={1} value={validTransfer} onChange={vi.fn()} />);
 

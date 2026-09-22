@@ -134,6 +134,37 @@ describe('useOfflineTreeMutations', () => {
         }));
     });
 
+    it('creates with the selected cross-group policy and resets the next dialog to ALLOW', async () => {
+        const offlineApi = await import('../../api/offline');
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue(makeDocument());
+        const { result } = renderTreeMutations();
+        expect(result.current.newFlowCrossGroupDependency).toBe('ALLOW');
+        act(() => {
+            result.current.setNewFlowName('private_flow');
+            result.current.setNewFlowCrossGroupDependency('DENY');
+        });
+        await act(async () => { await result.current.handleCreateFlow(); });
+        expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledWith(expect.objectContaining({
+            dependencyConfig: { dependencies: [], failurePolicy: 'CONTINUE', crossGroupDependency: 'DENY' },
+        }));
+        act(() => { result.current.openRootNewFlowDialog(); });
+        expect(result.current.newFlowCrossGroupDependency).toBe('ALLOW');
+    });
+
+    it('keeps a blocked deletion open and preserves the active draft', async () => {
+        const offlineApi = await import('../../api/offline');
+        vi.mocked(offlineApi.deleteOfflineFlow).mockRejectedValue(new Error('存在下游任务依赖，请先解除依赖'));
+        const { result, params } = renderTreeMutations();
+        act(() => result.current.openDeleteFlowDialogFromContext({
+            id: 'test', name: 'test', path: '_flows/jack/test/flow.yaml', kind: 'FLOW', children: [],
+        }));
+        await act(async () => { await result.current.handleDeleteFlow(); });
+        expect(result.current.deleteFlowDialogOpen).toBe(true);
+        expect(result.current.deleteFlowError).toContain('请先解除依赖');
+        expect(params.setDraftSession).not.toHaveBeenCalled();
+        expect(params.refreshRepoTree).not.toHaveBeenCalled();
+    });
+
     it('clears the active Flow when deleting it', async () => {
         const offlineApi = await import('../../api/offline');
         vi.mocked(offlineApi.deleteOfflineFlow).mockResolvedValue(undefined as never);

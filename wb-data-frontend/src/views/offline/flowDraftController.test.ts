@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
     createFlowDraftSession,
+    buildRecoverySnapshotFromSession,
+    updateFlowDependencyDraft,
     forceOverwriteRebase,
     hasFlowDraftChanges,
     rebaseFlowDraftSession,
@@ -23,6 +25,42 @@ function makeDocument(overrides?: Partial<FlowDraftSession['baseDocument']>) {
         ...overrides,
     };
 }
+
+describe('dependency drafts', () => {
+    it('stages, snapshots and restores dependency settings without mutating the base', () => {
+        const document = makeDocument();
+        const session = createFlowDraftSession({ path: document.path, serverDocument: document, snapshot: null });
+        const config = {
+            dependencies: [{ groupId: 2, flowId: 'upstream' }],
+            failurePolicy: 'PAUSE' as const,
+            crossGroupDependency: 'DENY' as const,
+        };
+        const next = updateFlowDependencyDraft(session, config);
+        expect(hasFlowDraftChanges(next)).toBe(true);
+        expect(session.workingDraft.dependencyConfig).toBeUndefined();
+        expect(next.baseDocument.dependencyConfig).toBeUndefined();
+        config.dependencies[0].flowId = 'changed';
+        expect(next.workingDraft.dependencyConfig?.dependencies[0].flowId).toBe('upstream');
+        const snapshot = buildRecoverySnapshotFromSession(next, 200);
+        const restored = createFlowDraftSession({ path: document.path, serverDocument: document, snapshot });
+        expect(restored.workingDraft.dependencyConfig).toEqual(next.workingDraft.dependencyConfig);
+        snapshot.document.dependencyConfig!.dependencies[0].flowId = 'changed again';
+        expect(restored.workingDraft.dependencyConfig?.dependencies[0].flowId).toBe('upstream');
+        expect(hasFlowDraftChanges(rebaseFlowDraftSession(next, next.workingDraft))).toBe(false);
+    });
+
+    it('ignores reference ordering but tracks each policy change', () => {
+        const document = makeDocument({ dependencyConfig: {
+            dependencies: [{ groupId: 1, flowId: 'a' }, { groupId: 2, flowId: 'a' }],
+            failurePolicy: 'CONTINUE', crossGroupDependency: 'ALLOW',
+        } });
+        const session = createFlowDraftSession({ path: document.path, serverDocument: document, snapshot: null });
+        session.workingDraft.dependencyConfig!.dependencies.reverse();
+        expect(hasFlowDraftChanges(session)).toBe(false);
+        expect(hasFlowDraftChanges(updateFlowDependencyDraft(session, { ...document.dependencyConfig!, failurePolicy: 'PAUSE' }))).toBe(true);
+        expect(hasFlowDraftChanges(updateFlowDependencyDraft(session, { ...document.dependencyConfig!, crossGroupDependency: 'DENY' }))).toBe(true);
+    });
+});
 
 describe('forceOverwriteRebase', () => {
     it('refreshes base metadata while preserving the current working draft', () => {
@@ -147,6 +185,7 @@ describe('Flow schedule draft', () => {
             cron: '0 2 * * *',
             timezone: 'Asia/Singapore',
             enabled: true,
+            period: 'DAILY',
         });
 
         expect(next.workingDraft.runtimeTimezone).toBe('Asia/Shanghai');

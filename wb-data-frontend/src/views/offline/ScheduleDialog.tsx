@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { CronExpressionParser } from 'cron-parser';
 import { AlertTriangle, LoaderCircle } from 'lucide-react';
 import {
@@ -10,25 +10,84 @@ import {
     DialogFooter,
 } from '../../components/ui/dialog';
 import { Button } from '../../components/ui/button';
-import { SegmentedCronInput } from './SegmentedCronInput';
-import { type OfflineScheduleResponse } from '../../api/offline';
-import { formatPreviewTime } from './ScheduleUtils';
-import '../../components/ui/form-input-group.css';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '../../components/ui/select';
+import { type OfflineSchedulePeriod, type OfflineScheduleResponse } from '../../api/offline';
+import {
+    DEFAULT_PERIOD_PARTS,
+    formatPreviewTime,
+    parsePeriodPartsFromCron,
+    type SchedulePeriodParts,
+} from './ScheduleUtils';
 import './ScheduleDialog.css';
 
 interface ScheduleDialogProps {
     open: boolean;
     schedule: OfflineScheduleResponse | null;
     cron: string;
+    period: OfflineSchedulePeriod;
     timezone: string;
     saving: boolean;
     flowId: string | null;
     hasRemote?: boolean;
     hasLocalOrUnpushedChanges?: boolean;
+    periodChangeDisabled?: boolean;
+    dependencyNotice?: ReactNode;
     onOpenChange: (open: boolean) => void;
-    onCronChange: (cron: string) => void;
+    onPeriodChange: (period: OfflineSchedulePeriod, parts?: SchedulePeriodParts) => void;
     onSave: () => void;
     onToggle: (enabled: boolean) => void;
+}
+
+const PERIOD_OPTIONS: { value: OfflineSchedulePeriod; label: string }[] = [
+    { value: 'HOURLY', label: '每小时' },
+    { value: 'DAILY', label: '每天' },
+    { value: 'WEEKLY', label: '每周' },
+    { value: 'MONTHLY', label: '每月' },
+    { value: 'YEARLY', label: '每年' },
+];
+
+const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, i) => i);
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i);
+const DAY_OF_MONTH_OPTIONS = Array.from({ length: 31 }, (_, i) => i + 1);
+const WEEK_DAY_OPTIONS = [1, 2, 3, 4, 5, 6, 7];
+const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
+const WEEK_DAY_NAMES = ['一', '二', '三', '四', '五', '六', '日'];
+
+function NumberSelect({ value, options, suffix, ariaLabel, disabled, popupContainer, formatLabel, onChange }: {
+    value: number;
+    options: number[];
+    suffix?: string;
+    ariaLabel: string;
+    disabled?: boolean;
+    popupContainer?: HTMLElement | null;
+    formatLabel?: (value: number) => string;
+    onChange: (value: number) => void;
+}) {
+    const labelOf = (v: number) => formatLabel ? formatLabel(v) : `${v}${suffix ?? ''}`;
+    return (
+        <Select
+            value={String(value)}
+            onValueChange={(next) => onChange(Number(next))}
+            disabled={disabled}
+        >
+            <SelectTrigger aria-label={ariaLabel} className="offline-schedule-period-select">
+                <SelectValue>{(value: string) => labelOf(Number(value))}</SelectValue>
+            </SelectTrigger>
+            <SelectContent container={popupContainer}>
+                {options.map((option) => (
+                    <SelectItem key={option} value={String(option)}>
+                        {labelOf(option)}
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
+    );
 }
 
 export function ScheduleDialog(props: ScheduleDialogProps) {
@@ -36,13 +95,16 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
         open,
         schedule,
         cron,
+        period,
         timezone,
         saving,
         flowId,
         hasRemote = true,
         hasLocalOrUnpushedChanges = false,
+        periodChangeDisabled = false,
+        dependencyNotice,
         onOpenChange,
-        onCronChange,
+        onPeriodChange,
         onSave,
         onToggle,
     } = props;
@@ -69,6 +131,14 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
     const enabled = schedule?.enabled ?? false;
     // Allow turning OFF even with invalid cron; block turning ON.
     const switchDisabled = saving || (cronInvalid && !enabled);
+    const [popupContainer, setPopupContainer] = useState<HTMLDivElement | null>(null);
+    const [previewExpanded, setPreviewExpanded] = useState(false);
+    const periodId = useId();
+    const previewId = useId();
+
+    useEffect(() => {
+        if (!open) setPreviewExpanded(false);
+    }, [open]);
 
     const handleToggle = () => {
         const next = !enabled;
@@ -79,120 +149,172 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
     const showNoRemoteAlert = !hasRemote;
     const showDriftAlert = hasLocalOrUnpushedChanges;
 
+    // 存量非标准 cron：按“每天”展示编辑位，用户改动或选周期后才会标准化，之前禁止暂存
+    const legacyCustom = period === 'CUSTOM';
+    const effectivePeriod: Exclude<OfflineSchedulePeriod, 'CUSTOM'> = legacyCustom ? 'DAILY' : period;
+
+    const periodParts = parsePeriodPartsFromCron(cron) ?? DEFAULT_PERIOD_PARTS;
+
+    const updatePeriodParts = (patch: Partial<SchedulePeriodParts>) => {
+        onPeriodChange(effectivePeriod, { ...periodParts, ...patch });
+    };
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent
-                style={{ maxWidth: '640px' }}
-                className="offline-schedule-dialog-standard"
-                onOpenAutoFocus={(e) => e.preventDefault()}
-            >
+            <DialogContent className="offline-schedule-dialog-standard">
                 <DialogHeader>
                     <DialogTitle>调度配置</DialogTitle>
                     <DialogDescription className="sr-only">
-                        Configure scheduling settings for {flowId || 'the current flow'}.
+                        配置任务 {flowId || ''} 的调度频率和计划时间。
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="dialog-body form-content">
-                    <div className="form-main-panel" style={{ padding: '24px 32px' }}>
-                        {(showNoRemoteAlert || showDriftAlert) ? (
-                            <div className="offline-schedule-alerts" role="status">
-                                {showNoRemoteAlert ? (
-                                    <div className="offline-schedule-alert" role="alert">
-                                        <AlertTriangle size={14} className="offline-schedule-alert-icon" aria-hidden="true" />
-                                        <span>尚未配置 Git 远程</span>
-                                    </div>
-                                ) : null}
-                                {showDriftAlert ? (
-                                    <div className="offline-schedule-alert" role="alert">
-                                        <AlertTriangle size={14} className="offline-schedule-alert-icon" aria-hidden="true" />
-                                        <span>有未推送或本地变更，界面调度可能与远程不一致</span>
-                                    </div>
-                                ) : null}
-                            </div>
-                        ) : null}
-
-                        <div className="config-section">
-                            <h3 className="sub-section-title">核心设置</h3>
-                            
-                            <div className="form-input-group">
-                                <label htmlFor="flow-runtime-timezone">任务运行时区</label>
-                                <input
-                                    id="flow-runtime-timezone"
-                                    aria-label="任务运行时区"
-                                    value={timezone}
-                                    readOnly
-                                    disabled
-                                />
-                                <small>运行时区在创建任务时确定，调度与时间参数共同使用该时区。</small>
-                            </div>
-
-                            <div className="form-input-group">
-                                <label style={{ marginBottom: 12 }}>Cron 表达式</label>
-                                <div className={saving ? 'opacity-50 pointer-events-none' : ''}>
-                                    <SegmentedCronInput
-                                        value={cron || '0 2 * * *'}
-                                        onChange={onCronChange}
+                <div className="offline-schedule-body" ref={setPopupContainer}>
+                    <fieldset className="offline-schedule-period-group" disabled={saving || periodChangeDisabled}>
+                        <legend className="offline-schedule-field-label">调度频率</legend>
+                        <div className="offline-schedule-period-options">
+                            {PERIOD_OPTIONS.map((option) => (
+                                <label key={option.value} className="offline-schedule-period-option">
+                                    <input
+                                        type="radio"
+                                        name={periodId}
+                                        value={option.value}
+                                        checked={!legacyCustom && period === option.value}
+                                        onChange={() => onPeriodChange(option.value)}
+                                        className="sr-only"
                                     />
-                                </div>
-                            </div>
+                                    <span>{option.label}</span>
+                                </label>
+                            ))}
                         </div>
+                        {legacyCustom ? (
+                            <p className="offline-schedule-legacy-note">
+                                当前调度为非标准 Cron 表达式（{cron}），选择调度频率并暂存后将覆盖为标准调度。
+                            </p>
+                        ) : null}
+                    </fieldset>
 
-                        <div className="panel-divider" />
+                    {dependencyNotice}
 
-                        <div className="config-section">
-                            <h3 className="sub-section-title">调度预览</h3>
-                            <div className="offline-schedule-preview">
-                                {preview.type === 'error' ? (
-                                    <div className="offline-schedule-preview-list">
-                                        <div className="offline-schedule-preview-item" style={{ color: 'var(--color-error)' }}>
-                                            无效的 Cron 表达式
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="offline-schedule-preview-list">
-                                        {preview.times.map((t, i) => (
-                                            <div key={i} className="offline-schedule-preview-item">
-                                                <span className="offline-schedule-preview-time">{formatPreviewTime(t, timezone)}</span>
-                                                <span className="offline-schedule-preview-tz">{timezone}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                    <div className="offline-schedule-time-group">
+                        <span className="offline-schedule-field-label">计划时间</span>
+                        <div className="offline-schedule-period-fields">
+                            {effectivePeriod === 'YEARLY' ? (
+                                <NumberSelect
+                                    value={periodParts.month}
+                                    options={MONTH_OPTIONS}
+                                    suffix="月"
+                                    ariaLabel="月份"
+                                    disabled={saving}
+                                    popupContainer={popupContainer}
+                                    onChange={(month) => updatePeriodParts({ month })}
+                                />
+                            ) : null}
+                            {effectivePeriod === 'MONTHLY' || effectivePeriod === 'YEARLY' ? (
+                                <NumberSelect
+                                    value={periodParts.dayOfMonth}
+                                    options={DAY_OF_MONTH_OPTIONS}
+                                    suffix="日"
+                                    ariaLabel="第几日"
+                                    disabled={saving}
+                                    popupContainer={popupContainer}
+                                    onChange={(dayOfMonth) => updatePeriodParts({ dayOfMonth })}
+                                />
+                            ) : null}
+                            {effectivePeriod === 'WEEKLY' ? (
+                                <NumberSelect
+                                    value={periodParts.dayOfWeek}
+                                    options={WEEK_DAY_OPTIONS}
+                                    ariaLabel="星期几"
+                                    disabled={saving}
+                                    popupContainer={popupContainer}
+                                    formatLabel={(v) => `周${WEEK_DAY_NAMES[v - 1] ?? v}`}
+                                    onChange={(dayOfWeek) => updatePeriodParts({ dayOfWeek })}
+                                />
+                            ) : null}
+                            {effectivePeriod !== 'HOURLY' ? (
+                                <NumberSelect
+                                    value={periodParts.hour}
+                                    options={HOUR_OPTIONS}
+                                    suffix="时"
+                                    ariaLabel="小时"
+                                    disabled={saving}
+                                    popupContainer={popupContainer}
+                                    onChange={(hour) => updatePeriodParts({ hour })}
+                                />
+                            ) : null}
+                            <NumberSelect
+                                value={periodParts.minute}
+                                options={MINUTE_OPTIONS}
+                                suffix="分"
+                                ariaLabel="分钟"
+                                disabled={saving}
+                                popupContainer={popupContainer}
+                                onChange={(minute) => updatePeriodParts({ minute })}
+                            />
                         </div>
+                        <p className="offline-schedule-timezone-note">任务时区：{timezone}</p>
+                    </div>
 
-                        <div className="config-section">
-                            <div className="offline-schedule-toggle-card">
-                                <div className="offline-schedule-toggle-info">
-                                    <span className="offline-schedule-toggle-label">启用自动调度</span>
-                                    <span className="offline-schedule-toggle-hint">
-                                        开或关都只写入草稿；推送到远程后才会真正生效
-                                    </span>
-                                </div>
+                    <div className="offline-schedule-toggle-row">
+                        <span className="offline-schedule-field-label">自动调度</span>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-label="启用调度"
+                            aria-checked={enabled}
+                            disabled={switchDisabled}
+                            onClick={handleToggle}
+                            className="offline-switch"
+                        >
+                            <span className="offline-switch-thumb" aria-hidden="true" />
+                        </button>
+                    </div>
+
+                    <section className="offline-schedule-preview" aria-labelledby={`${previewId}-heading`}>
+                        <h3 id={`${previewId}-heading`} className="offline-schedule-preview-heading">按当前配置预览</h3>
+                        {preview.type === 'error' ? (
+                            <p className="offline-schedule-preview-error" role="alert">无效的 Cron 表达式</p>
+                        ) : (
+                            <>
+                                <ol id={previewId} className="offline-schedule-preview-list">
+                                    {preview.times.slice(0, previewExpanded ? 5 : 3).map((time) => (
+                                        <li key={time} className="offline-schedule-preview-item">
+                                            <time dateTime={time}>{formatPreviewTime(time, timezone)}</time>
+                                        </li>
+                                    ))}
+                                </ol>
                                 <button
                                     type="button"
-                                    role="switch"
-                                    aria-label="启用调度"
-                                    aria-checked={enabled}
-                                    disabled={switchDisabled}
-                                    onClick={handleToggle}
-                                    className="offline-switch"
+                                    className="offline-schedule-preview-expand"
+                                    aria-expanded={previewExpanded}
+                                    aria-controls={previewId}
+                                    onClick={() => setPreviewExpanded((expanded) => !expanded)}
                                 >
-                                    <span className="offline-switch-thumb" aria-hidden="true" />
+                                    {previewExpanded ? '收起' : '展开更多'}
                                 </button>
-                            </div>
-                        </div>
-                    </div>
+                            </>
+                        )}
+                    </section>
                 </div>
 
-                <DialogFooter className="console-form-footer">
-                    <div className="footer-left" />
-                    <div className="footer-right">
+                <DialogFooter className="offline-schedule-footer">
+                    <div className="offline-schedule-publish-note">
+                        <p>暂存后自动保存草稿，提交并推送、同步成功后生效</p>
+                        {(showNoRemoteAlert || showDriftAlert) ? (
+                            <p className="offline-schedule-publish-warning" role="status">
+                                <AlertTriangle size={14} aria-hidden="true" />
+                                <span>{showNoRemoteAlert
+                                    ? '尚未配置 Git 远程，暂时无法发布调度'
+                                    : '存在本地或未推送变更，线上配置可能不同'}</span>
+                            </p>
+                        ) : null}
+                    </div>
+                    <div className="offline-schedule-actions">
                         <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
                             取消
                         </Button>
-                        <Button variant="default" onClick={onSave} disabled={saving || cronInvalid}>
+                        <Button variant="default" onClick={onSave} disabled={saving || cronInvalid || legacyCustom}>
                             {saving ? <LoaderCircle size={14} className="offline-spin" style={{ marginRight: 8 }} /> : null}
                             {saving ? '正在暂存...' : '暂存配置'}
                         </Button>

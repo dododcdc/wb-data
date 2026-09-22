@@ -200,6 +200,103 @@
     color: var(--color-error);
 }
 
+.transfer-node-target-sql {
+    margin-top: 12px;
+}
+
+.transfer-node-target-sql p {
+    margin: 0 0 8px;
+}
+
+.transfer-node-sql-group {
+    border-top: 1px solid var(--color-border-subtle);
+}
+
+.transfer-node-sql-toggle {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    width: 100%;
+    min-height: 34px;
+    gap: 6px;
+    padding: 6px 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: 0.76rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.transfer-node-sql-count {
+    margin-left: auto;
+    color: var(--color-text-muted);
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.transfer-node-sql-content:not([hidden]) {
+    display: grid;
+    gap: 10px;
+    padding: 2px 0 10px;
+}
+
+.transfer-node-sql-content p {
+    margin: 0;
+}
+
+.transfer-node-sql-item-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.transfer-node-sql-item textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.76rem;
+    line-height: 1.4;
+    resize: vertical;
+}
+
+.transfer-node-sql-item textarea[aria-invalid="true"] {
+    border-color: var(--color-error-border);
+}
+
+.transfer-node-sql-action {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    min-height: 30px;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-primary);
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: 0.7rem;
+    cursor: pointer;
+}
+
+.transfer-node-sql-toggle:hover,
+.transfer-node-sql-action:hover:not(:disabled) {
+    background: var(--color-bg-secondary);
+    color: var(--color-text-primary);
+}
+
+.transfer-node-sql-toggle:focus-visible,
+.transfer-node-sql-action:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+.transfer-node-sql-action:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+}
+
 .transfer-node-mapping-matrix {
     overflow: hidden;
     border: 1px solid var(--color-border);

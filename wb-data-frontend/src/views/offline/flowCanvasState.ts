@@ -60,7 +60,14 @@ export function buildFlowDocumentSignature(document: OfflineFlowDocument | null)
             cron: document.schedule.cron,
             timezone: document.schedule.timezone,
             enabled: document.schedule.enabled,
+            period: document.schedule.period,
         } : null,
+        dependencyConfig: {
+            dependencies: [...(document.dependencyConfig?.dependencies ?? [])]
+                .sort((left, right) => left.groupId - right.groupId || left.flowId.localeCompare(right.flowId)),
+            failurePolicy: document.dependencyConfig?.failurePolicy ?? 'CONTINUE',
+            crossGroupDependency: document.dependencyConfig?.crossGroupDependency ?? 'ALLOW',
+        },
         parameterBinding: document.parameterBinding ? {
             parameterGroupId: document.parameterBinding.parameterGroupId ?? null,
             code: document.parameterBinding.code,

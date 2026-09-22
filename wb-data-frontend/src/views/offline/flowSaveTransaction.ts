@@ -107,6 +107,7 @@ export function buildSaveFlowDocumentRequest(
         edges: draftDocument.edges,
         layout: draftDocument.layout,
         schedule: draftDocument.schedule ?? undefined,
+        dependencyConfig: draftDocument.dependencyConfig,
         runtimeTimezone: draftDocument.runtimeTimezone,
         ...(bindingRequests !== undefined ? bindingRequests : {}),
     };

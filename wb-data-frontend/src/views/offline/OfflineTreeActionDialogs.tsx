@@ -9,9 +9,10 @@ import {
     Trash2,
 } from 'lucide-react';
 
-import type { OfflineRepoTreeNode, OfflineRepoTreeResponse } from '../../api/offline';
+import type { OfflineCrossGroupDependency, OfflineRepoTreeNode, OfflineRepoTreeResponse } from '../../api/offline';
 import { Button } from '../../components/ui/button';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
+import { DeleteFlowDependencyDialog } from './DeleteFlowDependencyDialog';
 import {
     Dialog,
     DialogContent,
@@ -37,6 +38,8 @@ interface CreateAction {
     name: string;
     parentPath: string;
     timezone?: string;
+    crossGroupDependency?: OfflineCrossGroupDependency;
+    onCrossGroupDependencyChange?: (value: OfflineCrossGroupDependency) => void;
     pending: boolean;
     onOpenChange: (open: boolean) => void;
     onNameChange: (name: string) => void;
@@ -81,7 +84,7 @@ interface OfflineTreeActionDialogsProps {
     canWrite: boolean;
     createFlow: CreateAction;
     createFolder: CreateAction;
-    deleteFlow: DeleteAction;
+    deleteFlow: DeleteAction & { groupId: number | null; path: string; error?: string };
     deleteFolder: DeleteAction;
     renameFlow: RenameAction;
     renameFolder: RenameAction;
@@ -347,6 +350,25 @@ function CreateDialog({
                             </Combobox>
                         </div>
                     ) : null}
+                    {isFlow && action.onCrossGroupDependencyChange ? (
+                        <label className="mb-4 flex items-center justify-between gap-4 text-sm">
+                            <span>
+                                允许被其他项目组依赖
+                                <span className="mt-1 block text-xs text-muted-foreground">关闭后，同项目组仍可依赖此任务</span>
+                            </span>
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-label="允许被其他项目组依赖"
+                                aria-checked={action.crossGroupDependency !== 'DENY'}
+                                disabled={action.pending}
+                                className="offline-switch"
+                                onClick={() => action.onCrossGroupDependencyChange?.(action.crossGroupDependency === 'DENY' ? 'ALLOW' : 'DENY')}
+                            >
+                                <span className="offline-switch-thumb" aria-hidden="true" />
+                            </button>
+                        </label>
+                    ) : null}
                     <div>
                         <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
                             存储路径 {action.parentPath ? `（已选：${action.parentPath.replace('_flows/', '')}）` : `（默认：${repoTree?.root.name ?? '根目录'}）`}
@@ -419,18 +441,18 @@ export function OfflineTreeActionDialogs({
             <CreateDialog kind="任务" action={createFlow} repoTree={repoTree} />
             <CreateDialog kind="文件夹" action={createFolder} repoTree={repoTree} />
 
-            <ConfirmDialog
-                open={deleteFlow.open}
-                onOpenChange={(open) => { if (!deleteFlow.pending) deleteFlow.onOpenChange(open); }}
-                title="确认删除任务"
-                description={`确定要删除任务「${deleteFlow.name}」吗？此操作不可恢复。`}
-                confirmText="删除"
-                cancelText="取消"
-                variant="destructive"
-                icon="warning"
-                isLoading={deleteFlow.pending}
-                onConfirm={deleteFlow.onSubmit}
-            />
+            {deleteFlow.open && deleteFlow.groupId ? (
+                <DeleteFlowDependencyDialog
+                    key={`${deleteFlow.groupId}:${deleteFlow.path}`}
+                    groupId={deleteFlow.groupId}
+                    path={deleteFlow.path}
+                    name={deleteFlow.name}
+                    pending={deleteFlow.pending}
+                    error={deleteFlow.error}
+                    onOpenChange={deleteFlow.onOpenChange}
+                    onSubmit={deleteFlow.onSubmit}
+                />
+            ) : null}
             <ConfirmDialog
                 open={deleteFolder.open}
                 onOpenChange={(open) => { if (!deleteFolder.pending) deleteFolder.onOpenChange(open); }}

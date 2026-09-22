@@ -137,24 +137,29 @@ describe('OfflineWorkbenchLifecycle', () => {
     it('opens the new Flow dialog on Ctrl/Cmd+N only when dialogs are closed', () => {
         const openRootNewFlowDialog = vi.fn();
         const { rerender } = renderHook(
-            ({ nodeEditorOpen }) => useOfflineWorkbenchNewFlowShortcut({
+            ({ nodeEditorOpen, dependencyDialogOpen }) => useOfflineWorkbenchNewFlowShortcut({
                 newFlowDialogOpen: false,
                 nodeEditorOpen,
                 executionDialogOpen: false,
                 executionContextDialogOpen: false,
                 scheduleDialogOpen: false,
                 parameterDialogOpen: false,
+                dependencyDialogOpen,
                 openRootNewFlowDialog,
             }),
-            { initialProps: { nodeEditorOpen: false } },
+            { initialProps: { nodeEditorOpen: false, dependencyDialogOpen: false } },
         );
 
         act(() => {
             window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true }));
         });
-        rerender({ nodeEditorOpen: true });
+        rerender({ nodeEditorOpen: true, dependencyDialogOpen: false });
         act(() => {
             window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true }));
+        });
+        rerender({ nodeEditorOpen: false, dependencyDialogOpen: true });
+        act(() => {
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', metaKey: true }));
         });
 
         expect(openRootNewFlowDialog).toHaveBeenCalledTimes(1);

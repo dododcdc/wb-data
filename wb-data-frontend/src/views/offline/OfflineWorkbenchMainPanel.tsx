@@ -19,14 +19,16 @@ interface OfflineWorkbenchMainPanelProps {
     nodeIssues: Record<string, string | null>;
     nodeStatuses: Record<string, string>;
     dirty: boolean;
-    saving: boolean;
     commitDirty: boolean;
     committing: boolean;
     staleDraft: boolean;
+    draftSaveState: 'idle' | 'saving' | 'saved' | 'error';
+    draftSavedAt: number | null;
+    draftSaveError: string | null;
     onSelectAllNodes: (selected: boolean) => void;
-    onSaveFlow: () => void;
     onOpenFlowCommitDialog: () => void;
     onOpenScheduleDialog: () => void;
+    onOpenDependencyDialog: () => void;
     onOpenParameterDialog: () => void;
     onExecute: () => void;
     onOpenExecutionDialog: () => void;
@@ -55,14 +57,16 @@ export function OfflineWorkbenchMainPanel({
     nodeIssues,
     nodeStatuses,
     dirty,
-    saving,
     commitDirty,
     committing,
     staleDraft,
+    draftSaveState,
+    draftSavedAt,
+    draftSaveError,
     onSelectAllNodes,
-    onSaveFlow,
     onOpenFlowCommitDialog,
     onOpenScheduleDialog,
+    onOpenDependencyDialog,
     onOpenParameterDialog,
     onExecute,
     onOpenExecutionDialog,
@@ -99,13 +103,15 @@ export function OfflineWorkbenchMainPanel({
                 nodeCount={nodeCount}
                 selectedNodeCount={selectedTaskIds.length}
                 dirty={dirty}
-                saving={saving}
                 commitDirty={commitDirty}
                 committing={committing}
+                draftSaveState={draftSaveState}
+                draftSavedAt={draftSavedAt}
+                draftSaveError={draftSaveError}
                 onSelectAll={onSelectAllNodes}
-                onSave={onSaveFlow}
                 onCommit={onOpenFlowCommitDialog}
                 onOpenSchedule={onOpenScheduleDialog}
+                onOpenDependencies={onOpenDependencyDialog}
                 onOpenParameters={onOpenParameterDialog}
                 onExecute={onExecute}
                 onOpenExecutions={onOpenExecutionDialog}

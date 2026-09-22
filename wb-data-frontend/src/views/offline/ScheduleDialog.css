@@ -1,126 +1,221 @@
-/* Standard Form Layout for Schedule Dialog */
+.offline-schedule-dialog-standard {
+    max-width: 640px;
+    max-height: calc(100dvh - 48px);
+    display: flex;
+    flex-direction: column;
+}
 
-.offline-schedule-dialog-standard .dialog-body.form-content {
-    background: var(--color-bg-primary);
-    max-height: 70vh;
+.offline-schedule-dialog-standard .dialog-header,
+.offline-schedule-dialog-standard .dialog-footer {
+    flex-shrink: 0;
+}
+
+.offline-schedule-body {
+    padding: 24px;
+    min-height: 0;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
 }
 
-.offline-schedule-dialog-standard .sub-section-title {
-    margin: 0 0 20px 0;
-    font-size: 0.95rem;
-    font-weight: 700;
+.offline-schedule-field-label {
     color: var(--color-text-primary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.offline-schedule-dialog-standard .sub-section-title::before {
-    content: '';
-    display: block;
-    width: 3px;
-    height: 14px;
-    background: var(--color-brand);
-    border-radius: 2px;
-}
-
-.offline-schedule-dialog-standard .form-input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-bottom: 20px;
-}
-
-.offline-schedule-dialog-standard .form-input-group:first-of-type {
-    max-width: 260px;
-}
-
-
-
-.offline-schedule-dialog-standard .form-input-group label {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--color-text-secondary);
-}
-
-.offline-schedule-dialog-standard .panel-divider {
-    height: 1px;
-    background-color: var(--color-border);
-    margin: 24px 0;
-}
-
-/* Custom UI Components integrated with standard layout */
-
-.offline-schedule-preview {
-    background: rgba(148, 163, 184, 0.05);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: 12px;
-    padding: 16px;
-}
-
-.offline-schedule-preview-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.offline-schedule-preview-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.82rem;
-}
-
-.offline-schedule-preview-time {
-    font-family: var(--font-mono);
-    color: #059669;
+    font-size: 0.875rem;
     font-weight: 500;
 }
 
-.offline-schedule-preview-tz {
-    color: var(--color-text-muted);
-    font-size: 0.75rem;
-    opacity: 0.8;
+.offline-schedule-period-group {
+    min-inline-size: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
 }
 
-.offline-schedule-toggle-card {
-    padding: 16px;
-    background: rgba(148, 163, 184, 0.05);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: 12px;
+.offline-schedule-period-group > legend {
+    float: left;
+    width: 80px;
+    padding: 10px 0 0;
+}
+
+.offline-schedule-period-options {
+    margin-left: 96px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    padding: 4px;
+    border-radius: 8px;
+    background: var(--color-bg-secondary);
+}
+
+.offline-schedule-period-option {
+    position: relative;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.offline-schedule-period-option > span {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
+    align-items: center;
+    min-height: 36px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    white-space: nowrap;
+}
+
+.offline-schedule-period-option:hover > span {
+    color: var(--color-text-primary);
+    background: var(--color-bg-hover);
+}
+
+.offline-schedule-period-option input:checked + span {
+    background: var(--color-bg-primary);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+    font-weight: 600;
+}
+
+.offline-schedule-period-option input:focus-visible + span,
+.offline-schedule-preview-expand:focus-visible,
+.offline-schedule-dialog-standard .offline-switch:focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+}
+
+.offline-schedule-period-group:disabled .offline-schedule-period-option {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.offline-schedule-time-group {
+    display: grid;
+    grid-template-columns: 80px minmax(0, 1fr);
+    gap: 8px 16px;
     align-items: center;
 }
 
-.offline-schedule-toggle-info {
+.offline-schedule-timezone-note {
+    grid-column: 2;
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.offline-schedule-legacy-note {
+    margin: 8px 0 0 96px;
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.offline-schedule-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 32px;
+}
+
+.offline-schedule-dialog-standard .offline-switch {
+    margin: 0;
+}
+
+.offline-schedule-preview {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding-top: 20px;
+    border-top: 1px solid var(--color-border);
+}
+
+.offline-schedule-preview-heading {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 500;
+}
+
+.offline-schedule-preview-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 8px;
 }
 
-.offline-schedule-toggle-label {
-    font-size: 0.88rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
+.offline-schedule-preview-item {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.5;
 }
 
-.offline-schedule-toggle-hint {
+.offline-schedule-preview-expand {
+    align-self: end;
+    min-height: 32px;
+    padding: 4px 0 4px 8px;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-secondary);
     font-size: 0.75rem;
-    color: var(--color-text-muted);
+    cursor: pointer;
 }
 
-/* Footer & Buttons */
-.offline-schedule-dialog-standard .console-form-footer {
-    padding: 16px 24px;
-    background-color: var(--color-bg-primary);
-    border-top: 1px solid var(--color-border);
+.offline-schedule-preview-expand:hover {
+    color: var(--color-text-primary);
+    text-decoration: underline;
+}
+
+.offline-schedule-preview-error {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--color-error);
+    font-size: 0.8125rem;
+}
+
+.offline-schedule-dialog-standard .offline-schedule-footer {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.offline-schedule-publish-note {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.5;
+}
+
+.offline-schedule-publish-note p {
+    margin: 0;
+}
+
+.offline-schedule-publish-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    color: color-mix(in srgb, var(--color-warning) 75%, var(--color-text-primary));
+}
+
+.offline-schedule-publish-warning svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.offline-schedule-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
 }
 
 .footer-left {
@@ -279,28 +374,59 @@
 }
 
 
-/* Sync / remote risk alerts — match admin precheck tip style */
-.offline-schedule-alerts {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 20px;
+.offline-schedule-period-select {
+    width: 96px;
+    max-width: 100%;
 }
 
-.offline-schedule-alert {
+.offline-schedule-period-fields {
     display: flex;
-    align-items: flex-start;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 8px;
-    color: #b45309;
-    background: color-mix(in srgb, #f59e0b 8%, #fffbeb);
-    border: 1px solid color-mix(in srgb, #f59e0b 20%, transparent);
-    padding: 10px 14px;
-    border-radius: 6px;
-    font-size: 0.82rem;
-    line-height: 1.5;
 }
 
-.offline-schedule-alert-icon {
-    flex-shrink: 0;
-    margin-top: 2px;
+@media (max-width: 560px) {
+    .offline-schedule-body {
+        padding: 20px 16px;
+        gap: 20px;
+    }
+
+    .offline-schedule-dialog-standard .dialog-header,
+    .offline-schedule-dialog-standard .offline-schedule-footer {
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+
+    .offline-schedule-period-group > legend {
+        float: none;
+        width: auto;
+        padding: 0 0 8px;
+    }
+
+    .offline-schedule-period-options,
+    .offline-schedule-legacy-note {
+        margin-left: 0;
+    }
+
+    .offline-schedule-period-options {
+        gap: 0;
+    }
+
+    .offline-schedule-time-group {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .offline-schedule-timezone-note {
+        grid-column: 1;
+    }
+
+    .offline-schedule-period-fields {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .offline-schedule-period-select {
+        width: 100%;
+    }
 }

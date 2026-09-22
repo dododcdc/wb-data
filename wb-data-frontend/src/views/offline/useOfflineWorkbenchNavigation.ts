@@ -1,38 +1,26 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback } from 'react';
 import type { FlowDraftSession } from './flowDraftController';
 import type { OpenFlowDocumentOptions } from './useFlowEditingSession';
-
-export interface OfflineNavigationBlocker {
-    proceed?: () => void;
-    reset?: () => void;
-}
-
-export type OfflinePendingNavigation =
-    | { type: 'flow'; flowPath: string }
-    | { type: 'router'; blocker: OfflineNavigationBlocker };
 
 export interface UseOfflineWorkbenchNavigationParams {
     groupId: number | null;
     draftSession: FlowDraftSession | null;
     isDirty: boolean;
     openFlowDocumentFromSession: (path: string, options?: OpenFlowDocumentOptions) => Promise<boolean>;
-    saveCurrentFlow: () => Promise<boolean>;
-    discardCurrentFlowDraft: () => void;
-    resetActiveFlow: () => void;
+    flushDraft: () => Promise<boolean>;
 }
 
+// 自动保存模型下，切换任务不再弹「未保存的更改」拦截：
+// 切换前对当前草稿做 best-effort 强制 flush；flush 失败也不阻断
+// （recovery snapshot 会保留本地修改，回来后自动保存会重试）。
 export function useOfflineWorkbenchNavigation(params: UseOfflineWorkbenchNavigationParams) {
     const {
         groupId,
         draftSession,
         isDirty,
         openFlowDocumentFromSession,
-        saveCurrentFlow,
-        discardCurrentFlowDraft,
-        resetActiveFlow,
+        flushDraft,
     } = params;
-    const [pendingNavigation, setPendingNavigation] = useState<OfflinePendingNavigation | null>(null);
-    const didDiscardLeaveRef = useRef(false);
 
     const openFlowDocument = useCallback(async (pathValue: string, options?: OpenFlowDocumentOptions) => {
         if (!groupId) return false;
@@ -41,68 +29,16 @@ export function useOfflineWorkbenchNavigation(params: UseOfflineWorkbenchNavigat
             return false;
         }
 
-        const skipLeaveCurrent = didDiscardLeaveRef.current;
-        if (!skipLeaveCurrent && draftSession && draftSession.path !== normalizedPath) {
-            if (!options?.force && !options?.canLeaveDirty && isDirty) {
-                setPendingNavigation({ type: 'flow', flowPath: normalizedPath });
-                return false;
-            }
+        const isSwitchingFlow = Boolean(draftSession && draftSession.path !== normalizedPath);
+        if (isSwitchingFlow && isDirty && !options?.force && !options?.canLeaveDirty) {
+            await flushDraft();
         }
-        didDiscardLeaveRef.current = false;
 
         return openFlowDocumentFromSession(normalizedPath, {
             ...options,
             canLeaveDirty: true,
-            skipLeaveCurrent,
         });
-    }, [draftSession, groupId, isDirty, openFlowDocumentFromSession]);
+    }, [draftSession, flushDraft, groupId, isDirty, openFlowDocumentFromSession]);
 
-    const markDraftDiscardedForExternalSwitch = useCallback(() => {
-        if (!draftSession) return;
-        didDiscardLeaveRef.current = true;
-        discardCurrentFlowDraft();
-        resetActiveFlow();
-    }, [discardCurrentFlowDraft, draftSession, resetActiveFlow]);
-
-    const confirmLeave = useCallback(async (action: 'save' | 'discard') => {
-        if (!pendingNavigation) return;
-
-        if (action === 'save') {
-            const saved = await saveCurrentFlow();
-            if (!saved) return;
-        } else if (draftSession) {
-            didDiscardLeaveRef.current = true;
-            discardCurrentFlowDraft();
-        }
-
-        const target = pendingNavigation;
-        setPendingNavigation(null);
-
-        if (target.type === 'router') {
-            target.blocker.proceed?.();
-        } else {
-            void openFlowDocument(target.flowPath, { force: true });
-        }
-    }, [discardCurrentFlowDraft, draftSession, openFlowDocument, pendingNavigation, saveCurrentFlow]);
-
-    const cancelLeave = useCallback(() => {
-        if (!pendingNavigation) return;
-        if (pendingNavigation.type === 'router') {
-            pendingNavigation.blocker.reset?.();
-        }
-        setPendingNavigation(null);
-    }, [pendingNavigation]);
-
-    const setPendingRouterNavigation = useCallback((blocker: OfflineNavigationBlocker) => {
-        setPendingNavigation({ type: 'router', blocker });
-    }, []);
-
-    return {
-        pendingNavigation,
-        openFlowDocument,
-        markDraftDiscardedForExternalSwitch,
-        confirmLeave,
-        cancelLeave,
-        setPendingRouterNavigation,
-    };
+    return { openFlowDocument };
 }
