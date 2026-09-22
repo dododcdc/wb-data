@@ -1,7 +1,12 @@
 package com.wbdata.offline.service;
 
 import com.wbdata.offline.config.OfflineTransferProperties;
+import com.wbdata.offline.dto.OfflineFlowDependencyRef;
+import com.wbdata.offline.dto.OfflineFlowDependencySettings;
 import com.wbdata.offline.dto.OfflineFlowSchedule;
+import com.wbdata.offline.enums.OfflineCrossGroupDependency;
+import com.wbdata.offline.enums.OfflineFailurePolicy;
+import com.wbdata.offline.enums.OfflineSchedulePeriod;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import org.yaml.snakeyaml.DumperOptions;
@@ -19,6 +24,10 @@ import java.util.Map;
 import java.util.Set;
 
 final class OfflineFlowYamlSupport {
+    static final String SCHEDULE_PERIOD_LABEL = "wbdataSchedulePeriod";
+    static final String DEPENDENCIES_LABEL = "wbdataDependencies";
+    static final String FAILURE_POLICY_LABEL = "wbdataFailurePolicy";
+    static final String CROSS_GROUP_DEPENDENCY_LABEL = "wbdataCrossGroupDependency";
     private static final String RECOVER_MISSED_SCHEDULES_NONE = "NONE";
     private static final java.util.regex.Pattern READ_CALL_PATTERN =
             java.util.regex.Pattern.compile("\\{\\{\\s*read\\(\\s*['\"]([^'\"]+)['\"]\\s*\\)\\s*}}");
@@ -162,16 +171,70 @@ final class OfflineFlowYamlSupport {
         if (trigger == null) {
             return null;
         }
+        String cron = requiredString(trigger, "cron");
         return new ScheduleData(
                 requiredString(trigger, "id"),
-                requiredString(trigger, "cron"),
+                cron,
                 readOptionalString(trigger, "timezone"),
-                !Boolean.TRUE.equals(trigger.get("disabled"))
+                !Boolean.TRUE.equals(trigger.get("disabled")),
+                readPeriod(root, cron)
         );
     }
 
-    String updateSchedule(String source, String cron, String timezone) {
-        return applySchedule(source, new OfflineFlowSchedule(cron, timezone, true));
+    private OfflineSchedulePeriod readPeriod(Map<String, Object> root, String cron) {
+        String label = readLabelValue(root, SCHEDULE_PERIOD_LABEL);
+        if (label != null) {
+            try {
+                return OfflineSchedulePeriod.valueOf(label.trim().toUpperCase());
+            } catch (IllegalArgumentException ignored) {
+                // 未知 label 值按未设置处理，回退到 cron 推断
+            }
+        }
+        return inferPeriodFromCron(cron);
+    }
+
+    static OfflineSchedulePeriod inferPeriodFromCron(String cron) {
+        if (cron == null) {
+            return OfflineSchedulePeriod.CUSTOM;
+        }
+        String[] parts = cron.trim().split("\\s+");
+        if (parts.length != 5) {
+            return OfflineSchedulePeriod.CUSTOM;
+        }
+        if (isFixedNumber(parts[0]) && "*".equals(parts[1]) && "*".equals(parts[2])
+                && "*".equals(parts[3]) && "*".equals(parts[4])) {
+            return OfflineSchedulePeriod.HOURLY;
+        }
+        if (isFixedNumber(parts[0]) && isFixedNumber(parts[1]) && "*".equals(parts[2])
+                && "*".equals(parts[3]) && "*".equals(parts[4])) {
+            return OfflineSchedulePeriod.DAILY;
+        }
+        if (isFixedNumber(parts[0]) && isFixedNumber(parts[1]) && isFixedNumber(parts[2])
+                && "*".equals(parts[3]) && "*".equals(parts[4])) {
+            return OfflineSchedulePeriod.MONTHLY;
+        }
+        if (isFixedNumber(parts[0]) && isFixedNumber(parts[1]) && "*".equals(parts[2])
+                && "*".equals(parts[3]) && isFixedNumber(parts[4])) {
+            return OfflineSchedulePeriod.WEEKLY;
+        }
+        if (isFixedNumber(parts[0]) && isFixedNumber(parts[1]) && isFixedNumber(parts[2])
+                && isFixedNumber(parts[3]) && "*".equals(parts[4])) {
+            return OfflineSchedulePeriod.YEARLY;
+        }
+        return OfflineSchedulePeriod.CUSTOM;
+    }
+
+    private static boolean isFixedNumber(String field) {
+        return field.matches("\\d{1,2}");
+    }
+
+    private String readLabelValue(Map<String, Object> root, String key) {
+        Object value = asStringObjectMap(root.get("labels")).get(key);
+        return value == null ? null : value.toString();
+    }
+
+    String updateSchedule(String source, String cron, String timezone, OfflineSchedulePeriod period) {
+        return applySchedule(source, new OfflineFlowSchedule(cron, timezone, true, period));
     }
 
     String updateScheduleStatus(String source, boolean enabled) {
@@ -195,6 +258,9 @@ final class OfflineFlowYamlSupport {
         if (schedule.cron() == null || schedule.cron().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cron 表达式不能为空");
         }
+        if (schedule.period() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "调度频率不能为空");
+        }
 
         Map<String, Object> root = loadRoot(source);
         Map<String, Object> trigger = findScheduleTrigger(root);
@@ -216,6 +282,104 @@ final class OfflineFlowYamlSupport {
             trigger.remove("disabled");
         } else {
             trigger.put("disabled", true);
+        }
+
+        Map<String, Object> labels = new LinkedHashMap<>();
+        labels.putAll(asStringObjectMap(root.get("labels")));
+        labels.put(SCHEDULE_PERIOD_LABEL, schedule.period().name());
+        root.put("labels", labels);
+        return yaml.dump(root);
+    }
+
+    OfflineFlowDependencySettings readDependencyConfig(String source) {
+        return new OfflineFlowDependencySettings(
+                readDependencies(source), readFailurePolicy(source), readCrossGroupDependency(source));
+    }
+
+    List<OfflineFlowDependencyRef> readDependencies(String source) {
+        return parseDependenciesLabel(readLabel(source, DEPENDENCIES_LABEL));
+    }
+
+    static List<OfflineFlowDependencyRef> parseDependenciesLabel(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        List<OfflineFlowDependencyRef> refs = new ArrayList<>();
+        for (String entry : value.split(",")) {
+            String trimmed = entry.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            int separator = trimmed.indexOf(':');
+            if (separator <= 0 || separator == trimmed.length() - 1) {
+                continue;
+            }
+            try {
+                long groupId = Long.parseLong(trimmed.substring(0, separator).trim());
+                String flowId = trimmed.substring(separator + 1).trim();
+                if (!flowId.isEmpty()) {
+                    refs.add(new OfflineFlowDependencyRef(groupId, flowId));
+                }
+            } catch (NumberFormatException ignored) {
+                // 忽略无法解析的历史 label 项
+            }
+        }
+        return List.copyOf(refs);
+    }
+
+    static String encodeDependencies(List<OfflineFlowDependencyRef> dependencies) {
+        return String.join(",", dependencies.stream()
+                .map(ref -> ref.groupId() + ":" + ref.flowId())
+                .toList());
+    }
+
+    OfflineFailurePolicy readFailurePolicy(String source) {
+        return parseEnumLabel(readLabel(source, FAILURE_POLICY_LABEL),
+                OfflineFailurePolicy.class, OfflineFailurePolicy.CONTINUE);
+    }
+
+    OfflineCrossGroupDependency readCrossGroupDependency(String source) {
+        return parseEnumLabel(readLabel(source, CROSS_GROUP_DEPENDENCY_LABEL),
+                OfflineCrossGroupDependency.class, OfflineCrossGroupDependency.ALLOW);
+    }
+
+    private static <E extends Enum<E>> E parseEnumLabel(String value, Class<E> type, E fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Enum.valueOf(type, value.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            return fallback;
+        }
+    }
+
+    String applyDependencyConfig(String source,
+                                 List<OfflineFlowDependencyRef> dependencies,
+                                 OfflineFailurePolicy failurePolicy,
+                                 OfflineCrossGroupDependency crossGroupDependency) {
+        Map<String, Object> root = loadRoot(source);
+        Map<String, Object> labels = new LinkedHashMap<>();
+        labels.putAll(asStringObjectMap(root.get("labels")));
+        if (dependencies == null || dependencies.isEmpty()) {
+            labels.remove(DEPENDENCIES_LABEL);
+        } else {
+            labels.put(DEPENDENCIES_LABEL, encodeDependencies(dependencies));
+        }
+        if (failurePolicy == null || failurePolicy == OfflineFailurePolicy.CONTINUE) {
+            labels.remove(FAILURE_POLICY_LABEL);
+        } else {
+            labels.put(FAILURE_POLICY_LABEL, failurePolicy.name());
+        }
+        if (crossGroupDependency == null || crossGroupDependency == OfflineCrossGroupDependency.ALLOW) {
+            labels.remove(CROSS_GROUP_DEPENDENCY_LABEL);
+        } else {
+            labels.put(CROSS_GROUP_DEPENDENCY_LABEL, crossGroupDependency.name());
+        }
+        if (labels.isEmpty()) {
+            root.remove("labels");
+        } else {
+            root.put("labels", labels);
         }
         return yaml.dump(root);
     }
@@ -807,7 +971,8 @@ final class OfflineFlowYamlSupport {
             String triggerId,
             String cron,
             String timezone,
-            boolean enabled
+            boolean enabled,
+            OfflineSchedulePeriod period
     ) {
     }
 

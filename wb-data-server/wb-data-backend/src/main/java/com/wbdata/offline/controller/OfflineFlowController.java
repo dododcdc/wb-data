@@ -13,6 +13,7 @@ import com.wbdata.offline.dto.RenameOfflineFlowRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowRequest;
 import com.wbdata.offline.service.OfflineFlowContentService;
+import com.wbdata.offline.service.OfflineFlowDependencyService;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -37,6 +38,7 @@ public class OfflineFlowController {
 
     private final OfflineFlowContentService offlineFlowContentService;
     private final OfflineFlowDocumentService offlineFlowDocumentService;
+    private final OfflineFlowDependencyService offlineFlowDependencyService;
 
     @Operation(summary = "读取任务内容")
     @GetMapping("/content")
@@ -81,17 +83,23 @@ public class OfflineFlowController {
                 request.schedule(),
                 request.parameterBinding(),
                 request.parameterBindings(),
-                request.runtimeTimezone()
+                request.runtimeTimezone(),
+                request.dependencyConfig()
         );
-        return Result.success(offlineFlowDocumentService.saveFlowDocument(normalizedRequest));
+        return Result.success(offlineFlowDependencyService.saveDocument(normalizedRequest, context.accessibleGroups(),
+                () -> offlineFlowDocumentService.saveFlowDocument(normalizedRequest)));
     }
 
     @Operation(summary = "删除任务（物理删除）")
     @DeleteMapping
     public Result<Void> deleteFlow(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
                                    @Valid @RequestBody DeleteOfflineFlowRequest request) {
-        offlineFlowContentService.deleteFlow(context.currentGroup().id(), request.path());
-        return Result.success(null);
+        return offlineFlowDependencyService.withDependencyGraphLock(() -> {
+            offlineFlowDependencyService.assertDeletionAllowed(
+                    context.currentGroup().id(), request.path(), context.accessibleGroups());
+            offlineFlowContentService.deleteFlow(context.currentGroup().id(), request.path());
+            return Result.success(null);
+        });
     }
 
     @Operation(summary = "重命名任务")

@@ -6,6 +6,8 @@ import com.wbdata.auth.dto.ProjectGroupContextItem;
 import com.wbdata.offline.dto.OfflineScheduleResponse;
 import com.wbdata.offline.dto.UpdateOfflineScheduleRequest;
 import com.wbdata.offline.dto.UpdateOfflineScheduleStatusRequest;
+import com.wbdata.offline.enums.OfflineSchedulePeriod;
+import com.wbdata.offline.service.OfflineFlowDependencyService;
 import com.wbdata.offline.service.OfflineScheduleService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -24,12 +26,16 @@ class OfflineScheduleControllerGroupScopeTest {
     void updateScheduleUsesAuthenticatedGroupInsteadOfBodyGroup() {
         OfflineScheduleService service = mock(OfflineScheduleService.class);
         when(service.updateSchedule(any())).thenReturn(response(4L));
-        OfflineScheduleController controller = new OfflineScheduleController(service);
+        OfflineFlowDependencyService dependencies = mock(OfflineFlowDependencyService.class);
+        when(dependencies.withDependencyGraphLock(any()))
+                .thenAnswer(invocation -> invocation.<java.util.function.Supplier<?>>getArgument(0).get());
+        OfflineScheduleController controller = new OfflineScheduleController(service, dependencies);
 
         controller.updateSchedule(context(4L), new UpdateOfflineScheduleRequest(
                 999L,
                 "_flows/jack/test/flow.yaml",
                 "* * * * *",
+                OfflineSchedulePeriod.CUSTOM,
                 "hash",
                 100L
         ));
@@ -43,7 +49,7 @@ class OfflineScheduleControllerGroupScopeTest {
     void updateScheduleStatusUsesAuthenticatedGroupInsteadOfBodyGroup() {
         OfflineScheduleService service = mock(OfflineScheduleService.class);
         when(service.updateScheduleStatus(any())).thenReturn(response(4L));
-        OfflineScheduleController controller = new OfflineScheduleController(service);
+        OfflineScheduleController controller = new OfflineScheduleController(service, mock(OfflineFlowDependencyService.class));
 
         controller.updateScheduleStatus(context(4L), new UpdateOfflineScheduleStatusRequest(
                 999L,
@@ -77,6 +83,7 @@ class OfflineScheduleControllerGroupScopeTest {
                 "* * * * *",
                 "Asia/Singapore",
                 true,
+                OfflineSchedulePeriod.CUSTOM,
                 "hash",
                 100L
         );

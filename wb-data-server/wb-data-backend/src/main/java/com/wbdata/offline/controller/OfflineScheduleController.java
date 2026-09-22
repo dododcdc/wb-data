@@ -8,6 +8,7 @@ import com.wbdata.common.Result;
 import com.wbdata.offline.dto.OfflineScheduleResponse;
 import com.wbdata.offline.dto.UpdateOfflineScheduleRequest;
 import com.wbdata.offline.dto.UpdateOfflineScheduleStatusRequest;
+import com.wbdata.offline.service.OfflineFlowDependencyService;
 import com.wbdata.offline.service.OfflineScheduleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,6 +31,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class OfflineScheduleController {
 
     private final OfflineScheduleService offlineScheduleService;
+    private final OfflineFlowDependencyService offlineFlowDependencyService;
 
     @Operation(summary = "读取任务调度配置")
     @GetMapping
@@ -46,10 +48,15 @@ public class OfflineScheduleController {
                 context.currentGroup().id(),
                 request.path(),
                 request.cron(),
+                request.period(),
                 request.contentHash(),
                 request.fileUpdatedAt()
         );
-        return Result.success(offlineScheduleService.updateSchedule(normalizedRequest));
+        return offlineFlowDependencyService.withDependencyGraphLock(() -> {
+            offlineFlowDependencyService.assertPeriodChangeAllowed(
+                    context.currentGroup().id(), request.path(), request.period(), context.accessibleGroups());
+            return Result.success(offlineScheduleService.updateSchedule(normalizedRequest));
+        });
     }
 
     @Operation(summary = "启用/停用任务调度")

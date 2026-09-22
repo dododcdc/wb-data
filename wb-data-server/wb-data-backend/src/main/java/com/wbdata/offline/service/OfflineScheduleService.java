@@ -38,7 +38,8 @@ public class OfflineScheduleService {
                 yamlSupport.updateSchedule(
                         existing.content(),
                         request.cron(),
-                        runtimeTimezone
+                        runtimeTimezone,
+                        request.period()
                 ),
                 request.contentHash(),
                 request.fileUpdatedAt()
@@ -85,6 +86,7 @@ public class OfflineScheduleService {
                 schedule.cron(),
                 schedule.timezone(),
                 schedule.enabled(),
+                schedule.period(),
                 flow.contentHash(),
                 flow.fileUpdatedAt()
         );
