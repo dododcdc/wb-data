@@ -11,6 +11,7 @@ import {
     type OfflineExecutionDetail,
     type OfflineExecutionListItem,
     type OfflineFlowDocument,
+    type OfflineSchedulePeriod,
     type OfflineScheduleResponse,
 } from '../../api/offline';
 import type { FeedbackPayload } from '../../hooks/useOperationFeedback';
@@ -19,7 +20,13 @@ import { buildDraftExecutionRequest } from './draftExecution';
 import { isActiveStatus } from '../../components/execution/executionPresentation';
 import { defaultPlannedTimeValue, getExecutionTimeRequirement } from './executionTimeContext';
 import { updateFlowScheduleDraft, type FlowDraftSession } from './flowDraftController';
-import { isValidCronExpression } from './ScheduleUtils';
+import {
+    buildCronFromPeriodParts,
+    DEFAULT_PERIOD_PARTS,
+    isValidCronExpression,
+    parsePeriodPartsFromCron,
+    type SchedulePeriodParts,
+} from './ScheduleUtils';
 
 interface UseFlowExecutionAndScheduleParams {
     groupId: number | null;
@@ -65,6 +72,7 @@ export function useFlowExecutionAndSchedule({
     const [, setScheduleLoading] = useState(false);
     const [scheduleSaving] = useState(false);
     const [scheduleCron, setScheduleCron] = useState('');
+    const [schedulePeriod, setSchedulePeriod] = useState<OfflineSchedulePeriod>('DAILY');
     const scheduleTimezone = draftSession?.workingDraft.runtimeTimezone || defaultTimezone;
     const groupIdRef = useRef(groupId);
     const actionVersionRef = useRef(0);
@@ -99,6 +107,7 @@ export function useFlowExecutionAndSchedule({
     const resetExecutionAndSchedule = useCallback(() => {
         setSchedule(null);
         setScheduleCron('');
+        setSchedulePeriod('DAILY');
         setScheduleDialogOpen(false);
         setExecutionContextDialogOpen(false);
         setExecutionDialogOpen(false);
@@ -338,6 +347,7 @@ export function useFlowExecutionAndSchedule({
             : null;
         if (draftSchedule) {
             setScheduleCron(draftSchedule.cron);
+            setSchedulePeriod(draftSchedule.period);
             setSchedule({
                 groupId,
                 path,
@@ -345,6 +355,7 @@ export function useFlowExecutionAndSchedule({
                 cron: draftSchedule.cron,
                 timezone: draftSchedule.timezone,
                 enabled: draftSchedule.enabled,
+                period: draftSchedule.period,
                 contentHash: '',
                 fileUpdatedAt: 0,
             });
@@ -359,11 +370,13 @@ export function useFlowExecutionAndSchedule({
             if (!isCurrentScheduleLoad()) return;
             setSchedule(nextSchedule);
             setScheduleCron(nextSchedule.cron);
+            setSchedulePeriod(nextSchedule.period);
         } catch (error) {
             if (!isCurrentScheduleLoad()) return;
             if (error instanceof AxiosError && error.response?.status === 404) {
                 setSchedule(null);
                 setScheduleCron('0 2 * * *');
+                setSchedulePeriod('DAILY');
                 return;
             }
             showFeedback({
@@ -377,6 +390,13 @@ export function useFlowExecutionAndSchedule({
             }
         }
     }, [captureGroupActionGuard, draftSession, groupId, showFeedback]);
+
+    const changeSchedulePeriod = useCallback((period: OfflineSchedulePeriod, parts?: SchedulePeriodParts) => {
+        setSchedulePeriod(period);
+        if (period === 'CUSTOM') return;
+        const base = parts ?? parsePeriodPartsFromCron(scheduleCron) ?? DEFAULT_PERIOD_PARTS;
+        setScheduleCron(buildCronFromPeriodParts(period, base));
+    }, [scheduleCron]);
 
     const stageSchedule = useCallback(async () => {
         if (!draftSession) return;
@@ -392,6 +412,7 @@ export function useFlowExecutionAndSchedule({
             cron: scheduleCron,
             timezone: scheduleTimezone,
             enabled: schedule?.enabled ?? false,
+            period: schedulePeriod,
         });
         setDraftSession(nextSession);
         setScheduleDialogOpen(false);
@@ -400,7 +421,7 @@ export function useFlowExecutionAndSchedule({
             title: '调度配置已暂存',
             detail: '',
         });
-    }, [draftSession, schedule?.enabled, scheduleCron, scheduleTimezone, setDraftSession, showFeedback]);
+    }, [draftSession, schedule?.enabled, scheduleCron, schedulePeriod, scheduleTimezone, setDraftSession, showFeedback]);
 
     const toggleSchedule = useCallback(async (enabled: boolean) => {
         if (!draftSession) return;
@@ -417,6 +438,7 @@ export function useFlowExecutionAndSchedule({
             cron: scheduleCron,
             timezone: scheduleTimezone,
             enabled,
+            period: schedulePeriod,
         });
         setDraftSession(nextSession);
         setSchedule((prev) => prev ? { ...prev, enabled } : {
@@ -426,6 +448,7 @@ export function useFlowExecutionAndSchedule({
             cron: scheduleCron,
             timezone: scheduleTimezone,
             enabled,
+            period: schedulePeriod,
             contentHash: '',
             fileUpdatedAt: 0,
         });
@@ -434,7 +457,7 @@ export function useFlowExecutionAndSchedule({
             title: enabled ? '调度开启已暂存' : '调度关闭已暂存',
             detail: '推送到远程后才会真正生效。',
         });
-    }, [activeFlowPath, draftSession, groupId, scheduleCron, scheduleTimezone, setDraftSession, showFeedback]);
+    }, [activeFlowPath, draftSession, groupId, scheduleCron, schedulePeriod, scheduleTimezone, setDraftSession, showFeedback]);
 
     return {
         executionDialogOpen,
@@ -461,6 +484,8 @@ export function useFlowExecutionAndSchedule({
         schedule,
         scheduleCron,
         setScheduleCron,
+        schedulePeriod,
+        changeSchedulePeriod,
         scheduleTimezone,
         scheduleSaving,
         refreshExecutions,

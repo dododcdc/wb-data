@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Maximize2, Minimize2, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowRight, ChevronDown, ChevronRight, Maximize2, Minimize2, Plus, RefreshCw, Trash2 } from 'lucide-react';
 
 import type { DataSource } from '../../../api/datasource';
 import type { ColumnMetadata } from '../../../api/query';
@@ -25,6 +25,7 @@ import type {
     TransferPartitionMapping,
     TransferWriteMode,
 } from './transferTypes';
+import { MAX_TRANSFER_SQL_STATEMENTS, supportsTransferSql } from './transferTypes';
 import { validateTransferConfig } from './transferValidation';
 import { useTransferMetadata } from './useTransferMetadata';
 import './TransferNodeDialog.css';
@@ -376,6 +377,107 @@ function ResourceError({ message, retryLabel, onRetry }: { message: string; retr
     );
 }
 
+function SqlStatements({
+    label,
+    statements = [],
+    help,
+    onChange,
+}: {
+    label: string;
+    statements?: string[];
+    help: string;
+    onChange: (statements: string[]) => void;
+}) {
+    const id = useId();
+    const [expanded, setExpanded] = useState(false);
+    const inputsRef = useRef<Array<HTMLTextAreaElement | null>>([]);
+    const addButtonRef = useRef<HTMLButtonElement>(null);
+    const focusIndexRef = useRef<number | null>(null);
+    const overLimit = statements.length > MAX_TRANSFER_SQL_STATEMENTS;
+    const hasEmpty = statements.some((sql) => !sql.trim());
+
+    useEffect(() => {
+        const index = focusIndexRef.current;
+        if (index === null) return;
+        if (index < 0) addButtonRef.current?.focus();
+        else inputsRef.current[index]?.focus();
+        focusIndexRef.current = null;
+    }, [statements]);
+
+    return (
+        <div className="transfer-node-sql-group">
+            <button
+                type="button"
+                className="transfer-node-sql-toggle"
+                aria-expanded={expanded}
+                aria-controls={`${id}-content`}
+                onClick={() => setExpanded((current) => !current)}
+            >
+                {expanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+                <span>{label}</span>
+                <span className="transfer-node-sql-count">{statements.length}/{MAX_TRANSFER_SQL_STATEMENTS}</span>
+                {(overLimit || hasEmpty) && (
+                    <span className="transfer-node-filter-error">{overLimit ? '超出上限，请删除多余项' : '有空项，请填写或删除'}</span>
+                )}
+            </button>
+            <div id={`${id}-content`} className="transfer-node-sql-content" hidden={!expanded}>
+                <p id={`${id}-help`} className="transfer-node-field-help">{help}</p>
+                {statements.map((sql, index) => {
+                    const invalid = !sql.trim();
+                    const inputId = `${id}-${index}`;
+                    return (
+                        <div className="transfer-node-field transfer-node-sql-item" key={index}>
+                            <div className="transfer-node-sql-item-heading">
+                                <label htmlFor={inputId}>{label} 第 {index + 1} 条</label>
+                                <button
+                                    type="button"
+                                    className="transfer-node-sql-action"
+                                    aria-label={`删除${label}第 ${index + 1} 条`}
+                                    onClick={() => {
+                                        focusIndexRef.current = Math.min(index, statements.length - 2);
+                                        onChange(statements.filter((_, itemIndex) => itemIndex !== index));
+                                    }}
+                                >
+                                    <Trash2 size={14} aria-hidden="true" />
+                                    删除
+                                </button>
+                            </div>
+                            <textarea
+                                id={inputId}
+                                ref={(element) => { inputsRef.current[index] = element; }}
+                                rows={3}
+                                value={sql}
+                                spellCheck={false}
+                                aria-invalid={invalid}
+                                aria-describedby={`${id}-help${invalid ? ` ${inputId}-error` : ''}`}
+                                onChange={(event) => onChange(statements.map(
+                                    (statement, itemIndex) => itemIndex === index ? event.target.value : statement,
+                                ))}
+                            />
+                            {invalid && (
+                                <span id={`${inputId}-error`} className="transfer-node-filter-error">请输入 SQL 或删除此项</span>
+                            )}
+                        </div>
+                    );
+                })}
+                <button
+                    ref={addButtonRef}
+                    type="button"
+                    className="transfer-node-sql-action"
+                    disabled={statements.length >= MAX_TRANSFER_SQL_STATEMENTS}
+                    onClick={() => {
+                        focusIndexRef.current = statements.length;
+                        onChange([...statements, '']);
+                    }}
+                >
+                    <Plus size={14} aria-hidden="true" />
+                    添加{label}
+                </button>
+            </div>
+        </div>
+    );
+}
+
 function EndpointFields({
     side,
     title,
@@ -579,6 +681,25 @@ function EndpointFields({
                     </label>
                 )}
             </div>
+            {side === 'target' && supportsTransferSql(endpoint.dataSourceType) && (
+                <div className="transfer-node-target-sql">
+                    <p className="transfer-node-field-help">
+                        每项仅填写一条 SQL，可换行；按编号顺序执行。更换目标数据源、数据库或表会清空前后 SQL。
+                    </p>
+                    <SqlStatements
+                        label="前置 SQL"
+                        statements={endpoint.preSql}
+                        help="传输前执行，前置 SQL 失败则不进行传输。"
+                        onChange={(preSql) => onPatch({ target: { ...config.target, preSql } })}
+                    />
+                    <SqlStatements
+                        label="后置 SQL"
+                        statements={endpoint.postSql}
+                        help="仅传输成功后执行。后置 SQL 失败会使节点失败，但不回滚已写入数据，请自行处理。"
+                        onChange={(postSql) => onPatch({ target: { ...config.target, postSql } })}
+                    />
+                </div>
+            )}
         </section>
     );
 }
@@ -769,10 +890,11 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
     };
     const selectEndpoint = (side: 'source' | 'target', id: number) => {
         const selected = dataSources.find((item) => item.id === id);
-        setConfig((current) => ({
+        setConfig((current) => current[side].dataSourceId === id ? current : ({
             ...current,
             [side]: {
                 ...current[side],
+                ...(side === 'target' ? { preSql: undefined, postSql: undefined } : {}),
                 dataSourceId: id,
                 dataSourceType: (selected?.type ?? (side === 'source' ? 'MYSQL' : 'HIVE')) as TransferDataSourceType,
                 database: undefined,
@@ -783,17 +905,27 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
         }));
     };
     const selectDatabase = (side: 'source' | 'target', database: string) => {
-        setConfig((current) => ({
+        const nextDatabase = database || undefined;
+        setConfig((current) => current[side].database === nextDatabase ? current : ({
             ...current,
-            [side]: { ...current[side], database: database || undefined, table: '' },
+            [side]: {
+                ...current[side],
+                ...(side === 'target' ? { preSql: undefined, postSql: undefined } : {}),
+                database: nextDatabase,
+                table: '',
+            },
             fieldMappings: [],
             partitions: [],
         }));
     };
     const selectTable = (side: 'source' | 'target', table: string) => {
-        setConfig((current) => ({
+        setConfig((current) => current[side].table === table ? current : ({
             ...current,
-            [side]: { ...current[side], table },
+            [side]: {
+                ...current[side],
+                ...(side === 'target' ? { preSql: undefined, postSql: undefined } : {}),
+                table,
+            },
             fieldMappings: [],
             partitions: [],
         }));

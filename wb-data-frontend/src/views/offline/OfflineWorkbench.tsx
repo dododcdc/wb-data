@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getErrorMessage } from '../../utils/error';
-import { useBlocker, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import '../core/RouteSkeletons.css';
 import {
     ResizableHandle,
@@ -17,9 +17,9 @@ import { useAuthStore } from '../../utils/auth';
 import { NodeEditorDialog } from './NodeEditorDialog';
 import type { TransferConfig } from './transfer/transferTypes';
 import type { TransferNodeDraftState } from './transfer/TransferNodeDialog';
-import { ScheduleDialog } from './ScheduleDialog';
+import { DependencyAwareScheduleDialog } from './DependencyAwareScheduleDialog';
+import { DependencyDialog } from './DependencyDialog';
 import { FlowParameterDialog } from './FlowParameterDialog';
-import { UnsavedChangesDialog } from '../../components/ui/unsaved-changes-dialog';
 import {
     flattenFlowDocumentNodes,
     resolveFlowSelectedTaskIds,
@@ -36,7 +36,6 @@ import { ExecutionTimeContextDialog } from './ExecutionTimeContextDialog';
 import { OfflineRepositoryDialogs } from './OfflineRepositoryDialogs';
 import { OfflineWorkbenchMainPanel } from './OfflineWorkbenchMainPanel';
 import { preloadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
-import { useBeforeUnloadGuard } from './useBeforeUnloadGuard';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
 import { useOfflineTreeMutations } from './useOfflineTreeMutations';
 import { prefetchNodeEditorDataSources } from './useNodeEditorDataSources';
@@ -50,7 +49,7 @@ import {
     useOfflineWorkbenchNewFlowShortcut,
     useOfflineWorkbenchUrlRestore,
 } from './OfflineWorkbenchLifecycle';
-import { updateFlowParameterBindingDraft } from './flowDraftController';
+import { updateFlowDependencyDraft, updateFlowParameterBindingDraft } from './flowDraftController';
 
 import './OfflineWorkbench.css';
 
@@ -74,6 +73,7 @@ export default function OfflineWorkbench() {
     const [commitMessage, setCommitMessage] = useState('');
     const [committing, setCommitting] = useState(false);
     const [parameterDialogOpen, setParameterDialogOpen] = useState(false);
+    const [dependencyDialogOpen, setDependencyDialogOpen] = useState(false);
     const loadScheduleSnapshotRef = useRef<((path: string) => Promise<void>) | null>(null);
     const resetExecutionAndScheduleRef = useRef<(() => void) | null>(null);
     const refreshRepoStatusRef = useRef<(() => Promise<void>) | null>(null);
@@ -115,7 +115,6 @@ export default function OfflineWorkbench() {
         setDraftSession,
         nodeEditorOpen,
         nodeEditorContent,
-        savingFlow,
         flowCommitDirty,
         saveConflictState,
         isSaveConflictPending,
@@ -131,7 +130,6 @@ export default function OfflineWorkbench() {
         setSelectedNodeId: setDraftSelectedNodeId,
         setSelectedTaskIds: setDraftSelectedTaskIds,
         leaveCurrentFlow,
-        discardCurrentFlowDraft,
         openFlowDocument: openFlowDocumentFromSession,
         resetAfterBranchSwitch,
         openNodeEditor: handleOpenNodeEditor,
@@ -139,7 +137,10 @@ export default function OfflineWorkbench() {
         updateNodeEditorContent: handleNodeEditorContentChange,
         stageNodeEditorDraft,
         saveNodeEditorDraft,
-        saveFlow: handleSaveFlow,
+        flushDraftNow,
+        draftSaveState,
+        draftSavedAt,
+        draftSaveError,
         commitCurrentFlow,
         restoreStaleDraft: handleRestoreStaleDraft,
         discardStaleDraft: handleDiscardStaleDraft,
@@ -153,6 +154,11 @@ export default function OfflineWorkbench() {
         updateCanvasEdges,
         commitCanvasLayout,
     } = flowEditing;
+
+    useEffect(() => {
+        setDependencyDialogOpen(false);
+    }, [groupId, activeFlowPath]);
+
     const {
         repoStatus,
         remoteStatus,
@@ -219,7 +225,8 @@ export default function OfflineWorkbench() {
         setScheduleDialogOpen,
         schedule,
         scheduleCron,
-        setScheduleCron,
+        schedulePeriod,
+        changeSchedulePeriod,
         scheduleTimezone,
         scheduleSaving,
         refreshExecutions,
@@ -302,49 +309,28 @@ export default function OfflineWorkbench() {
     }, [resetAfterBranchSwitch]);
 
     const {
-        pendingNavigation,
         openFlowDocument,
-        markDraftDiscardedForExternalSwitch,
-        confirmLeave: handleConfirmLeave,
-        cancelLeave: handleCancelLeave,
-        setPendingRouterNavigation,
     } = useOfflineWorkbenchNavigation({
         groupId,
         draftSession,
         isDirty,
         openFlowDocumentFromSession,
-        saveCurrentFlow: handleSaveFlow,
-        discardCurrentFlowDraft,
-        resetActiveFlow: resetActiveFlowAfterBranchSwitch,
+        flushDraft: flushDraftNow,
     });
 
-    useBeforeUnloadGuard(isDirty);
-
-    const blocker = useBlocker(
-        ({ currentLocation, nextLocation }) =>
-            isDirty && currentLocation.pathname !== nextLocation.pathname
-    );
-
-    useEffect(() => {
-        if (blocker.state === 'blocked') {
-            setPendingRouterNavigation(blocker);
-        }
-    }, [blocker, setPendingRouterNavigation]);
-
-    const discardActiveDraftForBranchSwitch = useCallback(() => {
-        markDraftDiscardedForExternalSwitch();
-    }, [markDraftDiscardedForExternalSwitch]);
-
     const handleBranchSwitchRequest = useCallback((branchName: string) => {
-        requestBranchSwitch(branchName, {
-            hasUnsavedDraft: isDirty,
-            discardDraft: discardActiveDraftForBranchSwitch,
-            afterSwitch: async () => {
-                resetActiveFlowAfterBranchSwitch();
-                await refreshWorkspace();
-            },
-        });
-    }, [discardActiveDraftForBranchSwitch, isDirty, refreshWorkspace, requestBranchSwitch, resetActiveFlowAfterBranchSwitch]);
+        void (async () => {
+            if (isDirty) {
+                await flushDraftNow();
+            }
+            requestBranchSwitch(branchName, {
+                afterSwitch: async () => {
+                    resetActiveFlowAfterBranchSwitch();
+                    await refreshWorkspace();
+                },
+            });
+        })();
+    }, [flushDraftNow, isDirty, refreshWorkspace, requestBranchSwitch, resetActiveFlowAfterBranchSwitch]);
 
     const {
         newFlowDialogOpen,
@@ -353,6 +339,8 @@ export default function OfflineWorkbench() {
         setNewFlowName,
         newFlowTimezone,
         setNewFlowTimezone,
+        newFlowCrossGroupDependency,
+        setNewFlowCrossGroupDependency,
         newFlowCreating,
         newFlowParentPath,
         setNewFlowParentPath,
@@ -372,7 +360,9 @@ export default function OfflineWorkbench() {
         deleteFlowDialogOpen,
         setDeleteFlowDialogOpen,
         deleteFlowName,
+        deleteFlowPath,
         deleteFlowLoading,
+        deleteFlowError,
         deleteFolderDialogOpen,
         setDeleteFolderDialogOpen,
         deleteFolderName,
@@ -453,6 +443,7 @@ export default function OfflineWorkbench() {
         executionContextDialogOpen,
         scheduleDialogOpen,
         parameterDialogOpen,
+        dependencyDialogOpen,
         openRootNewFlowDialog,
     });
 
@@ -480,7 +471,7 @@ export default function OfflineWorkbench() {
         });
         showFeedback(validation.feedback ?? {
             tone: 'success',
-            title: '已写入本机草稿，保存任务后生效',
+            title: '已写入本机草稿，自动保存后生效',
             detail: '',
         });
     }, [activeNodeId, flowDocument, saveNodeEditorDraft, showFeedback]);
@@ -528,7 +519,7 @@ export default function OfflineWorkbench() {
         showFeedback({
             tone: 'success',
             title: binding ? '参数组已暂存' : '已暂存解除绑定',
-            detail: '保存任务后生效',
+            detail: '自动保存后生效',
         });
     }, [setDraftSession, showFeedback]);
 
@@ -544,7 +535,7 @@ export default function OfflineWorkbench() {
         try {
             const committed = await commitRepository(commitMessage, {
                 saveCurrentFlowBeforeCommit: mode === 'save-and-commit' && activeFlowPath && isDirty
-                    ? () => handleSaveFlow(undefined, false)
+                    ? () => flushDraftNow()
                     : undefined,
                 afterCommit: refreshFlowCommitStatus,
             });
@@ -555,7 +546,7 @@ export default function OfflineWorkbench() {
         } finally {
             setCommitting(false);
         }
-    }, [groupId, activeFlowPath, commitMessage, isDirty, handleSaveFlow, commitRepository, refreshFlowCommitStatus]);
+    }, [groupId, activeFlowPath, commitMessage, isDirty, flushDraftNow, commitRepository, refreshFlowCommitStatus]);
 
     const handleOpenFlowCommitDialog = useCallback(() => {
         if (!groupId || !activeFlowPath || !flowDocument) return;
@@ -652,14 +643,16 @@ export default function OfflineWorkbench() {
                         nodeIssues={nodeIssues}
                         nodeStatuses={nodeStatuses}
                         dirty={isDirty}
-                        saving={savingFlow}
                         commitDirty={flowCommitDirty}
                         committing={committing}
                         staleDraft={!!staleDraft}
+                        draftSaveState={draftSaveState}
+                        draftSavedAt={draftSavedAt}
+                        draftSaveError={draftSaveError}
                         onSelectAllNodes={handleSelectAllNodes}
-                        onSaveFlow={() => void handleSaveFlow()}
                         onOpenFlowCommitDialog={handleOpenFlowCommitDialog}
                         onOpenScheduleDialog={handleOpenScheduleDialog}
+                        onOpenDependencyDialog={() => setDependencyDialogOpen(true)}
                         onOpenParameterDialog={() => setParameterDialogOpen(true)}
                         onExecute={() => void handleExecute()}
                         onOpenExecutionDialog={openExecutionDialog}
@@ -722,10 +715,15 @@ export default function OfflineWorkbench() {
                 onConfirm={() => void handleConfirmExecution()}
             />
 
-            <ScheduleDialog
+            <DependencyAwareScheduleDialog
+                groupId={groupId}
+                path={activeFlowPath}
+                dependencyConfig={flowDocument?.dependencyConfig}
+                savedPeriod={draftSession?.baseDocument.schedule?.period ?? null}
                 open={scheduleDialogOpen}
                 schedule={schedule}
                 cron={scheduleCron || ''}
+                period={schedulePeriod}
                 timezone={scheduleTimezone || ''}
                 saving={scheduleSaving}
                 flowId={flowDocument?.flowId ?? null}
@@ -737,10 +735,26 @@ export default function OfflineWorkbench() {
                         void loadScheduleSnapshot(activeFlowPath);
                     }
                 }}
-                onCronChange={setScheduleCron}
+                onPeriodChange={changeSchedulePeriod}
                 onSave={() => void handleScheduleSave()}
                 onToggle={(enabled) => void handleScheduleToggle(enabled)}
             />
+
+            {dependencyDialogOpen && groupId && flowDocument && flowDocument.groupId === groupId ? (
+                <DependencyDialog
+                    key={`${groupId}:${activeFlowPath}`}
+                    groupId={groupId}
+                    document={flowDocument}
+                    canWrite={canWrite}
+                    onClose={() => setDependencyDialogOpen(false)}
+                    onStage={(config) => {
+                        if (!canWrite) return;
+                        setDraftSession((current) => current ? updateFlowDependencyDraft(current, config) : current);
+                        setDependencyDialogOpen(false);
+                        showFeedback({ tone: 'success', title: '依赖配置已暂存', detail: '自动保存后写入仓库' });
+                    }}
+                />
+            ) : null}
 
             {groupId && flowDocument ? (
                 <FlowParameterDialog
@@ -811,6 +825,8 @@ export default function OfflineWorkbench() {
                     name: newFlowName,
                     parentPath: newFlowParentPath,
                     timezone: newFlowTimezone,
+                    crossGroupDependency: newFlowCrossGroupDependency,
+                    onCrossGroupDependencyChange: setNewFlowCrossGroupDependency,
                     pending: newFlowCreating,
                     onOpenChange: setNewFlowDialogOpen,
                     onNameChange: setNewFlowName,
@@ -829,6 +845,9 @@ export default function OfflineWorkbench() {
                     onSubmit: () => void handleCreateFolder(),
                 }}
                 deleteFlow={{
+                    groupId,
+                    path: deleteFlowPath,
+                    error: deleteFlowError,
                     open: deleteFlowDialogOpen,
                     name: deleteFlowName,
                     pending: deleteFlowLoading,
@@ -872,13 +891,6 @@ export default function OfflineWorkbench() {
                     onOpenDeleteFlow: openDeleteFlowDialogFromContext,
                     onOpenDeleteFolder: openDeleteFolderDialogFromContext,
                 }}
-            />
-
-            <UnsavedChangesDialog
-                open={pendingNavigation !== null}
-                onOpenChange={(open) => { if (!open) handleCancelLeave(); }}
-                onSave={() => void handleConfirmLeave('save')}
-                onDiscard={() => void handleConfirmLeave('discard')}
             />
 
         </section>

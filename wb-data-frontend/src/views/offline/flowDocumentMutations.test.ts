@@ -8,7 +8,6 @@ import {
     applyFlowCanvasNodes,
     flattenFlowDocumentNodes,
     renameFlowNode,
-    validateFlowDocumentGraph,
 } from './flowDocumentMutations';
 
 type TestOfflineFlowDocument = OfflineFlowDocument & { content: string };
@@ -51,6 +50,7 @@ function makeDocument(overrides: Partial<TestOfflineFlowDocument> = {}): TestOff
             cron: '* * * * *',
             timezone: 'Asia/Singapore',
             enabled: true,
+            period: 'CUSTOM',
         },
         ...overrides,
     };
@@ -249,53 +249,3 @@ describe('applyFlowCanvasEdges and applyFlowCanvasLayout', () => {
     });
 });
 
-describe('validateFlowDocumentGraph', () => {
-    it('rejects edges whose endpoints are not present in the document', () => {
-        expect(validateFlowDocumentGraph(makeDocument({
-            edges: [{ source: 'shell_node_1', target: 'missing_node' }],
-        }))).toEqual({ valid: false, reason: 'dangling-edge' });
-    });
-
-    it('rejects cycles and disconnected graphs while accepting a normal chain', () => {
-        expect(validateFlowDocumentGraph(makeDocument({
-            edges: [
-                { source: 'shell_node_1', target: 'shell_node_2' },
-                { source: 'shell_node_2', target: 'shell_node_1' },
-            ],
-        }))).toEqual({ valid: false, reason: 'cycle' });
-
-        expect(validateFlowDocumentGraph(makeDocument({ edges: [] }))).toEqual({
-            valid: false,
-            reason: 'disconnected',
-        });
-
-        expect(validateFlowDocumentGraph(makeDocument())).toEqual({ valid: true });
-    });
-
-    it('rejects a one-node self-loop', () => {
-        const oneNodeDocument = makeDocument({
-            stages: [
-                {
-                    stageId: 'main',
-                    parallel: false,
-                    nodes: [
-                        {
-                            taskId: 'shell_node_1',
-                            kind: 'SHELL',
-                            scriptPath: 'scripts/jack/demo/shell_node_1.sh',
-                            scriptContent: 'echo one',
-                        },
-                    ],
-                },
-            ],
-            edges: [],
-            layout: { shell_node_1: { x: 100, y: 200 } },
-        });
-
-        expect(validateFlowDocumentGraph(oneNodeDocument)).toEqual({ valid: true });
-        expect(validateFlowDocumentGraph(makeDocument({
-            ...oneNodeDocument,
-            edges: [{ source: 'shell_node_1', target: 'shell_node_1' }],
-        }))).toEqual({ valid: false, reason: 'cycle' });
-    });
-});

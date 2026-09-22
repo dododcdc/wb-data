@@ -218,6 +218,8 @@ vi.mock('../../api/offline', async () => {
         getOfflineRepoRemote: vi.fn(),
         getOfflineFlowDocument: vi.fn(),
         getOfflineSchedule: vi.fn(),
+        getOfflineDependents: vi.fn().mockResolvedValue([]),
+        searchOfflineDependencyCandidates: vi.fn().mockResolvedValue([]),
         saveOfflineFlowDocument: vi.fn(),
         deleteOfflineFlow: vi.fn(),
         deleteOfflineFolder: vi.fn(),
@@ -512,6 +514,7 @@ describe('OfflineWorkbench commit UI', () => {
             cron: '',
             timezone: null,
             enabled: false,
+            period: 'CUSTOM',
             contentHash: 'schedule-hash',
             fileUpdatedAt: 100,
         });
@@ -565,6 +568,54 @@ describe('OfflineWorkbench commit UI', () => {
         });
     });
 
+    it('stages dependency settings with canvas edits and keeps business errors out of overwrite recovery', { timeout: 20000 }, async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.permissions = ['offline.write'];
+        const error = new AxiosError('blocked', undefined, undefined, undefined, {
+            status: 422, statusText: 'Unprocessable Entity', headers: {}, config: { headers: new AxiosHeaders() },
+            data: { message: '存在跨项目组下游依赖，请先解除依赖' },
+        });
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockRejectedValue(error);
+        renderOfflineWorkbench();
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+        fireEvent.click(screen.getByRole('button', { name: '模拟画布修改' }));
+        fireEvent.click(screen.getByRole('button', { name: '依赖' }));
+        const dialog = await screen.findByRole('dialog');
+        const stage = within(dialog).getByRole('button', { name: '暂存配置' });
+        await waitFor(() => expect((stage as HTMLButtonElement).disabled).toBe(false));
+        fireEvent.click(within(dialog).getByRole('switch', { name: '允许被其他项目组依赖' }));
+        fireEvent.click(stage);
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        expect(offlineApi.saveOfflineFlowDocument).not.toHaveBeenCalled();
+
+        // 自动保存触发后业务错误进入状态指示而不是 toast 打断（D3）
+        await waitFor(() => {
+            expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledWith(expect.objectContaining({
+                dependencyConfig: { dependencies: [], failurePolicy: 'CONTINUE', crossGroupDependency: 'DENY' },
+                layout: { node_1: { x: 32, y: 48 } },
+                documentHash: 'base-hash',
+            }));
+        }, { timeout: 10000 });
+        expect(await screen.findByText('保存失败')).toBeTruthy();
+        expect(feedbackSpy).not.toHaveBeenCalledWith(expect.objectContaining({ tone: 'error' }));
+    });
+
+    it('cancels dependency edits without making the Flow dirty', async () => {
+        authState.permissions = ['offline.write'];
+        renderOfflineWorkbench();
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+        fireEvent.click(screen.getByRole('button', { name: '依赖' }));
+        const dialog = await screen.findByRole('dialog');
+        await waitFor(() => expect((within(dialog).getByRole('button', { name: '暂存配置' }) as HTMLButtonElement).disabled).toBe(false));
+        fireEvent.click(within(dialog).getByRole('switch', { name: '允许被其他项目组依赖' }));
+        fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        // 取消后草稿无变化，不出现待自动保存状态
+        expect(screen.queryByText('待自动保存')).toBeNull();
+    });
+
     it('stages and saves a parameter group binding from the Flow toolbar', async () => {
         const offlineApi = await import('../../api/offline');
         authState.permissions = ['offline.write', 'parameter.read'];
@@ -574,6 +625,7 @@ describe('OfflineWorkbench commit UI', () => {
                 cron: '0 2 * * *',
                 timezone: 'Asia/Shanghai',
                 enabled: true,
+                period: 'DAILY',
             },
         });
         vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue({
@@ -607,8 +659,8 @@ describe('OfflineWorkbench commit UI', () => {
         await waitFor(() => {
             expect(screen.queryByRole('dialog', { name: '任务参数' })).toBeNull();
         });
-        fireEvent.click(screen.getByRole('button', { name: '保存任务' }));
 
+        // 自动保存在防抖后把暂存的参数绑定写入草稿
         await waitFor(() => {
             expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledWith(expect.objectContaining({
                 parameterBinding: {
@@ -616,7 +668,7 @@ describe('OfflineWorkbench commit UI', () => {
                     expectedVersion: 3,
                 },
             }));
-        });
+        }, { timeout: 10000 });
     }, 15000);
 
     it('hides repo commit and push from developers', async () => {
@@ -659,7 +711,7 @@ describe('OfflineWorkbench commit UI', () => {
         });
     });
 
-    it('stabilizes transfer draft reporting when opening a transfer node editor', async () => {
+    it('stabilizes transfer draft reporting when opening a transfer node editor', { timeout: 15000 }, async () => {
         const offlineApi = await import('../../api/offline');
         authState.currentGroup = { id: 1, name: 'Team' };
         authState.permissions = ['offline.write'];
@@ -828,11 +880,16 @@ describe('OfflineWorkbench commit UI', () => {
         expect(screen.getByRole('button', { name: '打开提交仓库改动' })).toBeTruthy();
     });
 
-    it('asks group admins to discard unsaved canvas draft before switching branch', async () => {
+    it('flushes the dirty draft before switching branch without a discard dialog', async () => {
         const offlineApi = await import('../../api/offline');
         authState.currentGroup = { id: 1, name: 'Team' };
         authState.permissions = ['offline.write', 'group.settings'];
         vi.mocked(offlineApi.switchBranch).mockResolvedValueOnce(null);
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue({
+            ...makeFlowDocument(),
+            documentHash: 'saved-hash',
+            documentUpdatedAt: 101,
+        });
 
         renderOfflineWorkbench();
         fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
@@ -842,9 +899,11 @@ describe('OfflineWorkbench commit UI', () => {
         fireEvent.click(screen.getByRole('button', { name: /切换分支，当前 main/ }));
         fireEvent.click(await screen.findByRole('button', { name: /切换到 dev/ }));
 
-        expect(await screen.findByRole('dialog', { name: '放弃画布草稿并切换分支' })).toBeTruthy();
-        fireEvent.click(screen.getByRole('button', { name: '放弃草稿并切换' }));
-
+        // 自动保存模型下不再要求放弃草稿：先 flush 再切换
+        expect(screen.queryByRole('dialog', { name: '放弃画布草稿并切换分支' })).toBeNull();
+        await waitFor(() => {
+            expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalled();
+        });
         await waitFor(() => {
             expect(offlineApi.switchBranch).toHaveBeenCalledWith(1, 'dev');
         });
@@ -897,7 +956,7 @@ describe('OfflineWorkbench commit UI', () => {
         });
     });
 
-    it('preserves queued add and rename canvas mutations in the saved payload', async () => {
+    it('preserves queued add and rename canvas mutations in the saved payload', { timeout: 15000 }, async () => {
         const offlineApi = await import('../../api/offline');
         authState.currentGroup = { id: 1, name: 'Team' };
         authState.permissions = ['offline.write'];
@@ -912,11 +971,10 @@ describe('OfflineWorkbench commit UI', () => {
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: '模拟连续新增和重命名' }));
-        fireEvent.click(screen.getByRole('button', { name: '保存任务' }));
 
         await waitFor(() => {
             expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalled();
-        });
+        }, { timeout: 10000 });
 
         const payload = vi.mocked(offlineApi.saveOfflineFlowDocument).mock.calls[0][0];
         const savedNodes = payload.stages.flatMap((stage) => stage.nodes);
@@ -933,7 +991,7 @@ describe('OfflineWorkbench commit UI', () => {
         expect(payload.edges).toEqual([{ source: 'renamed_node', target: 'shell_node_1' }]);
     });
 
-    it('renames a newly added canvas node before saving when both happen in one canvas event', async () => {
+    it('renames a newly added canvas node before saving when both happen in one canvas event', { timeout: 15000 }, async () => {
         const offlineApi = await import('../../api/offline');
         authState.currentGroup = { id: 1, name: 'Team' };
         authState.permissions = ['offline.write'];
@@ -948,11 +1006,10 @@ describe('OfflineWorkbench commit UI', () => {
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: '模拟新增后重命名新增节点' }));
-        fireEvent.click(screen.getByRole('button', { name: '保存任务' }));
 
         await waitFor(() => {
             expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalled();
-        });
+        }, { timeout: 10000 });
 
         const payload = vi.mocked(offlineApi.saveOfflineFlowDocument).mock.calls[0][0];
         const savedNodes = payload.stages.flatMap((stage) => stage.nodes);
@@ -987,7 +1044,7 @@ describe('OfflineWorkbench commit UI', () => {
         });
     });
 
-    it('blocks save and shows generic graph feedback when the draft has a dangling edge', async () => {
+    it('persists drafts with a dangling edge as valid intermediate state', { timeout: 15000 }, async () => {
         const offlineApi = await import('../../api/offline');
         authState.currentGroup = { id: 1, name: 'Team' };
         authState.permissions = ['offline.write'];
@@ -1002,19 +1059,14 @@ describe('OfflineWorkbench commit UI', () => {
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: '模拟悬空连线' }));
-        fireEvent.click(screen.getByRole('button', { name: '保存任务' }));
 
+        // 草稿允许中间态：悬空连线也可持久化，不再拦截保存
         await waitFor(() => {
-            expect(feedbackSpy).toHaveBeenCalledWith({
-                tone: 'error',
-                title: '保存失败',
-                detail: '',
-            });
-        });
-        expect(offlineApi.saveOfflineFlowDocument).not.toHaveBeenCalled();
+            expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalled();
+        }, { timeout: 10000 });
     });
 
-    it('stages schedule changes before saving, committing, and pushing the current Flow', async () => {
+    it('stages schedule changes before saving, committing, and pushing the current Flow', { timeout: 20000 }, async () => {
         const offlineApi = await import('../../api/offline');
         authState.currentGroup = { id: 1, name: 'Team' };
         authState.permissions = ['offline.write', 'group.settings'];
@@ -1023,9 +1075,10 @@ describe('OfflineWorkbench commit UI', () => {
             documentHash: 'saved-hash',
             documentUpdatedAt: 101,
             schedule: {
-                cron: '* * * * *',
+                cron: '0 * * * *',
                 timezone: 'Asia/Shanghai',
                 enabled: true,
+                period: 'HOURLY',
             },
         });
         vi.mocked(offlineApi.commitOfflineCurrentFlow).mockResolvedValue({ success: true, message: 'flow committed' });
@@ -1043,36 +1096,37 @@ describe('OfflineWorkbench commit UI', () => {
 
         fireEvent.click(screen.getByRole('button', { name: '调度' }));
         const scheduleDialog = await screen.findByRole('dialog', { name: '调度配置' });
-        const timezoneInput = within(scheduleDialog).getByLabelText<HTMLInputElement>('任务运行时区');
-        expect(timezoneInput.value).toBe('Asia/Shanghai');
-        expect(timezoneInput.disabled).toBe(true);
-        expect(within(scheduleDialog).getByText('开或关都只写入草稿；推送到远程后才会真正生效')).toBeTruthy();
+        expect(within(scheduleDialog).getByText('任务时区：Asia/Shanghai')).toBeTruthy();
+        expect(within(scheduleDialog).getByText('暂存后自动保存草稿，提交并推送、同步成功后生效')).toBeTruthy();
         await waitFor(() => {
-            expect(within(scheduleDialog).getByText('尚未配置 Git 远程')).toBeTruthy();
+            expect(within(scheduleDialog).getByText('尚未配置 Git 远程，暂时无法发布调度')).toBeTruthy();
         });
+        // 存量非标准 cron：提示覆盖并禁止暂存，选择标准周期后放开
+        expect(within(scheduleDialog).getByText(/非标准 Cron 表达式/)).toBeTruthy();
+        expect((within(scheduleDialog).getByRole('button', { name: '暂存配置' }) as HTMLButtonElement).disabled).toBe(true);
         expect((within(scheduleDialog).getByRole('switch', { name: '启用调度' }) as HTMLButtonElement).disabled).toBe(false);
-        const cronInputs = scheduleDialog.querySelectorAll<HTMLInputElement>('.offline-segmented-cron-input');
-        fireEvent.change(cronInputs[0], { target: { value: '' } });
-        fireEvent.change(cronInputs[1], { target: { value: '' } });
+        fireEvent.click(within(scheduleDialog).getByRole('radio', { name: '每小时' }));
+        expect((within(scheduleDialog).getByRole('button', { name: '暂存配置' }) as HTMLButtonElement).disabled).toBe(false);
         fireEvent.click(within(scheduleDialog).getByRole('switch', { name: '启用调度' }));
         fireEvent.click(within(scheduleDialog).getByRole('button', { name: '暂存配置' }));
 
         await waitFor(() => {
             expect(screen.queryByRole('dialog', { name: '调度配置' })).toBeNull();
         });
-        fireEvent.click(screen.getByRole('button', { name: '保存任务' }));
 
+        // 暂存的调度配置经自动保存写入草稿
         await waitFor(() => {
             expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledWith(expect.objectContaining({
                 groupId: 1,
                 path: '_flows/example/flow.yaml',
                 schedule: {
-                    cron: '* * * * *',
+                    cron: '0 * * * *',
                     timezone: 'Asia/Shanghai',
                     enabled: true,
+                    period: 'HOURLY',
                 },
             }));
-        });
+        }, { timeout: 10000 });
 
         fireEvent.click(screen.getByRole('button', { name: '提交当前任务' }));
         fireEvent.change(await screen.findByPlaceholderText(/简要描述本次修改/), { target: { value: 'schedule flow commit' } });
@@ -1091,54 +1145,7 @@ describe('OfflineWorkbench commit UI', () => {
         });
     });
 
-    it('keeps the current Flow open when cancelling dirty Flow navigation', async () => {
-        const offlineApi = await import('../../api/offline');
-        authState.currentGroup = { id: 1, name: 'Team' };
-        authState.permissions = ['offline.write'];
-        vi.mocked(offlineApi.getOfflineRepoTree).mockResolvedValue(makeRepoTree({ includeSecondFlow: true }));
-        vi.mocked(offlineApi.getOfflineFlowDocument).mockImplementation(async (_groupId, path) => makeFlowDocumentForPath(path));
-
-        renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
-        expect((await screen.findByTestId('flow-canvas')).textContent).toContain('_flows/example/flow.yaml');
-
-        fireEvent.click(screen.getByRole('button', { name: '模拟画布修改' }));
-        fireEvent.click(await screen.findByRole('button', { name: 'Second Flow' }));
-
-        const dialog = await screen.findByRole('dialog', { name: '您有未保存的更改' });
-        fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
-
-        await waitFor(() => {
-            expect(screen.queryByRole('dialog', { name: '您有未保存的更改' })).toBeNull();
-        });
-        expect(screen.getByTestId('flow-canvas').textContent).toContain('_flows/example/flow.yaml');
-        expect(offlineApi.getOfflineFlowDocument).not.toHaveBeenCalledWith(1, '_flows/second/flow.yaml');
-    });
-
-    it('opens the target Flow after discarding dirty Flow navigation', async () => {
-        const offlineApi = await import('../../api/offline');
-        authState.currentGroup = { id: 1, name: 'Team' };
-        authState.permissions = ['offline.write'];
-        vi.mocked(offlineApi.getOfflineRepoTree).mockResolvedValue(makeRepoTree({ includeSecondFlow: true }));
-        vi.mocked(offlineApi.getOfflineFlowDocument).mockImplementation(async (_groupId, path) => makeFlowDocumentForPath(path));
-
-        renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
-        expect((await screen.findByTestId('flow-canvas')).textContent).toContain('_flows/example/flow.yaml');
-
-        fireEvent.click(screen.getByRole('button', { name: '模拟画布修改' }));
-        fireEvent.click(await screen.findByRole('button', { name: 'Second Flow' }));
-
-        const dialog = await screen.findByRole('dialog', { name: '您有未保存的更改' });
-        fireEvent.click(within(dialog).getByRole('button', { name: '放弃修改' }));
-
-        await waitFor(() => {
-            expect(offlineApi.getOfflineFlowDocument).toHaveBeenCalledWith(1, '_flows/second/flow.yaml');
-        });
-        expect((await screen.findByTestId('flow-canvas')).textContent).toContain('_flows/second/flow.yaml');
-    });
-
-    it('saves before opening the target Flow during dirty Flow navigation', async () => {
+    it('flushes the dirty draft and opens the target Flow without any navigation dialog', { timeout: 15000 }, async () => {
         const offlineApi = await import('../../api/offline');
         authState.currentGroup = { id: 1, name: 'Team' };
         authState.permissions = ['offline.write'];
@@ -1157,9 +1164,8 @@ describe('OfflineWorkbench commit UI', () => {
         fireEvent.click(screen.getByRole('button', { name: '模拟画布修改' }));
         fireEvent.click(await screen.findByRole('button', { name: 'Second Flow' }));
 
-        const dialog = await screen.findByRole('dialog', { name: '您有未保存的更改' });
-        fireEvent.click(within(dialog).getByRole('button', { name: '保存并离开' }));
-
+        // 自动保存模型下不再弹「未保存的更改」：切换前自动 flush，随后直接打开目标任务
+        expect(screen.queryByRole('dialog', { name: '您有未保存的更改' })).toBeNull();
         await waitFor(() => {
             expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledWith(expect.objectContaining({
                 groupId: 1,
@@ -1251,6 +1257,7 @@ describe('OfflineWorkbench destructive confirmations', () => {
             cron: '',
             timezone: null,
             enabled: false,
+            period: 'CUSTOM',
             contentHash: 'schedule-hash',
             fileUpdatedAt: 100,
         });
@@ -1270,11 +1277,13 @@ describe('OfflineWorkbench destructive confirmations', () => {
 
         const dialog = await openFlowDeleteDialog();
         expect(screen.getByRole('heading', { name: '确认删除任务' })).toBeTruthy();
-
-        fireEvent.click(screen.getByRole('button', { name: '删除' }));
+        await waitFor(() => {
+            expect((within(dialog).getByRole('button', { name: '删除' }) as HTMLButtonElement).disabled).toBe(false);
+        });
+        fireEvent.click(within(dialog).getByRole('button', { name: '删除' }));
 
         await waitFor(() => {
-            expect((screen.getByRole('button', { name: '处理中...' }) as HTMLButtonElement).disabled).toBe(true);
+            expect((screen.getByRole('button', { name: '删除中…' }) as HTMLButtonElement).disabled).toBe(true);
             expect((screen.getByRole('button', { name: '取消' }) as HTMLButtonElement).disabled).toBe(true);
         });
 

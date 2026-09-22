@@ -6,6 +6,7 @@ import {
     renameOfflineFlow,
     renameOfflineFolder,
     saveOfflineFlowDocument,
+    type OfflineCrossGroupDependency,
     type OfflineRepoTreeNode,
 } from '../../api/offline';
 import type { FeedbackPayload } from '../../hooks/useOperationFeedback';
@@ -68,6 +69,7 @@ export function useOfflineTreeMutations({
     const [newFlowCreating, setNewFlowCreating] = useState(false);
     const [newFlowParentPath, setNewFlowParentPath] = useState('');
     const [newFlowTimezone, setNewFlowTimezone] = useState(defaultTimezone || 'Asia/Shanghai');
+    const [newFlowCrossGroupDependency, setNewFlowCrossGroupDependency] = useState<OfflineCrossGroupDependency>('ALLOW');
     const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
     const [newFolderCreating, setNewFolderCreating] = useState(false);
@@ -80,6 +82,7 @@ export function useOfflineTreeMutations({
     const [deleteFlowName, setDeleteFlowName] = useState('');
     const [deleteFlowPath, setDeleteFlowPath] = useState('');
     const [deleteFlowLoading, setDeleteFlowLoading] = useState(false);
+    const [deleteFlowError, setDeleteFlowError] = useState('');
     const [deleteFolderDialogOpen, setDeleteFolderDialogOpen] = useState(false);
     const [deleteFolderName, setDeleteFolderName] = useState('');
     const [deleteFolderPath, setDeleteFolderPath] = useState('');
@@ -118,6 +121,11 @@ export function useOfflineTreeMutations({
                 edges: [],
                 layout: {},
                 runtimeTimezone: newFlowTimezone || defaultTimezone || 'Asia/Shanghai',
+                dependencyConfig: {
+                    dependencies: [],
+                    failurePolicy: 'CONTINUE',
+                    crossGroupDependency: newFlowCrossGroupDependency,
+                },
             });
             setNewFlowDialogOpen(false);
             setNewFlowName('');
@@ -134,7 +142,7 @@ export function useOfflineTreeMutations({
         } finally {
             setNewFlowCreating(false);
         }
-    }, [defaultTimezone, groupId, newFlowName, newFlowParentPath, newFlowTimezone, openFlowDocument, refreshRepoTree, showFeedback]);
+    }, [defaultTimezone, groupId, newFlowName, newFlowParentPath, newFlowTimezone, newFlowCrossGroupDependency, openFlowDocument, refreshRepoTree, showFeedback]);
 
     const handleCreateFolder = useCallback(async () => {
         if (!groupId || !newFolderName.trim()) return;
@@ -163,6 +171,7 @@ export function useOfflineTreeMutations({
     const handleDeleteFlow = useCallback(async () => {
         if (!groupId || !deleteFlowPath) return;
         setDeleteFlowLoading(true);
+        setDeleteFlowError('');
         try {
             await deleteOfflineFlow(groupId, deleteFlowPath);
             setDeleteFlowDialogOpen(false);
@@ -174,6 +183,7 @@ export function useOfflineTreeMutations({
             showFeedback({ tone: 'success', title: '任务已删除', detail: '' });
             await refreshRepoTree();
         } catch (error) {
+            setDeleteFlowError(getErrorMessage(error, '删除任务失败'));
             showFeedback({
                 tone: 'error',
                 title: getErrorMessage(error, '删除任务失败'),
@@ -322,6 +332,7 @@ export function useOfflineTreeMutations({
         setNewFlowParentPath(relativePath);
         setNewFlowName('');
         setNewFlowTimezone(defaultTimezone || 'Asia/Shanghai');
+        setNewFlowCrossGroupDependency('ALLOW');
         setNewFlowDialogOpen(true);
     }, [defaultTimezone]);
 
@@ -336,6 +347,7 @@ export function useOfflineTreeMutations({
     const openDeleteFlowDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
         setContextMenuOpen(false);
         setDeleteFlowPath(node.path);
+        setDeleteFlowError('');
         setDeleteFlowName(getFlowNameFromPath(node.path, node.name));
         setDeleteFlowDialogOpen(true);
     }, []);
@@ -368,6 +380,7 @@ export function useOfflineTreeMutations({
         setNewFlowParentPath('');
         setNewFlowName('');
         setNewFlowTimezone(defaultTimezone || 'Asia/Shanghai');
+        setNewFlowCrossGroupDependency('ALLOW');
         setNewFlowDialogOpen(true);
     }, [defaultTimezone]);
 
@@ -378,6 +391,8 @@ export function useOfflineTreeMutations({
         setNewFlowName,
         newFlowTimezone,
         setNewFlowTimezone,
+        newFlowCrossGroupDependency,
+        setNewFlowCrossGroupDependency,
         newFlowCreating,
         newFlowParentPath,
         setNewFlowParentPath,
@@ -399,6 +414,7 @@ export function useOfflineTreeMutations({
         deleteFlowName,
         deleteFlowPath,
         deleteFlowLoading,
+        deleteFlowError,
         deleteFolderDialogOpen,
         setDeleteFolderDialogOpen,
         deleteFolderName,

@@ -1,3 +1,4 @@
+import { MAX_TRANSFER_SQL_STATEMENTS, supportsTransferSql } from './transferTypes';
 import type { TransferConfig, TransferFieldMapping, TransferPartitionMapping } from './transferTypes';
 
 function isMapped(mapping: TransferFieldMapping | TransferPartitionMapping | undefined) {
@@ -21,6 +22,23 @@ export function validateTransferConfig(
 
     if (/^\s*where\b/i.test(config.source.where ?? '')) {
         errors.push('过滤条件无需填写 WHERE');
+    }
+
+    if (config.source.preSql?.length || config.source.postSql?.length) {
+        errors.push('来源不支持前置或后置 SQL，请移除来源 SQL 配置');
+    }
+    if ((config.target.preSql?.length || config.target.postSql?.length)
+        && !supportsTransferSql(config.target.dataSourceType)) {
+        errors.push('前置和后置 SQL 仅支持 MYSQL、POSTGRESQL、CLICKHOUSE 目标');
+    }
+    for (const [key, label] of [['preSql', '前置 SQL'], ['postSql', '后置 SQL']] as const) {
+        const statements = config.target[key] ?? [];
+        if (statements.length > MAX_TRANSFER_SQL_STATEMENTS) {
+            errors.push(`目标${label}最多配置 ${MAX_TRANSFER_SQL_STATEMENTS} 条`);
+        }
+        statements.forEach((sql, index) => {
+            if (!sql.trim()) errors.push(`目标${label}第 ${index + 1} 条不能为空`);
+        });
     }
 
     const endpointsComplete = Boolean(

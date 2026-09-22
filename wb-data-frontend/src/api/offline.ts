@@ -104,10 +104,13 @@ export interface OfflineFlowStage {
     nodes: OfflineFlowNode[];
 }
 
+export type OfflineSchedulePeriod = 'HOURLY' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'CUSTOM';
+
 export interface OfflineFlowSchedule {
     cron: string;
     timezone: string;
     enabled: boolean;
+    period: OfflineSchedulePeriod;
 }
 
 export interface FlowParameterDefinitionSnapshot {
@@ -159,6 +162,7 @@ export interface OfflineFlowDocument {
     edges: OfflineFlowEdge[];
     layout: Record<string, NodePosition>;
     schedule?: OfflineFlowSchedule | null;
+    dependencyConfig?: OfflineFlowDependencySettings;
     parameterBinding?: FlowParameterBinding | null;
 }
 
@@ -194,6 +198,7 @@ export interface SaveOfflineFlowDocumentRequest {
     edges?: SaveOfflineFlowEdgeRequest[];
     layout?: Record<string, NodePosition>;
     schedule?: OfflineFlowSchedule;
+    dependencyConfig?: OfflineFlowDependencySettings;
     parameterBinding?: FlowParameterBindingRequest | null;
     parameterBindings?: FlowParameterBindingRequest[] | null;
     runtimeTimezone: string;
@@ -313,6 +318,7 @@ export interface OfflineScheduleResponse {
     cron: string;
     timezone: string | null;
     enabled: boolean;
+    period: OfflineSchedulePeriod;
     contentHash: string;
     fileUpdatedAt: number;
 }
@@ -321,6 +327,7 @@ export interface UpdateOfflineScheduleRequest {
     groupId: number;
     path: string;
     cron: string;
+    period: OfflineSchedulePeriod;
     contentHash: string;
     fileUpdatedAt: number;
 }
@@ -331,6 +338,73 @@ export interface UpdateOfflineScheduleStatusRequest {
     enabled: boolean;
     contentHash: string;
     fileUpdatedAt: number;
+}
+
+export type OfflineFailurePolicy = 'CONTINUE' | 'PAUSE';
+
+export type OfflineCrossGroupDependency = 'ALLOW' | 'DENY';
+
+export interface OfflineFlowDependencyRef {
+    groupId: number;
+    flowId: string;
+}
+
+export interface OfflineFlowDependencySettings {
+    dependencies: OfflineFlowDependencyRef[];
+    failurePolicy: OfflineFailurePolicy;
+    crossGroupDependency: OfflineCrossGroupDependency;
+}
+
+export interface OfflineDependencyItem {
+    groupId: number;
+    groupName: string | null;
+    flowId: string;
+    path: string | null;
+    period: OfflineSchedulePeriod | null;
+    cron: string | null;
+    timezone: string | null;
+    enabled: boolean;
+    crossGroupDependency: OfflineCrossGroupDependency | null;
+}
+
+export interface OfflineDependencyConfig {
+    groupId: number;
+    path: string;
+    dependencies: OfflineDependencyItem[];
+    failurePolicy: OfflineFailurePolicy;
+    crossGroupDependency: OfflineCrossGroupDependency;
+    contentHash: string;
+    fileUpdatedAt: number;
+}
+
+export interface UpdateOfflineDependenciesRequest {
+    groupId: number;
+    path: string;
+    dependencies: OfflineFlowDependencyRef[];
+    failurePolicy: OfflineFailurePolicy;
+    crossGroupDependency: OfflineCrossGroupDependency;
+    contentHash: string;
+    fileUpdatedAt: number;
+}
+
+export interface OfflineDependencyCandidate {
+    groupId: number;
+    groupName: string | null;
+    flowId: string;
+    path: string;
+    hasSchedule: boolean;
+    period: OfflineSchedulePeriod | null;
+    cron: string | null;
+    timezone: string | null;
+    enabled: boolean;
+    crossGroupDependency: OfflineCrossGroupDependency;
+}
+
+export interface OfflineDependentItem {
+    groupId: number;
+    groupName: string | null;
+    flowId: string;
+    path: string;
 }
 
 export const getOfflineRepoStatus = (groupId: number) => {
@@ -504,6 +578,34 @@ export const updateOfflineScheduleStatus = (payload: UpdateOfflineScheduleStatus
             'Content-Type': 'application/json',
         },
     });
+};
+
+export const getOfflineDependencies = (groupId: number, path: string) => {
+    const params = new URLSearchParams({ path });
+    return request.get<unknown, OfflineDependencyConfig>(`${offlinePath(groupId, '/dependencies')}?${params.toString()}`);
+};
+
+export const updateOfflineDependencies = (payload: UpdateOfflineDependenciesRequest) => {
+    return request.put<unknown, OfflineDependencyConfig>(offlinePath(payload.groupId, '/dependencies'), omitGroupId(payload), {
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    });
+};
+
+export const searchOfflineDependencyCandidates = (groupId: number, path: string, keyword?: string) => {
+    const params = new URLSearchParams({ path });
+    if (keyword && keyword.trim()) {
+        params.set('keyword', keyword.trim());
+    }
+    return request.get<unknown, OfflineDependencyCandidate[]>(
+        `${offlinePath(groupId, '/dependencies/candidates')}?${params.toString()}`
+    );
+};
+
+export const getOfflineDependents = (groupId: number, path: string) => {
+    const params = new URLSearchParams({ path });
+    return request.get<unknown, OfflineDependentItem[]>(`${offlinePath(groupId, '/dependencies/dependents')}?${params.toString()}`);
 };
 
 export const deleteOfflineFlow = (groupId: number, path: string) => {

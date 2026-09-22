@@ -1,4 +1,4 @@
-import type { FlowParameterBinding, OfflineFlowDocument, OfflineFlowSchedule } from '../../api/offline';
+import type { FlowParameterBinding, OfflineFlowDependencySettings, OfflineFlowDocument, OfflineFlowSchedule } from '../../api/offline';
 import type { TransferConfig } from './transfer/transferTypes';
 
 import { buildFlowDocumentSignature } from './flowCanvasState';
@@ -40,6 +40,10 @@ function cloneDocument(document: OfflineFlowDocument): OfflineFlowDocument {
             Object.entries(document.layout).map(([taskId, position]) => [taskId, { ...position }]),
         ),
         schedule: document.schedule ? { ...document.schedule } : undefined,
+        dependencyConfig: document.dependencyConfig ? {
+            ...document.dependencyConfig,
+            dependencies: document.dependencyConfig.dependencies.map((ref) => ({ ...ref })),
+        } : undefined,
         parameterBinding: document.parameterBinding ? {
             ...document.parameterBinding,
             definitions: document.parameterBinding.definitions.map((definition) => ({ ...definition })),
@@ -215,6 +219,18 @@ export function updateFlowScheduleDraft(
         draft.schedule = {
             ...schedule,
             timezone: draft.runtimeTimezone ?? schedule.timezone,
+        };
+    });
+}
+
+export function updateFlowDependencyDraft(
+    session: FlowDraftSession,
+    config: OfflineFlowDependencySettings,
+): FlowDraftSession {
+    return updateFlowDraftDocument(session, (draft) => {
+        draft.dependencyConfig = {
+            ...config,
+            dependencies: config.dependencies.map((ref) => ({ ...ref })),
         };
     });
 }

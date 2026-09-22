@@ -42,6 +42,7 @@ function makeFlowDocument(overrides?: Partial<OfflineFlowDocument>): OfflineFlow
             cron: '0 2 * * *',
             timezone: 'Asia/Shanghai',
             enabled: true,
+            period: 'DAILY',
         },
         ...overrides,
     };
@@ -108,9 +109,30 @@ describe('flowSaveTransaction', () => {
                 cron: '0 2 * * *',
                 timezone: 'Asia/Shanghai',
                 enabled: true,
+                period: 'DAILY',
             },
             runtimeTimezone: 'Asia/Shanghai',
         });
+    });
+
+    it('saves dependency settings with canvas edits using the base version', () => {
+        const session = makeSession();
+        session.workingDraft.stages[0].nodes[0].scriptContent = 'draft script';
+        session.workingDraft.dependencyConfig = {
+            dependencies: [{ groupId: 2, flowId: 'upstream' }],
+            failurePolicy: 'PAUSE',
+            crossGroupDependency: 'DENY',
+        };
+        const request = buildSaveFlowDocumentRequest(1, session);
+        expect(request.dependencyConfig).toEqual(session.workingDraft.dependencyConfig);
+        expect(request.stages[0].nodes[0].scriptContent).toBe('draft script');
+        expect(request.documentHash).toBe('server-hash');
+    });
+
+    it('does not offer version overwrite for dependency business conflicts', () => {
+        const error = new AxiosError('存在下游任务依赖');
+        error.response = { status: 422, statusText: 'Unprocessable Entity', data: {}, headers: {}, config: {} as InternalAxiosRequestConfig };
+        expect(isSaveConflictError(error)).toBe(false);
     });
 
     it('rejects saving when the Flow runtime timezone is missing', () => {

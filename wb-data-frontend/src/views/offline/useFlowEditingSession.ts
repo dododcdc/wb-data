@@ -29,9 +29,9 @@ import {
     applyFlowCanvasNodes,
     flattenFlowDocumentNodes,
     renameFlowNode,
-    validateFlowDocumentGraph,
     type RenameFlowNodeFailureReason,
 } from './flowDocumentMutations';
+import { buildFlowDocumentSignature } from './flowCanvasState';
 import {
     buildRecoverySnapshotFromSession,
     createFlowDraftSession,
@@ -123,6 +123,9 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
     const [flowCommitDirty, setFlowCommitDirty] = useState(false);
     const [saveConflictState, setSaveConflictState] = useState<SaveConflictState | null>(null);
     const [saveConflictPending, setSaveConflictPending] = useState(false);
+    const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+    const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+    const [draftSaveError, setDraftSaveError] = useState<string | null>(null);
     const currentGroupIdRef = useRef<number | null>(groupId);
     const groupActionVersionRef = useRef(0);
     const draftSessionRef = useRef<FlowDraftSession | null>(null);
@@ -575,31 +578,16 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         return saveOfflineFlowDocument(buildSaveFlowDocumentRequest(groupId, sessionForSave));
     }, [groupId]);
 
-    const saveFlow = useCallback(async (nodeOverride?: PendingNodeOverrideForSave, silent = false) => {
-        const currentSession = draftSessionRef.current;
-        if (!groupId || !activeFlowPath || !currentSession) return false;
-        const prepared = prepareCurrentSessionForSave(nodeOverride);
+    // 草稿持久化（自动保存与强制 flush 共用）：不做图校验与动作校验，草稿允许中间态；
+    // 校验只发生在提交（commitCurrentFlow）与执行前。
+    const persistDraft = useCallback(async (options?: { refreshRepo?: boolean; nodeOverride?: PendingNodeOverrideForSave }): Promise<boolean> => {
+        if (!groupId || !activeFlowPath) return false;
+        const prepared = prepareCurrentSessionForSave(options?.nodeOverride);
         if (!prepared) return false;
-
-        if (!validateDocumentForAction(prepared.sessionForSave.workingDraft, prepared.nodeOverride)) {
-            return false;
-        }
         const sessionForSave = prepared.sessionForSave;
-        const draftDocument = sessionForSave.workingDraft;
-
-        const graphValidation = validateFlowDocumentGraph(draftDocument);
-        if (!graphValidation.valid) {
-            showFeedback({
-                tone: 'error',
-                title: '保存失败',
-                detail: graphValidation.reason === 'disconnected'
-                    ? '画布中存在未连接的节点，请将所有节点连入一张依赖图。'
-                    : '',
-            });
-            return false;
-        }
 
         setSavingFlow(true);
+        setDraftSaveState('saving');
         try {
             setDraftSessionSync(sessionForSave);
 
@@ -607,14 +595,13 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             const nextSession = rebaseFlowDraftSession(sessionForSave, response);
             setDraftSessionSync(nextSession);
             removeRecoverySnapshot(groupId, sessionForSave.path);
-            await Promise.all([refreshRepoStatus(), refreshCurrentFlowCommitStatus()]);
-            if (!silent) {
-                showFeedback({
-                    tone: 'success',
-                    title: '任务已保存',
-                    detail: '',
-                });
-            }
+            await Promise.all([
+                refreshCurrentFlowCommitStatus(),
+                options?.refreshRepo ? refreshRepoStatus() : Promise.resolve(),
+            ]);
+            setDraftSaveState('saved');
+            setDraftSavedAt(Date.now());
+            setDraftSaveError(null);
             return true;
         } catch (error) {
             if (isSaveConflictError(error)) {
@@ -623,13 +610,12 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
                     path: sessionForSave.path,
                     pendingSession: sessionForSave,
                 });
+                // 冲突弹窗期间暂停自动保存，待用户裁决后恢复
+                setDraftSaveState('idle');
                 return false;
             }
-            showFeedback({
-                tone: 'error',
-                title: '保存失败',
-                detail: getErrorMessage(error, ''),
-            });
+            setDraftSaveState('error');
+            setDraftSaveError(getErrorMessage(error, ''));
             return false;
         } finally {
             setSavingFlow(false);
@@ -642,9 +628,24 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         refreshCurrentFlowCommitStatus,
         refreshRepoStatus,
         setDraftSessionSync,
-        showFeedback,
-        validateDocumentForAction,
     ]);
+
+    const flushDraftNow = useCallback(async (): Promise<boolean> => persistDraft(), [persistDraft]);
+
+    // 自动保存：工作草稿内容变化后防抖 2s 静默持久化。
+    // 节点编辑器打开时不自动保存（避免打字中 flush 打断输入）；保存冲突未裁决前暂停。
+    const workingDraftSignature = draftSession ? buildFlowDocumentSignature(draftSession.workingDraft) : null;
+    const baseDraftSignature = draftSession ? buildFlowDocumentSignature(draftSession.baseDocument) : null;
+    const draftDirtyNow = draftSession !== null && workingDraftSignature !== baseDraftSignature;
+    useEffect(() => {
+        if (!draftDirtyNow || saveConflictState || nodeEditorOpen) {
+            return;
+        }
+        const timer = setTimeout(() => {
+            void persistDraft();
+        }, 2000);
+        return () => clearTimeout(timer);
+    }, [draftDirtyNow, workingDraftSignature, saveConflictState, nodeEditorOpen, persistDraft]);
 
     const commitCurrentFlow = useCallback(async (
         message: string,
@@ -660,7 +661,11 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
                 && currentSession
                 && (hasFlowDraftChanges(currentSession) || pendingDraftChanged)
             ) {
-                const saved = await saveFlow(undefined, false);
+                // 提交前校验数据源/Transfer 完整性（不校验连通性，见提案 D2）
+                if (!validateDocumentForAction()) {
+                    return false;
+                }
+                const saved = await persistDraft({ refreshRepo: false });
                 if (!saved) return false;
             }
             const result = await commitOfflineCurrentFlow(groupId, activeFlowPath, message);
@@ -677,10 +682,11 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         activeFlowPath,
         groupId,
         pendingNodeEditorDraftRef,
+        persistDraft,
         refreshCurrentFlowCommitStatus,
         refreshRepoStatus,
-        saveFlow,
         showFeedback,
+        validateDocumentForAction,
     ]);
 
     const restoreStaleDraft = useCallback(() => {
@@ -797,6 +803,9 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         activeNode: activeNode as OfflineFlowNode | null,
         nodeCount,
         isDirty,
+        draftSaveState,
+        draftSavedAt,
+        draftSaveError,
         canvasNodesRef,
         canvasEdgesRef,
         setSelectedNodeId,
@@ -818,7 +827,8 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         updateCanvasNodes,
         updateCanvasEdges,
         commitCanvasLayout,
-        saveFlow,
+        persistDraft,
+        flushDraftNow,
         commitCurrentFlow,
         closeSaveConflict,
         discardSaveConflict,

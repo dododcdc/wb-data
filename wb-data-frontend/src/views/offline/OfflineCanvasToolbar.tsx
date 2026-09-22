@@ -1,10 +1,12 @@
 import {
     Braces,
+    Check,
+    CircleAlert,
     GitCommitHorizontal,
+    GitPullRequest,
     History,
     LoaderCircle,
     Play,
-    Save,
     Settings2,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -22,13 +24,15 @@ interface OfflineCanvasToolbarProps {
     nodeCount: number;
     selectedNodeCount: number;
     dirty: boolean;
-    saving: boolean;
     commitDirty: boolean;
     committing: boolean;
+    draftSaveState: 'idle' | 'saving' | 'saved' | 'error';
+    draftSavedAt: number | null;
+    draftSaveError: string | null;
     onSelectAll: (selected: boolean) => void;
-    onSave: () => void;
     onCommit: () => void;
     onOpenSchedule: () => void;
+    onOpenDependencies: () => void;
     onOpenParameters: () => void;
     onExecute: () => void;
     onOpenExecutions: () => void;
@@ -69,13 +73,15 @@ export function OfflineCanvasToolbar({
     nodeCount,
     selectedNodeCount,
     dirty,
-    saving,
     commitDirty,
     committing,
+    draftSaveState,
+    draftSavedAt,
+    draftSaveError,
     onSelectAll,
-    onSave,
     onCommit,
     onOpenSchedule,
+    onOpenDependencies,
     onOpenParameters,
     onExecute,
     onOpenExecutions,
@@ -95,16 +101,12 @@ export function OfflineCanvasToolbar({
                 全选
             </label>
 
-            <ToolbarButton
-                label="保存任务"
-                disabled={editDisabled || !dirty || saving}
-                onClick={onSave}
-            >
-                <span className="relative flex">
-                    {saving ? <LoaderCircle size={16} className="offline-spin" /> : <Save size={16} />}
-                    {dirty && <span className="offline-toolbar-dot" />}
-                </span>
-            </ToolbarButton>
+            <DraftSaveIndicator
+                state={draftSaveState}
+                savedAt={draftSavedAt}
+                error={draftSaveError}
+                dirty={dirty}
+            />
 
             <ToolbarButton
                 label="提交当前任务"
@@ -119,6 +121,10 @@ export function OfflineCanvasToolbar({
 
             <ToolbarButton label="调度" disabled={editDisabled} onClick={onOpenSchedule}>
                 <Settings2 size={16} />
+            </ToolbarButton>
+
+            <ToolbarButton label="依赖" disabled={!active} onClick={onOpenDependencies}>
+                <GitPullRequest size={16} />
             </ToolbarButton>
 
             <ToolbarButton
@@ -165,4 +171,56 @@ export function OfflineCanvasToolbar({
             ) : null}
         </header>
     );
+}
+
+interface DraftSaveIndicatorProps {
+    state: 'idle' | 'saving' | 'saved' | 'error';
+    savedAt: number | null;
+    error: string | null;
+    dirty: boolean;
+}
+
+function DraftSaveIndicator({ state, savedAt, error, dirty }: DraftSaveIndicatorProps) {
+    if (state === 'saving') {
+        return (
+            <span className="offline-canvas-save-indicator is-pending" role="status">
+                <LoaderCircle size={14} className="offline-spin" />
+                <span>保存中</span>
+            </span>
+        );
+    }
+    if (state === 'error') {
+        return (
+            <Tooltip>
+                <TooltipTrigger asChild>
+                    <span className="offline-canvas-save-indicator is-error" role="status">
+                        <CircleAlert size={14} />
+                        <span>保存失败</span>
+                    </span>
+                </TooltipTrigger>
+                <TooltipContent className="tooltip-content" side="bottom">
+                    {error || '自动保存失败，继续编辑将自动重试'}
+                </TooltipContent>
+            </Tooltip>
+        );
+    }
+    if (dirty) {
+        return (
+            <span className="offline-canvas-save-indicator is-pending" role="status">
+                <span>待自动保存</span>
+            </span>
+        );
+    }
+    if (state === 'saved' && savedAt) {
+        const time = new Date(savedAt);
+        const hh = String(time.getHours()).padStart(2, '0');
+        const mm = String(time.getMinutes()).padStart(2, '0');
+        return (
+            <span className="offline-canvas-save-indicator is-saved" role="status">
+                <Check size={14} />
+                <span>已保存 {hh}:{mm}</span>
+            </span>
+        );
+    }
+    return null;
 }

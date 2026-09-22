@@ -39,6 +39,7 @@ interface NewFlowShortcutParams {
     executionContextDialogOpen: boolean;
     scheduleDialogOpen: boolean;
     parameterDialogOpen: boolean;
+    dependencyDialogOpen: boolean;
     openRootNewFlowDialog: () => void;
 }
 
@@ -138,6 +139,7 @@ export function useOfflineWorkbenchNewFlowShortcut(params: NewFlowShortcutParams
         executionContextDialogOpen,
         scheduleDialogOpen,
         parameterDialogOpen,
+        dependencyDialogOpen,
         openRootNewFlowDialog,
     } = params;
 
@@ -145,12 +147,12 @@ export function useOfflineWorkbenchNewFlowShortcut(params: NewFlowShortcutParams
         const handleKeyDown = (event: KeyboardEvent) => {
             if ((event.metaKey || event.ctrlKey) && event.key === 'n') {
                 event.preventDefault();
-                if (!newFlowDialogOpen && !nodeEditorOpen && !executionDialogOpen && !executionContextDialogOpen && !scheduleDialogOpen && !parameterDialogOpen) {
+                if (!newFlowDialogOpen && !nodeEditorOpen && !executionDialogOpen && !executionContextDialogOpen && !scheduleDialogOpen && !parameterDialogOpen && !dependencyDialogOpen) {
                     openRootNewFlowDialog();
                 }
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [newFlowDialogOpen, nodeEditorOpen, executionDialogOpen, executionContextDialogOpen, scheduleDialogOpen, parameterDialogOpen, openRootNewFlowDialog]);
+    }, [newFlowDialogOpen, nodeEditorOpen, executionDialogOpen, executionContextDialogOpen, scheduleDialogOpen, parameterDialogOpen, dependencyDialogOpen, openRootNewFlowDialog]);
 }

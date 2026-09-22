@@ -25,6 +25,12 @@ export function getTransferWriteModes(hasPartitionMappings: boolean): readonly T
     return hasPartitionMappings ? partitionedTransferWriteModes : nonPartitionedTransferWriteModes;
 }
 
+export const MAX_TRANSFER_SQL_STATEMENTS = 5;
+
+export function supportsTransferSql(type: TransferDataSourceType): boolean {
+    return type === 'MYSQL' || type === 'POSTGRESQL' || type === 'CLICKHOUSE';
+}
+
 export interface TransferEndpointConfig {
     dataSourceId: number;
     dataSourceType: TransferDataSourceType;
@@ -32,6 +38,8 @@ export interface TransferEndpointConfig {
     table: string;
     where?: string;
     writeMode?: TransferWriteMode;
+    preSql?: string[];
+    postSql?: string[];
 }
 
 export interface TransferFieldMapping {

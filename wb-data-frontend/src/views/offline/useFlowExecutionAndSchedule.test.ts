@@ -82,12 +82,13 @@ describe('useFlowExecutionAndSchedule', () => {
 
     it('loads schedule from the draft before reading the backend', async () => {
         const offlineApi = await import('../../api/offline');
-        const document = {
+        const document: OfflineFlowDocument = {
             ...makeDocument(),
             schedule: {
                 cron: '* * * * *',
                 timezone: 'Asia/Singapore',
                 enabled: true,
+                period: 'CUSTOM',
             },
         };
         const { result } = renderExecutionAndSchedule({
@@ -135,6 +136,7 @@ describe('useFlowExecutionAndSchedule', () => {
                 cron: '0 7 * * *',
                 timezone: 'Asia/Shanghai',
                 enabled: false,
+                period: 'DAILY',
                 contentHash: 'hash-next',
                 fileUpdatedAt: 2,
             });
@@ -162,7 +164,7 @@ describe('useFlowExecutionAndSchedule', () => {
 
     it('does not reuse a different Flow draft schedule when switching flows', async () => {
         const offlineApi = await import('../../api/offline');
-        const previousDocument = {
+        const previousDocument: OfflineFlowDocument = {
             ...makeDocument(),
             path: '_flows/jack/codex_flow_jack_2153/flow.yaml',
             flowId: 'codex_flow_jack_2153',
@@ -170,6 +172,7 @@ describe('useFlowExecutionAndSchedule', () => {
                 cron: '* * * * *',
                 timezone: 'Asia/Singapore',
                 enabled: true,
+                period: 'CUSTOM',
             },
         };
         const nextPath = '_flows/codex_flow_session_2140/flow.yaml';
@@ -180,6 +183,7 @@ describe('useFlowExecutionAndSchedule', () => {
             cron: '* * * * *',
             timezone: 'Asia/Singapore',
             enabled: false,
+            period: 'CUSTOM',
             contentHash: 'hash-next',
             fileUpdatedAt: 2,
         });
@@ -216,9 +220,42 @@ describe('useFlowExecutionAndSchedule', () => {
                     cron: '* * * * *',
                     timezone: 'Asia/Shanghai',
                     enabled: true,
+                    period: 'DAILY',
                 },
             }),
         }));
+    });
+
+    it('regenerates cron when the schedule period changes', async () => {
+        const { result } = renderExecutionAndSchedule();
+
+        act(() => {
+            result.current.setScheduleCron('30 6 * * *');
+        });
+        act(() => {
+            result.current.changeSchedulePeriod('HOURLY');
+        });
+
+        expect(result.current.schedulePeriod).toBe('HOURLY');
+        expect(result.current.scheduleCron).toBe('30 * * * *');
+
+        act(() => {
+            result.current.changeSchedulePeriod('CUSTOM');
+        });
+
+        expect(result.current.schedulePeriod).toBe('CUSTOM');
+        expect(result.current.scheduleCron).toBe('30 * * * *');
+    });
+
+    it('builds cron from explicit parts when provided', async () => {
+        const { result } = renderExecutionAndSchedule();
+
+        act(() => {
+            result.current.changeSchedulePeriod('WEEKLY', { minute: 30, hour: 6, dayOfMonth: 1, dayOfWeek: 5, month: 1 });
+        });
+
+        expect(result.current.schedulePeriod).toBe('WEEKLY');
+        expect(result.current.scheduleCron).toBe('30 6 * * 5');
     });
 
     it('rejects enabling schedule when cron is invalid', async () => {
@@ -285,7 +322,7 @@ describe('useFlowExecutionAndSchedule', () => {
         const offlineApi = await import('../../api/offline');
         const document: OfflineFlowDocument = {
             ...makeDocument(),
-            schedule: { cron: '0 2 * * *', timezone: 'Asia/Shanghai', enabled: true },
+            schedule: { cron: '0 2 * * *', timezone: 'Asia/Shanghai', enabled: true, period: 'DAILY' },
             parameterBinding: {
                 parameterGroupId: 12,
                 code: 'daily_common',

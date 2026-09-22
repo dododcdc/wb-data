@@ -112,6 +112,7 @@ describe('useFlowEditingSession', () => {
                 cron: '0 2 * * *',
                 timezone: 'Asia/Shanghai',
                 enabled: true,
+                period: 'DAILY',
             },
         });
         vi.mocked(getOfflineFlowDocument).mockResolvedValue(serverDocument);
@@ -147,7 +148,7 @@ describe('useFlowEditingSession', () => {
 
         let saved = false;
         await act(async () => {
-            saved = await result.current.saveFlow();
+            saved = await result.current.flushDraftNow();
         });
 
         expect(saved).toBe(true);
@@ -160,6 +161,7 @@ describe('useFlowEditingSession', () => {
                 cron: '0 2 * * *',
                 timezone: 'Asia/Shanghai',
                 enabled: true,
+                period: 'DAILY',
             },
             stages: [
                 expect.objectContaining({
@@ -222,7 +224,7 @@ describe('useFlowEditingSession', () => {
         });
 
         await act(async () => {
-            await result.current.saveFlow();
+            await result.current.flushDraftNow();
         });
 
         expect(result.current.saveConflictState).toEqual(expect.objectContaining({
@@ -295,8 +297,7 @@ describe('useFlowEditingSession', () => {
         expect(commitOfflineCurrentFlow).toHaveBeenCalledWith(1, '_flows/jack/demo/flow.yaml', 'save then commit');
     });
 
-    it('keeps a flushed pending node editor draft when save validation fails before leaving', async () => {
-        const showFeedback = vi.fn();
+    it('persists drafts without datasource as valid intermediate state and keeps the pending draft in the recovery snapshot when leaving', async () => {
         vi.mocked(getOfflineFlowDocument).mockResolvedValue(makeFlowDocument({
             stages: [
                 {
@@ -316,7 +317,14 @@ describe('useFlowEditingSession', () => {
                 sql_node_1: { x: 0, y: 0 },
             },
         }));
-        const { result } = renderSessionHook({ showFeedback });
+        vi.mocked(saveOfflineFlowDocument).mockImplementation(async (request) => makeFlowDocument({
+            documentHash: 'saved-hash',
+            documentUpdatedAt: 20,
+            stages: request.stages.map((stage) => ({ parallel: false, ...stage })),
+            edges: request.edges,
+            layout: request.layout,
+        }));
+        const { result } = renderSessionHook();
 
         await act(async () => {
             await result.current.openFlowDocument('_flows/jack/demo/flow.yaml');
@@ -327,35 +335,15 @@ describe('useFlowEditingSession', () => {
             result.current.updateNodeEditorContent('select 2');
         });
 
-        let saved = true;
+        // 草稿允许中间态（SQL 节点未选数据源也可持久化），校验只在提交/执行前发生
+        let saved = false;
         await act(async () => {
-            saved = await result.current.saveFlow();
+            saved = await result.current.flushDraftNow();
             result.current.leaveCurrentFlow();
         });
 
-        expect(saved).toBe(false);
-        expect(showFeedback).toHaveBeenCalledWith(expect.objectContaining({
-            tone: 'error',
-            title: '请先选择数据源',
-        }));
-        expect(writeRecoverySnapshot).toHaveBeenCalledWith(
-            1,
-            '_flows/jack/demo/flow.yaml',
-            expect.objectContaining({
-                document: expect.objectContaining({
-                    stages: [
-                        expect.objectContaining({
-                            nodes: [
-                                expect.objectContaining({
-                                    taskId: 'sql_node_1',
-                                    scriptContent: 'select 2',
-                                }),
-                            ],
-                        }),
-                    ],
-                }),
-            }),
-        );
+        expect(saved).toBe(true);
+        expect(saveOfflineFlowDocument).toHaveBeenCalled();
     });
 
     it('ignores a commit status response after the group changes while the request is in flight', async () => {
@@ -827,6 +815,121 @@ describe('useFlowEditingSession', () => {
         expect(result.current.canvasEdgesRef.current.map((edge) => `${edge.source}->${edge.target}`)).toEqual([
             'renamed_node->shell_node_2',
         ]);
+    });
+
+    it('auto-saves the dirty draft after a debounce without any manual save action', async () => {
+        vi.useFakeTimers();
+        try {
+            vi.mocked(getOfflineFlowDocument).mockResolvedValue(makeFlowDocument());
+            vi.mocked(saveOfflineFlowDocument).mockImplementation(async (request) => makeFlowDocument({
+                documentHash: 'saved-hash',
+                documentUpdatedAt: 20,
+                stages: request.stages.map((stage) => ({ parallel: false, ...stage })),
+                edges: request.edges,
+                layout: request.layout,
+            }));
+            const { result } = renderSessionHook();
+
+            await act(async () => {
+                await result.current.openFlowDocument('_flows/jack/demo/flow.yaml');
+            });
+            expect(saveOfflineFlowDocument).not.toHaveBeenCalled();
+
+            act(() => {
+                result.current.addNode('SHELL', { x: 100, y: 200 });
+            });
+            expect(saveOfflineFlowDocument).not.toHaveBeenCalled();
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(2100);
+            });
+
+            expect(saveOfflineFlowDocument).toHaveBeenCalledTimes(1);
+            expect(result.current.draftSaveState).toBe('saved');
+            expect(result.current.draftSavedAt).not.toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('pauses auto-save while the node editor is open and resumes after it closes', async () => {
+        vi.useFakeTimers();
+        try {
+            vi.mocked(getOfflineFlowDocument).mockResolvedValue(makeFlowDocument());
+            vi.mocked(saveOfflineFlowDocument).mockImplementation(async (request) => makeFlowDocument({
+                documentHash: 'saved-hash',
+                documentUpdatedAt: 20,
+                stages: request.stages.map((stage) => ({ parallel: false, ...stage })),
+                edges: request.edges,
+                layout: request.layout,
+            }));
+            const { result } = renderSessionHook();
+
+            await act(async () => {
+                await result.current.openFlowDocument('_flows/jack/demo/flow.yaml');
+            });
+
+            act(() => {
+                result.current.openNodeEditor('shell_node_1');
+                result.current.addNode('SHELL', { x: 100, y: 200 });
+            });
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(2100);
+            });
+            expect(saveOfflineFlowDocument).not.toHaveBeenCalled();
+
+            act(() => {
+                result.current.setNodeEditorOpen(false);
+            });
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(2100);
+            });
+            expect(saveOfflineFlowDocument).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('stops auto-saving after a 409 conflict until the conflict is resolved', async () => {
+        vi.useFakeTimers();
+        try {
+            vi.mocked(getOfflineFlowDocument).mockResolvedValue(makeFlowDocument());
+            vi.mocked(saveOfflineFlowDocument)
+                .mockRejectedValueOnce(new AxiosError('conflict', undefined, undefined, undefined, {
+                    data: {},
+                    status: 409,
+                    statusText: 'Conflict',
+                    headers: {},
+                    config: { headers: {} } as InternalAxiosRequestConfig,
+                }))
+                .mockImplementation(async (request) => makeFlowDocument({
+                    documentHash: 'saved-hash',
+                    documentUpdatedAt: 20,
+                    stages: request.stages.map((stage) => ({ parallel: false, ...stage })),
+                    edges: request.edges,
+                    layout: request.layout,
+                }));
+            const { result } = renderSessionHook();
+
+            await act(async () => {
+                await result.current.openFlowDocument('_flows/jack/demo/flow.yaml');
+            });
+
+            await act(async () => {
+                await result.current.flushDraftNow();
+            });
+            expect(result.current.saveConflictState).not.toBeNull();
+
+            act(() => {
+                result.current.addNode('SHELL', { x: 100, y: 200 });
+            });
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(2100);
+            });
+            expect(saveOfflineFlowDocument).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('removes a node through canvas node changes and clears stale pending editor draft', async () => {
