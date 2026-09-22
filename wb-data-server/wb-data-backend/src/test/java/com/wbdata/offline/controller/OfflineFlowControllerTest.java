@@ -6,6 +6,7 @@ import com.wbdata.auth.dto.ProjectGroupContextItem;
 import com.wbdata.offline.dto.FlowParameterBindingRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.service.OfflineFlowContentService;
+import com.wbdata.offline.service.OfflineFlowDependencyService;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -23,7 +24,11 @@ class OfflineFlowControllerTest {
     void saveDocumentPreservesMultipleParameterBindingsWhileNormalizingGroup() {
         OfflineFlowContentService contentService = mock(OfflineFlowContentService.class);
         OfflineFlowDocumentService documentService = mock(OfflineFlowDocumentService.class);
-        OfflineFlowController controller = new OfflineFlowController(contentService, documentService);
+        OfflineFlowDependencyService dependencyService = mock(OfflineFlowDependencyService.class);
+        org.mockito.Mockito.when(dependencyService.saveDocument(org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation -> invocation.<java.util.function.Supplier<?>>getArgument(2).get());
+        OfflineFlowController controller = new OfflineFlowController(contentService, documentService, dependencyService);
         List<FlowParameterBindingRequest> bindings = List.of(
                 new FlowParameterBindingRequest(101L, 1),
                 new FlowParameterBindingRequest(102L, 2)
@@ -31,7 +36,10 @@ class OfflineFlowControllerTest {
 
         controller.saveFlowDocument(context(4L), new SaveOfflineFlowDocumentRequest(
                 999L, "_flows/example/flow.yaml", "hash", 1L,
-                List.of(), List.of(), Map.of(), null, null, bindings, "Asia/Singapore"
+                List.of(), List.of(), Map.of(), null, null, bindings, "Asia/Singapore",
+                new com.wbdata.offline.dto.OfflineFlowDependencySettings(List.of(),
+                        com.wbdata.offline.enums.OfflineFailurePolicy.PAUSE,
+                        com.wbdata.offline.enums.OfflineCrossGroupDependency.DENY)
         ));
 
         ArgumentCaptor<SaveOfflineFlowDocumentRequest> captor =
@@ -40,6 +48,12 @@ class OfflineFlowControllerTest {
         assertThat(captor.getValue().groupId()).isEqualTo(4L);
         assertThat(captor.getValue().parameterBindings()).isEqualTo(bindings);
         assertThat(captor.getValue().runtimeTimezone()).isEqualTo("Asia/Singapore");
+        assertThat(captor.getValue().dependencyConfig().failurePolicy())
+                .isEqualTo(com.wbdata.offline.enums.OfflineFailurePolicy.PAUSE);
+        assertThat(captor.getValue().dependencyConfig().crossGroupDependency())
+                .isEqualTo(com.wbdata.offline.enums.OfflineCrossGroupDependency.DENY);
+        verify(dependencyService).saveDocument(org.mockito.ArgumentMatchers.eq(captor.getValue()),
+                org.mockito.ArgumentMatchers.eq(context(4L).accessibleGroups()), org.mockito.ArgumentMatchers.any());
     }
 
     private AuthContextResponse context(Long groupId) {

@@ -1,6 +1,15 @@
 package com.wbdata.offline.service;
 
+import com.wbdata.auth.dto.AuthContextResponse;
+import com.wbdata.auth.dto.CurrentUserResponse;
+import com.wbdata.auth.dto.ProjectGroupContextItem;
 import com.wbdata.datasource.service.DataSourceService;
+import com.wbdata.offline.controller.OfflineFlowController;
+import com.wbdata.offline.dto.OfflineFlowDependencyRef;
+import com.wbdata.offline.dto.OfflineFlowDependencySettings;
+import com.wbdata.offline.dto.OfflineFlowDocumentResponse;
+import com.wbdata.offline.enums.OfflineCrossGroupDependency;
+import com.wbdata.offline.enums.OfflineFailurePolicy;
 import com.wbdata.datasource.entity.DataSource;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.offline.config.OfflineProperties;
@@ -12,6 +21,7 @@ import com.wbdata.offline.dto.OfflineFlowSchedule;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowNodeRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowStageRequest;
+import com.wbdata.offline.enums.OfflineSchedulePeriod;
 import com.wbdata.offline.transfer.dto.TransferConfig;
 import com.wbdata.offline.transfer.dto.TransferEndpointConfig;
 import com.wbdata.offline.transfer.dto.TransferFieldMapping;
@@ -44,6 +54,207 @@ class OfflineFlowDocumentServiceTest {
     Path tempDir;
 
     @Test
+    void documentEndpointCreatesScheduledDenyFlowAndIgnoresBodyGroup() {
+        DocumentEndpointFixture fixture = new DocumentEndpointFixture();
+        var settings = new OfflineFlowDependencySettings(List.of(), OfflineFailurePolicy.PAUSE, OfflineCrossGroupDependency.DENY);
+
+        var saved = fixture.save(1L, "new_task", runtimeSchedule(), settings, 1L);
+
+        assertThat(saved.groupId()).isEqualTo(1L);
+        assertThat(saved.schedule()).isEqualTo(runtimeSchedule());
+        assertThat(saved.dependencyConfig()).isEqualTo(settings);
+        assertThat(fixture.properties.resolveRepoPath(999L)).doesNotExist();
+        assertThat(fixture.documents.getFlowDocument(1L, saved.path()).dependencyConfig()).isEqualTo(settings);
+    }
+
+    @Test
+    void documentEndpointSavesDependenciesAndCanvasTogetherAndPreservesOmittedSettings() {
+        DocumentEndpointFixture fixture = new DocumentEndpointFixture();
+        var upstream = fixture.save(1L, "upstream", runtimeSchedule(), null, 1L);
+        assertThat(upstream.dependencyConfig()).isEqualTo(new OfflineFlowDependencySettings(
+                List.of(), OfflineFailurePolicy.CONTINUE, OfflineCrossGroupDependency.ALLOW));
+        var settings = new OfflineFlowDependencySettings(List.of(new OfflineFlowDependencyRef(1L, "upstream")),
+                OfflineFailurePolicy.PAUSE, OfflineCrossGroupDependency.DENY);
+
+        var saved = fixture.save(1L, "downstream", runtimeSchedule(), settings, 1L);
+        var reopened = fixture.documents.getFlowDocument(1L, saved.path());
+        assertThat(reopened.dependencyConfig()).isEqualTo(settings);
+        assertThat(reopened.stages()).isEqualTo(saved.stages());
+        assertThat(reopened.layout()).isEqualTo(saved.layout());
+        assertThat(reopened.stages().getFirst().nodes().getFirst().scriptContent()).isEqualTo("echo 2");
+
+        var unchanged = fixture.save(1L, "downstream", null, null, 1L);
+        assertThat(unchanged.dependencyConfig()).isEqualTo(settings);
+        assertThat(unchanged.schedule()).isEqualTo(runtimeSchedule());
+        var cleared = fixture.save(1L, "downstream", null,
+                new OfflineFlowDependencySettings(List.of(), null, null), 1L);
+        assertThat(cleared.dependencyConfig().dependencies()).isEmpty();
+    }
+
+    @Test
+    void documentEndpointRejectsBadDependenciesBeforeCreatingAnyFiles() throws Exception {
+        DocumentEndpointFixture fixture = new DocumentEndpointFixture();
+        var settings = new OfflineFlowDependencySettings(List.of(new OfflineFlowDependencyRef(1L, "missing")), null, null);
+        var before = fixture.files();
+
+        assertThatThrownBy(() -> fixture.save(1L, "bad", runtimeSchedule(), settings, 1L))
+                .isInstanceOfSatisfying(ResponseStatusException.class, ex -> assertThat(ex.getStatusCode().value()).isEqualTo(422));
+
+        assertThat(fixture.files()).isEqualTo(before);
+        assertThat(fixture.properties.resolveRepoPath(1L)).doesNotExist();
+
+        fixture.save(1L, "existing", runtimeSchedule(), null, 1L);
+        var existingFiles = fixture.files();
+        assertThatThrownBy(() -> fixture.save(1L, "existing", null, settings, 1L))
+                .isInstanceOfSatisfying(ResponseStatusException.class, ex -> assertThat(ex.getStatusCode().value()).isEqualTo(422));
+        assertThat(fixture.files()).isEqualTo(existingFiles);
+    }
+
+    @Test
+    void documentEndpointValidatesDraftFrequencyAndRejectsUpstreamMismatchWithoutWrites() throws Exception {
+        DocumentEndpointFixture fixture = new DocumentEndpointFixture();
+        fixture.save(1L, "upstream", runtimeSchedule(), null, 1L);
+        var settings = new OfflineFlowDependencySettings(List.of(new OfflineFlowDependencyRef(1L, "upstream")), null, null);
+        var hourly = new OfflineFlowSchedule("0 * * * *", "Asia/Shanghai", true, OfflineSchedulePeriod.HOURLY);
+        fixture.save(1L, "downstream", hourly, null, 1L);
+        // Persisted HOURLY must not prevent switching to DAILY and adding the dependency in one save.
+        fixture.save(1L, "downstream", runtimeSchedule(), settings, 1L);
+        var before = fixture.files();
+
+        assertThatThrownBy(() -> fixture.save(1L, "downstream", hourly, null, 1L))
+                .isInstanceOfSatisfying(ResponseStatusException.class, ex -> assertThat(ex.getStatusCode().value()).isEqualTo(422));
+
+        assertThat(fixture.files()).isEqualTo(before);
+        var later = new OfflineFlowSchedule("0 9 * * *", "Asia/Shanghai", true, OfflineSchedulePeriod.DAILY);
+        assertThat(fixture.save(1L, "downstream", later, null, 1L).schedule()).isEqualTo(later);
+    }
+
+    @Test
+    void documentEndpointProtectsHiddenDownstreamWithoutLeakingItsIdentity() throws Exception {
+        DocumentEndpointFixture fixture = new DocumentEndpointFixture();
+        fixture.save(1L, "upstream", runtimeSchedule(), null, 1L);
+        fixture.save(2L, "private_downstream", runtimeSchedule(),
+                new OfflineFlowDependencySettings(List.of(new OfflineFlowDependencyRef(1L, "upstream")), null, null), 1L, 2L);
+        var before = fixture.files();
+        var hourly = new OfflineFlowSchedule("0 * * * *", "Asia/Shanghai", true, OfflineSchedulePeriod.HOURLY);
+
+        assertThatThrownBy(() -> fixture.save(1L, "upstream", hourly, null, 1L))
+                .isInstanceOfSatisfying(ResponseStatusException.class, ex -> {
+                    assertThat(ex.getStatusCode().value()).isEqualTo(422);
+                    assertThat(ex.getReason()).contains("无权查看").doesNotContain("private_downstream", "group-2");
+                });
+        assertThatThrownBy(() -> fixture.save(1L, "upstream", null,
+                new OfflineFlowDependencySettings(List.of(), null, OfflineCrossGroupDependency.DENY), 1L))
+                .isInstanceOfSatisfying(ResponseStatusException.class, ex -> {
+                    assertThat(ex.getStatusCode().value()).isEqualTo(422);
+                    assertThat(ex.getReason()).doesNotContain("private_downstream", "group-2");
+                });
+        assertThat(fixture.files()).isEqualTo(before);
+        assertThat(fixture.dependencies.findDependents(1L, "_flows/upstream/flow.yaml", fixture.groups(1L))).isEmpty();
+        var later = new OfflineFlowSchedule("0 9 * * *", "Asia/Shanghai", true, OfflineSchedulePeriod.DAILY);
+        assertThat(fixture.save(1L, "upstream", later, null, 1L).schedule()).isEqualTo(later);
+    }
+
+    @Test
+    void documentEndpointDetectsCyclesThroughInvisibleGroups() throws Exception {
+        DocumentEndpointFixture fixture = new DocumentEndpointFixture();
+        fixture.save(1L, "a", runtimeSchedule(), null, 1L);
+        fixture.save(2L, "hidden", runtimeSchedule(),
+                new OfflineFlowDependencySettings(List.of(new OfflineFlowDependencyRef(1L, "a")), null, null), 1L, 2L);
+        fixture.save(1L, "b", runtimeSchedule(),
+                new OfflineFlowDependencySettings(List.of(new OfflineFlowDependencyRef(2L, "hidden")), null, null), 1L, 2L);
+        var before = fixture.files();
+
+        assertThatThrownBy(() -> fixture.save(1L, "a", null,
+                new OfflineFlowDependencySettings(List.of(new OfflineFlowDependencyRef(1L, "b")), null, null), 1L))
+                .isInstanceOfSatisfying(ResponseStatusException.class, ex -> {
+                    assertThat(ex.getStatusCode().value()).isEqualTo(422);
+                    assertThat(ex.getReason()).contains("循环").doesNotContain("hidden", "group-2");
+                });
+        assertThat(fixture.files()).isEqualTo(before);
+    }
+
+    @Test
+    void concurrentDocumentSavesCannotIntroduceACrossGroupCycle() throws Exception {
+        DocumentEndpointFixture fixture = new DocumentEndpointFixture();
+        fixture.save(1L, "a", runtimeSchedule(), null, 1L);
+        fixture.save(2L, "b", runtimeSchedule(), null, 2L);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var first = executor.submit(() -> {
+                start.await();
+                return fixture.tryDependency(1L, "a", new OfflineFlowDependencyRef(2L, "b"));
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return fixture.tryDependency(2L, "b", new OfflineFlowDependencyRef(1L, "a"));
+            });
+            start.countDown();
+            assertThat(List.of(first.get(5, java.util.concurrent.TimeUnit.SECONDS), second.get(5, java.util.concurrent.TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200, 422);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void graphLockRejectsUnsafeUpgradeInsteadOfDeadlocking() {
+        RepoLockManager locks = new RepoLockManager();
+        assertThatThrownBy(() -> locks.withLock(1L, () -> locks.withGraphLock(() -> null)))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("之前");
+    }
+
+    private class DocumentEndpointFixture {
+        final OfflineProperties properties = offlineProperties();
+        final RepoLockManager locks = new RepoLockManager();
+        final OfflineFlowDocumentService documents = service(properties, locks);
+        final OfflineFlowContentService content = new OfflineFlowContentService(properties, locks, new OfflineKestraFlowFileService(properties));
+        final OfflineFlowDependencyService dependencies = new OfflineFlowDependencyService(properties, content, locks,
+                new com.wbdata.auth.service.PermissionService());
+        final OfflineFlowController controller = new OfflineFlowController(content, documents, dependencies);
+        final java.util.concurrent.atomic.AtomicInteger revision = new java.util.concurrent.atomic.AtomicInteger();
+
+        List<ProjectGroupContextItem> groups(long... ids) {
+            return java.util.Arrays.stream(ids).mapToObj(id -> new ProjectGroupContextItem(id, "group-" + id, "", "GROUP_ADMIN")).toList();
+        }
+
+        OfflineFlowDocumentResponse save(long groupId, String name, OfflineFlowSchedule schedule,
+                                         OfflineFlowDependencySettings settings, long... accessibleGroups) {
+            var currentGroup = groups(groupId).getFirst();
+            var context = new AuthContextResponse(new CurrentUserResponse(1L, "test", "test", "ADMIN"), false,
+                    currentGroup, groups(accessibleGroups), List.of("offline.write"));
+            int version = revision.incrementAndGet();
+            controller.saveFlowDocument(context, new SaveOfflineFlowDocumentRequest(
+                    999L, "_flows/" + name + "/flow.yaml", null, 0L,
+                    List.of(new SaveOfflineFlowStageRequest("main", List.of(new SaveOfflineFlowNodeRequest(
+                            "node", "echo " + version, "SHELL", "scripts/" + name + "/node.sh", null, null)))),
+                    List.of(), Map.of("node", new NodePosition(version, 20)), schedule,
+                    null, null, "Asia/Shanghai", settings));
+            return documents.getFlowDocument(groupId, "_flows/" + name + "/flow.yaml");
+        }
+
+        int tryDependency(long groupId, String name, OfflineFlowDependencyRef ref) {
+            try {
+                save(groupId, name, null, new OfflineFlowDependencySettings(List.of(ref), null, null), 1L, 2L);
+                return 200;
+            } catch (ResponseStatusException ex) {
+                return ex.getStatusCode().value();
+            }
+        }
+
+        Map<String, String> files() throws Exception {
+            Map<String, String> result = new java.util.TreeMap<>();
+            try (var paths = Files.walk(tempDir)) {
+                for (Path path : paths.filter(Files::isRegularFile).toList()) {
+                    result.put(tempDir.relativize(path).toString(), Files.getLastModifiedTime(path) + "\n" + Files.readString(path));
+                }
+            }
+            return result;
+        }
+    }
+
+    @Test
     void saveFlowDocument_persistsScheduleToFlowYamlAndKestraSyncFile() throws Exception {
         OfflineProperties properties = offlineProperties();
         RepoLockManager repoLockManager = new RepoLockManager();
@@ -52,12 +263,13 @@ class OfflineFlowDocumentServiceTest {
         var response = service.saveFlowDocument(saveRequest(new OfflineFlowSchedule(
                 "* * * * *",
                 "Asia/Singapore",
-                true
+                true,
+                OfflineSchedulePeriod.CUSTOM
         )));
 
         assertThat(response.schedule())
                 .usingRecursiveComparison()
-                .isEqualTo(new OfflineFlowSchedule("* * * * *", "Asia/Singapore", true));
+                .isEqualTo(new OfflineFlowSchedule("* * * * *", "Asia/Singapore", true, OfflineSchedulePeriod.CUSTOM));
 
         Path repoPath = properties.resolveRepoPath(1L);
         String flowYaml = Files.readString(repoPath.resolve("_flows/example/flow.yaml"));
@@ -68,6 +280,7 @@ class OfflineFlowDocumentServiceTest {
                 .contains("* * * * *")
                 .contains("timezone: Asia/Singapore")
                 .contains("recoverMissedSchedules: NONE")
+                .contains("wbdataSchedulePeriod: CUSTOM")
                 .doesNotContain("disabled: true");
 
         Path kestraFlowFile = repoPath.resolve(".wb-data/kestra-flows/example.yaml");
@@ -129,7 +342,9 @@ class OfflineFlowDocumentServiceTest {
                 Map.of(),
                 null,
                 null,
-                "Asia/Shanghai"
+                null,
+                "Asia/Shanghai",
+                null
         ));
 
         var reopened = service.getFlowDocument(1L, "_flows/example/flow.yaml");
@@ -311,11 +526,14 @@ class OfflineFlowDocumentServiceTest {
                 staleSave.layout(),
                 staleSave.schedule(),
                 null,
-                "Asia/Shanghai"
+                null,
+                "Asia/Shanghai",
+                null
         );
 
         SaveOfflineFlowDocumentRequest request = staleSave;
         assertThatThrownBy(() -> service.saveFlowDocument(request))
+                .isInstanceOfSatisfying(ResponseStatusException.class, ex -> assertThat(ex.getStatusCode().value()).isEqualTo(409))
                 .hasMessageContaining("文件已被修改");
     }
 
@@ -369,7 +587,9 @@ class OfflineFlowDocumentServiceTest {
                 Files.readString(repo.resolve("_flows/example/flow.yaml")));
         assertThat(unboundRoot).doesNotContainKey("inputs");
         assertThat(unboundRoot).extracting("labels")
-                .isEqualTo(Map.of("wbdataRuntimeTimezone", "Asia/Shanghai"));
+                .isEqualTo(Map.of(
+                        "wbdataRuntimeTimezone", "Asia/Shanghai",
+                        "wbdataSchedulePeriod", "DAILY"));
         Map<String, Object> unboundDag = ((List<Map<String, Object>>) unboundRoot.get("tasks")).getFirst();
         Map<String, Object> unboundWrapper = ((List<Map<String, Object>>) unboundDag.get("tasks")).getFirst();
         assertThat((Map<String, Object>) unboundWrapper.get("task")).doesNotContainKey("parameters");
@@ -516,7 +736,9 @@ class OfflineFlowDocumentServiceTest {
                 Map.of("node_1", new NodePosition(10, 20)),
                 schedule,
                 parameterBinding,
-                schedule == null ? "Asia/Shanghai" : schedule.timezone()
+                null,
+                schedule == null ? "Asia/Shanghai" : schedule.timezone(),
+                null
         );
     }
 
@@ -526,7 +748,7 @@ class OfflineFlowDocumentServiceTest {
                 List.of(new SaveOfflineFlowStageRequest("main", List.of(new SaveOfflineFlowNodeRequest(
                         taskId, null, "TRANSFER", null, null, null, validTransfer()
                 )))),
-                List.of(), Map.of(), null, null, "Asia/Shanghai"
+                List.of(), Map.of(), null, null, null, "Asia/Shanghai", null
         );
     }
 
@@ -536,7 +758,7 @@ class OfflineFlowDocumentServiceTest {
                 List.of(new SaveOfflineFlowStageRequest("main", List.of(new SaveOfflineFlowNodeRequest(
                         "node_1", "echo 1", "SHELL", "scripts/example/node_1.sh", null, null
                 )))),
-                List.of(), Map.of(), null, null, "Asia/Shanghai"
+                List.of(), Map.of(), null, null, null, "Asia/Shanghai", null
         );
     }
 
@@ -557,19 +779,21 @@ class OfflineFlowDocumentServiceTest {
                 Map.of(),
                 runtimeSchedule(),
                 parameterBinding,
-                runtimeSchedule().timezone()
+                null,
+                runtimeSchedule().timezone(),
+                null
         );
     }
 
     private OfflineFlowSchedule runtimeSchedule() {
-        return new OfflineFlowSchedule("0 2 * * *", "Asia/Shanghai", false);
+        return new OfflineFlowSchedule("0 2 * * *", "Asia/Shanghai", false, OfflineSchedulePeriod.DAILY);
     }
 
     private TransferConfig validTransfer() {
         return new TransferConfig(
-                new TransferEndpointConfig(1L, "MYSQL", "source_db", "orders", "id > 0", null),
+                new TransferEndpointConfig(1L, "MYSQL", "source_db", "orders", "id > 0", null, null, null),
                 new TransferEndpointConfig(2L, "HIVE", "target_db", "dwd_orders", null,
-                        TransferWriteMode.APPEND),
+                        TransferWriteMode.APPEND, null, null),
                 List.of(new TransferFieldMapping(
                         "order_id",
                         TransferMappingKind.SOURCE_FIELD,
@@ -624,6 +848,8 @@ class OfflineFlowDocumentServiceTest {
                 Map.of("node_1", new NodePosition(100, 100)),
                 null,
                 new FlowParameterBindingRequest(12L, 3),
+                null,
+                null,
                 null
         )))
                 .isInstanceOf(ResponseStatusException.class)
@@ -649,7 +875,9 @@ class OfflineFlowDocumentServiceTest {
                 Map.of("node_1", new NodePosition(100, 100)),
                 null,
                 null,
-                "Asia/Kolkata"
+                null,
+                "Asia/Kolkata",
+                null
         ));
 
         assertThat(response.schedule()).isNull();
@@ -680,7 +908,9 @@ class OfflineFlowDocumentServiceTest {
                 Map.of("node_1", new NodePosition(10, 20)),
                 null,
                 null,
-                "Asia/Singapore"
+                null,
+                "Asia/Singapore",
+                null
         );
 
         assertThatThrownBy(() -> service.saveFlowDocument(timezoneChange))
@@ -708,9 +938,11 @@ class OfflineFlowDocumentServiceTest {
                 )),
                 List.of(),
                 Map.of("node_1", new NodePosition(100, 100)),
-                new OfflineFlowSchedule("0 2 * * *", "Asia/Singapore", true),
+                new OfflineFlowSchedule("0 2 * * *", "Asia/Singapore", true, OfflineSchedulePeriod.DAILY),
                 null,
-                "Asia/Kolkata"
+                null,
+                "Asia/Kolkata",
+                null
         ));
 
         assertThat(response.runtimeTimezone()).isEqualTo("Asia/Kolkata");
@@ -790,7 +1022,8 @@ class OfflineFlowDocumentServiceTest {
                         new FlowParameterBindingRequest(101L, 1),
                         new FlowParameterBindingRequest(102L, 2)
                 ),
-                "Asia/Singapore"
+                "Asia/Singapore",
+                null
         ));
 
         assertThat(response.parameterBinding()).isNotNull();

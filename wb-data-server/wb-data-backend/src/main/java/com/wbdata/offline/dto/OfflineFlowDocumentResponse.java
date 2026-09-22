@@ -15,34 +15,7 @@ public record OfflineFlowDocumentResponse(
         Map<String, NodePosition> layout,
         OfflineFlowSchedule schedule,
         FlowParameterBindingResponse parameterBinding,
-        String runtimeTimezone
+        String runtimeTimezone,
+        OfflineFlowDependencySettings dependencyConfig
 ) {
-    public OfflineFlowDocumentResponse(
-            Long groupId,
-            String path,
-            String flowId,
-            String namespace,
-            String documentHash,
-            long documentUpdatedAt,
-            List<OfflineFlowStageResponse> stages,
-            List<OfflineFlowEdgeResponse> edges,
-            Map<String, NodePosition> layout,
-            OfflineFlowSchedule schedule,
-            FlowParameterBindingResponse parameterBinding
-    ) {
-        this(
-                groupId,
-                path,
-                flowId,
-                namespace,
-                documentHash,
-                documentUpdatedAt,
-                stages,
-                edges,
-                layout,
-                schedule,
-                parameterBinding,
-                schedule != null ? schedule.timezone() : null
-        );
-    }
 }

@@ -95,6 +95,7 @@ public class OfflineFlowDocumentService {
         }
     }
 
+    /** Persistence callback; API callers must enter OfflineFlowDependencyService.saveDocument first. */
     public OfflineFlowDocumentResponse saveFlowDocument(SaveOfflineFlowDocumentRequest request) {
         return repoLockManager.withLock(request.groupId(), () -> saveFlowDocumentUnlocked(request));
     }
@@ -105,6 +106,11 @@ public class OfflineFlowDocumentService {
             Path flowFile = resolveRepoFile(repoPath, request.path());
             boolean isNewFile = !Files.exists(flowFile);
             String runtimeTimezone = resolveRuntimeTimezoneForSave(request, isNewFile);
+            String flowSource = isNewFile
+                    ? yamlSupport.buildEmptyFlowYaml(extractFlowId(request.path()), "pg-" + request.groupId())
+                    : offlineFlowContentService.getFlowContent(request.groupId(), request.path()).content();
+            // Reject malformed draft schedules before writing scripts, sidecars or a new stub.
+            yamlSupport.applySchedule(flowSource, request.schedule());
             ParameterSnapshotUpdate parameterUpdate = parameterBindingAssembler.prepareParameterSnapshotUpdate(
                     request.groupId(), request.parameterBinding(), request.parameterBindings(), runtimeTimezone);
             FlowParameterSnapshot effectiveParameterSnapshot = parameterBindingAssembler.resolveEffectiveParameterSnapshot(
@@ -117,9 +123,6 @@ public class OfflineFlowDocumentService {
 
             if (request.edges() != null) {
                 // New graph-based save: compile DAG back to YAML
-                String flowSource = isNewFile
-                        ? yamlSupport.buildEmptyFlowYaml(extractFlowId(request.path()), "pg-" + request.groupId())
-                        : offlineFlowContentService.getFlowContent(request.groupId(), request.path()).content();
                 DocumentSnapshot current = null;
                 if (!isNewFile && request.documentHash() != null) {
                     current = readSnapshot(request.groupId(), request.path());
@@ -155,7 +158,14 @@ public class OfflineFlowDocumentService {
             applyRuntimeTimezoneToFlowFile(repoPath, request.path(), runtimeTimezone);
             if (request.schedule() != null) {
                 applyScheduleToFlowFile(repoPath, request.path(), new OfflineFlowSchedule(
-                        request.schedule().cron(), runtimeTimezone, request.schedule().enabled()));
+                        request.schedule().cron(), runtimeTimezone, request.schedule().enabled(),
+                        request.schedule().period()));
+            }
+            if (request.dependencyConfig() != null) {
+                var settings = request.dependencyConfig();
+                String content = Files.readString(flowFile, StandardCharsets.UTF_8);
+                Files.writeString(flowFile, yamlSupport.applyDependencyConfig(content, settings.dependencies(),
+                        settings.failurePolicy(), settings.crossGroupDependency()), StandardCharsets.UTF_8);
             }
             parameterBindingAssembler.applyParameterSnapshotUpdate(repoPath, request.path(), parameterUpdate);
             kestraFlowFileService.syncFlowFile(repoPath, request.path());
@@ -384,7 +394,8 @@ public class OfflineFlowDocumentService {
                 : new OfflineFlowSchedule(
                         scheduleData.cron(),
                         scheduleData.timezone(),
-                        scheduleData.enabled()
+                        scheduleData.enabled(),
+                        scheduleData.period()
                 );
 
         List<OfflineFlowStageResponse> stages = new ArrayList<>();
@@ -505,7 +516,8 @@ public class OfflineFlowDocumentService {
                         layout,
                         schedule,
                         parameterBinding,
-                        runtimeTimezone
+                        runtimeTimezone,
+                        yamlSupport.readDependencyConfig(flow.content())
                 ),
                 taskFiles,
                 managedNodeFiles,
