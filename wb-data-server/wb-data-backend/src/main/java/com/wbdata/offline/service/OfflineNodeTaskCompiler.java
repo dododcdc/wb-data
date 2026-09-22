@@ -38,7 +38,8 @@ final class OfflineNodeTaskCompiler {
                 transferProperties.getDockerVolumes(),
                 transferProperties.getContainerHostRewrite(),
                 transferProperties.getRunner(),
-                transferProperties.getSeatunnelHome()
+                transferProperties.getSeatunnelHome(),
+                transferProperties.getHiveSqlImage()
         ));
     }
 
@@ -202,6 +203,10 @@ final class OfflineNodeTaskCompiler {
                     "HIVE_SQL"
             ));
             task.put("namespaceFiles", buildNamespaceFilesConfig(node.scriptPath()));
+            // beeline 只在含 Hive 客户端的镜像里存在，Kestra 默认 ubuntu 镜像没有
+            if (transferRuntimeSettings.runner() == TransferRunner.DOCKER) {
+                task.put("containerImage", transferRuntimeSettings.hiveSqlImage());
+            }
             task.put("commands", List.of(buildBeelineCommand(dataSource, node.scriptPath())));
         }
     }
@@ -258,8 +263,17 @@ final class OfflineNodeTaskCompiler {
                         + "--data-binary @" + shellQuote(transferConfigPath) + " \"${"
                         + transferRuntimeSettings.internalBaseUrlEnv() + "}/api/v1/internal/offline/transfer/render\" "
                         + "-o " + renderedConfigPath,
-                seatunnelBinary() + " --config " + renderedConfigPath + " -m local"
+                buildTransferSqlCommand("pre-sql", transferConfigPath),
+                seatunnelBinary() + " --config " + renderedConfigPath + " -m local",
+                buildTransferSqlCommand("post-sql", transferConfigPath)
         );
+    }
+
+    private String buildTransferSqlCommand(String phase, String transferConfigPath) {
+        return "curl --fail-with-body --show-error --silent -H \"X-WB-Data-Internal-Token: ${"
+                + transferRuntimeSettings.internalTokenEnv() + "}\" -H 'Content-Type: application/json' "
+                + "--data-binary @" + shellQuote(transferConfigPath) + " \"${"
+                + transferRuntimeSettings.internalBaseUrlEnv() + "}/api/v1/internal/offline/transfer/" + phase + "\"";
     }
 
     private String seatunnelBinary() {
@@ -355,7 +369,8 @@ final class OfflineNodeTaskCompiler {
             List<String> dockerVolumes,
             String containerHostRewrite,
             TransferRunner runner,
-            String seatunnelHome
+            String seatunnelHome,
+            String hiveSqlImage
     ) {
     }
 }

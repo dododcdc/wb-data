@@ -11,10 +11,12 @@ import java.util.List;
 public class OfflineTransferProperties {
     public static final String DEFAULT_SEATUNNEL_IMAGE = "wb-data-seatunnel:2.3.13";
     public static final String DEFAULT_SEATUNNEL_HOME = "/opt/seatunnel";
+    public static final String DEFAULT_HIVE_SQL_IMAGE = "apache/hive:4.0.0";
 
     private TransferRunner runner = TransferRunner.DOCKER;
     private String seatunnelImage = DEFAULT_SEATUNNEL_IMAGE;
     private String seatunnelHome = DEFAULT_SEATUNNEL_HOME;
+    private String hiveSqlImage = DEFAULT_HIVE_SQL_IMAGE;
     private String dockerNetwork = "wb-data_default";
     private String internalBaseUrlEnv = "WB_DATA_INTERNAL_BASE_URL";
     private String internalTokenEnv = "WB_DATA_INTERNAL_TOKEN";
@@ -55,6 +57,14 @@ public class OfflineTransferProperties {
 
     public void setSeatunnelImage(String seatunnelImage) {
         this.seatunnelImage = seatunnelImage;
+    }
+
+    public String getHiveSqlImage() {
+        return hiveSqlImage == null || hiveSqlImage.isBlank() ? DEFAULT_HIVE_SQL_IMAGE : hiveSqlImage;
+    }
+
+    public void setHiveSqlImage(String hiveSqlImage) {
+        this.hiveSqlImage = hiveSqlImage;
     }
 
     public String getDockerNetwork() {

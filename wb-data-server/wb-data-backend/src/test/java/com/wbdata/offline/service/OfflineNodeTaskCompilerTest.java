@@ -54,7 +54,9 @@ class OfflineNodeTaskCompilerTest {
                         + "-H 'Content-Type: application/json' --data-binary @'" + transferPath + "' "
                         + "\"${TRANSFER_BACKEND_URL}/api/v1/internal/offline/transfer/render\" "
                         + "-o /tmp/wb-data-transfer/transfer_1.conf",
-                "/opt/seatunnel/bin/seatunnel.sh --config /tmp/wb-data-transfer/transfer_1.conf -m local"
+                sqlPhaseCommand("pre-sql", transferPath),
+                "/opt/seatunnel/bin/seatunnel.sh --config /tmp/wb-data-transfer/transfer_1.conf -m local",
+                sqlPhaseCommand("post-sql", transferPath)
         );
     }
 
@@ -90,8 +92,63 @@ class OfflineNodeTaskCompilerTest {
                         + "-H 'Content-Type: application/json' --data-binary @'" + transferPath + "' "
                         + "\"${TRANSFER_BACKEND_URL}/api/v1/internal/offline/transfer/render\" "
                         + "-o /tmp/wb-data-transfer/transfer_1.conf",
-                "/usr/local/seatunnel/bin/seatunnel.sh --config /tmp/wb-data-transfer/transfer_1.conf -m local"
+                sqlPhaseCommand("pre-sql", transferPath),
+                "/usr/local/seatunnel/bin/seatunnel.sh --config /tmp/wb-data-transfer/transfer_1.conf -m local",
+                sqlPhaseCommand("post-sql", transferPath)
         );
+    }
+
+    private String sqlPhaseCommand(String phase, String transferPath) {
+        return "curl --fail-with-body --show-error --silent -H \"X-WB-Data-Internal-Token: ${TRANSFER_BACKEND_TOKEN}\" "
+                + "-H 'Content-Type: application/json' --data-binary @'" + transferPath + "' "
+                + "\"${TRANSFER_BACKEND_URL}/api/v1/internal/offline/transfer/" + phase + "\"";
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"none", "render", "pre", "transfer", "post"})
+    void transferScriptStopsAtFirstFailedPhase(String failedPhase, @org.junit.jupiter.api.io.TempDir java.nio.file.Path tempDir) throws Exception {
+        java.nio.file.Path bin = java.nio.file.Files.createDirectories(tempDir.resolve("bin"));
+        java.nio.file.Path trace = tempDir.resolve("trace");
+        java.nio.file.Path curl = bin.resolve("curl");
+        java.nio.file.Files.writeString(curl, """
+                #!/bin/sh
+                case "$*" in
+                  *pre-sql*) phase=pre ;;
+                  *post-sql*) phase=post ;;
+                  *) phase=render ;;
+                esac
+                echo "$phase" >> "$TRACE"
+                test "$phase" != "$FAIL_STAGE"
+                """);
+        java.nio.file.Path seatunnel = bin.resolve("seatunnel.sh");
+        java.nio.file.Files.writeString(seatunnel, """
+                #!/bin/sh
+                echo transfer >> "$TRACE"
+                test transfer != "$FAIL_STAGE"
+                """);
+        assertThat(curl.toFile().setExecutable(true)).isTrue();
+        assertThat(seatunnel.toFile().setExecutable(true)).isTrue();
+        OfflineTransferProperties properties = new OfflineTransferProperties();
+        properties.setRunner(TransferRunner.PROCESS);
+        properties.setSeatunnelHome(tempDir.toString());
+        properties.setInternalBaseUrlEnv("TRANSFER_BACKEND_URL");
+        properties.setInternalTokenEnv("TRANSFER_BACKEND_TOKEN");
+        Map<String, Object> task = new OfflineNodeTaskCompiler(properties).compile(null,
+                new OfflineFlowNode("transfer_1", "TRANSFER", null, null, null, "transfer.json"), Map.of());
+        String script = String.join("\n", (List<String>) task.get("commands"))
+                .replace("/tmp/wb-data-transfer", tempDir.resolve("rendered").toString());
+        ProcessBuilder builder = new ProcessBuilder("/bin/sh", "-c", script).redirectErrorStream(true);
+        builder.environment().put("PATH", bin + ":" + System.getenv("PATH"));
+        builder.environment().put("TRACE", trace.toString());
+        builder.environment().put("FAIL_STAGE", failedPhase);
+        builder.environment().put("TRANSFER_BACKEND_URL", "http://unused.invalid");
+        builder.environment().put("TRANSFER_BACKEND_TOKEN", "test-token");
+        Process process = builder.start();
+        assertThat(process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        assertThat(process.exitValue()).isEqualTo("none".equals(failedPhase) ? 0 : 1);
+        List<String> phases = List.of("render", "pre", "transfer", "post");
+        int expectedSize = "none".equals(failedPhase) ? phases.size() : phases.indexOf(failedPhase) + 1;
+        assertThat(java.nio.file.Files.readAllLines(trace)).isEqualTo(phases.subList(0, expectedSize));
     }
 
     @Test
@@ -137,6 +194,7 @@ class OfflineNodeTaskCompilerTest {
                 "type", "io.kestra.plugin.scripts.shell.Commands",
                 "description", "[wbdata-meta] dataSourceId=2;dataSourceType=HIVE;nodeKind=HIVE_SQL",
                 "namespaceFiles", Map.of("enabled", true, "include", List.of("scripts/hive_1.hql")),
+                "containerImage", OfflineTransferProperties.DEFAULT_HIVE_SQL_IMAGE,
                 "commands", List.of("beeline -u 'jdbc:hive2://db.example:3306/warehouse' -n 'analyst' -p 'existing-password' -f 'scripts/hive_1.hql'")
         ));
         assertThat(shellTask).containsExactlyInAnyOrderEntriesOf(Map.of(
