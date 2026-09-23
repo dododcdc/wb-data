@@ -1,5 +1,7 @@
 package com.wbdata.plugin.api;
 
+import com.wbdata.sql.SqlParameterTemplate;
+
 import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.DriverManager;
@@ -66,9 +68,6 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     // 内部辅助方法
     // -------------------------------------------------------------------------
 
-    /**
-     * 始终通过 DriverManager 创建新连接——仅用于连接测试。
-     */
     private Connection openDirectConnection(DataSourceConnectionInfo connectionInfo) throws Exception {
         registerDriverIfNeeded(driverClassName(), getClass().getClassLoader());
         return DriverManager.getConnection(
@@ -233,6 +232,46 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
             }
         } catch (Exception e) {
             throw new DataSourceException("执行查询失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void executeStatements(DataSourceConnectionInfo connectionInfo, java.util.List<String> statements,
+                                  Map<String, String> parameters, int timeoutSeconds) {
+        if (statements.isEmpty()) {
+            return;
+        }
+        int statementIndex = 0;
+        try {
+            // 整阶段先编译并校验参数，避免后续语句缺参时前面的写入已自动提交。
+            java.util.List<SqlParameterTemplate.Compilation> compiledStatements = new java.util.ArrayList<>();
+            for (String sql : statements) {
+                statementIndex++;
+                SqlParameterTemplate.Compilation compiled = SqlParameterTemplate.compile(sql);
+                for (String name : compiled.parameterNames()) {
+                    if (parameters == null || parameters.get(name) == null) {
+                        throw new IllegalArgumentException("SQL 参数未提供或为 null: " + name);
+                    }
+                }
+                compiledStatements.add(compiled);
+            }
+            statementIndex = 0;
+            // 连接池按数据源缓存，不能保证目标数据库隔离；同阶段始终使用一个新连接。
+            try (Connection connection = openDirectConnection(connectionInfo)) {
+                connection.setAutoCommit(true);
+                for (SqlParameterTemplate.Compilation compiled : compiledStatements) {
+                    statementIndex++;
+                    try (java.sql.PreparedStatement statement = connection.prepareStatement(compiled.jdbcSql())) {
+                        statement.setQueryTimeout(timeoutSeconds);
+                        for (int index = 0; index < compiled.parameterNames().size(); index++) {
+                            statement.setString(index + 1, parameters.get(compiled.parameterNames().get(index)));
+                        }
+                        statement.execute();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            throw new SqlExecutionException(statementIndex, e);
         }
     }
 

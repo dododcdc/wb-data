@@ -669,6 +669,83 @@ class OfflineFlowDocumentServiceTest {
                 .isEqualTo("select * from users where name = ${name} and day = ${v_day}");
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void transferSaveAndUnsavedDebugCompileParametersWithoutMutatingSidecar() throws Exception {
+        OfflineProperties properties = offlineProperties();
+        ParameterGroupService groups = mock(ParameterGroupService.class);
+        ParameterGroupResponse group = parameterGroup(3, "ACTIVE");
+        when(groups.get(1L, 12L)).thenReturn(group);
+        when(groups.findByCode(1L, "daily_common")).thenReturn(Optional.of(group));
+        OfflineFlowDocumentService service = service(properties, new RepoLockManager(), groups);
+        var saved = service.saveFlowDocument(transferParameterRequest("${name}", new FlowParameterBindingRequest(12L, 3)));
+        Path repo = properties.resolveRepoPath(1L);
+        Path flow = repo.resolve("_flows/example/flow.yaml");
+        Path sidecar = repo.resolve("transfers/example/transfer_1.transfer.json");
+        String savedYaml = Files.readString(flow);
+        String savedSidecar = Files.readString(sidecar);
+        String savedSnapshot = Files.readString(repo.resolve("_flows/example/.parameters.json"));
+        Map<String, Object> savedRoot = new Yaml().load(savedYaml);
+        Map<String, Object> savedDag = ((List<Map<String, Object>>) savedRoot.get("tasks")).getFirst();
+        Map<String, Object> savedWrapper = ((List<Map<String, Object>>) savedDag.get("tasks")).getFirst();
+        Map<String, Object> savedTask = (Map<String, Object>) savedWrapper.get("task");
+        assertThat(savedTask.get("inputFiles")).isEqualTo(Map.of("wb-data-transfer-parameters.json",
+                "{{ {\"name\": inputs.name} | toJson }}"));
+        assertThat(savedSidecar).contains("prefix-${name}", "select ${name}").doesNotContain("小明", "parameters");
+        assertThat(Files.readString(repo.resolve(".wb-data/kestra-flows/example.yaml"))).isEqualTo(savedYaml);
+
+        SaveOfflineFlowDocumentRequest draft = transferParameterRequest("${v_day}", null);
+        var compiled = service.compileFlowDraft(new DebugDocumentExecutionRequest(1L, "_flows/example/flow.yaml",
+                saved.documentHash(), saved.documentUpdatedAt(), draft.stages(), draft.edges(), draft.layout(),
+                List.of("transfer_1"), "SELECTED"));
+        Map<String, Object> root = new Yaml().load(compiled.content());
+        assertThat((List<Map<String, Object>>) root.get("inputs")).extracting(input -> input.get("id"))
+                .containsExactly("name", "v_day", "wbdata_planned_time");
+        Map<String, Object> dag = ((List<Map<String, Object>>) root.get("tasks")).getFirst();
+        Map<String, Object> wrapper = ((List<Map<String, Object>>) dag.get("tasks")).getFirst();
+        Map<String, Object> task = (Map<String, Object>) wrapper.get("task");
+        assertThat(((Map<String, String>) task.get("inputFiles")).get("wb-data-transfer-parameters.json"))
+                .contains("inputs.name", "inputs.v_day", "inputs.wbdata_planned_time ?? trigger.date", "Asia/Shanghai");
+        assertThat(compiled.namespaceFileContents().get("transfers/example/transfer_1.transfer.json"))
+                .contains("select ${v_day}");
+
+        SaveOfflineFlowDocumentRequest invalidDraft = transferParameterRequest("${missing}", null);
+        assertThatThrownBy(() -> service.compileFlowDraft(new DebugDocumentExecutionRequest(1L, "_flows/example/flow.yaml",
+                saved.documentHash(), saved.documentUpdatedAt(), invalidDraft.stages(), invalidDraft.edges(), invalidDraft.layout(),
+                List.of("transfer_1"), "SELECTED"))).hasMessageContaining("transfer_1").hasMessageContaining("missing");
+        assertThat(Files.readString(flow)).isEqualTo(savedYaml);
+        assertThat(Files.readString(sidecar)).isEqualTo(savedSidecar);
+        assertThat(Files.readString(repo.resolve("_flows/example/.parameters.json"))).isEqualTo(savedSnapshot);
+    }
+
+    @Test
+    void missingTransferPostParameterRejectsSaveBeforeWritingAnyManagedFiles() {
+        OfflineProperties properties = offlineProperties();
+        ParameterGroupService groups = mock(ParameterGroupService.class);
+        when(groups.get(1L, 12L)).thenReturn(parameterGroup(3, "ACTIVE"));
+        OfflineFlowDocumentService service = service(properties, new RepoLockManager(), groups);
+        assertThatThrownBy(() -> service.saveFlowDocument(
+                transferParameterRequest("${missing}", new FlowParameterBindingRequest(12L, 3))))
+                .hasMessageContaining("transfer_1").hasMessageContaining("未定义参数: missing");
+        Path repo = properties.resolveRepoPath(1L);
+        assertThat(repo.resolve("_flows/example/flow.yaml")).doesNotExist();
+        assertThat(repo.resolve("_flows/example/.parameters.json")).doesNotExist();
+        assertThat(repo.resolve("transfers/example/transfer_1.transfer.json")).doesNotExist();
+        assertThat(repo.resolve(".wb-data/kestra-flows/example.yaml")).doesNotExist();
+    }
+
+    private SaveOfflineFlowDocumentRequest transferParameterRequest(String postValue, FlowParameterBindingRequest binding) {
+        TransferConfig transfer = new TransferConfig(validTransfer().source(),
+                new TransferEndpointConfig(2L, "MYSQL", "warehouse", "orders", null, TransferWriteMode.APPEND,
+                        List.of("select ${name}"), List.of("select " + postValue)),
+                List.of(new TransferFieldMapping("order_id", TransferMappingKind.STATIC_VALUE, null, null, "prefix-${name}")),
+                List.of());
+        return new SaveOfflineFlowDocumentRequest(1L, "_flows/example/flow.yaml", null, 0L,
+                List.of(new SaveOfflineFlowStageRequest("main", List.of(new SaveOfflineFlowNodeRequest(
+                        "transfer_1", null, "TRANSFER", null, null, null, transfer)))),
+                List.of(), Map.of(), runtimeSchedule(), binding, null, "Asia/Shanghai", null);
+    }
+
     private OfflineProperties offlineProperties() {
         OfflineProperties properties = new OfflineProperties();
         properties.setRepoBaseDir(tempDir.toString());

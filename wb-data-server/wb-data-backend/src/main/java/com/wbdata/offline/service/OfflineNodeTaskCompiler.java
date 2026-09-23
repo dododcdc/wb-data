@@ -56,7 +56,7 @@ final class OfflineNodeTaskCompiler {
     Map<String, Object> compile(Map<String, Object> existingTask,
                                 OfflineFlowNode node,
                                 Map<Long, DataSource> dataSourceMap,
-                                String jdbcParametersExpression,
+                                String parametersExpression,
                                 boolean manageParameters) {
         Map<String, Object> task = existingTask == null
                 ? new LinkedHashMap<>()
@@ -64,13 +64,17 @@ final class OfflineNodeTaskCompiler {
         task.putIfAbsent("id", node.taskId());
         task.remove("disabled");
         adapterFor(node.kind()).compile(task, node, dataSourceMap);
+        if ("TRANSFER".equalsIgnoreCase(node.kind())) {
+            task.put("inputFiles", Map.of("wb-data-transfer-parameters.json",
+                    parametersExpression == null ? "{}" : parametersExpression));
+        }
         if (manageParameters && OfflineFlowNodeKinds.isJdbcSql(node.kind())
                 && task.get("type") instanceof String type
                 && isJdbcQueryTaskType(type)) {
-            if (jdbcParametersExpression == null) {
+            if (parametersExpression == null) {
                 task.remove("parameters");
             } else {
-                task.put("parameters", jdbcParametersExpression);
+                task.put("parameters", parametersExpression);
             }
         }
         return task;
@@ -255,17 +259,21 @@ final class OfflineNodeTaskCompiler {
 
     private List<String> buildTransferCommands(String taskId, String transferConfigPath) {
         String renderedConfigPath = "/tmp/wb-data-transfer/" + taskId + ".conf";
+        String requestPath = "wb-data-transfer-request.json";
         return List.of(
                 "set -eu",
                 "mkdir -p /tmp/wb-data-transfer",
-                "curl --fail --show-error --silent -H \"X-WB-Data-Internal-Token: ${"
+                "{ printf '%s' '{\"config\":'; cat " + shellQuote(transferConfigPath)
+                        + "; printf '%s' ',\"parameters\":'; cat 'wb-data-transfer-parameters.json'; printf '%s' '}'; } > "
+                        + shellQuote(requestPath),
+                "curl --fail-with-body --show-error --silent -H \"X-WB-Data-Internal-Token: ${"
                         + transferRuntimeSettings.internalTokenEnv() + "}\" -H 'Content-Type: application/json' "
-                        + "--data-binary @" + shellQuote(transferConfigPath) + " \"${"
+                        + "--data-binary @" + shellQuote(requestPath) + " \"${"
                         + transferRuntimeSettings.internalBaseUrlEnv() + "}/api/v1/internal/offline/transfer/render\" "
                         + "-o " + renderedConfigPath,
-                buildTransferSqlCommand("pre-sql", transferConfigPath),
+                buildTransferSqlCommand("pre-sql", requestPath),
                 seatunnelBinary() + " --config " + renderedConfigPath + " -m local",
-                buildTransferSqlCommand("post-sql", transferConfigPath)
+                buildTransferSqlCommand("post-sql", requestPath)
         );
     }
 
@@ -328,6 +336,7 @@ final class OfflineNodeTaskCompiler {
 
     private void clearShellTaskFields(Map<String, Object> task) {
         task.remove("namespaceFiles");
+        task.remove("inputFiles");
         task.remove("commands");
         task.remove("containerImage");
         task.remove("taskRunner");

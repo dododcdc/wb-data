@@ -13,6 +13,12 @@ public record TransferConfig(
         List<@Valid TransferFieldMapping> fieldMappings,
         List<@Valid TransferPartitionMapping> partitions
 ) {
+    @AssertTrue(message = "前置和后置 SQL 只能配置在目标端")
+    @JsonIgnore
+    public boolean isValidSqlEndpoint() {
+        return source == null || !source.hasSql();
+    }
+
     @AssertTrue(message = "Partition mappings require a HIVE target")
     @JsonIgnore
     public boolean isValidPartitionTarget() {

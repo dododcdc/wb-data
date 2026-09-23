@@ -139,18 +139,18 @@ save_flow() {
 }
 
 await_execution() {
-  local execution_id="$1" ctx="$2"
+  local execution_id="$1" ctx="$2" expected_status="${3:-SUCCESS}"
   local deadline=$(( $(date +%s) + timeout_seconds ))
   local resp status
   while true; do
     resp="$(api GET "/api/v1/groups/$GROUP_ID/offline/executions/$execution_id")"
     status="$(jq -r '.data.status // "UNKNOWN"' <<<"$resp" 2>/dev/null || echo UNKNOWN)"
+    if [ "$status" = "$expected_status" ]; then
+      echo "  $ctx 执行终态符合预期 $status（$execution_id）"
+      return 0
+    fi
     case "$status" in
-      SUCCESS)
-        echo "  ✓ $ctx 执行成功（$execution_id）"
-        return 0
-        ;;
-      FAILED|CANCELLED|KILLED)
+      SUCCESS|FAILED|CANCELLED|KILLED)
         echo "FAIL: $ctx 执行终态 $status（$execution_id）" >&2
         api GET "/api/v1/groups/$GROUP_ID/offline/executions/$execution_id/logs" \
           | jq -r '.data | if type == "string" then . else tojson end' 2>/dev/null | tail -30 >&2 || true
@@ -173,7 +173,7 @@ run_flow() {
   resp="$(api POST "/api/v1/groups/$GROUP_ID/offline/executions/debug/current" "$body")"
   expect_ok "$resp" "触发执行 $ctx"
   execution_id="$(jq -r '.data.executionId' <<<"$resp")"
-  await_execution "$execution_id" "$ctx"
+  await_execution "$execution_id" "$ctx" "${5:-SUCCESS}"
 }
 
 echo "==> 登录 $backend（用户 $username）"
@@ -285,6 +285,61 @@ sql_node="$(jq -nc --argjson ds "$API_MYSQL_DS_ID" '{
 save_flow "_flows/smoke_it/sql_loopback/flow.yaml" "[$sql_node]"
 run_flow "_flows/smoke_it/sql_loopback/flow.yaml" ALL '[]' "场景 G"
 assert_eq "$(mysql_query 'SELECT COUNT(*) FROM transfer_orders_target WHERE order_id = 7777')" "1" "SQL 节点写入行数"
+
+echo "==> 场景 H：选中传输节点执行前后 SQL（各 5 条）"
+mysql_query 'CREATE TABLE IF NOT EXISTS transfer_sql_audit (id BIGINT AUTO_INCREMENT PRIMARY KEY, step VARCHAR(32), row_count BIGINT)'
+mysql_query 'TRUNCATE TABLE transfer_sql_audit'
+hook_node="$(transfer_node transfer_hooks "$MYSQL_DS_ID" MYSQL transfer_demo transfer_orders_source "$MYSQL_DS_ID" MYSQL transfer_demo transfer_orders_target append)"
+hook_node="$(jq -c '.transfer.target.preSql = [
+    "TRUNCATE TABLE transfer_orders_target",
+    "INSERT INTO transfer_sql_audit(step, row_count) SELECT '\''pre_2'\'', COUNT(*) FROM transfer_orders_target",
+    "INSERT INTO transfer_sql_audit(step, row_count) SELECT '\''pre_3'\'', COUNT(*) FROM transfer_sql_audit",
+    "INSERT INTO transfer_sql_audit(step, row_count) SELECT '\''pre_4'\'', COUNT(*) FROM transfer_sql_audit",
+    "INSERT INTO transfer_sql_audit(step, row_count) SELECT '\''pre_5'\'', COUNT(*) FROM transfer_sql_audit"
+  ] | .transfer.target.postSql = [
+    "INSERT INTO transfer_sql_audit(step, row_count) SELECT '\''post_1'\'', COUNT(*) FROM transfer_orders_target",
+    "INSERT INTO transfer_sql_audit(step, row_count) SELECT '\''post_2'\'', COUNT(*) FROM transfer_sql_audit",
+    "INSERT INTO transfer_sql_audit(step, row_count) SELECT '\''post_3'\'', COUNT(*) FROM transfer_sql_audit",
+    "INSERT INTO transfer_sql_audit(step, row_count) SELECT '\''post_4'\'', COUNT(*) FROM transfer_sql_audit",
+    "INSERT INTO transfer_sql_audit(step, row_count) SELECT '\''post_5'\'', COUNT(*) FROM transfer_sql_audit"
+  ]' <<<"$hook_node")"
+save_flow "_flows/smoke_it/transfer_sql_hooks/flow.yaml" "[$hook_node]"
+run_flow "_flows/smoke_it/transfer_sql_hooks/flow.yaml" SELECTED '["transfer_hooks"]' "场景 H"
+assert_eq "$(mysql_query 'SELECT COUNT(*) FROM transfer_orders_target')" "3" "前置清表后写入行数"
+assert_eq "$(mysql_query 'SELECT GROUP_CONCAT(step ORDER BY id) FROM transfer_sql_audit')" "pre_2,pre_3,pre_4,pre_5,post_1,post_2,post_3,post_4,post_5" "前后 SQL 顺序"
+assert_eq "$(mysql_query 'SELECT GROUP_CONCAT(row_count ORDER BY id) FROM transfer_sql_audit')" "0,1,2,3,3,5,6,7,8" "前置在写入前、后置在写入后执行"
+
+echo "==> 场景 I：前置 SQL 失败时不传输、不执行后置"
+pre_failure="$(jq -c '.transfer.target.preSql = [
+    "INSERT INTO transfer_sql_audit(step, row_count) VALUES ('\''pre_before_failure'\'', 0)",
+    "SELECT wb_data_smoke_missing_column FROM transfer_sql_audit"
+  ] | .transfer.target.postSql = ["INSERT INTO transfer_sql_audit(step, row_count) VALUES ('\''must_not_run'\'', 0)"]' <<<"$hook_node")"
+save_flow "_flows/smoke_it/transfer_pre_sql_failure/flow.yaml" "[$pre_failure]"
+run_flow "_flows/smoke_it/transfer_pre_sql_failure/flow.yaml" ALL '[]' "场景 I" FAILED
+assert_eq "$(mysql_query 'SELECT COUNT(*) FROM transfer_orders_target')" "3" "前置失败没有新增传输数据"
+assert_eq "$(mysql_query "SELECT COUNT(*) FROM transfer_sql_audit WHERE step = 'pre_before_failure'")" "1" "已执行前置 SQL 不回滚"
+assert_eq "$(mysql_query "SELECT COUNT(*) FROM transfer_sql_audit WHERE step = 'must_not_run'")" "0" "前置失败不执行后置"
+
+echo "==> 场景 J：后置 SQL 失败保留已写入数据"
+post_failure="$(jq -c '.transfer.target.preSql = [] | .transfer.target.postSql = [
+    "INSERT INTO transfer_sql_audit(step, row_count) VALUES ('\''post_before_failure'\'', 0)",
+    "SELECT wb_data_smoke_missing_column FROM transfer_sql_audit",
+    "INSERT INTO transfer_sql_audit(step, row_count) VALUES ('\''must_not_run'\'', 0)"
+  ]' <<<"$hook_node")"
+save_flow "_flows/smoke_it/transfer_post_sql_failure/flow.yaml" "[$post_failure]"
+run_flow "_flows/smoke_it/transfer_post_sql_failure/flow.yaml" ALL '[]' "场景 J" FAILED
+assert_eq "$(mysql_query 'SELECT COUNT(*) FROM transfer_orders_target')" "6" "后置失败仍保留传输新增的 3 行"
+assert_eq "$(mysql_query "SELECT COUNT(*) FROM transfer_sql_audit WHERE step = 'post_before_failure'")" "1" "已执行后置 SQL 不回滚"
+assert_eq "$(mysql_query "SELECT COUNT(*) FROM transfer_sql_audit WHERE step = 'must_not_run'")" "0" "后置首错后停止"
+
+echo "==> 场景 K：传输失败跳过后置 SQL"
+transfer_failure="$(jq -c '.transfer.source.where = "wb_data_smoke_missing_column = 1"
+  | .transfer.target.preSql = ["INSERT INTO transfer_sql_audit(step, row_count) VALUES ('\''before_transfer_failure'\'', 0)"]
+  | .transfer.target.postSql = ["INSERT INTO transfer_sql_audit(step, row_count) VALUES ('\''must_not_run'\'', 0)"]' <<<"$hook_node")"
+save_flow "_flows/smoke_it/transfer_sql_transfer_failure/flow.yaml" "[$transfer_failure]"
+run_flow "_flows/smoke_it/transfer_sql_transfer_failure/flow.yaml" ALL '[]' "场景 K" FAILED
+assert_eq "$(mysql_query "SELECT COUNT(*) FROM transfer_sql_audit WHERE step = 'before_transfer_failure'")" "1" "传输失败前已运行前置 SQL"
+assert_eq "$(mysql_query "SELECT COUNT(*) FROM transfer_sql_audit WHERE step = 'must_not_run'")" "0" "传输失败不执行后置 SQL"
 
 echo "==> 场景 F：运维中心执行记录接口"
 # 运维中心只扫描 git sync 配置的业务命名空间，debug 执行（wb-debug-*）按设计不出现在这里；

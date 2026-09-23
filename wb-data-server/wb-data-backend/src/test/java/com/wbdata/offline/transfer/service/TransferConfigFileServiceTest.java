@@ -59,11 +59,27 @@ class TransferConfigFileServiceTest {
         assertThat(unrelated).isRegularFile();
     }
 
+    @Test
+    void preservesSqlTextAndOrderInSidecarAndRuntimeRequest() throws Exception {
+        List<String> preSql = List.of("TRUNCATE TABLE dwd_orders;", "INSERT INTO audit_log\nVALUES ('传输开始;');");
+        List<String> postSql = List.of("INSERT INTO audit_log VALUES ('传输结束');");
+        TransferConfig transfer = new TransferConfig(validTransfer().source(),
+                new TransferEndpointConfig(2L, "MYSQL", "target_db", "dwd_orders", null, TransferWriteMode.APPEND, preSql, postSql),
+                validTransfer().fieldMappings(), List.of());
+        String path = service.write(tempDir, 7L, "_flows/orders/flow.yaml", "transfer_1", transfer);
+        assertThat(service.read(tempDir, path)).isEqualTo(transfer);
+        var runtimeRequest = new ObjectMapper().readValue(Files.readString(tempDir.resolve(path)),
+                com.wbdata.offline.transfer.dto.TransferRenderRequest.class);
+        assertThat(runtimeRequest.transferConfig()).isEqualTo(transfer);
+        assertThat(runtimeRequest.target().preSql()).containsExactlyElementsOf(preSql);
+        assertThat(runtimeRequest.target().postSql()).containsExactlyElementsOf(postSql);
+    }
+
     private TransferConfig validTransfer() {
         return new TransferConfig(
-                new TransferEndpointConfig(1L, "MYSQL", "source_db", "orders", null, null),
+                new TransferEndpointConfig(1L, "MYSQL", "source_db", "orders", null, null, null, null),
                 new TransferEndpointConfig(2L, "HIVE", "target_db", "dwd_orders", null,
-                        TransferWriteMode.OVERWRITE_PARTITION),
+                        TransferWriteMode.OVERWRITE_PARTITION, null, null),
                 List.of(new TransferFieldMapping("order_id", TransferMappingKind.SOURCE_FIELD, "id", null)),
                 List.of(new TransferPartitionMapping(
                         "dt", TransferMappingKind.STATIC_VALUE, null, null, "2026-07-19"

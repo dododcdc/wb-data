@@ -8,9 +8,12 @@ import com.wbdata.offline.transfer.dto.TransferWriteMode;
 import com.wbdata.plugin.api.ColumnMetadata;
 import com.wbdata.plugin.api.PartitionColumnMetadata;
 import com.wbdata.plugin.api.TableDetail;
+import com.wbdata.sql.SqlParameterTemplate;
+import com.wbdata.sql.SqlStringLiteral;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public final class TransferSqlBuilder {
 
@@ -21,6 +24,12 @@ public final class TransferSqlBuilder {
     }
 
     public String buildSourceSql(TransferConfig config, TableDetail sourceTableDetail, TableDetail targetTableDetail) {
+        return buildSourceSql(config, sourceTableDetail, targetTableDetail, Map.of());
+    }
+
+    public String buildSourceSql(TransferConfig config, TableDetail sourceTableDetail, TableDetail targetTableDetail,
+                                 Map<String, String> parameters) {
+        TransferParameters.requireValues(config, parameters);
         validateHiveWriteMode(config, targetTableDetail);
         List<String> selections = new ArrayList<>();
         for (ColumnMetadata column : targetTableDetail.columns()) {
@@ -32,13 +41,13 @@ public final class TransferSqlBuilder {
                 throw new IllegalArgumentException("Missing mapping for target field: " + column.name());
             }
             selections.add(renderMapping(mapping.kind(), mapping.source(), mapping.expression(), mapping.value(),
-                    config.source().dataSourceType(), column.name()));
+                    config.source().dataSourceType(), column.name(), parameters));
         }
         for (PartitionColumnMetadata partition : targetTableDetail.partitionColumns()) {
             TransferPartitionMapping mapping = findPartitionMapping(config, partition.name());
             if (mapping != null) {
                 selections.add(renderMapping(mapping.kind(), mapping.source(), mapping.expression(), mapping.value(),
-                        config.source().dataSourceType(), partition.name()));
+                        config.source().dataSourceType(), partition.name(), parameters));
             }
         }
         if (selections.isEmpty()) {
@@ -48,7 +57,7 @@ public final class TransferSqlBuilder {
         String sql = "select " + String.join(", ", selections) + " from "
                 + identifierQuoter.quote(sourceType, config.source().table());
         return config.source().where() == null || config.source().where().isBlank()
-                ? sql : sql + " where " + config.source().where();
+                ? sql : sql + " where " + renderSql(config.source().where(), sourceType, parameters);
     }
 
     private void validateHiveWriteMode(TransferConfig config, TableDetail targetTableDetail) {
@@ -87,13 +96,18 @@ public final class TransferSqlBuilder {
     }
 
     private String renderMapping(TransferMappingKind kind, String source, String expression, String value,
-                                 String sourceType, String target) {
+                                 String sourceType, String target, Map<String, String> parameters) {
         String rendered = switch (kind) {
             case SOURCE_FIELD -> identifierQuoter.quote(sourceType, requireValue(source, "Source field"));
-            case SOURCE_EXPRESSION -> requireValue(expression, "Source expression");
-            case STATIC_VALUE -> quoteLiteral(value);
+            case SOURCE_EXPRESSION -> renderSql(requireValue(expression, "Source expression"), sourceType, parameters);
+            case STATIC_VALUE -> SqlStringLiteral.render(sourceType,
+                    TransferParameters.renderText(requireValue(value, "Static value"), parameters));
         };
         return rendered + " as " + identifierQuoter.quote(sourceType, target);
+    }
+
+    private String renderSql(String sql, String sourceType, Map<String, String> parameters) {
+        return SqlParameterTemplate.render(sql, name -> SqlStringLiteral.render(sourceType, parameters.get(name)));
     }
 
     private TransferFieldMapping findFieldMapping(TransferConfig config, String target) {
@@ -127,7 +141,4 @@ public final class TransferSqlBuilder {
         return value;
     }
 
-    private String quoteLiteral(String value) {
-        return "'" + requireValue(value, "Static value").replace("'", "''") + "'";
-    }
 }

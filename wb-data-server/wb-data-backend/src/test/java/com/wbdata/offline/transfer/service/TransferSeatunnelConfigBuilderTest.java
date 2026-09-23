@@ -106,7 +106,7 @@ class TransferSeatunnelConfigBuilderTest {
                             driver = \"com.mysql.cj.jdbc.Driver\"
                             user = \"source_user\"
                             password = \"source-password\"
-                            query = \"select `id` as `order_id`, `amount` as `amount`, '2026-07-19' as `dt` from `orders` where status = 'paid'\"
+                            query = \"select `id` as `order_id`, `amount` as `amount`, CONVERT(X'323032362d30372d3139' USING utf8mb4) as `dt` from `orders` where status = 'paid'\"
                           }
                         }
                         sink {
@@ -189,8 +189,8 @@ class TransferSeatunnelConfigBuilderTest {
         properties.setContainerHostRewrite("host.docker.internal");
         TransferSeatunnelConfigBuilder rewritingBuilder = new TransferSeatunnelConfigBuilder(properties);
         assertThat(rewritingBuilder.build(input(
-                new TransferEndpointConfig(1L, "MYSQL", "sales", "orders", "status = 'paid'", null),
-                new TransferEndpointConfig(2L, "MYSQL", "warehouse", "dwd_orders", null, TransferWriteMode.APPEND),
+                new TransferEndpointConfig(1L, "MYSQL", "sales", "orders", "status = 'paid'", null, null, null),
+                new TransferEndpointConfig(2L, "MYSQL", "warehouse", "dwd_orders", null, TransferWriteMode.APPEND, null, null),
                 dataSource("MYSQL", "localhost", "source_default", "source_user", "source-password"),
                 dataSource("MYSQL", "127.0.0.1", "target_default", "target_user", "target-password"),
                 false
@@ -203,8 +203,8 @@ class TransferSeatunnelConfigBuilderTest {
     @Test
     void keepsLoopbackJdbcHostsLiteralWhenRewriteDisabled() {
         assertThat(builder.build(input(
-                new TransferEndpointConfig(1L, "MYSQL", "sales", "orders", "status = 'paid'", null),
-                new TransferEndpointConfig(2L, "MYSQL", "warehouse", "dwd_orders", null, TransferWriteMode.APPEND),
+                new TransferEndpointConfig(1L, "MYSQL", "sales", "orders", "status = 'paid'", null, null, null),
+                new TransferEndpointConfig(2L, "MYSQL", "warehouse", "dwd_orders", null, TransferWriteMode.APPEND, null, null),
                 dataSource("MYSQL", "localhost", "source_default", "source_user", "source-password"),
                 dataSource("MYSQL", "127.0.0.1", "target_default", "target_user", "target-password"),
                 false
@@ -223,14 +223,29 @@ class TransferSeatunnelConfigBuilderTest {
                 .withMessage("Partition mapping does not match Hive target: configured_dt");
     }
 
+    @Test
+    void rendersInputParametersIntoFieldAndPartitionValuesWithoutEmbeddingRawText() {
+        TransferRenderInput base = input("MYSQL", "HIVE", TransferWriteMode.OVERWRITE_PARTITION,
+                List.of(new TransferPartitionMapping("dt", TransferMappingKind.STATIC_VALUE, null, null, "${day}")), true);
+        TransferConfig config = new TransferConfig(base.transferConfig().source(), base.transferConfig().target(),
+                List.of(new TransferFieldMapping("order_id", TransferMappingKind.STATIC_VALUE, null, null, "prefix-${value}"),
+                        new TransferFieldMapping("amount", TransferMappingKind.SOURCE_FIELD, "amount", null)), base.transferConfig().partitions());
+        String rendered = builder.build(new TransferRenderInput(config, base.sourceDataSource(), base.targetDataSource(),
+                base.sourceTableDetail(), base.targetTableDetail(), Map.of("day", "2026-07-19", "value", "中文'")));
+
+        assertThat(rendered).contains("CONVERT(X'7072656669782de4b8ade6968727' USING utf8mb4) as `order_id`",
+                        "CONVERT(X'323032362d30372d3139' USING utf8mb4) as `dt`")
+                .doesNotContain("${day}", "${value}", "中文'");
+    }
+
     private TransferRenderInput input(String sourceType,
                                       String targetType,
                                       TransferWriteMode writeMode,
                                       List<TransferPartitionMapping> partitions,
                                       boolean partitioned) {
         TransferConfig config = new TransferConfig(
-                new TransferEndpointConfig(1L, sourceType, "sales", "orders", "status = 'paid'", null),
-                new TransferEndpointConfig(2L, targetType, "warehouse", "dwd_orders", null, writeMode),
+                new TransferEndpointConfig(1L, sourceType, "sales", "orders", "status = 'paid'", null, null, null),
+                new TransferEndpointConfig(2L, targetType, "warehouse", "dwd_orders", null, writeMode, null, null),
                 List.of(
                         new TransferFieldMapping("order_id", TransferMappingKind.SOURCE_FIELD, "id", null),
                         new TransferFieldMapping("amount", TransferMappingKind.SOURCE_FIELD, "amount", null)),
@@ -239,7 +254,7 @@ class TransferSeatunnelConfigBuilderTest {
                 dataSource(targetType, "target-db", "target_default", "target_user", "target-password"),
                 new TableDetail(List.of(column("id"), column("amount"), column("order_day")), List.of(), false),
                 new TableDetail(List.of(column("order_id"), column("amount")),
-                        partitioned ? List.of(new PartitionColumnMetadata("dt", "string", "")) : List.of(), partitioned));
+                        partitioned ? List.of(new PartitionColumnMetadata("dt", "string", "")) : List.of(), partitioned), Map.of());
     }
 
     private TransferRenderInput input(TransferEndpointConfig source,
@@ -257,7 +272,7 @@ class TransferSeatunnelConfigBuilderTest {
         return new TransferRenderInput(config, sourceDataSource, targetDataSource,
                 new TableDetail(List.of(column("id"), column("amount")), List.of(), false),
                 new TableDetail(List.of(column("order_id"), column("amount")),
-                        partitioned ? List.of(new PartitionColumnMetadata("dt", "string", "")) : List.of(), partitioned));
+                        partitioned ? List.of(new PartitionColumnMetadata("dt", "string", "")) : List.of(), partitioned), Map.of());
     }
 
     private DataSource dataSource(String type, String host, String database, String username, String password) {
