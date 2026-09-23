@@ -1,5 +1,6 @@
 package com.wbdata.offline.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.config.TransferRunner;
@@ -47,16 +48,18 @@ class OfflineNodeTaskCompilerTest {
                 "pullPolicy", "IF_NOT_PRESENT",
                 "volumes", List.of("wb-data_hive-warehouse:/opt/hive/data/warehouse")
         ));
+        assertThat(task).containsEntry("inputFiles", Map.of("wb-data-transfer-parameters.json", "{}"));
         assertThat((List<String>) task.get("commands")).containsExactly(
                 "set -eu",
                 "mkdir -p /tmp/wb-data-transfer",
-                "curl --fail --show-error --silent -H \"X-WB-Data-Internal-Token: ${TRANSFER_BACKEND_TOKEN}\" "
-                        + "-H 'Content-Type: application/json' --data-binary @'" + transferPath + "' "
+                requestAssemblyCommand(transferPath),
+                "curl --fail-with-body --show-error --silent -H \"X-WB-Data-Internal-Token: ${TRANSFER_BACKEND_TOKEN}\" "
+                        + "-H 'Content-Type: application/json' --data-binary @'wb-data-transfer-request.json' "
                         + "\"${TRANSFER_BACKEND_URL}/api/v1/internal/offline/transfer/render\" "
                         + "-o /tmp/wb-data-transfer/transfer_1.conf",
-                sqlPhaseCommand("pre-sql", transferPath),
+                sqlPhaseCommand("pre-sql", "wb-data-transfer-request.json"),
                 "/opt/seatunnel/bin/seatunnel.sh --config /tmp/wb-data-transfer/transfer_1.conf -m local",
-                sqlPhaseCommand("post-sql", transferPath)
+                sqlPhaseCommand("post-sql", "wb-data-transfer-request.json")
         );
     }
 
@@ -85,17 +88,39 @@ class OfflineNodeTaskCompilerTest {
                 "TRANSFER_BACKEND_URL", "http://wb-data-backend:8080",
                 "TRANSFER_BACKEND_TOKEN", "prod-transfer-token"
         ));
+        assertThat(task).containsEntry("inputFiles", Map.of("wb-data-transfer-parameters.json", "{}"));
         assertThat((List<String>) task.get("commands")).containsExactly(
                 "set -eu",
                 "mkdir -p /tmp/wb-data-transfer",
-                "curl --fail --show-error --silent -H \"X-WB-Data-Internal-Token: ${TRANSFER_BACKEND_TOKEN}\" "
-                        + "-H 'Content-Type: application/json' --data-binary @'" + transferPath + "' "
+                requestAssemblyCommand(transferPath),
+                "curl --fail-with-body --show-error --silent -H \"X-WB-Data-Internal-Token: ${TRANSFER_BACKEND_TOKEN}\" "
+                        + "-H 'Content-Type: application/json' --data-binary @'wb-data-transfer-request.json' "
                         + "\"${TRANSFER_BACKEND_URL}/api/v1/internal/offline/transfer/render\" "
                         + "-o /tmp/wb-data-transfer/transfer_1.conf",
-                sqlPhaseCommand("pre-sql", transferPath),
+                sqlPhaseCommand("pre-sql", "wb-data-transfer-request.json"),
                 "/usr/local/seatunnel/bin/seatunnel.sh --config /tmp/wb-data-transfer/transfer_1.conf -m local",
-                sqlPhaseCommand("post-sql", transferPath)
+                sqlPhaseCommand("post-sql", "wb-data-transfer-request.json")
         );
+    }
+
+    @Test
+    void transferParametersAreStoredOnlyInInputFileAndClearedWhenNoLongerReferenced() {
+        OfflineNodeTaskCompiler compiler = new OfflineNodeTaskCompiler();
+        OfflineFlowNode node = new OfflineFlowNode("transfer_1", "TRANSFER", null, null, null, "transfer.json");
+        String expression = "{{ {\"name\": inputs.name} | toJson }}";
+        Map<String, Object> task = compiler.compile(null, node, Map.of(), expression, true);
+
+        assertThat(task).containsEntry("inputFiles", Map.of("wb-data-transfer-parameters.json", expression));
+        assertThat(String.join("\n", (List<String>) task.get("commands"))).doesNotContain(expression, "inputs.name");
+        Map<String, Object> unbound = compiler.compile(task, node, Map.of(), null, true);
+        assertThat(unbound).containsEntry("inputFiles", Map.of("wb-data-transfer-parameters.json", "{}"));
+        assertThat(task).containsEntry("inputFiles", Map.of("wb-data-transfer-parameters.json", expression));
+    }
+
+    private String requestAssemblyCommand(String transferPath) {
+        return "{ printf '%s' '{\"config\":'; cat '" + transferPath
+                + "'; printf '%s' ',\"parameters\":'; cat 'wb-data-transfer-parameters.json'; printf '%s' '}'; } "
+                + "> 'wb-data-transfer-request.json'";
     }
 
     private String sqlPhaseCommand(String phase, String transferPath) {
@@ -105,18 +130,34 @@ class OfflineNodeTaskCompilerTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"none", "render", "pre", "transfer", "post"})
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"none", "render", "pre", "transfer", "post", "missing-config", "missing-parameters"})
     void transferScriptStopsAtFirstFailedPhase(String failedPhase, @org.junit.jupiter.api.io.TempDir java.nio.file.Path tempDir) throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        String value = "O'Reilly\n$(touch injected) ${TRANSFER_BACKEND_TOKEN} 中文 \"},\"config\":{} \\ %s";
+        Map<String, String> config = Map.of("note", value);
+        Map<String, String> parameters = Map.of("value", value, "other", "${value}");
+        if (!"missing-config".equals(failedPhase)) {
+            java.nio.file.Files.writeString(tempDir.resolve("transfer.json"), mapper.writeValueAsString(config));
+        }
+        if (!"missing-parameters".equals(failedPhase)) {
+            java.nio.file.Files.writeString(tempDir.resolve("wb-data-transfer-parameters.json"), mapper.writeValueAsString(parameters));
+        }
         java.nio.file.Path bin = java.nio.file.Files.createDirectories(tempDir.resolve("bin"));
         java.nio.file.Path trace = tempDir.resolve("trace");
         java.nio.file.Path curl = bin.resolve("curl");
         java.nio.file.Files.writeString(curl, """
                 #!/bin/sh
+                set -eu
                 case "$*" in
                   *pre-sql*) phase=pre ;;
                   *post-sql*) phase=post ;;
                   *) phase=render ;;
                 esac
+                for argument in "$@"; do
+                  case "$argument" in
+                    @*) cp "${argument#@}" "$TRACE.$phase.json" ;;
+                  esac
+                done
                 echo "$phase" >> "$TRACE"
                 test "$phase" != "$FAIL_STAGE"
                 """);
@@ -137,7 +178,8 @@ class OfflineNodeTaskCompilerTest {
                 new OfflineFlowNode("transfer_1", "TRANSFER", null, null, null, "transfer.json"), Map.of());
         String script = String.join("\n", (List<String>) task.get("commands"))
                 .replace("/tmp/wb-data-transfer", tempDir.resolve("rendered").toString());
-        ProcessBuilder builder = new ProcessBuilder("/bin/sh", "-c", script).redirectErrorStream(true);
+        ProcessBuilder builder = new ProcessBuilder("/bin/sh", "-c", script)
+                .directory(tempDir.toFile()).redirectErrorStream(true);
         builder.environment().put("PATH", bin + ":" + System.getenv("PATH"));
         builder.environment().put("TRACE", trace.toString());
         builder.environment().put("FAIL_STAGE", failedPhase);
@@ -146,9 +188,26 @@ class OfflineNodeTaskCompilerTest {
         Process process = builder.start();
         assertThat(process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
         assertThat(process.exitValue()).isEqualTo("none".equals(failedPhase) ? 0 : 1);
+        assertThat(tempDir.resolve("injected")).doesNotExist();
         List<String> phases = List.of("render", "pre", "transfer", "post");
-        int expectedSize = "none".equals(failedPhase) ? phases.size() : phases.indexOf(failedPhase) + 1;
-        assertThat(java.nio.file.Files.readAllLines(trace)).isEqualTo(phases.subList(0, expectedSize));
+        if (failedPhase.startsWith("missing-")) {
+            assertThat(trace).doesNotExist();
+        } else {
+            int expectedSize = "none".equals(failedPhase) ? phases.size() : phases.indexOf(failedPhase) + 1;
+            List<String> executed = phases.subList(0, expectedSize);
+            assertThat(java.nio.file.Files.readAllLines(trace)).isEqualTo(executed);
+            var expected = mapper.valueToTree(Map.of("config", config, "parameters", parameters));
+            for (String phase : List.of("render", "pre", "post")) {
+                java.nio.file.Path body = tempDir.resolve("trace." + phase + ".json");
+                if (executed.contains(phase)) {
+                    assertThat(mapper.readTree(java.nio.file.Files.readString(body))).isEqualTo(expected);
+                    assertThat(java.nio.file.Files.readString(body))
+                            .isEqualTo(java.nio.file.Files.readString(tempDir.resolve("wb-data-transfer-request.json")));
+                } else {
+                    assertThat(body).doesNotExist();
+                }
+            }
+        }
     }
 
     @Test

@@ -304,8 +304,8 @@ function MappingRows({
                             ))}
                             placeholder={
                                 mapping.kind === 'static_value'
-                                    ? "例如: 100 或 'ACTIVE'"
-                                    : "例如: CONCAT(col, '_ext')"
+                                    ? '例如: 100、ACTIVE 或 ${v_day}'
+                                    : '例如: CONCAT(col, ${suffix})'
                             }
                         />
                     )}
@@ -639,7 +639,7 @@ function EndpointFields({
                         {whereTouched && whereHasPrefix ? (
                             <span className="transfer-node-filter-error">无需填写 WHERE，请从字段条件开始。</span>
                         ) : (
-                            <span className="transfer-node-field-help">只填写 WHERE 后面的条件，语法按来源数据库执行。</span>
+                            <span className="transfer-node-field-help">{'只填写 WHERE 后面的条件，语法按来源数据库执行。支持 ${参数名} 值占位符，不要加引号。'}</span>
                         )}
                     </div>
                 ) : (
@@ -684,7 +684,7 @@ function EndpointFields({
             {side === 'target' && supportsTransferSql(endpoint.dataSourceType) && (
                 <div className="transfer-node-target-sql">
                     <p className="transfer-node-field-help">
-                        每项仅填写一条 SQL，可换行；按编号顺序执行。更换目标数据源、数据库或表会清空前后 SQL。
+                        {'每项仅填写一条 SQL，可换行；按编号顺序执行。更换目标数据源、数据库或表会清空前后 SQL。支持参数组 ${参数名} 值占位符，不要加引号；不支持动态数据库、表或字段名。'}
                     </p>
                     <SqlStatements
                         label="前置 SQL"
@@ -1036,6 +1036,11 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
                         )}
                     </div>
                 </div>
+                {metadataReady && targetHasFields && (
+                    <p className="transfer-node-field-help">
+                        {'在画布参数中绑定参数组。固定值（含分区）按文本填写，支持 ${参数名} 插值，不加 SQL 引号；SQL 表达式中的参数仅作值占位符，不要加引号。不支持动态数据库、表或字段名。'}
+                    </p>
+                )}
                 {refreshMessage && <div className="transfer-node-refresh-message" role="status">{refreshMessage}</div>}
                 {!endpointsConfigured && (
                     <div className="transfer-node-status transfer-node-status--empty">

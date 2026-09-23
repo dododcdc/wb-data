@@ -2,6 +2,8 @@ package com.wbdata.offline.service;
 
 import com.wbdata.offline.dto.FlowParameterDefinitionSnapshot;
 import com.wbdata.offline.dto.FlowParameterSnapshot;
+import com.wbdata.offline.transfer.dto.TransferConfig;
+import com.wbdata.offline.transfer.service.TransferParameters;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -19,30 +21,39 @@ final class FlowParameterCompiler {
 
     Compilation compile(FlowParameterSnapshot snapshot,
                         List<OfflineFlowNode> nodes,
-                        Map<String, String> scriptContents) {
+                        Map<String, String> scriptContents,
+                        Map<String, TransferConfig> transferConfigs) {
         Map<String, FlowParameterDefinitionSnapshot> definitions = indexDefinitions(snapshot);
         String runtimeTimezone = snapshot == null ? null : snapshot.runtimeTimezone();
         Map<String, String> taskExpressions = new LinkedHashMap<>();
 
         for (OfflineFlowNode node : nodes) {
-            if (!OfflineFlowNodeKinds.isJdbcSql(node.kind())) {
+            boolean transfer = "TRANSFER".equalsIgnoreCase(node.kind());
+            if (!transfer && !OfflineFlowNodeKinds.isJdbcSql(node.kind())) {
                 continue;
             }
-            String sql = scriptContents.get(node.scriptPath());
-            if (sql == null) {
-                throw badRequest("SQL 节点“" + node.taskId() + "”缺少脚本内容");
-            }
-            SqlNamedParameterScanner.Analysis analysis;
+            String label = (transfer ? "传输" : "SQL") + " 节点“" + node.taskId() + "”";
+            Set<String> referenced;
             try {
-                analysis = scanner.scan(sql);
+                if (transfer) {
+                    TransferConfig config = transferConfigs.get(node.taskId());
+                    if (config == null) {
+                        throw badRequest(label + "缺少传输配置");
+                    }
+                    referenced = TransferParameters.references(config);
+                } else {
+                    String sql = scriptContents.get(node.scriptPath());
+                    if (sql == null) {
+                        throw badRequest(label + "缺少脚本内容");
+                    }
+                    referenced = scanner.scan(sql).parameters();
+                }
             } catch (IllegalArgumentException ex) {
-                throw badRequest("SQL 节点“" + node.taskId() + "”参数语法错误: " + ex.getMessage());
+                throw badRequest(label + "参数语法错误: " + ex.getMessage());
             }
-            Set<String> referenced = analysis.parameters();
             List<String> missing = referenced.stream().filter(key -> !definitions.containsKey(key)).toList();
             if (!missing.isEmpty()) {
-                throw badRequest("SQL 节点“" + node.taskId() + "”引用了未定义参数: "
-                        + String.join(", ", missing));
+                throw badRequest(label + "引用了未定义参数: " + String.join(", ", missing));
             }
             if (!referenced.isEmpty()) {
                 taskExpressions.put(node.taskId(), buildParametersExpression(

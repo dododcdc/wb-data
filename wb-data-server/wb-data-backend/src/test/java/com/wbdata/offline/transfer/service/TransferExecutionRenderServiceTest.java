@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -35,8 +36,8 @@ class TransferExecutionRenderServiceTest {
         TransferMetadataService metadataService = mock(TransferMetadataService.class);
         TransferExecutionRenderService service = service(metadataService);
 
-        assertUnauthorized(() -> service.render(null, request()));
-        assertUnauthorized(() -> service.render("wrong-token", request()));
+        assertUnauthorized(() -> service.render(null, request(), Map.of()));
+        assertUnauthorized(() -> service.render("wrong-token", request(), Map.of()));
     }
 
     @Test
@@ -46,7 +47,7 @@ class TransferExecutionRenderServiceTest {
         when(metadataService.requireSupportedDataSource(2L)).thenReturn(dataSource(2L, 4L, "target-password"));
         TransferExecutionRenderService service = service(metadataService);
 
-        assertThatThrownBy(() -> service.render("internal-token", request()))
+        assertThatThrownBy(() -> service.render("internal-token", request(), Map.of()))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
@@ -65,7 +66,7 @@ class TransferExecutionRenderServiceTest {
         when(metadataService.getTableDetail(eq(target), eq("warehouse"), eq("dwd_orders"))).thenReturn(targetTable);
         TransferExecutionRenderService service = service(metadataService);
 
-        String rendered = service.render("internal-token", request());
+        String rendered = service.render("internal-token", request(), Map.of());
         String sidecarJson = new TransferConfigFileService(new ObjectMapper())
                 .serialize(4L, "_flows/orders/flow.yaml", "transfer_1", request().transferConfig());
 
@@ -88,7 +89,7 @@ class TransferExecutionRenderServiceTest {
         when(metadataService.getTableDetail(eq(target), eq("warehouse"), eq("dwd_orders"))).thenReturn(table("order_id"));
         TransferExecutionRenderService service = service(metadataService);
 
-        assertThatThrownBy(() -> service.render("internal-token", hiveTargetRequest()))
+        assertThatThrownBy(() -> service.render("internal-token", hiveTargetRequest(), Map.of()))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST);
@@ -107,22 +108,57 @@ class TransferExecutionRenderServiceTest {
         when(metadataService.getTableDetail(eq(target), eq("warehouse"), eq("dwd_orders"))).thenReturn(table("order_id"));
         TransferExecutionRenderService service = service(metadataService);
 
-        assertThat(service.render("internal-token", hiveTargetRequest()))
+        assertThat(service.render("internal-token", hiveTargetRequest(), Map.of()))
                 .contains("metastore_uri = \"thrift://host.docker.internal:9083\"");
+    }
+
+    @Test
+    void missingPostSqlParameterIsRejectedBeforeTableMetadataQueries() {
+        TransferMetadataService metadataService = mock(TransferMetadataService.class);
+        when(metadataService.requireSupportedDataSource(1L)).thenReturn(dataSource(1L, 4L, "source-password"));
+        when(metadataService.requireSupportedDataSource(2L)).thenReturn(dataSource(2L, 4L, "target-password"));
+        TransferRenderRequest base = request();
+        TransferRenderRequest request = new TransferRenderRequest(base.groupId(), base.source(),
+                new TransferEndpointConfig(2L, "MYSQL", "warehouse", "dwd_orders", null, TransferWriteMode.APPEND,
+                        List.of("select ${pre}"), List.of("select ${post}")), base.fieldMappings(), base.partitions());
+
+        assertThatThrownBy(() -> service(metadataService).render("internal-token", request, Map.of("pre", "1")))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("未提供的参数: post")
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(metadataService, never()).getTableDetail(any(), any(), any());
+    }
+
+    @Test
+    void passesParametersThroughToFreshSourceSqlRendering() {
+        TransferMetadataService metadataService = mock(TransferMetadataService.class);
+        DataSource source = dataSource(1L, 4L, "source-password");
+        DataSource target = dataSource(2L, 4L, "target-password");
+        when(metadataService.requireSupportedDataSource(1L)).thenReturn(source);
+        when(metadataService.requireSupportedDataSource(2L)).thenReturn(target);
+        when(metadataService.getTableDetail(source, "sales", "orders")).thenReturn(table("id"));
+        when(metadataService.getTableDetail(target, "warehouse", "dwd_orders")).thenReturn(table("order_id"));
+        TransferRenderRequest base = request();
+        TransferRenderRequest request = new TransferRenderRequest(base.groupId(), base.source(), base.target(),
+                List.of(new TransferFieldMapping("order_id", TransferMappingKind.STATIC_VALUE, null, null, "${value}")), List.of());
+
+        assertThat(service(metadataService).render("internal-token", request, Map.of("value", "中文'")))
+                .contains("CONVERT(X'e4b8ade6968727' USING utf8mb4) as `order_id`")
+                .doesNotContain("${value}", "中文'");
     }
 
     private TransferExecutionRenderService service(TransferMetadataService metadataService) {
         TransferInternalProperties properties = new TransferInternalProperties();
         properties.setInternalToken("internal-token");
-        return new TransferExecutionRenderService(properties, metadataService,
-                Validation.buildDefaultValidatorFactory().getValidator(),
+        TransferExecutionGuard guard = new TransferExecutionGuard(properties, metadataService,
+                Validation.buildDefaultValidatorFactory().getValidator());
+        return new TransferExecutionRenderService(guard, metadataService,
                 new TransferSeatunnelConfigBuilder(new OfflineTransferProperties()));
     }
 
     private TransferRenderRequest request() {
         TransferConfig config = new TransferConfig(
-                new TransferEndpointConfig(1L, "MYSQL", "sales", "orders", null, null),
-                new TransferEndpointConfig(2L, "MYSQL", "warehouse", "dwd_orders", null, TransferWriteMode.APPEND),
+                new TransferEndpointConfig(1L, "MYSQL", "sales", "orders", null, null, null, null),
+                new TransferEndpointConfig(2L, "MYSQL", "warehouse", "dwd_orders", null, TransferWriteMode.APPEND, null, null),
                 List.of(new TransferFieldMapping("order_id", TransferMappingKind.SOURCE_FIELD, "id", null)),
                 List.of());
         return new TransferRenderRequest(4L, config.source(), config.target(), config.fieldMappings(), config.partitions());
@@ -130,8 +166,8 @@ class TransferExecutionRenderServiceTest {
 
     private TransferRenderRequest hiveTargetRequest() {
         TransferConfig config = new TransferConfig(
-                new TransferEndpointConfig(1L, "MYSQL", "sales", "orders", null, null),
-                new TransferEndpointConfig(2L, "HIVE", "warehouse", "dwd_orders", null, TransferWriteMode.APPEND),
+                new TransferEndpointConfig(1L, "MYSQL", "sales", "orders", null, null, null, null),
+                new TransferEndpointConfig(2L, "HIVE", "warehouse", "dwd_orders", null, TransferWriteMode.APPEND, null, null),
                 List.of(new TransferFieldMapping("order_id", TransferMappingKind.SOURCE_FIELD, "order_id", null)),
                 List.of());
         return new TransferRenderRequest(4L, config.source(), config.target(), config.fieldMappings(), config.partitions());

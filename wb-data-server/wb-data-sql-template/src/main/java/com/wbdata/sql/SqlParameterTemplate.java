@@ -2,9 +2,11 @@ package com.wbdata.sql;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.function.Function;
 
 /**
- * Compiles WB-Data SQL value placeholders to JDBC positional parameters.
+ * Compiles or renders WB-Data SQL value placeholders using shared lexical rules.
  */
 public final class SqlParameterTemplate {
 
@@ -12,56 +14,66 @@ public final class SqlParameterTemplate {
     }
 
     public static Compilation compile(String sql) {
+        List<String> parameterNames = new ArrayList<>();
+        String jdbcSql = render(sql, name -> {
+            parameterNames.add(name);
+            return "?";
+        });
+        return new Compilation(jdbcSql, List.copyOf(parameterNames));
+    }
+
+    // The callback must return a safe SQL value expression, never an identifier or raw user input.
+    public static String render(String sql, Function<String, String> renderParameter) {
+        Objects.requireNonNull(renderParameter, "renderParameter");
         if (sql == null || sql.isEmpty()) {
-            return new Compilation(sql == null ? "" : sql, List.of());
+            return "";
         }
 
-        StringBuilder jdbcSql = new StringBuilder(sql.length());
-        List<String> parameterNames = new ArrayList<>();
+        StringBuilder renderedSql = new StringBuilder(sql.length());
         int index = 0;
         while (index < sql.length()) {
             char current = sql.charAt(index);
             if (current == '\'' || current == '"' || current == '`') {
                 int end = skipQuoted(sql, index, current);
                 rejectTemplateInQuotedText(sql, index, end);
-                jdbcSql.append(sql, index, end);
+                renderedSql.append(sql, index, end);
                 index = end;
             } else if (current == '-' && hasNext(sql, index, '-')) {
                 int end = skipLineComment(sql, index + 2);
-                jdbcSql.append(sql, index, end);
+                renderedSql.append(sql, index, end);
                 index = end;
             } else if (current == '#') {
                 int end = skipLineComment(sql, index + 1);
-                jdbcSql.append(sql, index, end);
+                renderedSql.append(sql, index, end);
                 index = end;
             } else if (current == '/' && hasNext(sql, index, '*')) {
                 int end = skipBlockComment(sql, index + 2);
-                jdbcSql.append(sql, index, end);
+                renderedSql.append(sql, index, end);
                 index = end;
             } else if (current == '$' && hasNext(sql, index, '{')) {
-                index = readTemplateParameter(sql, index, jdbcSql, parameterNames);
+                index = readTemplateParameter(sql, index, renderedSql, renderParameter);
             } else if (current == '$') {
                 int end = skipDollarQuote(sql, index);
                 if (end != index) {
                     rejectTemplateInQuotedText(sql, index, end);
-                    jdbcSql.append(sql, index, end);
+                    renderedSql.append(sql, index, end);
                     index = end;
                 } else {
-                    jdbcSql.append(current);
+                    renderedSql.append(current);
                     index++;
                 }
             } else {
-                jdbcSql.append(current);
+                renderedSql.append(current);
                 index++;
             }
         }
-        return new Compilation(jdbcSql.toString(), List.copyOf(parameterNames));
+        return renderedSql.toString();
     }
 
     private static int readTemplateParameter(String sql,
                                              int dollar,
-                                             StringBuilder jdbcSql,
-                                             List<String> parameterNames) {
+                                             StringBuilder renderedSql,
+                                             Function<String, String> renderParameter) {
         int start = dollar + 2;
         if (start >= sql.length() || !isAsciiLetter(sql.charAt(start))) {
             throw syntax("参数引用必须以英文字母开头", dollar);
@@ -71,8 +83,7 @@ public final class SqlParameterTemplate {
             throw syntax("参数引用必须使用 ${name} 格式", dollar);
         }
         String name = validateName(sql, start, end, dollar);
-        parameterNames.add(name);
-        jdbcSql.append('?');
+        renderedSql.append(Objects.requireNonNull(renderParameter.apply(name), "Rendered parameter: " + name));
         return end + 1;
     }
 

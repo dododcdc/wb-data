@@ -26,6 +26,9 @@ public interface DataSourcePlugin {
 
     QueryResult executeQuery(QueryRequest request);
 
+    void executeStatements(DataSourceConnectionInfo connectionInfo, java.util.List<String> statements,
+                           java.util.Map<String, String> parameters, int timeoutSeconds);
+
     /**
      * 获取数据源支持的方言元数据（关键字、类型、函数等）。
      * 提供给前端智能提示使用。

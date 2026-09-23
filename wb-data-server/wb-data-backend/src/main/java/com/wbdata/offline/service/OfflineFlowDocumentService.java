@@ -238,7 +238,8 @@ public class OfflineFlowDocumentService {
             FlowParameterCompiler.Compilation parameterCompilation = parameterCompiler.compile(
                     parameterSnapshot,
                     draft.nodes(),
-                    draft.scriptFileContents()
+                    draft.scriptFileContents(),
+                    draft.transferConfigs()
             );
             String compiledYaml = yamlSupport.compileGraph(
                     flowContent.content(),
@@ -287,7 +288,8 @@ public class OfflineFlowDocumentService {
         FlowParameterCompiler.Compilation parameterCompilation = parameterCompiler.compile(
                 parameterSnapshot,
                 graphDraft.nodes(),
-                graphDraft.scriptFileContents()
+                graphDraft.scriptFileContents(),
+                graphDraft.transferConfigs()
         );
         String compiledYaml = yamlSupport.compileGraph(
                 flowSource,
@@ -349,7 +351,8 @@ public class OfflineFlowDocumentService {
         FlowParameterCompiler.Compilation parameterCompilation = parameterCompiler.compile(
                 parameterSnapshot,
                 draft.nodes(),
-                draft.scriptFileContents()
+                draft.scriptFileContents(),
+                draft.transferConfigs()
         );
         String compiledYaml = yamlSupport.compileGraph(
                 flowSource,

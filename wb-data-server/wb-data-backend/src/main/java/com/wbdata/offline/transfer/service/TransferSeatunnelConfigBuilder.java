@@ -24,7 +24,7 @@ public final class TransferSeatunnelConfigBuilder {
             throw new IllegalArgumentException("Transfer render input is required");
         }
         String sourceQuery = sqlBuilder.buildSourceSql(input.transferConfig(),
-                input.sourceTableDetail(), input.targetTableDetail());
+                input.sourceTableDetail(), input.targetTableDetail(), input.parameters());
         JdbcDriverCatalog.JdbcConnection source = driverCatalog.resolve(
                 input.sourceDataSource(), input.transferConfig().source().database());
         StringBuilder config = new StringBuilder("""
