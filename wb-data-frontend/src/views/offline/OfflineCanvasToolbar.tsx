@@ -101,13 +101,6 @@ export function OfflineCanvasToolbar({
                 全选
             </label>
 
-            <DraftSaveIndicator
-                state={draftSaveState}
-                savedAt={draftSavedAt}
-                error={draftSaveError}
-                dirty={dirty}
-            />
-
             <ToolbarButton
                 label="提交当前任务"
                 disabled={editDisabled || !(dirty || commitDirty) || committing}
@@ -154,6 +147,13 @@ export function OfflineCanvasToolbar({
             <ToolbarButton label="执行结果" disabled={!active} onClick={onOpenExecutions}>
                 <History size={16} />
             </ToolbarButton>
+
+            <DraftSaveIndicator
+                state={draftSaveState}
+                savedAt={draftSavedAt}
+                error={draftSaveError}
+                dirty={dirty}
+            />
 
             {timezone ? (
                 <div className="offline-canvas-toolbar-meta">

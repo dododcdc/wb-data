@@ -311,6 +311,7 @@ button.offline-tree-row {
 .offline-canvas-toolbar-selectall {
     display: flex;
     align-items: center;
+    flex-shrink: 0;
     gap: 6px;
     padding: 6px;
     border-radius: 6px;
@@ -335,6 +336,7 @@ button.offline-tree-row {
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
     position: relative;
     width: 32px;
     height: 32px;
@@ -374,12 +376,18 @@ button.offline-tree-row {
 .offline-canvas-save-indicator {
     display: inline-flex;
     align-items: center;
+    min-width: 0;
     gap: 4px;
     font-size: 0.75rem;
     line-height: 1.4;
     white-space: nowrap;
     user-select: none;
     color: var(--color-text-secondary, #6b675f);
+}
+
+.offline-canvas-save-indicator > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .offline-canvas-save-indicator.is-saved {

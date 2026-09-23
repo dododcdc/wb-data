@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 import OfflineWorkbench from './OfflineWorkbench';
+import { OfflineCanvasToolbar } from './OfflineCanvasToolbar';
 import { removeRecoverySnapshot } from './recoverySnapshotStore';
 import type { OfflineFlowNodeKind } from '../../api/offline';
 
@@ -566,6 +567,45 @@ describe('OfflineWorkbench commit UI', () => {
                 sortOrder: 0,
             }],
         });
+    });
+
+    it.each([
+        { state: 'idle', dirty: true, text: '待自动保存' },
+        { state: 'saving', dirty: true, text: '保存中' },
+        { state: 'saved', dirty: false, text: '已保存' },
+        { state: 'error', dirty: true, text: '保存失败' },
+    ] as const)('keeps the $state save indicator after every toolbar action', ({ state, dirty, text }) => {
+        render(
+            <OfflineCanvasToolbar
+                activeFlowPath="_flows/example/flow.yaml"
+                canWrite
+                canConfigureParameters
+                timezone="Asia/Shanghai"
+                nodeCount={1}
+                selectedNodeCount={0}
+                dirty={dirty}
+                commitDirty={false}
+                committing={false}
+                draftSaveState={state}
+                draftSavedAt={1000}
+                draftSaveError={null}
+                onSelectAll={vi.fn()}
+                onCommit={vi.fn()}
+                onOpenSchedule={vi.fn()}
+                onOpenDependencies={vi.fn()}
+                onOpenParameters={vi.fn()}
+                onExecute={vi.fn()}
+                onOpenExecutions={vi.fn()}
+            />,
+        );
+
+        const indicator = screen.getByRole('status');
+        expect(indicator.textContent).toContain(text);
+        const actions = screen.getAllByRole('button');
+        expect(actions).toHaveLength(6);
+        for (const action of actions) {
+            expect(action.compareDocumentPosition(indicator) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+        }
     });
 
     it('stages dependency settings with canvas edits and keeps business errors out of overwrite recovery', { timeout: 20000 }, async () => {
