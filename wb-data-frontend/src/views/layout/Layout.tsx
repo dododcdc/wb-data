@@ -1,10 +1,11 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import type { LucideIcon } from 'lucide-react';
 import { Activity, Braces, ChevronDown, Database, FolderOpen, Home, Layers, LogOut, Search, Settings, Shield, Users } from 'lucide-react';
 import { useAuthStore } from '../../utils/auth';
-import { getAuthContext } from '../../api/auth';
+import { getAuthContext, logout } from '../../api/auth';
 import { getDataSourcePage } from '../../api/datasource';
 import { TopProgressBar } from '../../components/loading/TopProgressBar';
 import { buildDataSourcePageQueryKey, DEFAULT_PAGE_SIZE } from '../datasources/config';
@@ -27,6 +28,7 @@ import {
     loadUserListModule,
 } from '../../router/routeModules';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
+import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { OperationFeedback } from '../../components/OperationFeedback';
 import { loadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import './Layout.css';
@@ -60,6 +62,9 @@ export default function Layout() {
     const location = useLocation();
     const clearAuth = useAuthStore((s) => s.clearAuth);
     const [switchingGroup, setSwitchingGroup] = useState(false);
+    const [loggingOut, setLoggingOut] = useState(false);
+    const logoutPendingRef = useRef(false);
+    const { showFeedback } = useOperationFeedback();
 
     const navItems = useMemo(() => {
         const hasPermission = (perm: string) => systemAdmin || permissions.includes(perm);
@@ -124,8 +129,26 @@ export default function Layout() {
         }
     }, [currentGroup?.id]);
 
-    const handleLogout = () => {
-        clearAuth();
+    const handleLogout = async () => {
+        if (logoutPendingRef.current) return;
+        logoutPendingRef.current = true;
+        setLoggingOut(true);
+        setUserMenuOpen(false);
+        try {
+            await logout();
+            clearAuth();
+        } catch (error) {
+            // 401 is handled by the shared request interceptor (clear auth and redirect).
+            if (isAxiosError(error) && error.response?.status === 401) return;
+            showFeedback({
+                tone: 'error',
+                title: '退出失败',
+                detail: '未能确认服务端注销，请重试。',
+            });
+        } finally {
+            logoutPendingRef.current = false;
+            setLoggingOut(false);
+        }
     };
     const isFullBleedPage = location.pathname.startsWith('/query') || location.pathname.startsWith('/offline');
     const [routeIntent, setRouteIntent] = useState<string | null>(null);
@@ -471,7 +494,8 @@ export default function Layout() {
                                 <button
                                     className="user-menu-item"
                                     role="menuitem"
-                                    onClick={() => { handleLogout(); setUserMenuOpen(false); }}
+                                    disabled={loggingOut}
+                                    onClick={handleLogout}
                                 >
                                     <LogOut size={15} />
                                     <span>退出登录</span>

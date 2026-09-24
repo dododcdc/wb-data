@@ -113,7 +113,7 @@ class UserServiceTest {
 
     @Test
     void updateUserNotFoundWhenUserMissing() {
-        when(userMapper.selectById(99L)).thenReturn(null);
+        when(userMapper.selectForUpdate(99L)).thenReturn(null);
 
         assertThatThrownBy(() -> service.updateUser(99L, new UpdateUserRequest(), 7L))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
@@ -124,7 +124,7 @@ class UserServiceTest {
     void updateUserRejectsSelfSystemRoleChange() {
         WbUser existing = new WbUser();
         existing.setId(7L);
-        when(userMapper.selectById(7L)).thenReturn(existing);
+        when(userMapper.selectForUpdate(7L)).thenReturn(existing);
         UpdateUserRequest req = new UpdateUserRequest();
         req.setSystemRole("SYSTEM_ADMIN");
 
@@ -137,6 +137,7 @@ class UserServiceTest {
     void updateUserSyncsMembershipDiff() {
         WbUser existing = new WbUser();
         existing.setId(5L);
+        when(userMapper.selectForUpdate(5L)).thenReturn(existing);
         when(userMapper.selectById(5L)).thenReturn(existing);
         when(groupMapper.selectById(anyLong())).thenReturn(new WbProjectGroup());
 
@@ -167,7 +168,7 @@ class UserServiceTest {
     void changeStatusRejectsDisablingSelf() {
         WbUser existing = new WbUser();
         existing.setId(7L);
-        when(userMapper.selectById(7L)).thenReturn(existing);
+        when(userMapper.selectForUpdate(7L)).thenReturn(existing);
         UpdateUserStatusRequest req = new UpdateUserStatusRequest();
         req.setStatus("DISABLED");
 
@@ -181,6 +182,7 @@ class UserServiceTest {
     void resetPasswordStoresEncodedHash() {
         WbUser existing = new WbUser();
         existing.setId(5L);
+        when(userMapper.selectForUpdate(5L)).thenReturn(existing);
         when(userMapper.selectById(5L)).thenReturn(existing);
         when(passwordEncoder.encode("new-pass")).thenReturn("encoded-new");
 
@@ -191,6 +193,78 @@ class UserServiceTest {
         ArgumentCaptor<WbUser> captor = ArgumentCaptor.forClass(WbUser.class);
         verify(userMapper).updateById(captor.capture());
         assertThat(captor.getValue().getPasswordHash()).isEqualTo("encoded-new");
+        assertThat(captor.getValue().getAuthVersion()).isNull();
+        verify(userMapper).incrementAuthVersion(5L);
+    }
+
+    @Test
+    void systemRoleChangeIncrementsSessionVersion() {
+        WbUser existing = new WbUser();
+        existing.setSystemRole("SYSTEM_ADMIN");
+        when(userMapper.selectForUpdate(5L)).thenReturn(existing);
+        when(userMapper.selectById(5L)).thenReturn(existing);
+        UpdateUserRequest req = new UpdateUserRequest();
+        req.setSystemRole("USER");
+
+        service.updateUser(5L, req, 7L);
+
+        verify(userMapper).incrementAuthVersion(5L);
+    }
+
+    @Test
+    void unchangedRoleAndDisplayNameChangeDoNotRevokeSessions() {
+        WbUser existing = new WbUser();
+        existing.setSystemRole("USER");
+        when(userMapper.selectForUpdate(5L)).thenReturn(existing);
+        when(userMapper.selectById(5L)).thenReturn(existing);
+        UpdateUserRequest req = new UpdateUserRequest();
+        req.setSystemRole("USER");
+        req.setDisplayName("New name");
+
+        service.updateUser(5L, req, 7L);
+        req.setSystemRole(null);
+        service.updateUser(5L, req, 7L);
+
+        verify(userMapper, never()).incrementAuthVersion(anyLong());
+    }
+
+    @Test
+    void statusTransitionIncrementsSessionVersion() {
+        WbUser existing = new WbUser();
+        existing.setStatus("ACTIVE");
+        when(userMapper.selectForUpdate(5L)).thenReturn(existing);
+        UpdateUserStatusRequest req = new UpdateUserStatusRequest();
+        req.setStatus("DISABLED");
+
+        service.changeStatus(5L, req, 7L);
+
+        verify(userMapper).incrementAuthVersion(5L);
+    }
+
+    @Test
+    void unchangedStatusDoesNotRevokeSessions() {
+        WbUser existing = new WbUser();
+        existing.setStatus("ACTIVE");
+        when(userMapper.selectForUpdate(5L)).thenReturn(existing);
+        UpdateUserStatusRequest req = new UpdateUserStatusRequest();
+        req.setStatus("ACTIVE");
+
+        service.changeStatus(5L, req, 7L);
+
+        verify(userMapper, never()).incrementAuthVersion(anyLong());
+    }
+
+    @Test
+    void failedPasswordEncodingDoesNotChangeAccountOrVersion() {
+        when(userMapper.selectForUpdate(5L)).thenReturn(new WbUser());
+        when(passwordEncoder.encode("new-pass")).thenThrow(new IllegalStateException("encoder failure"));
+        ResetPasswordRequest req = new ResetPasswordRequest();
+        req.setNewPassword("new-pass");
+
+        assertThatThrownBy(() -> service.resetPassword(5L, req, 7L)).isInstanceOf(IllegalStateException.class);
+
+        verify(userMapper, never()).updateById(any(WbUser.class));
+        verify(userMapper, never()).incrementAuthVersion(anyLong());
     }
 
     private static CreateUserRequest createRequest() {
