@@ -26,6 +26,9 @@ public class WbUser {
 
     private String status;
 
+    @JsonIgnore
+    private Long authVersion;
+
     private LocalDateTime lastLoginAt;
 
     private Long createdBy;

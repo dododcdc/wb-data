@@ -42,7 +42,7 @@ public class AuthService {
         wbUserMapper.updateById(update);
         user.setLastLoginAt(update.getLastLoginAt());
         LoginResponse loginResponse = authTokenService.issueToken(user);
-        log.info("用户 {} 登录成功", loginResponse);
+        log.info("用户 {} 登录成功", user.getId());
         return loginResponse;
     }
 }

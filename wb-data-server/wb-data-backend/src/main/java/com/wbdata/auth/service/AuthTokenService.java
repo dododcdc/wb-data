@@ -5,6 +5,8 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.wbdata.auth.dto.CurrentUserResponse;
 import com.wbdata.auth.dto.LoginResponse;
 import com.wbdata.user.entity.WbUser;
+import com.wbdata.user.mapper.WbUserMapper;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -14,10 +16,12 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Service
+@RequiredArgsConstructor
 public class AuthTokenService {
     private static final Duration TOKEN_TTL = Duration.ofHours(12);
 
-    private final Cache<String, AuthSession> sessions = Caffeine.newBuilder()
+    private final WbUserMapper userMapper;
+    private final Cache<String, CachedSession> sessions = Caffeine.newBuilder()
             .expireAfterWrite(TOKEN_TTL)
             .maximumSize(10_000)
             .build();
@@ -32,7 +36,7 @@ public class AuthTokenService {
                 user.getSystemRole(),
                 expiresAt
         );
-        sessions.put(token, session);
+        sessions.put(token, new CachedSession(session, user.getAuthVersion()));
         return new LoginResponse(token, "Bearer", expiresAt, session.toCurrentUserResponse());
     }
 
@@ -44,8 +48,20 @@ public class AuthTokenService {
         if (token == null || token.isBlank()) {
             return null;
         }
-        return sessions.getIfPresent(token);
+        CachedSession cached = sessions.getIfPresent(token);
+        if (cached == null) {
+            return null;
+        }
+        WbUser user = userMapper.selectById(cached.session().id());
+        if (user == null || !"ACTIVE".equalsIgnoreCase(user.getStatus())
+                || user.getAuthVersion() != cached.authVersion()) {
+            sessions.invalidate(token);
+            return null;
+        }
+        return cached.session();
     }
+
+    private record CachedSession(AuthSession session, long authVersion) {}
 
     public void invalidateToken(String token) {
         if (token != null) {

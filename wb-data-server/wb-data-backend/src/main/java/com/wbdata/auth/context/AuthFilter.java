@@ -93,7 +93,7 @@ public class AuthFilter extends OncePerRequestFilter {
         String token = header.substring(7).trim();
         AuthSession session = authTokenService.resolveToken(token);
         if (session == null) {
-            log.warn("AuthFilter: Token invalid or expired: {}", token);
+            log.warn("AuthFilter: Token invalid or expired");
             sendError(response, HttpStatus.UNAUTHORIZED, "登录状态已失效，请重新登录");
             return;
         }

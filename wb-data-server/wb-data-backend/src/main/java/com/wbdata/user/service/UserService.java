@@ -115,7 +115,7 @@ public class UserService {
 
     @Transactional
     public UserResponse updateUser(Long userId, UpdateUserRequest req, Long operatorId) {
-        WbUser existing = userMapper.selectById(userId);
+        WbUser existing = userMapper.selectForUpdate(userId);
         if (existing == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在");
         }
@@ -136,6 +136,9 @@ public class UserService {
         }
         update.setUpdatedBy(operatorId);
         userMapper.updateById(update);
+        if (req.getSystemRole() != null && !req.getSystemRole().equals(existing.getSystemRole())) {
+            userMapper.incrementAuthVersion(userId);
+        }
 
         if (req.getGroupAssignments() != null) {
             Map<Long, GroupAssignment> submittedMap = new HashMap<>();
@@ -216,8 +219,9 @@ public class UserService {
         }).toList();
     }
 
+    @Transactional
     public void changeStatus(Long userId, UpdateUserStatusRequest req, Long operatorId) {
-        WbUser existing = userMapper.selectById(userId);
+        WbUser existing = userMapper.selectForUpdate(userId);
         if (existing == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在");
         }
@@ -231,10 +235,14 @@ public class UserService {
         update.setStatus(req.getStatus());
         update.setUpdatedBy(operatorId);
         userMapper.updateById(update);
+        if (!req.getStatus().equals(existing.getStatus())) {
+            userMapper.incrementAuthVersion(userId);
+        }
     }
 
+    @Transactional
     public void resetPassword(Long userId, ResetPasswordRequest req, Long operatorId) {
-        WbUser existing = userMapper.selectById(userId);
+        WbUser existing = userMapper.selectForUpdate(userId);
         if (existing == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在");
         }
@@ -244,6 +252,7 @@ public class UserService {
         update.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
         update.setUpdatedBy(operatorId);
         userMapper.updateById(update);
+        userMapper.incrementAuthVersion(userId);
     }
 
     private void validateGroupAssignment(Long groupId, String groupRole) {
