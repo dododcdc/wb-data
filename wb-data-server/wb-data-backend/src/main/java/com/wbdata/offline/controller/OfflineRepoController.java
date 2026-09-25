@@ -21,7 +21,7 @@ import com.wbdata.offline.dto.OfflineRepoTreeResponse;
 import com.wbdata.offline.dto.PushRequest;
 import com.wbdata.offline.dto.PushResponse;
 import com.wbdata.offline.dto.RemoteStatusResponse;
-import com.wbdata.offline.dto.RenameFolderRequest;
+import com.wbdata.offline.dto.MoveFolderRequest;
 import com.wbdata.offline.dto.SwitchBranchRequest;
 import com.wbdata.offline.service.GitCommandService;
 import com.wbdata.offline.service.OfflineRepoStatusService;
@@ -189,11 +189,11 @@ public class OfflineRepoController {
         return Result.success(null);
     }
 
-    @Operation(summary = "重命名离线仓库中的文件夹")
-    @PostMapping("/repo/folder/rename")
-    public Result<Void> renameFolder(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
-                                     @Valid @RequestBody RenameFolderRequest request) {
-        offlineRepoTreeService.renameFolder(context.groupId(), request.path(), request.newName());
+    @Operation(summary = "移动离线仓库中的文件夹（含跨目录，重命名视为同目录移动）")
+    @PostMapping("/repo/folder/move")
+    public Result<Void> moveFolder(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
+                                   @Valid @RequestBody MoveFolderRequest request) {
+        offlineRepoTreeService.moveFolder(context.groupId(), request.path(), request.newPath());
         return Result.success(null);
     }
 

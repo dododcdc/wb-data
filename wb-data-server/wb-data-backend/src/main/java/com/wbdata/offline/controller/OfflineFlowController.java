@@ -10,7 +10,7 @@ import com.wbdata.common.Result;
 import com.wbdata.offline.dto.DeleteOfflineFlowRequest;
 import com.wbdata.offline.dto.OfflineFlowDocumentResponse;
 import com.wbdata.offline.dto.OfflineFlowContentResponse;
-import com.wbdata.offline.dto.RenameOfflineFlowRequest;
+import com.wbdata.offline.dto.MoveOfflineFlowRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowRequest;
 import com.wbdata.offline.service.OfflineFlowContentService;
@@ -104,16 +104,11 @@ public class OfflineFlowController {
         });
     }
 
-    @Operation(summary = "重命名任务")
-    @PostMapping("/rename")
-    public Result<Void> renameFlow(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
-                                   @Valid @RequestBody RenameOfflineFlowRequest request) {
-        RenameOfflineFlowRequest normalizedRequest = new RenameOfflineFlowRequest(
-                context.groupId(),
-                request.path(),
-                request.newName()
-        );
-        offlineFlowContentService.renameFlow(normalizedRequest.groupId(), normalizedRequest.path(), normalizedRequest.newName());
+    @Operation(summary = "移动任务（含跨目录，重命名视为同目录移动）")
+    @PostMapping("/move")
+    public Result<Void> moveFlow(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
+                                 @Valid @RequestBody MoveOfflineFlowRequest request) {
+        offlineFlowContentService.moveFlow(context.groupId(), request.path(), request.newPath());
         return Result.success(null);
     }
 

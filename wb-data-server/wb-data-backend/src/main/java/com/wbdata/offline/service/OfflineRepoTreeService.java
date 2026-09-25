@@ -218,50 +218,53 @@ public class OfflineRepoTreeService {
         }
     }
 
-    public void renameFolder(Long groupId, String path, String newName) {
-        repoLockManager.withLock(groupId, () -> renameFolderUnlocked(groupId, path, newName));
+    public void moveFolder(Long groupId, String path, String newPath) {
+        repoLockManager.withLock(groupId, () -> moveFolderUnlocked(groupId, path, newPath));
     }
 
-    private void renameFolderUnlocked(Long groupId, String path, String newName) {
+    private void moveFolderUnlocked(Long groupId, String path, String newPath) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
+        Path flowsRoot = repoPath.resolve("_flows").normalize();
         Path oldPath = resolveSafePath(repoPath, path);
-
-        if (oldPath.equals(repoPath)) {
-            throw new IllegalArgumentException("不能重命名根目录");
+        if (oldPath.equals(flowsRoot) || !oldPath.startsWith(flowsRoot)) {
+            throw new IllegalArgumentException("只能移动 _flows 目录下的文件夹");
         }
 
-        Path newPath = oldPath.getParent().resolve(newName).normalize();
-        if (!newPath.startsWith(repoPath)) {
-            throw new IllegalArgumentException("非法新名称");
+        Path targetPath = resolveSafePath(repoPath, newPath);
+        if (targetPath.equals(flowsRoot) || !targetPath.startsWith(flowsRoot)) {
+            throw new IllegalArgumentException("文件夹只能移动到 _flows 目录下");
         }
+        OfflineRepoPaths.assertValidSegments(flowsRoot.relativize(targetPath));
+        if (targetPath.equals(oldPath)) {
+            return;
+        }
+        if (targetPath.startsWith(oldPath)) {
+            throw new IllegalArgumentException("不能移动到自身子目录");
+        }
+        if (Files.exists(targetPath)) {
+            throw new IllegalArgumentException("目标位置已存在同名文件夹");
+        }
+
+        String oldSubPath = flowsRoot.relativize(oldPath).toString().replace('\\', '/');
+        String newSubPath = flowsRoot.relativize(targetPath).toString().replace('\\', '/');
+        Path scriptsRoot = repoPath.resolve("scripts").normalize();
+        Path oldScriptsPath = scriptsRoot.resolve(oldSubPath).normalize();
+        Path newScriptsPath = scriptsRoot.resolve(newSubPath).normalize();
 
         try {
-            // Rename in _flows
+            Files.createDirectories(targetPath.getParent());
             if (Files.exists(oldPath)) {
-                Files.move(oldPath, newPath);
+                Files.move(oldPath, targetPath);
             }
 
-            // Rename in scripts/
-            if (path != null && path.startsWith("_flows")) {
-                String relativeSubPath = path.substring("_flows".length());
-                if (relativeSubPath.startsWith("/")) relativeSubPath = relativeSubPath.substring(1);
-
-                if (!relativeSubPath.isEmpty()) {
-                    Path oldScriptsPath = repoPath.resolve("scripts").resolve(relativeSubPath).normalize();
-                    Path newScriptsPath = oldScriptsPath.getParent().resolve(newName).normalize();
-
-                    if (Files.exists(oldScriptsPath) && oldScriptsPath.startsWith(repoPath.resolve("scripts"))) {
-                        Files.move(oldScriptsPath, newScriptsPath);
-                    }
-
-                    // Update flow.yaml references
-                    String parentRelativePath = Path.of(relativeSubPath).getParent() == null ? "" : Path.of(relativeSubPath).getParent().toString().replace('\\', '/');
-                    String newRelativePath = parentRelativePath.isEmpty() ? newName : parentRelativePath + "/" + newName;
-                    updateFlowReferences(newPath, relativeSubPath, newRelativePath);
-                }
+            if (Files.exists(oldScriptsPath)) {
+                Files.createDirectories(newScriptsPath.getParent());
+                Files.move(oldScriptsPath, newScriptsPath);
             }
+
+            updateFlowReferences(targetPath, oldSubPath, newSubPath);
         } catch (IOException ex) {
-            throw new IllegalStateException("重命名文件夹失败", ex);
+            throw new IllegalStateException("移动文件夹失败", ex);
         }
     }
 
