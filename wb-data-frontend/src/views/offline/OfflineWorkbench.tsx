@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getErrorMessage } from '../../utils/error';
 import { useSearchParams } from 'react-router-dom';
 import '../core/RouteSkeletons.css';
 import {
@@ -64,10 +63,23 @@ export default function OfflineWorkbench() {
     const canConfigureParameters = canWrite && (systemAdmin || permissions.includes('parameter.read'));
     const isGroupAdmin = systemAdmin || permissions.includes('group.settings') || currentGroup?.role === 'GROUP_ADMIN';
     const defaultTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', []);
-    const { showFeedback } = useOperationFeedback();
+    const { showFeedback, showSuccess, showError } = useOperationFeedback();
 
     const [repoTree, setRepoTree] = useState<OfflineRepoTreeResponse | null>(null);
     const [treeLoading, setTreeLoading] = useState(false);
+    const treeRequestGeneration = useRef(0);
+    useEffect(() => {
+        const unsubscribe = useAuthStore.subscribe((state, previous) => {
+            if (state.currentGroup?.id === previous.currentGroup?.id && state.token === previous.token) return;
+            treeRequestGeneration.current += 1;
+            setRepoTree(null);
+            setTreeLoading(false);
+        });
+        return () => {
+            unsubscribe();
+            treeRequestGeneration.current += 1;
+        };
+    }, []);
     const [flowCommitDialogOpen, setFlowCommitDialogOpen] = useState(false);
     const [repoCommitDialogOpen, setRepoCommitDialogOpen] = useState(false);
     const [commitMessage, setCommitMessage] = useState('');
@@ -280,21 +292,25 @@ export default function OfflineWorkbench() {
         return statuses;
     }, [executionDetail]);
     const refreshRepoTree = useCallback(async () => {
-        if (!groupId) return;
+        const snapshot = useAuthStore.getState();
+        if (!groupId || snapshot.currentGroup?.id !== groupId) return;
+        const generation = ++treeRequestGeneration.current;
+        const isCurrent = () => {
+            const state = useAuthStore.getState();
+            return treeRequestGeneration.current === generation
+                && state.currentGroup?.id === groupId && state.token === snapshot.token;
+        };
         setTreeLoading(true);
         try {
             const nextTree = await getOfflineRepoTree(groupId);
-            setRepoTree(nextTree);
+            if (isCurrent()) setRepoTree(nextTree);
         } catch (error) {
-            showFeedback({
-                tone: 'error',
-                title: '项目树读取失败',
-                detail: getErrorMessage(error, ''),
-            });
+            if (!isCurrent()) return;
+            showError(error, '项目树读取失败', '');
         } finally {
-            setTreeLoading(false);
+            if (isCurrent()) setTreeLoading(false);
         }
-    }, [groupId, showFeedback]);
+    }, [groupId, showError]);
 
     const refreshWorkspace = useCallback(async () => {
         await Promise.all([
@@ -516,12 +532,8 @@ export default function OfflineWorkbench() {
         setDraftSession((current) => current
             ? updateFlowParameterBindingDraft(current, binding)
             : current);
-        showFeedback({
-            tone: 'success',
-            title: binding ? '参数组已暂存' : '已暂存解除绑定',
-            detail: '自动保存后生效',
-        });
-    }, [setDraftSession, showFeedback]);
+        showSuccess(binding ? '参数组已暂存' : '已暂存解除绑定', '自动保存后生效');
+    }, [setDraftSession, showSuccess]);
 
     const handleSelectAllNodes = useCallback((selected: boolean) => {
         setDraftSelectedTaskIds(selected && flowDocument
@@ -751,7 +763,7 @@ export default function OfflineWorkbench() {
                         if (!canWrite) return;
                         setDraftSession((current) => current ? updateFlowDependencyDraft(current, config) : current);
                         setDependencyDialogOpen(false);
-                        showFeedback({ tone: 'success', title: '依赖配置已暂存', detail: '自动保存后写入仓库' });
+                        showSuccess('依赖配置已暂存', '自动保存后写入仓库');
                     }}
                 />
             ) : null}

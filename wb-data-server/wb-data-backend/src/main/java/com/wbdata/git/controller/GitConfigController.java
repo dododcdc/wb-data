@@ -1,7 +1,7 @@
 package com.wbdata.git.controller;
 
 import com.wbdata.auth.context.RequireGroupAuth;
-import com.wbdata.auth.dto.AuthContextResponse;
+import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.common.Result;
 import com.wbdata.git.dto.GitConfigResponse;
@@ -23,8 +23,8 @@ public class GitConfigController {
     private final GitConfigService gitConfigService;
 
     @GetMapping
-    public Result<GitConfigResponse> getConfig(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context) {
-        WbGitConfig config = gitConfigService.getConfig(context.currentGroup().id());
+    public Result<GitConfigResponse> getConfig(@RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context) {
+        WbGitConfig config = gitConfigService.getConfig(context.groupId());
         if (config == null) {
             return Result.success(null);
         }
@@ -39,10 +39,10 @@ public class GitConfigController {
 
     @Operation(summary = "保存 Git 配置")
     @PostMapping
-    public Result<Void> saveConfig(@RequireGroupAuth(Permission.GROUP_SETTINGS) AuthContextResponse context,
+    public Result<Void> saveConfig(@RequireGroupAuth(Permission.GROUP_SETTINGS) GroupAuthContext context,
                                    @Valid @RequestBody SaveGitConfigRequest request) {
         gitConfigService.saveConfig(
-                context.currentGroup().id(),
+                context.groupId(),
                 request.provider(),
                 request.username(),
                 request.token(),
@@ -53,13 +53,13 @@ public class GitConfigController {
     }
 
     @DeleteMapping
-    public Result<Void> deleteConfig(@RequireGroupAuth(Permission.GROUP_SETTINGS) AuthContextResponse context) {
-        gitConfigService.deleteConfig(context.currentGroup().id());
+    public Result<Void> deleteConfig(@RequireGroupAuth(Permission.GROUP_SETTINGS) GroupAuthContext context) {
+        gitConfigService.deleteConfig(context.groupId());
         return Result.success(null);
     }
 
     @PostMapping("/test")
-    public Result<String> testConnection(@RequireGroupAuth(Permission.GROUP_SETTINGS) AuthContextResponse context,
+    public Result<String> testConnection(@RequireGroupAuth(Permission.GROUP_SETTINGS) GroupAuthContext context,
                                          @Valid @RequestBody SaveGitConfigRequest request) {
         String result = gitConfigService.testConnection(
                 request.provider(),

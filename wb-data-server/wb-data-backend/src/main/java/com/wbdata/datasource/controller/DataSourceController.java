@@ -2,7 +2,7 @@ package com.wbdata.datasource.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.wbdata.auth.context.RequireGroupAuth;
-import com.wbdata.auth.dto.AuthContextResponse;
+import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.auth.service.AuthorizedDataSourceService;
 import com.wbdata.common.Result;
@@ -46,12 +46,12 @@ public class DataSourceController {
 
     @Operation(summary = "数据源分页列表")
     @GetMapping
-    public Result<IPage<DataSourceResponse>> list(@RequireGroupAuth(Permission.DATASOURCE_READ) AuthContextResponse context,
+    public Result<IPage<DataSourceResponse>> list(@RequireGroupAuth(Permission.DATASOURCE_READ) GroupAuthContext context,
                                                   DataSourceSearchQuery query) {
         if (query.getType() != null && !query.getType().isEmpty()) {
             query.setTypeList(java.util.Arrays.asList(query.getType().split(",")));
         }
-        query.setGroupId(context.currentGroup().id());
+        query.setGroupId(context.groupId());
         query.validateSort();
         return Result.success(dataSourceService.getDataSourcePage(query).convert(DataSourceResponse::from));
     }
@@ -60,18 +60,18 @@ public class DataSourceController {
     @GetMapping("/{id}")
     public Result<DataSourceResponse> getById(@PathVariable Long id,
                                               @PathVariable(name = "groupId", required = false) Long groupId) {
-        DataSource dataSource = requireDataSourceContext(id, "datasource.read");
+        DataSource dataSource = requireDataSourceContext(id, Permission.DATASOURCE_READ);
         ensureDataSourceBelongsToPathGroup(dataSource, groupId);
         return Result.success(DataSourceResponse.from(dataSource));
     }
 
     @Operation(summary = "创建数据源")
     @PostMapping
-    public Result<Boolean> save(@RequireGroupAuth(Permission.DATASOURCE_WRITE) AuthContextResponse context,
+    public Result<Boolean> save(@RequireGroupAuth(Permission.DATASOURCE_WRITE) GroupAuthContext context,
                                 @Validated @RequestBody DataSourceSaveDTO dto) {
         validatePluginType(dto.getType());
         DataSource dataSource = new DataSource();
-        dataSource.setGroupId(context.currentGroup().id());
+        dataSource.setGroupId(context.groupId());
         dataSource.setName(dto.getName());
         dataSource.setType(dto.getType());
         dataSource.setDescription(dto.getDescription());
@@ -89,10 +89,10 @@ public class DataSourceController {
 
     @Operation(summary = "更新数据源")
     @PutMapping("/{id}")
-    public Result<Boolean> update(@RequireGroupAuth(Permission.DATASOURCE_WRITE) AuthContextResponse context,
+    public Result<Boolean> update(@RequireGroupAuth(Permission.DATASOURCE_WRITE) GroupAuthContext context,
                                   @PathVariable Long id,
                                   @Validated @RequestBody DataSourceSaveDTO dto) {
-        DataSource existing = requireDataSourceInCurrentGroup(context, id, Permission.DATASOURCE_WRITE.code());
+        DataSource existing = requireDataSourceInCurrentGroup(context, id, Permission.DATASOURCE_WRITE);
         validatePluginType(dto.getType());
         DataSource dataSource = new DataSource();
         dataSource.setId(id);
@@ -117,9 +117,9 @@ public class DataSourceController {
 
     @Operation(summary = "删除数据源")
     @DeleteMapping("/{id}")
-    public Result<Boolean> delete(@RequireGroupAuth(Permission.DATASOURCE_WRITE) AuthContextResponse context,
+    public Result<Boolean> delete(@RequireGroupAuth(Permission.DATASOURCE_WRITE) GroupAuthContext context,
                                   @PathVariable Long id) {
-        requireDataSourceInCurrentGroup(context, id, Permission.DATASOURCE_WRITE.code());
+        requireDataSourceInCurrentGroup(context, id, Permission.DATASOURCE_WRITE);
         boolean removed = dataSourceService.removeById(id);
         poolManager.invalidate(id);   // close and evict the pool for the deleted data source
         return Result.success(removed);
@@ -127,32 +127,32 @@ public class DataSourceController {
 
     @Operation(summary = "更新启用状态")
     @PatchMapping("/{id}/status")
-    public Result<Void> updateStatus(@RequireGroupAuth(Permission.DATASOURCE_WRITE) AuthContextResponse context,
+    public Result<Void> updateStatus(@RequireGroupAuth(Permission.DATASOURCE_WRITE) GroupAuthContext context,
                                      @PathVariable Long id,
                                      @Validated @RequestBody DataSourceStatusRequest request) {
-        requireDataSourceInCurrentGroup(context, id, Permission.DATASOURCE_WRITE.code());
+        requireDataSourceInCurrentGroup(context, id, Permission.DATASOURCE_WRITE);
         dataSourceService.updateStatus(id, request.status());
         return Result.success(null);
     }
 
     @Operation(summary = "测试连接 (新建)")
     @PostMapping("/test-connection")
-    public Result<ConnectionTestResult> testNewConnection(@RequireGroupAuth(Permission.DATASOURCE_WRITE) AuthContextResponse context,
+    public Result<ConnectionTestResult> testNewConnection(@RequireGroupAuth(Permission.DATASOURCE_WRITE) GroupAuthContext context,
                                                           @Validated @RequestBody TestConnectionRequest request) {
         return Result.success(dataSourceService.testConnection(request));
     }
 
     @Operation(summary = "测试连接 (已有)")
     @PostMapping("/{id}/test")
-    public Result<ConnectionTestResult> testExistingConnection(@RequireGroupAuth(Permission.DATASOURCE_READ) AuthContextResponse context,
+    public Result<ConnectionTestResult> testExistingConnection(@RequireGroupAuth(Permission.DATASOURCE_READ) GroupAuthContext context,
                                                                @PathVariable Long id) {
-        requireDataSourceInCurrentGroup(context, id, Permission.DATASOURCE_READ.code());
+        requireDataSourceInCurrentGroup(context, id, Permission.DATASOURCE_READ);
         return Result.success(dataSourceService.testConnection(id));
     }
 
-    private DataSource requireDataSourceInCurrentGroup(AuthContextResponse context, Long dataSourceId, String permission) {
+    private DataSource requireDataSourceInCurrentGroup(GroupAuthContext context, Long dataSourceId, Permission permission) {
         DataSource dataSource = requireDataSourceContext(dataSourceId, permission);
-        Long currentGroupId = context.currentGroup().id();
+        Long currentGroupId = context.groupId();
         if (!currentGroupId.equals(dataSource.getGroupId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "数据源不存在");
         }
@@ -165,7 +165,7 @@ public class DataSourceController {
         }
     }
 
-    private DataSource requireDataSourceContext(Long dataSourceId, String permission) {
+    private DataSource requireDataSourceContext(Long dataSourceId, Permission permission) {
         return authorizedDataSourceService.requireDataSource(dataSourceId, permission);
     }
 

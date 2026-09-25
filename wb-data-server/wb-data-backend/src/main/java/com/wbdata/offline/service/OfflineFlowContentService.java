@@ -142,13 +142,28 @@ public class OfflineFlowContentService {
             throw new IllegalArgumentException("任务路径不合法");
         }
 
+        if (newName == null || newName.isBlank()) {
+            throw new IllegalArgumentException("任务名称不能为空");
+        }
+        Path name = Path.of(newName);
+        if (name.isAbsolute() || name.getNameCount() != 1
+                || !newName.equals(name.getFileName().toString()) || newName.contains("\\")
+                || ".".equals(newName) || "..".equals(newName)) {
+            throw new IllegalArgumentException("任务名称必须为单一目录名");
+        }
+
         // Extract old flow directory name (e.g., "_flows/demo" -> "demo")
         String oldFlowDirName = flowDir.getFileName().toString();
         Path oldFlowsDir = flowDir;
-        Path newFlowsDir = oldFlowsDir.getParent().resolve(newName);
+        Path flowsParent = oldFlowsDir.getParent().normalize();
+        Path scriptsParent = repoPath.resolve("scripts").normalize();
+        Path newFlowsDir = flowsParent.resolve(name).normalize();
 
-        Path oldScriptsDir = repoPath.resolve("scripts").resolve(oldFlowDirName);
-        Path newScriptsDir = repoPath.resolve("scripts").resolve(newName);
+        Path oldScriptsDir = scriptsParent.resolve(oldFlowDirName);
+        Path newScriptsDir = scriptsParent.resolve(name).normalize();
+        if (!flowsParent.equals(newFlowsDir.getParent()) || !scriptsParent.equals(newScriptsDir.getParent())) {
+            throw new IllegalArgumentException("任务名称必须为单一目录名");
+        }
 
         try {
             // Rename _flows/{oldName} to _flows/{newName}
@@ -165,9 +180,9 @@ public class OfflineFlowContentService {
             Path newFlowPath = newFlowsDir.resolve("flow.yaml");
             if (Files.exists(newFlowPath)) {
                 String content = Files.readString(newFlowPath, StandardCharsets.UTF_8);
-                String updatedContent = content.replaceAll(
-                        "(scripts/)" + oldFlowDirName + "(/)",
-                        "$1" + newName + "$2"
+                String updatedContent = content.replace(
+                        "scripts/" + oldFlowDirName + "/",
+                        "scripts/" + newName + "/"
                 );
                 if (!content.equals(updatedContent)) {
                     Files.writeString(newFlowPath, updatedContent, StandardCharsets.UTF_8);

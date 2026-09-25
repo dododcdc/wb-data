@@ -5,7 +5,8 @@ import { isAxiosError } from 'axios';
 import type { LucideIcon } from 'lucide-react';
 import { Activity, Braces, ChevronDown, Database, FolderOpen, Home, Layers, LogOut, Search, Settings, Shield, Users } from 'lucide-react';
 import { useAuthStore } from '../../utils/auth';
-import { getAuthContext, logout } from '../../api/auth';
+import { logout } from '../../api/auth';
+import { selectAuthGroup } from '../../hooks/useAuthContext';
 import { getDataSourcePage } from '../../api/datasource';
 import { TopProgressBar } from '../../components/loading/TopProgressBar';
 import { buildDataSourcePageQueryKey, DEFAULT_PAGE_SIZE } from '../datasources/config';
@@ -61,10 +62,10 @@ export default function Layout() {
     const queryClient = useQueryClient();
     const location = useLocation();
     const clearAuth = useAuthStore((s) => s.clearAuth);
-    const [switchingGroup, setSwitchingGroup] = useState(false);
+    const switchingGroup = useAuthStore((s) => s.switchingGroup);
     const [loggingOut, setLoggingOut] = useState(false);
     const logoutPendingRef = useRef(false);
-    const { showFeedback } = useOperationFeedback();
+    const { showFeedback, showError } = useOperationFeedback();
 
     const navItems = useMemo(() => {
         const hasPermission = (perm: string) => systemAdmin || permissions.includes(perm);
@@ -117,17 +118,13 @@ export default function Layout() {
     const navigate = useNavigate();
 
     const handleGroupChange = useCallback(async (groupId: number) => {
-        if (groupId === currentGroup?.id) return;
-        setSwitchingGroup(true);
+        if (useAuthStore.getState().switchingGroup) return;
         try {
-            const ctx = await getAuthContext(groupId);
-            useAuthStore.getState().setAuthContext(ctx);
-        } catch {
-            /* noop — keep current group on failure */
-        } finally {
-            setSwitchingGroup(false);
+            await selectAuthGroup(queryClient, groupId);
+        } catch (error) {
+            showError(error, '切换项目组失败', '未能切换项目组，请重试');
         }
-    }, [currentGroup?.id]);
+    }, [queryClient, showError]);
 
     const handleLogout = async () => {
         if (logoutPendingRef.current) return;

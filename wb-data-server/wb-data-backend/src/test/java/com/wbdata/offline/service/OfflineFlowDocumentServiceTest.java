@@ -1,8 +1,9 @@
 package com.wbdata.offline.service;
 
-import com.wbdata.auth.dto.AuthContextResponse;
-import com.wbdata.auth.dto.CurrentUserResponse;
+import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.dto.ProjectGroupContextItem;
+import com.wbdata.auth.service.AuthContextService;
+import com.wbdata.auth.service.AuthSession;
 import com.wbdata.datasource.service.DataSourceService;
 import com.wbdata.offline.controller.OfflineFlowController;
 import com.wbdata.offline.dto.OfflineFlowDependencyRef;
@@ -212,7 +213,6 @@ class OfflineFlowDocumentServiceTest {
         final OfflineFlowContentService content = new OfflineFlowContentService(properties, locks, new OfflineKestraFlowFileService(properties));
         final OfflineFlowDependencyService dependencies = new OfflineFlowDependencyService(properties, content, locks,
                 new com.wbdata.auth.service.PermissionService());
-        final OfflineFlowController controller = new OfflineFlowController(content, documents, dependencies);
         final java.util.concurrent.atomic.AtomicInteger revision = new java.util.concurrent.atomic.AtomicInteger();
 
         List<ProjectGroupContextItem> groups(long... ids) {
@@ -221,9 +221,12 @@ class OfflineFlowDocumentServiceTest {
 
         OfflineFlowDocumentResponse save(long groupId, String name, OfflineFlowSchedule schedule,
                                          OfflineFlowDependencySettings settings, long... accessibleGroups) {
-            var currentGroup = groups(groupId).getFirst();
-            var context = new AuthContextResponse(new CurrentUserResponse(1L, "test", "test", "ADMIN"), false,
-                    currentGroup, groups(accessibleGroups), List.of("offline.write"));
+            var context = new GroupAuthContext(
+                    new AuthSession(1L, "test", "test", "ADMIN", Instant.now().plusSeconds(3600)),
+                    groupId, "group-" + groupId);
+            AuthContextService authContextService = mock(AuthContextService.class);
+            when(authContextService.listAccessibleGroups(context.user())).thenReturn(groups(accessibleGroups));
+            OfflineFlowController controller = new OfflineFlowController(content, documents, dependencies, authContextService);
             int version = revision.incrementAndGet();
             controller.saveFlowDocument(context, new SaveOfflineFlowDocumentRequest(
                     999L, "_flows/" + name + "/flow.yaml", null, 0L,
@@ -1132,6 +1135,7 @@ class OfflineFlowDocumentServiceTest {
     private DataSource mysqlDataSource() {
         DataSource dataSource = new DataSource();
         dataSource.setId(1L);
+        dataSource.setGroupId(1L);
         dataSource.setType("MYSQL");
         dataSource.setHost("db.example");
         dataSource.setPort(3306);

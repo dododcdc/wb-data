@@ -2,8 +2,9 @@ package com.wbdata.offline.controller;
 
 import com.wbdata.auth.context.AuthContext;
 import com.wbdata.auth.context.RequireGroupAuth;
-import com.wbdata.auth.dto.AuthContextResponse;
+import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
+import com.wbdata.auth.service.AuthContextService;
 import com.wbdata.common.Result;
 import com.wbdata.offline.dto.OfflineScheduleResponse;
 import com.wbdata.offline.dto.UpdateOfflineScheduleRequest;
@@ -32,20 +33,21 @@ public class OfflineScheduleController {
 
     private final OfflineScheduleService offlineScheduleService;
     private final OfflineFlowDependencyService offlineFlowDependencyService;
+    private final AuthContextService authContextService;
 
     @Operation(summary = "读取任务调度配置")
     @GetMapping
-    public Result<OfflineScheduleResponse> getSchedule(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
+    public Result<OfflineScheduleResponse> getSchedule(@RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
                                                        @RequestParam String path) {
-        return Result.success(offlineScheduleService.getSchedule(context.currentGroup().id(), path));
+        return Result.success(offlineScheduleService.getSchedule(context.groupId(), path));
     }
 
     @Operation(summary = "更新任务调度配置")
     @PutMapping
-    public Result<OfflineScheduleResponse> updateSchedule(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
+    public Result<OfflineScheduleResponse> updateSchedule(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
                                                           @Valid @RequestBody UpdateOfflineScheduleRequest request) {
         UpdateOfflineScheduleRequest normalizedRequest = new UpdateOfflineScheduleRequest(
-                context.currentGroup().id(),
+                context.groupId(),
                 request.path(),
                 request.cron(),
                 request.period(),
@@ -54,17 +56,17 @@ public class OfflineScheduleController {
         );
         return offlineFlowDependencyService.withDependencyGraphLock(() -> {
             offlineFlowDependencyService.assertPeriodChangeAllowed(
-                    context.currentGroup().id(), request.path(), request.period(), context.accessibleGroups());
+                    context.groupId(), request.path(), request.period(), authContextService.listAccessibleGroups(context.user()));
             return Result.success(offlineScheduleService.updateSchedule(normalizedRequest));
         });
     }
 
     @Operation(summary = "启用/停用任务调度")
     @PatchMapping("/status")
-    public Result<OfflineScheduleResponse> updateScheduleStatus(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
+    public Result<OfflineScheduleResponse> updateScheduleStatus(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
                                                                 @Valid @RequestBody UpdateOfflineScheduleStatusRequest request) {
         UpdateOfflineScheduleStatusRequest normalizedRequest = new UpdateOfflineScheduleStatusRequest(
-                context.currentGroup().id(),
+                context.groupId(),
                 request.path(),
                 request.enabled(),
                 request.contentHash(),

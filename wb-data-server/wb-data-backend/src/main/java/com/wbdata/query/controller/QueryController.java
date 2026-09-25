@@ -1,5 +1,6 @@
 package com.wbdata.query.controller;
 
+import com.wbdata.auth.enums.Permission;
 import com.wbdata.auth.service.AuthorizedDataSourceService;
 import com.wbdata.common.Result;
 import com.wbdata.plugin.api.ColumnMetadata;
@@ -47,7 +48,7 @@ public class QueryController {
     @Operation(summary = "获取数据源下的所有数据库")
     @GetMapping("/metadata/{dataSourceId}/databases")
     public Result<List<String>> getDatabases(@PathVariable Long dataSourceId) {
-        authorizedDataSourceService.requireDataSource(dataSourceId, "query.use");
+        authorizedDataSourceService.requireDataSource(dataSourceId, Permission.QUERY_USE);
         return Result.success(metadataService.getDatabases(dataSourceId));
     }
 
@@ -61,7 +62,7 @@ public class QueryController {
                                                        @RequestParam(required = false) String keyword,
                                                        @RequestParam(defaultValue = "1") int page,
                                                        @RequestParam(defaultValue = "200") int size) {
-        authorizedDataSourceService.requireDataSource(dataSourceId, "query.use");
+        authorizedDataSourceService.requireDataSource(dataSourceId, Permission.QUERY_USE);
         return Result.success(metadataService.getTables(dataSourceId, databaseName, keyword, page, size));
     }
 
@@ -70,7 +71,7 @@ public class QueryController {
     public Result<List<ColumnMetadata>> getColumns(@PathVariable Long dataSourceId,
                                                     @PathVariable String databaseName,
                                                     @PathVariable String tableName) {
-        authorizedDataSourceService.requireDataSource(dataSourceId, "query.use");
+        authorizedDataSourceService.requireDataSource(dataSourceId, Permission.QUERY_USE);
         return Result.success(metadataService.getColumns(dataSourceId, databaseName, tableName));
     }
 
@@ -81,7 +82,7 @@ public class QueryController {
     @PostMapping("/execute/{dataSourceId}")
     public Result<QueryResult> execute(@PathVariable Long dataSourceId,
                                        @Valid @RequestBody QueryRequest request) {
-        authorizedDataSourceService.requireDataSource(dataSourceId, "query.use");
+        authorizedDataSourceService.requireDataSource(dataSourceId, Permission.QUERY_USE);
         return Result.success(queryService.executeQuery(dataSourceId, request.sql(), request.database()));
     }
 
@@ -89,7 +90,6 @@ public class QueryController {
     @PostMapping("/export/{dataSourceId}/tasks")
     public Result<QueryExportTaskResponse> createExportTask(@PathVariable Long dataSourceId,
                                                              @Valid @RequestBody QueryExportCreateRequest request) {
-        authorizedDataSourceService.requireDataSource(dataSourceId, "query.export");
         ExportFormat format = request.format() != null ? request.format() : ExportFormat.CSV;
         return Result.success(queryExportService.createExportTask(dataSourceId, request.sql(), request.database(), format.getValue()));
     }
@@ -97,21 +97,18 @@ public class QueryController {
     @Operation(summary = "获取导出任务列表")
     @GetMapping("/export/tasks")
     public Result<List<QueryExportTaskResponse>> listExportTasks() {
-        authorizedDataSourceService.requireContext();
         return Result.success(queryExportService.listTasks());
     }
 
     @Operation(summary = "获取导出任务详情")
     @GetMapping("/export/tasks/{taskId}")
     public Result<QueryExportTaskResponse> getExportTask(@PathVariable String taskId) {
-        authorizedDataSourceService.requireContext();
         return Result.success(queryExportService.getTask(taskId));
     }
 
     @Operation(summary = "下载导出文件")
     @GetMapping("/export/tasks/{taskId}/download")
     public ResponseEntity<Resource> downloadExportTask(@PathVariable String taskId) {
-        authorizedDataSourceService.requireContext();
         String fileName = queryExportService.getDownloadFileName(taskId);
         Resource resource = queryExportService.getDownloadResource(taskId);
         return ResponseEntity.ok()
@@ -126,7 +123,7 @@ public class QueryController {
     @Operation(summary = "获取数据源的SQL智能提示语言特性")
     @GetMapping("/metadata/{dataSourceId}/dialect")
     public Result<com.wbdata.plugin.api.DialectMetadata> getDialectMetadata(@PathVariable Long dataSourceId) {
-        authorizedDataSourceService.requireDataSource(dataSourceId, "query.use");
+        authorizedDataSourceService.requireDataSource(dataSourceId, Permission.QUERY_USE);
         return Result.success(metadataService.getDialectMetadata(dataSourceId));
     }
 }

@@ -1,7 +1,7 @@
 package com.wbdata.operations.controller;
 
 import com.wbdata.auth.context.RequireGroupAuth;
-import com.wbdata.auth.dto.AuthContextResponse;
+import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.operations.dto.OperationsExecutionRerunRequest;
 import org.junit.jupiter.api.Test;
@@ -18,7 +18,7 @@ class OperationsExecutionControllerPermissionTest {
     void readEndpointsRequireOfflineReadAndRerunRequiresOfflineWrite() throws Exception {
         Method list = OperationsExecutionController.class.getMethod(
                 "listExecutions",
-                AuthContextResponse.class,
+                GroupAuthContext.class,
                 String.class,
                 String.class,
                 String.class,
@@ -27,10 +27,10 @@ class OperationsExecutionControllerPermissionTest {
                 Integer.class,
                 Integer.class
         );
-        Method detail = OperationsExecutionController.class.getMethod("getExecution", AuthContextResponse.class, String.class);
-        Method logs = OperationsExecutionController.class.getMethod("getLogs", AuthContextResponse.class, String.class, String.class);
+        Method detail = OperationsExecutionController.class.getMethod("getExecution", GroupAuthContext.class, String.class);
+        Method logs = OperationsExecutionController.class.getMethod("getLogs", GroupAuthContext.class, String.class, String.class);
         Method rerun = OperationsExecutionController.class.getMethod(
-                "rerun", AuthContextResponse.class, String.class, OperationsExecutionRerunRequest.class);
+                "rerun", GroupAuthContext.class, String.class, OperationsExecutionRerunRequest.class);
 
         assertThat(auth(list).value()).isEqualTo(Permission.OFFLINE_READ);
         assertThat(auth(detail).value()).isEqualTo(Permission.OFFLINE_READ);

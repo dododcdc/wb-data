@@ -16,6 +16,19 @@ class PermissionServiceTest {
     }
 
     @Test
+    void unknownAndMissingGroupRolesHaveNoPermissions() {
+        assertThat(service.resolveProjectPermissions(null, false)).isEmpty();
+        assertThat(service.resolveProjectPermissions("UNKNOWN", false)).isEmpty();
+    }
+
+    @Test
+    void developerCannotManageMembersSettingsOrDataSources() {
+        assertThat(service.resolveProjectPermissions(GroupRole.DEVELOPER.name(), false))
+                .doesNotContain(Permission.MEMBER_MANAGE.code(), Permission.GROUP_SETTINGS.code(),
+                        Permission.DATASOURCE_WRITE.code());
+    }
+
+    @Test
     void groupAndSystemAdminsReceiveAllPermissions() {
         assertThat(service.resolveProjectPermissions(GroupRole.GROUP_ADMIN.name(), false))
                 .containsExactlyInAnyOrderElementsOf(

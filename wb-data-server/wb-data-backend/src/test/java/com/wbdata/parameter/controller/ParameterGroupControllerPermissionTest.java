@@ -1,7 +1,7 @@
 package com.wbdata.parameter.controller;
 
 import com.wbdata.auth.context.RequireGroupAuth;
-import com.wbdata.auth.dto.AuthContextResponse;
+import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.common.dto.PageQuery;
 import com.wbdata.parameter.dto.CreateParameterGroupRequest;
@@ -18,19 +18,19 @@ class ParameterGroupControllerPermissionTest {
     @Test
     void readsRequireParameterReadAndMutationsRequireParameterWrite() throws Exception {
         Method list = ParameterGroupController.class.getMethod(
-                "list", AuthContextResponse.class, PageQuery.class, String.class);
+                "list", GroupAuthContext.class, PageQuery.class, String.class);
         Method create = ParameterGroupController.class.getMethod(
-                "create", AuthContextResponse.class, CreateParameterGroupRequest.class);
+                "create", GroupAuthContext.class, CreateParameterGroupRequest.class);
         Method get = ParameterGroupController.class.getMethod(
-                "get", AuthContextResponse.class, Long.class);
+                "get", GroupAuthContext.class, Long.class);
         Method update = ParameterGroupController.class.getMethod(
-                "update", AuthContextResponse.class, Long.class, UpdateParameterGroupRequest.class);
+                "update", GroupAuthContext.class, Long.class, UpdateParameterGroupRequest.class);
         Method archive = ParameterGroupController.class.getMethod(
-                "archive", AuthContextResponse.class, Long.class);
+                "archive", GroupAuthContext.class, Long.class);
         Method restore = ParameterGroupController.class.getMethod(
-                "restore", AuthContextResponse.class, Long.class);
+                "restore", GroupAuthContext.class, Long.class);
         Method preview = ParameterGroupController.class.getMethod(
-                "preview", AuthContextResponse.class, Long.class, ParameterPreviewRequest.class);
+                "preview", GroupAuthContext.class, Long.class, ParameterPreviewRequest.class);
 
         assertThat(auth(list).value()).isEqualTo(Permission.PARAMETER_READ);
         assertThat(auth(get).value()).isEqualTo(Permission.PARAMETER_READ);

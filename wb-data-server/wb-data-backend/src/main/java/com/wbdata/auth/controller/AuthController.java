@@ -52,6 +52,12 @@ public class AuthController {
         return Result.success(authContextService.getContext(session, groupId));
     }
 
+    @Operation(summary = "切换当前项目组")
+    @PostMapping("/context")
+    public Result<AuthContextResponse> selectGroup(@RequestParam Long groupId) {
+        return Result.success(authContextService.selectGroup(AuthContext.require(), groupId));
+    }
+
     @Operation(summary = "登出")
     @PostMapping("/logout")
     public Result<Void> logout(HttpServletRequest request) {

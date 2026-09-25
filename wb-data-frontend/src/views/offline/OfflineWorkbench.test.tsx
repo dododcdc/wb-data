@@ -10,21 +10,24 @@ import { OfflineCanvasToolbar } from './OfflineCanvasToolbar';
 import { removeRecoverySnapshot } from './recoverySnapshotStore';
 import type { OfflineFlowNodeKind } from '../../api/offline';
 
-const { authState, feedbackSpy, flowCanvasRenderSpy } = vi.hoisted(() => ({
+const { authState, feedbackSpy, showSuccessSpy, showErrorSpy, flowCanvasRenderSpy } = vi.hoisted(() => ({
     authState: {
+        token: 'token',
         userInfo: { id: 7 },
         systemAdmin: false,
-        currentGroup: { id: 1, name: 'Team' },
+        currentGroup: { id: 1, name: 'Team' } as { id: number; name: string } | null,
         permissions: ['offline.write'],
     },
     feedbackSpy: vi.fn(),
+    showSuccessSpy: vi.fn(),
+    showErrorSpy: vi.fn(),
     flowCanvasRenderSpy: vi.fn(),
 }));
 
 const authListeners = new Set<() => void>();
 const authStoreListeners = new Set<(state: typeof authState, previousState: typeof authState) => void>();
 
-function setCurrentGroup(group: { id: number; name: string }) {
+function setCurrentGroup(group: { id: number; name: string } | null) {
     const previousState = {
         ...authState,
         currentGroup: authState.currentGroup ? { ...authState.currentGroup } : authState.currentGroup,
@@ -157,6 +160,8 @@ vi.mock('./useNodeEditorDataSources', () => ({
 vi.mock('../../hooks/useOperationFeedback', () => ({
     useOperationFeedback: () => ({
         showFeedback: feedbackSpy,
+        showSuccess: showSuccessSpy,
+        showError: showErrorSpy,
         dismissFeedback: vi.fn(),
     }),
 }));
@@ -569,6 +574,85 @@ describe('OfflineWorkbench commit UI', () => {
         });
     });
 
+    it.each(['success', 'error'] as const)('ignores stale tree %s after changing group', async (outcome) => {
+        const api = await import('../../api/offline');
+        let resolve!: (tree: ReturnType<typeof makeRepoTree>) => void;
+        let reject!: (error: Error) => void;
+        vi.mocked(api.getOfflineRepoTree).mockReturnValueOnce(new Promise((done, fail) => { resolve = done; reject = fail; }));
+        renderOfflineWorkbench();
+        await waitFor(() => expect(api.getOfflineRepoTree).toHaveBeenCalledWith(1));
+        const betaTree = makeRepoTree();
+        betaTree.groupId = 2;
+        betaTree.root.children[0].name = 'Beta Flow';
+        vi.mocked(api.getOfflineRepoTree).mockResolvedValue(betaTree);
+        act(() => setCurrentGroup({ id: 2, name: 'Beta' }));
+        await screen.findByRole('button', { name: 'Beta Flow' });
+        await act(async () => {
+            if (outcome === 'success') resolve(makeRepoTree());
+            else reject(new Error('stale failure'));
+        });
+        expect(screen.queryByRole('button', { name: 'Example Flow' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'Beta Flow' })).toBeTruthy();
+        expect(showErrorSpy).not.toHaveBeenCalledWith(expect.anything(), '项目树读取失败', expect.anything());
+    });
+
+    it('does not end the new group loading state when an old request completes', async () => {
+        const api = await import('../../api/offline');
+        let resolve!: (tree: ReturnType<typeof makeRepoTree>) => void;
+        vi.mocked(api.getOfflineRepoTree).mockReturnValueOnce(new Promise((done) => { resolve = done; }))
+            .mockImplementation(() => new Promise(() => {}));
+        renderOfflineWorkbench();
+        await waitFor(() => expect(api.getOfflineRepoTree).toHaveBeenCalledWith(1));
+        act(() => setCurrentGroup({ id: 2, name: 'Beta' }));
+        await waitFor(() => expect(api.getOfflineRepoTree).toHaveBeenCalledWith(2));
+        await act(async () => { resolve(makeRepoTree()); });
+        expect(screen.getByText('正在加载项目树')).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Example Flow' })).toBeNull();
+    });
+
+    it('clears a loaded tree when the user no longer has an accessible group', async () => {
+        renderOfflineWorkbench();
+        await screen.findByRole('button', { name: 'Example Flow' });
+        act(() => setCurrentGroup(null));
+        expect(screen.queryByRole('button', { name: 'Example Flow' })).toBeNull();
+    });
+
+    it.each(['session', 'group-round-trip'] as const)('invalidates an in-flight tree across a %s change even with the same final group', async (change) => {
+        const api = await import('../../api/offline');
+        let resolve!: (tree: ReturnType<typeof makeRepoTree>) => void;
+        vi.mocked(api.getOfflineRepoTree).mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+        renderOfflineWorkbench();
+        await waitFor(() => expect(api.getOfflineRepoTree).toHaveBeenCalledWith(1));
+        act(() => {
+            if (change === 'session') {
+                const previous = { ...authState };
+                authState.token = 'new-token';
+                authStoreListeners.forEach((listener) => listener(authState, previous));
+                authListeners.forEach((listener) => listener());
+            } else {
+                setCurrentGroup({ id: 2, name: 'Beta' });
+                setCurrentGroup({ id: 1, name: 'Team' });
+            }
+        });
+        await act(async () => { resolve(makeRepoTree()); });
+        expect(screen.queryByRole('button', { name: 'Example Flow' })).toBeNull();
+        authState.token = 'token';
+    });
+
+    it('keeps the newest same-group tree refresh when requests finish out of order', async () => {
+        const api = await import('../../api/offline');
+        let resolve!: (tree: ReturnType<typeof makeRepoTree>) => void;
+        vi.mocked(api.getOfflineRepoTree).mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+        renderOfflineWorkbench();
+        await waitFor(() => expect(api.getOfflineRepoTree).toHaveBeenCalledTimes(1));
+        const nextTree = makeRepoTree({ includeSecondFlow: true });
+        vi.mocked(api.getOfflineRepoTree).mockResolvedValue(nextTree);
+        act(() => window.dispatchEvent(new CustomEvent('wbdata:offline-branch-changed', { detail: { groupId: 1 } })));
+        await screen.findByRole('button', { name: 'Second Flow' });
+        await act(async () => { resolve(makeRepoTree()); });
+        expect(screen.getByRole('button', { name: 'Second Flow' })).toBeTruthy();
+    });
+
     it.each([
         { state: 'idle', dirty: true, text: '待自动保存' },
         { state: 'saving', dirty: true, text: '保存中' },
@@ -639,6 +723,7 @@ describe('OfflineWorkbench commit UI', () => {
         }, { timeout: 10000 });
         expect(await screen.findByText('保存失败')).toBeTruthy();
         expect(feedbackSpy).not.toHaveBeenCalledWith(expect.objectContaining({ tone: 'error' }));
+        expect(showErrorSpy).not.toHaveBeenCalled();
     });
 
     it('cancels dependency edits without making the Flow dirty', async () => {

@@ -40,7 +40,7 @@ import { useDataTable } from '../../hooks/useDataTable';
 
 export default function GroupSettingsPage() {
     const queryClient = useQueryClient();
-    const { showFeedback } = useOperationFeedback();
+    const { showSuccess, showError } = useOperationFeedback();
     const currentGroup = useAuthStore((s) => s.currentGroup);
     const permissions = useAuthStore((s) => s.permissions);
     const systemAdmin = useAuthStore((s) => s.systemAdmin);
@@ -106,21 +106,12 @@ export default function GroupSettingsPage() {
         mutationFn: (payload: AddMembersPayload) => addMembers(groupId!, payload),
         onSuccess: () => {
             setIsAddMemberOpen(false);
-            showFeedback({
-                tone: 'success',
-                title: `已添加 ${addedMemberCountRef.current} 名成员`,
-                detail: '',
-            });
+            showSuccess(`已添加 ${addedMemberCountRef.current} 名成员`);
             void queryClient.invalidateQueries({ queryKey: ['group-settings-members'] });
         },
         onError: (error) => {
             setIsAddMemberOpen(false);
-            const message = (error as { message?: string } | null)?.message?.trim();
-            showFeedback({
-                tone: 'error',
-                title: message || '添加成员失败',
-                detail: '',
-            });
+            showError(error, '添加成员失败');
         },
     });
 
@@ -132,21 +123,12 @@ export default function GroupSettingsPage() {
             setChangeRoleMember(null);
             const name = member?.displayName ?? '成员';
             const roleLabel = getRoleLabel(variables.role);
-            showFeedback({
-                tone: 'success',
-                title: `${name} 已设为${roleLabel}`,
-                detail: '',
-            });
+            showSuccess(`${name} 已设为${roleLabel}`);
             void queryClient.invalidateQueries({ queryKey: ['group-settings-members'] });
         },
         onError: (error) => {
             setChangeRoleMember(null);
-            const message = (error as { message?: string } | null)?.message?.trim();
-            showFeedback({
-                tone: 'error',
-                title: message || '角色变更失败',
-                detail: '',
-            });
+            showError(error, '角色变更失败');
         },
     });
 
@@ -157,21 +139,12 @@ export default function GroupSettingsPage() {
         },
         onSuccess: () => {
             const name = pendingRemoveTarget?.displayName ?? '成员';
-            showFeedback({
-                tone: 'success',
-                title: `${name} 已移除`,
-                detail: '',
-            });
+            showSuccess(`${name} 已移除`);
             void queryClient.invalidateQueries({ queryKey: ['group-settings-members'] });
             setPendingRemoveTarget(null);
         },
         onError: (error) => {
-            const message = (error as { message?: string } | null)?.message?.trim();
-            showFeedback({
-                tone: 'error',
-                title: message || '移除成员失败',
-                detail: '',
-            });
+            showError(error, '移除成员失败');
         },
         onSettled: () => {
             setPendingRemoveId(null);

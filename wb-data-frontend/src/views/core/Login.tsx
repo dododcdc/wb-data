@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 
-import { login, getAuthContext } from '@/api/auth';
+import { login } from '@/api/auth';
 import { useAuthStore } from '@/utils/auth';
 import { getErrorMessage } from '@/utils/error';
 import { Button } from '@/components/ui/button';
@@ -61,9 +61,7 @@ export default function Login() {
             useAuthStore.getState().setToken(res.accessToken);
             useAuthStore.getState().setUserInfo(res.user);
 
-            const ctx = await getAuthContext();
-            useAuthStore.getState().setAuthContext(ctx);
-
+            // AuthGuard owns the initial context load as well as later refreshes.
             navigate('/', { replace: true });
         } catch (error) {
             setServerError(getErrorMessage(error, '登录失败，请稍后重试'));

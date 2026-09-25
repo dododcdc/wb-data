@@ -7,10 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import Layout from './Layout';
 import { useAuthStore } from '../../utils/auth';
-import { logout } from '../../api/auth';
+import { logout, selectGroupContext } from '../../api/auth';
 import { getOfflineRepoStatus, listBranches, switchBranch } from '../../api/offline';
 
 const showFeedbackSpy = vi.fn();
+const showErrorSpy = vi.fn();
 
 vi.mock('../../components/loading/TopProgressBar', () => ({
     TopProgressBar: () => null,
@@ -46,12 +47,26 @@ vi.mock('../../components/sql-editor/sqlEditorModule', () => ({
 vi.mock('../../hooks/useOperationFeedback', () => ({
     useOperationFeedback: () => ({
         showFeedback: showFeedbackSpy,
+        showError: showErrorSpy,
     }),
 }));
 
 vi.mock('../../api/auth', () => ({
     getAuthContext: vi.fn(),
+    selectGroupContext: vi.fn(),
     logout: vi.fn(),
+}));
+
+vi.mock('../../components/ui/select', () => ({
+    Select: ({ value, onValueChange, disabled, items }: { value: number; onValueChange: (value: number) => void; disabled: boolean; items: { value: number; label: string }[] }) => (
+        <select aria-label="项目组" value={value} disabled={disabled} onChange={(event) => onValueChange(Number(event.target.value))}>
+            {items.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+        </select>
+    ),
+    SelectContent: () => null,
+    SelectItem: () => null,
+    SelectTrigger: () => null,
+    SelectValue: () => null,
 }));
 
 vi.mock('../../api/offline', () => ({
@@ -173,6 +188,17 @@ describe('Layout', () => {
 
         expect(screen.queryByText('main')).toBeNull();
         expect(getOfflineRepoStatus).not.toHaveBeenCalled();
+    });
+
+    it('preserves the current group and shows existing feedback when selecting another group fails', async () => {
+        useAuthStore.setState((state) => ({ accessibleGroups: [...state.accessibleGroups, { id: 5, name: 'Beta', description: '', role: 'DEVELOPER' }] }));
+        vi.mocked(selectGroupContext).mockRejectedValueOnce(new Error('目标项目组已禁用'));
+        renderOfflineLayout();
+        fireEvent.change(screen.getByRole('combobox', { name: '项目组' }), { target: { value: '5' } });
+        await waitFor(() => expect(showErrorSpy).toHaveBeenCalledWith(expect.any(Error), '切换项目组失败', '未能切换项目组，请重试'));
+        expect(selectGroupContext).toHaveBeenCalledWith(5);
+        expect(useAuthStore.getState().currentGroup?.id).toBe(4);
+        expect(screen.getByRole<HTMLSelectElement>('combobox', { name: '项目组' }).disabled).toBe(false);
     });
 
     describe('logout', () => {

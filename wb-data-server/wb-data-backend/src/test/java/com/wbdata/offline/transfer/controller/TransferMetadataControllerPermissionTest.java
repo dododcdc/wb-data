@@ -1,7 +1,7 @@
 package com.wbdata.offline.transfer.controller;
 
 import com.wbdata.auth.context.RequireGroupAuth;
-import com.wbdata.auth.dto.AuthContextResponse;
+import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.auth.service.AuthorizedDataSourceService;
 import com.wbdata.datasource.entity.DataSource;
@@ -24,11 +24,11 @@ class TransferMetadataControllerPermissionTest {
     @Test
     void metadataEndpointsRequireOfflineRead() throws Exception {
         Method databases = TransferMetadataController.class.getMethod(
-                "getDatabases", AuthContextResponse.class, Long.class, Long.class);
+                "getDatabases", GroupAuthContext.class, Long.class, Long.class);
         Method tables = TransferMetadataController.class.getMethod(
-                "getTables", AuthContextResponse.class, Long.class, Long.class, String.class, String.class, int.class, int.class);
+                "getTables", GroupAuthContext.class, Long.class, Long.class, String.class, String.class, int.class, int.class);
         Method metadata = TransferMetadataController.class.getMethod(
-                "getTableMetadata", AuthContextResponse.class, Long.class, Long.class, String.class, String.class);
+                "getTableMetadata", GroupAuthContext.class, Long.class, Long.class, String.class, String.class);
 
         assertThat(auth(databases).value()).isEqualTo(Permission.OFFLINE_READ);
         assertThat(auth(tables).value()).isEqualTo(Permission.OFFLINE_READ);
@@ -41,14 +41,14 @@ class TransferMetadataControllerPermissionTest {
         AuthorizedDataSourceService authorizedDataSourceService = mock(AuthorizedDataSourceService.class);
         DataSource dataSource = new DataSource();
         dataSource.setGroupId(4L);
-        when(authorizedDataSourceService.requireDataSource(11676L, Permission.DATASOURCE_READ.code()))
+        when(authorizedDataSourceService.requireDataSource(11676L, Permission.DATASOURCE_READ))
                 .thenReturn(dataSource);
         when(metadataService.getDatabases(11676L)).thenReturn(List.of("warehouse"));
         TransferMetadataController controller = new TransferMetadataController(metadataService, authorizedDataSourceService);
 
         controller.getDatabases(null, 4L, 11676L);
 
-        verify(authorizedDataSourceService).requireDataSource(11676L, Permission.DATASOURCE_READ.code());
+        verify(authorizedDataSourceService).requireDataSource(11676L, Permission.DATASOURCE_READ);
         verify(metadataService).getDatabases(11676L);
     }
 
@@ -58,7 +58,7 @@ class TransferMetadataControllerPermissionTest {
         AuthorizedDataSourceService authorizedDataSourceService = mock(AuthorizedDataSourceService.class);
         DataSource dataSource = new DataSource();
         dataSource.setGroupId(4L);
-        when(authorizedDataSourceService.requireDataSource(11676L, Permission.DATASOURCE_READ.code()))
+        when(authorizedDataSourceService.requireDataSource(11676L, Permission.DATASOURCE_READ))
                 .thenReturn(dataSource);
         TransferMetadataController controller = new TransferMetadataController(metadataService, authorizedDataSourceService);
 
@@ -73,14 +73,14 @@ class TransferMetadataControllerPermissionTest {
         AuthorizedDataSourceService authorizedDataSourceService = mock(AuthorizedDataSourceService.class);
         DataSource dataSource = new DataSource();
         dataSource.setGroupId(4L);
-        when(authorizedDataSourceService.requireDataSource(11676L, Permission.DATASOURCE_READ.code())).thenReturn(dataSource);
+        when(authorizedDataSourceService.requireDataSource(11676L, Permission.DATASOURCE_READ)).thenReturn(dataSource);
         when(metadataService.getTables(11676L, "warehouse", null, 1, 200))
                 .thenReturn(new PageResult<>(List.of(), 0, 1, 200));
         TransferMetadataController controller = new TransferMetadataController(metadataService, authorizedDataSourceService);
 
         controller.getTables(null, 4L, 11676L, "warehouse", null, 1, 200);
 
-        verify(authorizedDataSourceService).requireDataSource(11676L, Permission.DATASOURCE_READ.code());
+        verify(authorizedDataSourceService).requireDataSource(11676L, Permission.DATASOURCE_READ);
     }
 
     private RequireGroupAuth auth(Method method) {

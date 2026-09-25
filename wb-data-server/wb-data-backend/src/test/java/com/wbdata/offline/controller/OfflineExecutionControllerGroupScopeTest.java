@@ -1,8 +1,7 @@
 package com.wbdata.offline.controller;
 
-import com.wbdata.auth.dto.AuthContextResponse;
-import com.wbdata.auth.dto.CurrentUserResponse;
-import com.wbdata.auth.dto.ProjectGroupContextItem;
+import com.wbdata.auth.context.GroupAuthContext;
+import com.wbdata.auth.service.AuthSession;
 import com.wbdata.offline.dto.DebugDocumentExecutionRequest;
 import com.wbdata.offline.dto.DebugExecutionRequest;
 import com.wbdata.offline.dto.OfflineExecutionResponse;
@@ -91,14 +90,11 @@ class OfflineExecutionControllerGroupScopeTest {
         assertThat(executionCaptor.getValue().parameterOverrides()).containsEntry("name", "李雷");
     }
 
-    private AuthContextResponse context(Long groupId) {
-        ProjectGroupContextItem group = new ProjectGroupContextItem(groupId, "policy", "", "GROUP_ADMIN");
-        return new AuthContextResponse(
-                new CurrentUserResponse(1L, "admin", "admin", "ADMIN"),
-                false,
-                group,
-                List.of(group),
-                List.of("offline.write")
+    private GroupAuthContext context(Long groupId) {
+        return new GroupAuthContext(
+                new AuthSession(1L, "admin", "admin", "ADMIN", Instant.now().plusSeconds(3600)),
+                groupId,
+                "policy"
         );
     }
 

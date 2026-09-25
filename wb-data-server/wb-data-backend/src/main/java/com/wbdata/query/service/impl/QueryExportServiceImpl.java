@@ -1,5 +1,9 @@
 package com.wbdata.query.service.impl;
 
+import com.wbdata.auth.context.AuthContext;
+import com.wbdata.auth.enums.Permission;
+import com.wbdata.auth.service.AuthorizedDataSourceService;
+import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.plugin.api.QueryResult;
 import com.wbdata.query.dto.QueryExportTaskResponse;
 import com.wbdata.query.service.QueryExportService;
@@ -11,7 +15,9 @@ import org.apache.poi.xssf.streaming.SXSSFSheet;
 import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -25,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -37,30 +44,37 @@ public class QueryExportServiceImpl implements QueryExportService {
     private static final Duration TASK_TTL = Duration.ofHours(1);
 
     private final QueryService queryService;
+    private final AuthorizedDataSourceService authorizedDataSourceService;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final Map<String, ExportTask> tasks = new ConcurrentHashMap<>();
 
-    public QueryExportServiceImpl(QueryService queryService) {
+    public QueryExportServiceImpl(QueryService queryService, AuthorizedDataSourceService authorizedDataSourceService) {
         this.queryService = queryService;
+        this.authorizedDataSourceService = authorizedDataSourceService;
     }
 
     @Override
     public QueryExportTaskResponse createExportTask(Long dataSourceId, String sql, String database, String format) {
+        Long ownerId = AuthContext.require().id();
+        DataSource dataSource = authorizedDataSourceService.requireDataSource(dataSourceId, Permission.QUERY_EXPORT);
         evictExpiredTasks();
         String normalizedFormat = normalizeFormat(format);
         String taskId = UUID.randomUUID().toString();
         Instant now = Instant.now();
-        ExportTask task = new ExportTask(taskId, normalizedFormat, ExportTaskStatus.PENDING, null, null, EXPORT_ROW_LIMIT, false, null, null, now, now);
+        ExportTask task = new ExportTask(taskId, ownerId, dataSource.getGroupId(), dataSource.getId(),
+                normalizedFormat, ExportTaskStatus.PENDING, null, null, EXPORT_ROW_LIMIT, false, null, null, now, now);
         tasks.put(taskId, task);
 
-        executor.submit(() -> runExport(taskId, dataSourceId, sql, database, normalizedFormat));
+        executor.submit(() -> runExport(taskId, task.dataSourceId(), sql, database, normalizedFormat));
         return toResponse(task);
     }
 
     @Override
     public List<QueryExportTaskResponse> listTasks() {
+        Long ownerId = AuthContext.require().id();
         evictExpiredTasks();
         return tasks.values().stream()
+                .filter(task -> Objects.equals(task.ownerId(), ownerId))
                 .sorted(Comparator.comparing(ExportTask::updatedAt).reversed())
                 .limit(MAX_VISIBLE_TASKS)
                 .map(this::toResponse)
@@ -213,9 +227,14 @@ public class QueryExportServiceImpl implements QueryExportService {
     }
 
     private ExportTask requireTask(String taskId) {
+        Long ownerId = AuthContext.require().id();
         ExportTask task = tasks.get(taskId);
-        if (task == null) {
-            throw new IllegalArgumentException("导出任务不存在: " + taskId);
+        if (task == null || !Objects.equals(task.ownerId(), ownerId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "导出任务不存在");
+        }
+        DataSource dataSource = authorizedDataSourceService.requireDataSource(task.dataSourceId(), Permission.QUERY_EXPORT);
+        if (!Objects.equals(task.groupId(), dataSource.getGroupId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "数据源所属项目组已变更，请重新导出");
         }
         return task;
     }
@@ -254,6 +273,9 @@ public class QueryExportServiceImpl implements QueryExportService {
 
     record ExportTask(
             String taskId,
+            Long ownerId,
+            Long groupId,
+            Long dataSourceId,
             String format,
             ExportTaskStatus status,
             Path filePath,
@@ -266,31 +288,31 @@ public class QueryExportServiceImpl implements QueryExportService {
             Instant updatedAt
     ) {
         ExportTask withStatus(ExportTaskStatus nextStatus) {
-            return new ExportTask(taskId, format, nextStatus, filePath, fileName, rowLimit, truncated, exportedRows, errorMessage, createdAt, updatedAt);
+            return new ExportTask(taskId, ownerId, groupId, dataSourceId, format, nextStatus, filePath, fileName, rowLimit, truncated, exportedRows, errorMessage, createdAt, updatedAt);
         }
 
         ExportTask withFilePath(Path nextFilePath) {
-            return new ExportTask(taskId, format, status, nextFilePath, fileName, rowLimit, truncated, exportedRows, errorMessage, createdAt, updatedAt);
+            return new ExportTask(taskId, ownerId, groupId, dataSourceId, format, status, nextFilePath, fileName, rowLimit, truncated, exportedRows, errorMessage, createdAt, updatedAt);
         }
 
         ExportTask withFileName(String nextFileName) {
-            return new ExportTask(taskId, format, status, filePath, nextFileName, rowLimit, truncated, exportedRows, errorMessage, createdAt, updatedAt);
+            return new ExportTask(taskId, ownerId, groupId, dataSourceId, format, status, filePath, nextFileName, rowLimit, truncated, exportedRows, errorMessage, createdAt, updatedAt);
         }
 
         ExportTask withExportedRows(Integer nextExportedRows) {
-            return new ExportTask(taskId, format, status, filePath, fileName, rowLimit, truncated, nextExportedRows, errorMessage, createdAt, updatedAt);
+            return new ExportTask(taskId, ownerId, groupId, dataSourceId, format, status, filePath, fileName, rowLimit, truncated, nextExportedRows, errorMessage, createdAt, updatedAt);
         }
 
         ExportTask withTruncated(boolean nextTruncated) {
-            return new ExportTask(taskId, format, status, filePath, fileName, rowLimit, nextTruncated, exportedRows, errorMessage, createdAt, updatedAt);
+            return new ExportTask(taskId, ownerId, groupId, dataSourceId, format, status, filePath, fileName, rowLimit, nextTruncated, exportedRows, errorMessage, createdAt, updatedAt);
         }
 
         ExportTask withErrorMessage(String nextErrorMessage) {
-            return new ExportTask(taskId, format, status, filePath, fileName, rowLimit, truncated, exportedRows, nextErrorMessage, createdAt, updatedAt);
+            return new ExportTask(taskId, ownerId, groupId, dataSourceId, format, status, filePath, fileName, rowLimit, truncated, exportedRows, nextErrorMessage, createdAt, updatedAt);
         }
 
         ExportTask withUpdatedAt(Instant nextUpdatedAt) {
-            return new ExportTask(taskId, format, status, filePath, fileName, rowLimit, truncated, exportedRows, errorMessage, createdAt, nextUpdatedAt);
+            return new ExportTask(taskId, ownerId, groupId, dataSourceId, format, status, filePath, fileName, rowLimit, truncated, exportedRows, errorMessage, createdAt, nextUpdatedAt);
         }
     }
 }

@@ -11,8 +11,7 @@ import {
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
-import { getAuthContext } from '../../api/auth';
-import { useAuthStore } from '../../utils/auth';
+import { refreshAuthContext } from '../../hooks/useAuthContext';
 import {
     disableGroup,
     enableGroup,
@@ -31,7 +30,7 @@ import { useDataTable } from '../../hooks/useDataTable';
 
 export default function GroupList() {
     const queryClient = useQueryClient();
-    const { showFeedback } = useOperationFeedback();
+    const { showSuccess, showError } = useOperationFeedback();
     const [keywordInput, setKeywordInput] = useState('');
     const [isComposing, setIsComposing] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -79,11 +78,12 @@ export default function GroupList() {
         mutationFn: (id: number) => disableGroup(id),
         onMutate: setPendingId,
         onSuccess: () => {
-            showFeedback({ tone: 'success', title: '项目组已禁用', detail: '' });
+            showSuccess('项目组已禁用');
             void queryClient.invalidateQueries({ queryKey: ['groups'] });
+            void refreshAuthContext(queryClient);
         },
-        onError: () => {
-            showFeedback({ tone: 'error', title: '禁用失败', detail: '' });
+        onError: (error) => {
+            showError(error, '禁用失败');
         },
         onSettled: () => setPendingId(null),
     });
@@ -92,11 +92,12 @@ export default function GroupList() {
         mutationFn: (id: number) => enableGroup(id),
         onMutate: setPendingId,
         onSuccess: () => {
-            showFeedback({ tone: 'success', title: '项目组已启用', detail: '' });
+            showSuccess('项目组已启用');
             void queryClient.invalidateQueries({ queryKey: ['groups'] });
+            void refreshAuthContext(queryClient);
         },
-        onError: () => {
-            showFeedback({ tone: 'error', title: '启用失败', detail: '' });
+        onError: (error) => {
+            showError(error, '启用失败');
         },
         onSettled: () => setPendingId(null),
     });
@@ -122,21 +123,16 @@ export default function GroupList() {
         setEditingGroup(null);
 
         if (editingGroup) {
-            showFeedback({ tone: 'success', title: '项目组已更新', detail: '' });
+            showSuccess('项目组已更新');
         } else {
-            showFeedback({ tone: 'success', title: '项目组已创建', detail: '' });
+            showSuccess('项目组已创建');
             setPage(1);
         }
 
         void queryClient.invalidateQueries({ queryKey: ['groups'] });
 
-        // 刷新 auth context 以更新顶部项目组下拉列表
-        try {
-            const ctx = await getAuthContext();
-            useAuthStore.getState().setAuthContext(ctx);
-        } catch {
-            // 刷新失败不影响主流程
-        }
+        // 与自动刷新共用同一查询，避免覆盖更新的切组或登录会话。
+        void refreshAuthContext(queryClient);
     };
 
     return (
