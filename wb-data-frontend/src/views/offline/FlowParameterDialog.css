@@ -410,3 +410,54 @@
     display: flex;
     gap: 8px;
 }
+
+.flow-parameter-upgrade-preview {
+    margin: 8px 12px 12px 44px;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-bg-secondary);
+    font-size: 0.85rem;
+}
+
+.flow-parameter-upgrade-title {
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 6px;
+}
+
+.flow-parameter-upgrade-diff-list {
+    margin: 0 0 10px;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.flow-parameter-upgrade-diff-list li {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+}
+
+.flow-parameter-upgrade-diff-list li code {
+    flex-shrink: 0;
+    color: var(--color-text-primary);
+}
+
+.flow-parameter-upgrade-diff-list li.is-added span {
+    color: var(--color-success);
+}
+
+.flow-parameter-upgrade-diff-list li.is-removed span {
+    color: var(--color-error);
+}
+
+.flow-parameter-upgrade-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
