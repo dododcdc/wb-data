@@ -11,8 +11,8 @@ vi.mock('../../api/offline', async () => {
         createOfflineFolder: vi.fn(),
         deleteOfflineFlow: vi.fn(),
         deleteOfflineFolder: vi.fn(),
-        renameOfflineFlow: vi.fn(),
-        renameOfflineFolder: vi.fn(),
+        moveOfflineFlow: vi.fn(),
+        moveOfflineFolder: vi.fn(),
         saveOfflineFlowDocument: vi.fn(),
     };
 });
@@ -215,7 +215,7 @@ describe('useOfflineTreeMutations', () => {
 
     it('renames a nested active Flow without moving it to the repository root', async () => {
         const offlineApi = await import('../../api/offline');
-        vi.mocked(offlineApi.renameOfflineFlow).mockResolvedValue(undefined as never);
+        vi.mocked(offlineApi.moveOfflineFlow).mockResolvedValue(undefined as never);
         const { result, params } = renderTreeMutations({
             activeFlowPath: '_flows/jack/test11/flow.yaml',
             draftSession: makeSession('_flows/jack/test11/flow.yaml'),
@@ -235,14 +235,14 @@ describe('useOfflineTreeMutations', () => {
             await result.current.handleRenameFlow();
         });
 
-        expect(offlineApi.renameOfflineFlow).toHaveBeenCalledWith(1, '_flows/jack/test11/flow.yaml', 'test11_new');
+        expect(offlineApi.moveOfflineFlow).toHaveBeenCalledWith(1, '_flows/jack/test11/flow.yaml', '_flows/jack/test11_new/flow.yaml');
         expect(params.setActiveFlowPath).toHaveBeenCalledWith('_flows/jack/test11_new/flow.yaml');
         expect(params.openFlowDocument).toHaveBeenCalledWith('_flows/jack/test11_new/flow.yaml');
     });
 
     it('renames a folder containing the active Flow and reopens the moved Flow', async () => {
         const offlineApi = await import('../../api/offline');
-        vi.mocked(offlineApi.renameOfflineFolder).mockResolvedValue(undefined as never);
+        vi.mocked(offlineApi.moveOfflineFolder).mockResolvedValue(undefined as never);
         const { result, params } = renderTreeMutations({
             activeFlowPath: '_flows/jack/test/flow.yaml',
             draftSession: makeSession('_flows/jack/test/flow.yaml'),
@@ -262,7 +262,7 @@ describe('useOfflineTreeMutations', () => {
             await result.current.handleRenameFolder();
         });
 
-        expect(offlineApi.renameOfflineFolder).toHaveBeenCalledWith(1, '_flows/jack', 'jack_renamed');
+        expect(offlineApi.moveOfflineFolder).toHaveBeenCalledWith(1, '_flows/jack', '_flows/jack_renamed');
         expect(params.leaveCurrentFlow).toHaveBeenCalledWith(params.draftSession);
         expect(params.setDraftSession).toHaveBeenCalledWith(null);
         expect(params.setActiveFlowPath).toHaveBeenCalledWith('_flows/jack_renamed/test/flow.yaml');

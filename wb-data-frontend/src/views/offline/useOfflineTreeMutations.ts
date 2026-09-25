@@ -3,8 +3,8 @@ import {
     createOfflineFolder,
     deleteOfflineFlow,
     deleteOfflineFolder,
-    renameOfflineFlow,
-    renameOfflineFolder,
+    moveOfflineFlow,
+    moveOfflineFolder,
     saveOfflineFlowDocument,
     type OfflineCrossGroupDependency,
     type OfflineRepoTreeNode,
@@ -199,10 +199,10 @@ export function useOfflineTreeMutations({
         const newName = renameFlowName.trim();
         setRenameFlowLoading(true);
         try {
-            await renameOfflineFlow(groupId, renameFlowPath, newName);
-            setRenameFlowDialogOpen(false);
             const oldPath = renameFlowPath;
             const newPath = buildRenamedFlowPath(oldPath, newName);
+            await moveOfflineFlow(groupId, oldPath, newPath);
+            setRenameFlowDialogOpen(false);
             if (draftSession?.path === oldPath) {
                 leaveCurrentFlow(draftSession);
                 setDraftSession(null);
@@ -273,13 +273,13 @@ export function useOfflineTreeMutations({
         const newName = renameFolderName.trim();
         setRenameFolderLoading(true);
         try {
-            await renameOfflineFolder(groupId, renameFolderPath, newName);
-            setRenameFolderDialogOpen(false);
-
             const oldPath = renameFolderPath;
             const parts = oldPath.split('/');
             parts[parts.length - 1] = newName;
             const newPath = parts.join('/');
+            await moveOfflineFolder(groupId, oldPath, newPath);
+            setRenameFolderDialogOpen(false);
+
             if (draftSession?.path && draftSession.path.startsWith(`${oldPath}/`)) {
                 leaveCurrentFlow(draftSession);
                 setDraftSession(null);

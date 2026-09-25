@@ -130,66 +130,68 @@ public class OfflineFlowContentService {
         }
     }
 
-    public void renameFlow(Long groupId, String path, String newName) {
-        repoLockManager.withLock(groupId, () -> renameFlowUnlocked(groupId, path, newName));
+    public void moveFlow(Long groupId, String path, String newPath) {
+        repoLockManager.withLock(groupId, () -> moveFlowUnlocked(groupId, path, newPath));
     }
 
-    private void renameFlowUnlocked(Long groupId, String path, String newName) {
+    private void moveFlowUnlocked(Long groupId, String path, String newPath) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
         Path flowPath = resolveFlowPath(repoPath, path);
         Path flowDir = flowPath.getParent();
-        if (flowDir == null || !flowDir.startsWith(repoPath)) {
+        Path flowsRoot = repoPath.resolve("_flows").normalize();
+        if (flowDir == null || flowDir.equals(flowsRoot) || !flowDir.startsWith(flowsRoot)) {
             throw new IllegalArgumentException("任务路径不合法");
         }
 
-        if (newName == null || newName.isBlank()) {
-            throw new IllegalArgumentException("任务名称不能为空");
+        Path newFlowDir = resolveFlowPath(repoPath, newPath).getParent();
+        if (newFlowDir == null || newFlowDir.equals(flowsRoot) || !newFlowDir.startsWith(flowsRoot)) {
+            throw new IllegalArgumentException("任务只能移动到 _flows 目录下");
         }
-        Path name = Path.of(newName);
-        if (name.isAbsolute() || name.getNameCount() != 1
-                || !newName.equals(name.getFileName().toString()) || newName.contains("\\")
-                || ".".equals(newName) || "..".equals(newName)) {
-            throw new IllegalArgumentException("任务名称必须为单一目录名");
+        OfflineRepoPaths.assertValidSegments(flowsRoot.relativize(newFlowDir));
+        if (newFlowDir.equals(flowDir)) {
+            return;
+        }
+        if (newFlowDir.startsWith(flowDir)) {
+            throw new IllegalArgumentException("不能移动到任务目录内部");
+        }
+        if (Files.exists(newFlowDir)) {
+            throw new IllegalArgumentException("目标位置已存在同名任务");
         }
 
-        // Extract old flow directory name (e.g., "_flows/demo" -> "demo")
-        String oldFlowDirName = flowDir.getFileName().toString();
-        Path oldFlowsDir = flowDir;
-        Path flowsParent = oldFlowsDir.getParent().normalize();
-        Path scriptsParent = repoPath.resolve("scripts").normalize();
-        Path newFlowsDir = flowsParent.resolve(name).normalize();
-
-        Path oldScriptsDir = scriptsParent.resolve(oldFlowDirName);
-        Path newScriptsDir = scriptsParent.resolve(name).normalize();
-        if (!flowsParent.equals(newFlowsDir.getParent()) || !scriptsParent.equals(newScriptsDir.getParent())) {
-            throw new IllegalArgumentException("任务名称必须为单一目录名");
-        }
+        Path scriptsRoot = repoPath.resolve("scripts").normalize();
+        String oldSubPath = flowsRoot.relativize(flowDir).toString().replace('\\', '/');
+        String newSubPath = flowsRoot.relativize(newFlowDir).toString().replace('\\', '/');
+        Path oldScriptsDir = scriptsRoot.resolve(oldSubPath).normalize();
+        Path newScriptsDir = scriptsRoot.resolve(newSubPath).normalize();
 
         try {
-            // Rename _flows/{oldName} to _flows/{newName}
-            if (Files.exists(oldFlowsDir)) {
-                Files.move(oldFlowsDir, newFlowsDir);
-            }
+            Files.createDirectories(newFlowDir.getParent());
+            Files.move(flowDir, newFlowDir);
 
-            // Rename scripts/{oldName} to scripts/{newName}
             if (Files.exists(oldScriptsDir)) {
+                Files.createDirectories(newScriptsDir.getParent());
                 Files.move(oldScriptsDir, newScriptsDir);
             }
 
-            // Update script paths inside flow.yaml if scripts were renamed
-            Path newFlowPath = newFlowsDir.resolve("flow.yaml");
-            if (Files.exists(newFlowPath)) {
-                String content = Files.readString(newFlowPath, StandardCharsets.UTF_8);
+            Path movedFlowPath = newFlowDir.resolve("flow.yaml");
+            if (Files.exists(movedFlowPath)) {
+                String content = Files.readString(movedFlowPath, StandardCharsets.UTF_8);
                 String updatedContent = content.replace(
-                        "scripts/" + oldFlowDirName + "/",
-                        "scripts/" + newName + "/"
+                        "scripts/" + oldSubPath + "/",
+                        "scripts/" + newSubPath + "/"
                 );
                 if (!content.equals(updatedContent)) {
-                    Files.writeString(newFlowPath, updatedContent, StandardCharsets.UTF_8);
+                    Files.writeString(movedFlowPath, updatedContent, StandardCharsets.UTF_8);
                 }
             }
+
+            if (!flowDir.getFileName().equals(newFlowDir.getFileName())) {
+                Files.deleteIfExists(kestraFlowFileService.resolveFlowFile(repoPath, path));
+            }
+            kestraFlowFileService.syncFlowFile(repoPath,
+                    repoPath.relativize(movedFlowPath).toString().replace('\\', '/'));
         } catch (IOException ex) {
-            throw new IllegalStateException("重命名任务失败", ex);
+            throw new IllegalStateException("移动任务失败", ex);
         }
     }
 

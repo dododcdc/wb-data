@@ -615,8 +615,8 @@ export const deleteOfflineFlow = (groupId: number, path: string) => {
     });
 };
 
-export const renameOfflineFlow = (groupId: number, path: string, newName: string) => {
-    return request.post(offlinePath(groupId, '/flows/rename'), { path, newName }, {
+export const moveOfflineFlow = (groupId: number, path: string, newPath: string) => {
+    return request.post(offlinePath(groupId, '/flows/move'), { path, newPath }, {
         headers: { 'Content-Type': 'application/json' },
     });
 };
@@ -684,8 +684,8 @@ export const deleteBranch = (groupId: number, name: string, force: boolean = fal
     });
 };
 
-export const renameOfflineFolder = (groupId: number, path: string, newName: string) => {
-    return request.post(offlinePath(groupId, '/repo/folder/rename'), { path, newName }, {
+export const moveOfflineFolder = (groupId: number, path: string, newPath: string) => {
+    return request.post(offlinePath(groupId, '/repo/folder/move'), { path, newPath }, {
         headers: { 'Content-Type': 'application/json' },
     });
 };
