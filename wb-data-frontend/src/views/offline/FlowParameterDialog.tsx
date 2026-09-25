@@ -18,10 +18,14 @@ import type {
 import {
     getParameterGroup,
     getParameterGroupPage,
-    type ParameterDefinition,
     type ParameterGroup,
     type ParameterGroupSummary,
 } from '../../api/parameterGroups';
+import {
+    describeParameterDefinition,
+    diffParameterDefinitions,
+    type ParameterDiffEntry,
+} from './flowParameterDiff';
 import { SearchableCombobox, type SearchableComboboxOption } from '../../components/SearchableCombobox';
 import { Button } from '../../components/ui/button';
 import {
@@ -65,19 +69,6 @@ function toBindingItem(group: ParameterGroup): FlowParameterBindingItem {
     };
 }
 
-function describeDefinition(definition: ParameterDefinition | FlowParameterDefinitionSnapshot) {
-    if (definition.valueSource === 'CONSTANT') {
-        return definition.constantValue != null && definition.constantValue !== ''
-            ? `固定值: ${definition.constantValue}`
-            : '固定值';
-    }
-    const basis = definition.timeBasis === 'EXECUTION_START_TIME' ? '执行开始时间' : '计划时间';
-    const offset = definition.offsetDays === 0
-        ? ''
-        : ` · ${definition.offsetDays > 0 ? '+' : ''}${definition.offsetDays} 天`;
-    return `${basis} · ${definition.format || 'yyyyMMdd'}${offset}`;
-}
-
 export function FlowParameterDialog({
     open,
     groupId,
@@ -95,6 +86,11 @@ export function FlowParameterDialog({
     const [error, setError] = useState('');
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+    const [upgradePreview, setUpgradePreview] = useState<{
+        index: number;
+        group: ParameterGroup;
+        diff: ParameterDiffEntry[];
+    } | null>(null);
 
     // Initial load: parse existing bindings from binding prop
     useEffect(() => {
@@ -102,6 +98,7 @@ export function FlowParameterDialog({
         setError('');
         setSelectedToAddId('');
         setSearchFilters({});
+        setUpgradePreview(null);
 
         if (binding?.bindings && binding.bindings.length > 0) {
             setBoundItems(binding.bindings.map((it) => ({
@@ -169,21 +166,32 @@ export function FlowParameterDialog({
         }
     };
 
-    // Handle updating an outdated group to latest
+    // Updating an outdated group: value changes require explicit confirmation with a diff;
+    // a version bump without value changes applies directly.
     const handleUpgradeGroup = async (item: FlowParameterBindingItem, index: number) => {
         if (item.parameterGroupId == null) return;
         setError('');
         try {
             const groupDetail = await getParameterGroup(groupId, item.parameterGroupId);
-            const updated = toBindingItem(groupDetail);
-            setBoundItems((prev) => {
-                const next = [...prev];
-                next[index] = updated;
-                return next;
-            });
+            const diff = diffParameterDefinitions(item.definitions, groupDetail.definitions);
+            if (diff.length === 0) {
+                applyUpgrade(index, groupDetail);
+            } else {
+                setUpgradePreview({ index, group: groupDetail, diff });
+            }
         } catch (cause) {
             setError(getErrorMessage(cause, '更新参数组失败'));
         }
+    };
+
+    const applyUpgrade = (index: number, groupDetail: ParameterGroup) => {
+        const updated = toBindingItem(groupDetail);
+        setBoundItems((prev) => {
+            const next = [...prev];
+            next[index] = updated;
+            return next;
+        });
+        setUpgradePreview(null);
     };
 
     // Handle removing a group
@@ -468,6 +476,46 @@ export function FlowParameterDialog({
                                             </div>
                                         </div>
 
+                                        {upgradePreview?.index === index ? (
+                                            <div className="flow-parameter-upgrade-preview" role="alert">
+                                                <div className="flow-parameter-upgrade-title">
+                                                    v{item.boundVersion} → v{upgradePreview.group.version} 的参数变化
+                                                </div>
+                                                <ul className="flow-parameter-upgrade-diff-list">
+                                                    {upgradePreview.diff.map((entry) => (
+                                                        <li key={entry.key} className={`is-${entry.kind}`}>
+                                                            <code>{'${' + entry.key + '}'}</code>
+                                                            {entry.kind === 'added' ? (
+                                                                <span>新增：{entry.after}</span>
+                                                            ) : entry.kind === 'removed' ? (
+                                                                <span>移除：{entry.before}（SQL 中的该参数升级后将无法解析）</span>
+                                                            ) : (
+                                                                <span>变更：{entry.before} → {entry.after}</span>
+                                                            )}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                                <div className="flow-parameter-upgrade-actions">
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        variant={upgradePreview.diff.some((entry) => entry.kind === 'removed') ? 'destructive' : 'default'}
+                                                        onClick={() => applyUpgrade(index, upgradePreview.group)}
+                                                    >
+                                                        确认升级
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => setUpgradePreview(null)}
+                                                    >
+                                                        取消
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ) : null}
+
                                         {/* Expanded Definitions Panel */}
                                         {isExpanded ? (
                                             <div
@@ -522,7 +570,7 @@ export function FlowParameterDialog({
                                                                             </span>
                                                                         ) : null}
                                                                         <span className="flow-parameter-item-val">
-                                                                            {describeDefinition(def)}
+                                                                            {describeParameterDefinition(def)}
                                                                         </span>
                                                                     </div>
                                                                 </div>

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FlowParameterBinding } from '../../api/offline';
@@ -208,6 +208,115 @@ describe('FlowParameterDialog', () => {
             boundVersion: 3,
             status: 'CURRENT',
         }));
+    });
+
+    it('requires confirmation with a diff when upgrading changes parameter values', async () => {
+        vi.mocked(getParameterGroup).mockResolvedValue({
+            id: 8,
+            code: 'daily_common',
+            name: '日常公共参数',
+            description: null,
+            version: 3,
+            revision: 4,
+            status: 'ACTIVE',
+            parameterCount: 2,
+            createdBy: 7,
+            updatedBy: 7,
+            createdAt: '2026-08-16T00:00:00Z',
+            updatedAt: '2026-08-16T00:00:00Z',
+            definitions: [{
+                id: 11,
+                key: 'v_day',
+                valueSource: 'SYSTEM_TIME',
+                constantValue: null,
+                timeBasis: 'PLANNED_TIME',
+                format: 'yyyyMMdd',
+                offsetDays: -1,
+                description: '通用日期',
+                sortOrder: 0,
+            }, {
+                id: 12,
+                key: 'region',
+                valueSource: 'CONSTANT',
+                constantValue: 'hz',
+                timeBasis: null,
+                format: null,
+                offsetDays: 0,
+                description: null,
+                sortOrder: 1,
+            }],
+        });
+        const onStage = vi.fn();
+        render(
+            <FlowParameterDialog
+                open
+                groupId={1}
+                binding={outdatedBinding}
+                onOpenChange={vi.fn()}
+                onStage={onStage}
+            />,
+        );
+
+        fireEvent.click(await screen.findByTitle('更新到最新版本'));
+
+        expect(await screen.findByText('v2 → v3 的参数变化')).toBeTruthy();
+        expect(screen.getByText(/变更：计划时间 · yyyyMMdd → 计划时间 · yyyyMMdd · -1 天/)).toBeTruthy();
+        expect(screen.getByText(/新增：固定值: hz/)).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('button', { name: '确认升级' }));
+        fireEvent.click(screen.getByRole('button', { name: '暂存绑定' }));
+
+        expect(onStage).toHaveBeenCalledWith(expect.objectContaining({
+            parameterGroupId: 8,
+            boundVersion: 3,
+            status: 'CURRENT',
+        }));
+    });
+
+    it('warns about removed keys and keeps the old version when cancelled', async () => {
+        vi.mocked(getParameterGroup).mockResolvedValue({
+            id: 8,
+            code: 'daily_common',
+            name: '日常公共参数',
+            description: null,
+            version: 3,
+            revision: 4,
+            status: 'ACTIVE',
+            parameterCount: 1,
+            createdBy: 7,
+            updatedBy: 7,
+            createdAt: '2026-08-16T00:00:00Z',
+            updatedAt: '2026-08-16T00:00:00Z',
+            definitions: [{
+                id: 12,
+                key: 'region',
+                valueSource: 'CONSTANT',
+                constantValue: 'hz',
+                timeBasis: null,
+                format: null,
+                offsetDays: 0,
+                description: null,
+                sortOrder: 0,
+            }],
+        });
+        render(
+            <FlowParameterDialog
+                open
+                groupId={1}
+                binding={outdatedBinding}
+                onOpenChange={vi.fn()}
+                onStage={vi.fn()}
+            />,
+        );
+
+        fireEvent.click(await screen.findByTitle('更新到最新版本'));
+
+        expect(await screen.findByText(/移除：计划时间 · yyyyMMdd（SQL 中的该参数升级后将无法解析）/)).toBeTruthy();
+
+        fireEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: '取消' }));
+
+        expect(screen.queryByText('v2 → v3 的参数变化')).toBeNull();
+        expect(screen.getByText('v2 · 1 个参数')).toBeTruthy();
     });
 
     it('stages an explicit clear all / unbind', async () => {
