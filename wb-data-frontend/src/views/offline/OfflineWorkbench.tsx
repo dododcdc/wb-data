@@ -37,6 +37,7 @@ import { OfflineWorkbenchMainPanel } from './OfflineWorkbenchMainPanel';
 import { preloadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
 import { useOfflineTreeMutations } from './useOfflineTreeMutations';
+import { indexNodesByTreePath } from './repoTreePaths';
 import { prefetchNodeEditorDataSources } from './useNodeEditorDataSources';
 import { useFlowExecutionAndSchedule } from './useFlowExecutionAndSchedule';
 import { useFlowEditingSession } from './useFlowEditingSession';
@@ -348,6 +349,15 @@ export default function OfflineWorkbench() {
         })();
     }, [flushDraftNow, isDirty, refreshWorkspace, requestBranchSwitch, resetActiveFlowAfterBranchSwitch]);
 
+    const repoTreeNodeIndex = useMemo(
+        () => (repoTree ? indexNodesByTreePath(repoTree.root) : null),
+        [repoTree],
+    );
+    const resolveTreeNode = useCallback(
+        (treePath: string) => repoTreeNodeIndex?.get(treePath) ?? null,
+        [repoTreeNodeIndex],
+    );
+
     const {
         newFlowDialogOpen,
         setNewFlowDialogOpen,
@@ -402,6 +412,7 @@ export default function OfflineWorkbench() {
         handleDeleteFolder,
         handleRenameFolder,
         handleContextMenu,
+        handleMoveNode,
         openNewFlowDialogFromContext,
         openNewFolderDialogFromContext,
         openDeleteFlowDialogFromContext,
@@ -420,6 +431,7 @@ export default function OfflineWorkbench() {
         setActiveFlowPath,
         setDraftSession,
         showFeedback,
+        resolveTreeNode,
     });
 
     useOfflineWorkbenchGroupLifecycle({
@@ -634,8 +646,10 @@ export default function OfflineWorkbench() {
                             loading: treeLoading,
                             flowLoading,
                             activeFlowPath,
+                            canWrite,
                             onOpenFlow: (path) => void openFlowDocument(path),
                             onContextMenu: handleContextMenu,
+                            onMoveNode: (sourceTreePath, newTreePath) => void handleMoveNode(sourceTreePath, newTreePath),
                         }}
                     />
                 </ResizablePanel>

@@ -5,6 +5,8 @@ import type { OfflineRepoTreeResponse } from '../../api/offline';
 import { TooltipProvider } from '../../components/ui/tooltip';
 import { OfflineWorkbenchSidebar } from './OfflineWorkbenchSidebar';
 
+vi.mock('./OfflineRepoTree', () => import('./offlineRepoTreeDouble'));
+
 function createTree(flowNames: string[]): OfflineRepoTreeResponse {
     return {
         groupId: 4,
@@ -79,8 +81,10 @@ function renderSidebar(treeData: OfflineRepoTreeResponse) {
             loading: false,
             flowLoading: false,
             activeFlowPath: null,
+            canWrite: true,
             onOpenFlow: vi.fn(),
             onContextMenu: vi.fn(),
+            onMoveNode: vi.fn(),
         },
     };
 

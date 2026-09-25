@@ -54,6 +54,7 @@ function renderTreeMutations(overrides: Partial<Parameters<typeof useOfflineTree
         setActiveFlowPath: vi.fn(),
         setDraftSession: vi.fn(),
         showFeedback: vi.fn(),
+        resolveTreeNode: () => null,
         ...overrides,
     };
 
@@ -280,5 +281,85 @@ describe('useOfflineTreeMutations', () => {
         expect(params.setDraftSession).toHaveBeenCalledWith(null);
         expect(params.setActiveFlowPath).toHaveBeenCalledWith('_flows/jack_renamed/test/flow.yaml');
         expect(params.openFlowDocument).toHaveBeenCalledWith('_flows/jack_renamed/test/flow.yaml');
+    });
+
+    it('moves a flow via drag and migrates the active draft', async () => {
+        const offlineApi = await import('../../api/offline');
+        vi.mocked(offlineApi.moveOfflineFlow).mockResolvedValue(undefined as never);
+        const { result, params } = renderTreeMutations({
+            activeFlowPath: '_flows/jack/test11/flow.yaml',
+            draftSession: makeSession('_flows/jack/test11/flow.yaml'),
+            resolveTreeNode: () => ({
+                id: 'flow-test11',
+                name: 'test11',
+                path: '_flows/jack/test11/flow.yaml',
+                kind: 'FLOW',
+                children: [],
+                scheduleState: 'NONE',
+                schedulePeriod: null,
+                dependencyCount: 0,
+            }),
+        });
+
+        await act(async () => {
+            await result.current.handleMoveNode('jack/test11', 'archive/test11');
+        });
+
+        expect(offlineApi.moveOfflineFlow).toHaveBeenCalledWith(
+            1, '_flows/jack/test11/flow.yaml', '_flows/archive/test11/flow.yaml');
+        expect(params.leaveCurrentFlow).toHaveBeenCalledWith(params.draftSession);
+        expect(params.setActiveFlowPath).toHaveBeenCalledWith('_flows/archive/test11/flow.yaml');
+        expect(params.openFlowDocument).toHaveBeenCalledWith('_flows/archive/test11/flow.yaml');
+        expect(params.refreshRepoTree).toHaveBeenCalled();
+    });
+
+    it('moves a folder via drag and reopens the flow under it', async () => {
+        const offlineApi = await import('../../api/offline');
+        vi.mocked(offlineApi.moveOfflineFolder).mockResolvedValue(undefined as never);
+        const { result, params } = renderTreeMutations({
+            resolveTreeNode: () => ({
+                id: 'folder-jack',
+                name: 'jack',
+                path: '_flows/jack',
+                kind: 'DIRECTORY',
+                children: [],
+                scheduleState: 'NONE',
+                schedulePeriod: null,
+                dependencyCount: 0,
+            }),
+        });
+
+        await act(async () => {
+            await result.current.handleMoveNode('jack/', 'archive/jack/');
+        });
+
+        expect(offlineApi.moveOfflineFolder).toHaveBeenCalledWith(1, '_flows/jack', '_flows/archive/jack');
+        expect(params.setActiveFlowPath).toHaveBeenCalledWith('_flows/archive/jack/test/flow.yaml');
+        expect(params.openFlowDocument).toHaveBeenCalledWith('_flows/archive/jack/test/flow.yaml');
+    });
+
+    it('refreshes the tree to roll back when a drag move fails', async () => {
+        const offlineApi = await import('../../api/offline');
+        vi.mocked(offlineApi.moveOfflineFlow).mockRejectedValue(new Error('目标位置已存在同名任务'));
+        const { result, params } = renderTreeMutations({
+            resolveTreeNode: () => ({
+                id: 'flow-test',
+                name: 'test',
+                path: '_flows/jack/test/flow.yaml',
+                kind: 'FLOW',
+                children: [],
+                scheduleState: 'NONE',
+                schedulePeriod: null,
+                dependencyCount: 0,
+            }),
+        });
+
+        await act(async () => {
+            await result.current.handleMoveNode('jack/test', 'archive/test');
+        });
+
+        expect(params.setActiveFlowPath).not.toHaveBeenCalled();
+        expect(params.showFeedback).toHaveBeenCalledWith(expect.objectContaining({ tone: 'error' }));
+        expect(params.refreshRepoTree).toHaveBeenCalled();
     });
 });

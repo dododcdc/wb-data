@@ -42,6 +42,8 @@ vi.mock('@xyflow/react', () => ({
     ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+vi.mock('./OfflineRepoTree', () => import('./offlineRepoTreeDouble'));
+
 vi.mock('../../components/ui/tooltip', () => ({
     TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,

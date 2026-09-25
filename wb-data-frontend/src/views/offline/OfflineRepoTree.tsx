@@ -25,7 +25,6 @@ import {
 
 export interface OfflineRepoTreeHandle {
     expandAll: () => void;
-    collapseAll: () => void;
 }
 
 interface OfflineRepoTreeCallbacks {
@@ -158,11 +157,6 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
             expandAll: () => {
                 directoryPaths(paths).forEach((path) => {
                     (model.getItem(path) as FileTreeDirectoryHandle | null)?.expand();
-                });
-            },
-            collapseAll: () => {
-                directoryPaths(paths).reverse().forEach((path) => {
-                    (model.getItem(path) as FileTreeDirectoryHandle | null)?.collapse();
                 });
             },
         }), [model, paths]);
