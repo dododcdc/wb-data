@@ -15,8 +15,11 @@ interface AuthState {
     currentGroup: ProjectGroupContextItem | null;
     accessibleGroups: ProjectGroupContextItem[];
     permissions: string[];
-    /** 区分"尚未请求"与"请求后确实为空"，AuthGuard 依赖此字段决定是否发起请求 */
+    /** 区分尚未加载与服务端确认的无组状态。 */
     contextLoaded: boolean;
+    /** 登录会话或显式切组意图变化时递增，拒绝旧请求回写。 */
+    contextVersion: number;
+    switchingGroup: boolean;
 
     setToken: (token: string) => void;
     setUserInfo: (user: CurrentUser) => void;
@@ -32,10 +35,22 @@ export const useAuthStore = create<AuthState>((set) => ({
     accessibleGroups: [],
     permissions: [],
     contextLoaded: false,
+    contextVersion: 0,
+    switchingGroup: false,
 
     setToken: (token: string) => {
         localStorage.setItem(TOKEN_KEY, token);
-        set({ token });
+        set((state) => ({
+            token,
+            userInfo: null,
+            systemAdmin: false,
+            currentGroup: null,
+            accessibleGroups: [],
+            permissions: [],
+            contextLoaded: false,
+            contextVersion: state.contextVersion + 1,
+            switchingGroup: false,
+        }));
     },
 
     setUserInfo: (userInfo: CurrentUser) => {
@@ -55,7 +70,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     clearAuth: () => {
         localStorage.removeItem(TOKEN_KEY);
-        set({
+        set((state) => ({
             token: null,
             userInfo: null,
             systemAdmin: false,
@@ -63,7 +78,9 @@ export const useAuthStore = create<AuthState>((set) => ({
             accessibleGroups: [],
             permissions: [],
             contextLoaded: false,
-        });
+            contextVersion: state.contextVersion + 1,
+            switchingGroup: false,
+        }));
     },
 }));
 

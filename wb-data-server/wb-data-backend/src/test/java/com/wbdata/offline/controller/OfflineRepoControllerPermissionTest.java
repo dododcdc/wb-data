@@ -1,7 +1,7 @@
 package com.wbdata.offline.controller;
 
 import com.wbdata.auth.context.RequireGroupAuth;
-import com.wbdata.auth.dto.AuthContextResponse;
+import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.offline.dto.CommitCurrentFlowRequest;
 import com.wbdata.offline.dto.CommitRequest;
@@ -22,7 +22,7 @@ class OfflineRepoControllerPermissionTest {
     void flowCommit_keepsOfflineWritePermission() throws Exception {
         Method method = OfflineRepoController.class.getMethod(
                 "commitCurrentFlow",
-                AuthContextResponse.class,
+                GroupAuthContext.class,
                 CommitCurrentFlowRequest.class
         );
 
@@ -34,12 +34,12 @@ class OfflineRepoControllerPermissionTest {
     void repoCommit_andPush_requireGroupSettingsPermission() throws Exception {
         Method repoCommit = OfflineRepoController.class.getMethod(
                 "commitRepo",
-                AuthContextResponse.class,
+                GroupAuthContext.class,
                 CommitRequest.class
         );
         Method push = OfflineRepoController.class.getMethod(
                 "push",
-                AuthContextResponse.class,
+                GroupAuthContext.class,
                 PushRequest.class
         );
 
@@ -54,26 +54,26 @@ class OfflineRepoControllerPermissionTest {
     void branchList_requiresOfflineRead_andMutationsRequireGroupSettings() throws Exception {
         Method list = OfflineRepoController.class.getMethod(
                 "listBranches",
-                AuthContextResponse.class
+                GroupAuthContext.class
         );
         Method create = OfflineRepoController.class.getMethod(
                 "createBranch",
-                AuthContextResponse.class,
+                GroupAuthContext.class,
                 CreateBranchRequest.class
         );
         Method switchBranch = OfflineRepoController.class.getMethod(
                 "switchBranch",
-                AuthContextResponse.class,
+                GroupAuthContext.class,
                 SwitchBranchRequest.class
         );
         Method merge = OfflineRepoController.class.getMethod(
                 "mergeBranch",
-                AuthContextResponse.class,
+                GroupAuthContext.class,
                 MergeBranchRequest.class
         );
         Method delete = OfflineRepoController.class.getMethod(
                 "deleteBranch",
-                AuthContextResponse.class,
+                GroupAuthContext.class,
                 DeleteBranchRequest.class
         );
 

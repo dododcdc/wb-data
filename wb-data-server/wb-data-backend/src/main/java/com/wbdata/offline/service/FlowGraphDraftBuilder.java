@@ -86,9 +86,10 @@ public class FlowGraphDraftBuilder {
         Map<Long, DataSource> dataSourceMap = new LinkedHashMap<>();
         for (Long dsId : dataSourceIds) {
             DataSource ds = dataSourceService.getById(dsId);
-            if (ds != null) {
-                dataSourceMap.put(dsId, ds);
+            if (ds == null || groupId == null || !groupId.equals(ds.getGroupId())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "数据源不存在");
             }
+            dataSourceMap.put(dsId, ds);
         }
 
         List<OfflineFlowYamlSupport.FlowEdge> edges = requestEdges.stream()

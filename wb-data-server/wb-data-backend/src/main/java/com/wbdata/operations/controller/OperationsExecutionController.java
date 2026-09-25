@@ -1,7 +1,7 @@
 package com.wbdata.operations.controller;
 
 import com.wbdata.auth.context.RequireGroupAuth;
-import com.wbdata.auth.dto.AuthContextResponse;
+import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.common.Result;
 import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
@@ -33,7 +33,7 @@ public class OperationsExecutionController {
 
     @GetMapping
     public Result<OperationsExecutionListResponse> listExecutions(
-            @RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
+            @RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
             @RequestParam(required = false) String branch,
             @RequestParam(required = false) String flowId,
             @RequestParam(required = false) String status,
@@ -42,33 +42,33 @@ public class OperationsExecutionController {
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer pageSize) {
         return Result.success(operationsExecutionService.listExecutions(
-                context.currentGroup().id(),
+                context.groupId(),
                 new OperationsExecutionQuery(branch, flowId, status, from, to, page, pageSize)
         ));
     }
 
     @GetMapping("/{executionId}")
     public Result<OperationsExecutionDetailResponse> getExecution(
-            @RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
+            @RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
             @PathVariable String executionId) {
-        return Result.success(operationsExecutionService.getExecution(context.currentGroup().id(), executionId));
+        return Result.success(operationsExecutionService.getExecution(context.groupId(), executionId));
     }
 
     @GetMapping("/{executionId}/logs")
     public Result<List<ExecutionLogEntry>> getLogs(
-            @RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
+            @RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
             @PathVariable String executionId,
             @RequestParam(required = false) String taskId) {
-        return Result.success(operationsExecutionService.getLogs(context.currentGroup().id(), executionId, taskId));
+        return Result.success(operationsExecutionService.getLogs(context.groupId(), executionId, taskId));
     }
 
     @PostMapping("/{executionId}/rerun")
     public Result<OperationsExecutionRerunResponse> rerun(
-            @RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
+            @RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
             @PathVariable String executionId,
             @RequestBody OperationsExecutionRerunRequest request) {
         return Result.success(operationsExecutionService.rerunExecution(
-                context.currentGroup().id(),
+                context.groupId(),
                 context.user().id(),
                 executionId,
                 request.reuseManualOverrides()

@@ -1,8 +1,9 @@
 package com.wbdata.offline.controller;
 
 import com.wbdata.auth.context.RequireGroupAuth;
-import com.wbdata.auth.dto.AuthContextResponse;
+import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
+import com.wbdata.auth.service.AuthContextService;
 import com.wbdata.common.Result;
 import com.wbdata.offline.dto.OfflineDependencyCandidateResponse;
 import com.wbdata.offline.dto.OfflineDependencyConfigResponse;
@@ -29,21 +30,22 @@ import java.util.List;
 public class OfflineDependencyController {
 
     private final OfflineFlowDependencyService offlineFlowDependencyService;
+    private final AuthContextService authContextService;
 
     @Operation(summary = "读取任务依赖配置")
     @GetMapping
-    public Result<OfflineDependencyConfigResponse> getDependencies(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
+    public Result<OfflineDependencyConfigResponse> getDependencies(@RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
                                                                    @RequestParam String path) {
         return Result.success(offlineFlowDependencyService.getConfig(
-                context.currentGroup().id(), path, context.accessibleGroups()));
+                context.groupId(), path, authContextService.listAccessibleGroups(context.user())));
     }
 
     @Operation(summary = "更新任务依赖配置")
     @PutMapping
-    public Result<OfflineDependencyConfigResponse> updateDependencies(@RequireGroupAuth(Permission.OFFLINE_WRITE) AuthContextResponse context,
+    public Result<OfflineDependencyConfigResponse> updateDependencies(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
                                                                       @Valid @RequestBody UpdateOfflineDependenciesRequest request) {
         UpdateOfflineDependenciesRequest normalizedRequest = new UpdateOfflineDependenciesRequest(
-                context.currentGroup().id(),
+                context.groupId(),
                 request.path(),
                 request.dependencies(),
                 request.failurePolicy(),
@@ -51,24 +53,24 @@ public class OfflineDependencyController {
                 request.contentHash(),
                 request.fileUpdatedAt()
         );
-        return Result.success(offlineFlowDependencyService.updateConfig(normalizedRequest, context.accessibleGroups()));
+        return Result.success(offlineFlowDependencyService.updateConfig(normalizedRequest, authContextService.listAccessibleGroups(context.user())));
     }
 
     @Operation(summary = "搜索可依赖的前置任务")
     @GetMapping("/candidates")
-    public Result<List<OfflineDependencyCandidateResponse>> searchCandidates(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
+    public Result<List<OfflineDependencyCandidateResponse>> searchCandidates(@RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
                                                                              @RequestParam String path,
                                                                              @RequestParam(required = false) String keyword) {
         return Result.success(offlineFlowDependencyService.searchCandidates(
-                context.currentGroup().id(), path, keyword, context.accessibleGroups()));
+                context.groupId(), path, keyword, authContextService.listAccessibleGroups(context.user())));
     }
 
     @Operation(summary = "查询依赖当前任务的下游任务")
     @GetMapping("/dependents")
-    public Result<List<OfflineDependentItemResponse>> findDependents(@RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
+    public Result<List<OfflineDependentItemResponse>> findDependents(@RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
                                                                      @RequestParam String path) {
         return Result.success(offlineFlowDependencyService.findDependents(
-                context.currentGroup().id(), path, context.accessibleGroups()));
+                context.groupId(), path, authContextService.listAccessibleGroups(context.user())));
     }
 
 }

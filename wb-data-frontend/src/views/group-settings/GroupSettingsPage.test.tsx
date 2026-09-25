@@ -4,9 +4,12 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import GroupSettingsPage from './GroupSettingsPage';
+import { AxiosError, AxiosHeaders } from 'axios';
+import { removeMember, updateMemberRole, type MemberRecord } from '../../api/groupSettings';
 
-const { showFeedback, addMembers, getMemberPage, authSnapshot } = vi.hoisted(() => ({
-    showFeedback: vi.fn(),
+const { showSuccess, showError, addMembers, getMemberPage, authSnapshot } = vi.hoisted(() => ({
+    showSuccess: vi.fn(),
+    showError: vi.fn(),
     addMembers: vi.fn(),
     getMemberPage: vi.fn(),
     authSnapshot: {
@@ -19,7 +22,8 @@ const { showFeedback, addMembers, getMemberPage, authSnapshot } = vi.hoisted(() 
 
 vi.mock('../../hooks/useOperationFeedback', () => ({
     useOperationFeedback: () => ({
-        showFeedback,
+        showSuccess,
+        showError,
         dismissFeedback: vi.fn(),
     }),
 }));
@@ -52,11 +56,18 @@ vi.mock('./GroupInfoCard', () => ({
 }));
 
 vi.mock('./MemberTable', () => ({
-    default: () => <div>member-table</div>,
+    default: ({ data, onRemove, onChangeRole }: { data: MemberRecord[]; onRemove: (member: MemberRecord) => void; onChangeRole: (member: MemberRecord) => void }) => <div>
+        member-table
+        {data.map((member) => <div key={member.id}>
+            <button onClick={() => onRemove(member)}>移除成员</button>
+            <button onClick={() => onChangeRole(member)}>修改角色</button>
+        </div>)}
+    </div>,
 }));
 
 vi.mock('./ChangeRoleDialog', () => ({
-    default: () => null,
+    default: ({ open, member, onConfirm }: { open: boolean; member: MemberRecord | null; onConfirm: (id: number, role: string) => void }) =>
+        open && member ? <button onClick={() => onConfirm(member.id, 'DEVELOPER')}>确认修改</button> : null,
 }));
 
 vi.mock('./GitSettingsTab', () => ({
@@ -68,7 +79,7 @@ vi.mock('./KestraSyncSettingsTab', () => ({
 }));
 
 vi.mock('../../components/ui/confirm-dialog', () => ({
-    ConfirmDialog: () => null,
+    ConfirmDialog: ({ open, onConfirm }: { open: boolean; onConfirm: () => void }) => open ? <button onClick={onConfirm}>确认移除</button> : null,
 }));
 
 vi.mock('./AddMemberDialog', () => ({
@@ -128,6 +139,22 @@ describe('GroupSettingsPage', () => {
         });
     });
 
+    it.each([
+        ['移除成员', '确认移除', removeMember, '移除成员失败'],
+        ['修改角色', '确认修改', updateMemberRole, '角色变更失败'],
+    ] as const)('shows the server last-administrator rejection for %s', async (action, confirm, api, title) => {
+        getMemberPage.mockResolvedValue({ records: [{ id: 1, userId: 7, role: 'GROUP_ADMIN', username: 'alice', displayName: 'Alice', createdAt: '' }], total: 1, pages: 1, current: 1, size: 10 });
+        const message = '项目组必须保留至少一名管理员';
+        const rejection = new AxiosError('Request failed with status code 400', undefined, undefined, undefined, {
+            status: 400, statusText: 'Bad Request', headers: {}, config: { headers: new AxiosHeaders() }, data: { message },
+        });
+        vi.mocked(api).mockRejectedValueOnce(rejection);
+        renderWithProviders();
+        fireEvent.click(await screen.findByRole('button', { name: action }));
+        fireEvent.click(await screen.findByRole('button', { name: confirm }));
+        await waitFor(() => expect(showError).toHaveBeenCalledWith(rejection, title));
+    });
+
     it('refetches members for the newly selected project group', async () => {
         const { rerender, queryClient } = renderWithProviders();
 
@@ -180,11 +207,7 @@ describe('GroupSettingsPage', () => {
         });
 
         await waitFor(() => {
-            expect(showFeedback).toHaveBeenCalledWith({
-                tone: 'success',
-                title: '已添加 2 名成员',
-                detail: '',
-            });
+            expect(showSuccess).toHaveBeenCalledWith('已添加 2 名成员');
         });
     });
 });

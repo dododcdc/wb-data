@@ -79,7 +79,7 @@ class AuthFilterTest {
         org.mockito.Mockito.when(mapper.selectById(1L)).thenReturn(user);
         AuthTokenService tokens = new AuthTokenService(mapper);
         AuthContextService contexts = mock(AuthContextService.class);
-        AuthFilter filter = new AuthFilter(tokens, contexts);
+        AuthFilter filter = new AuthFilter(tokens);
         AuthController controller = new AuthController(mock(AuthService.class), contexts, tokens);
         String token = tokens.issueToken(user).accessToken();
         MockHttpServletRequest logout = new MockHttpServletRequest("POST", "/api/v1/auth/logout");
@@ -104,7 +104,7 @@ class AuthFilterTest {
 
     private static final class TestableAuthFilter extends AuthFilter {
         private TestableAuthFilter() {
-            super(mock(AuthTokenService.class), mock(AuthContextService.class));
+            super(mock(AuthTokenService.class));
         }
     }
 }

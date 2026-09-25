@@ -26,8 +26,6 @@ export default function MemberTable(props: MemberTableProps) {
         onRemove,
     } = props;
 
-    const adminCount = data.filter((m) => m.role === 'GROUP_ADMIN').length;
-
     return (
         <DataTableShell
             dataLength={data.length}
@@ -50,7 +48,6 @@ export default function MemberTable(props: MemberTableProps) {
                 <tbody>
                     {data.map((member) => {
                         const isSelf = currentUserId === member.userId;
-                        const isOnlyAdmin = member.role === 'GROUP_ADMIN' && adminCount <= 1;
                         const showActions = canManage && !isSelf;
                         const rolePillClass = member.role === 'GROUP_ADMIN' ? 'is-admin' : 'is-developer';
 
@@ -69,7 +66,7 @@ export default function MemberTable(props: MemberTableProps) {
                                 {canManage ? (
                                     <td className="gs-actions-column">
                                         <div className="gs-actions">
-                                                {showActions && !isOnlyAdmin ? (
+                                                {showActions ? (
                                                     <>
                                                         <Tooltip>
                                                             <TooltipTrigger asChild>

@@ -1,7 +1,7 @@
 package com.wbdata.offline.transfer.controller;
 
 import com.wbdata.auth.context.RequireGroupAuth;
-import com.wbdata.auth.dto.AuthContextResponse;
+import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.auth.service.AuthorizedDataSourceService;
 import com.wbdata.common.Result;
@@ -35,7 +35,7 @@ public class TransferMetadataController {
     @Operation(summary = "获取 Transfer 数据源数据库列表")
     @GetMapping("/databases")
     public Result<List<String>> getDatabases(
-            @RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
+            @RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
             @PathVariable Long groupId,
             @PathVariable Long dataSourceId) {
         requireDataSourceInGroup(dataSourceId, groupId);
@@ -45,7 +45,7 @@ public class TransferMetadataController {
     @Operation(summary = "获取 Transfer 数据源表列表")
     @GetMapping("/tables")
     public Result<PageResult<TableSummary>> getTables(
-            @RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
+            @RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
             @PathVariable Long groupId,
             @PathVariable Long dataSourceId,
             @RequestParam(required = false) String databaseName,
@@ -59,7 +59,7 @@ public class TransferMetadataController {
     @Operation(summary = "获取 Transfer 目标表元数据")
     @GetMapping("/tables/{tableName}/metadata")
     public Result<TransferTableMetadataResponse> getTableMetadata(
-            @RequireGroupAuth(Permission.OFFLINE_READ) AuthContextResponse context,
+            @RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
             @PathVariable Long groupId,
             @PathVariable Long dataSourceId,
             @PathVariable String tableName,
@@ -69,7 +69,7 @@ public class TransferMetadataController {
     }
 
     private void requireDataSourceInGroup(Long dataSourceId, Long groupId) {
-        DataSource dataSource = authorizedDataSourceService.requireDataSource(dataSourceId, Permission.DATASOURCE_READ.code());
+        DataSource dataSource = authorizedDataSourceService.requireDataSource(dataSourceId, Permission.DATASOURCE_READ);
         if (!groupId.equals(dataSource.getGroupId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "数据源不存在");
         }

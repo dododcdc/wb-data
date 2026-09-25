@@ -1,5 +1,6 @@
 package com.wbdata.query.controller;
 
+import com.wbdata.auth.enums.Permission;
 import com.wbdata.auth.service.AuthorizedDataSourceService;
 import com.wbdata.plugin.api.QueryResult;
 import com.wbdata.query.dto.QueryExportCreateRequest;
@@ -9,11 +10,13 @@ import com.wbdata.query.service.QueryExportService;
 import com.wbdata.query.service.QueryService;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.core.io.ByteArrayResource;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class QueryControllerPermissionTest {
@@ -31,19 +34,27 @@ class QueryControllerPermissionTest {
         when(queryService.executeQuery(1L, "select 1", "db")).thenReturn(result);
 
         assertThat(controller.execute(1L, new QueryRequest("select 1", "db")).getData()).isSameAs(result);
-        verify(authorizedDataSourceService).requireDataSource(1L, "query.use");
+        verify(authorizedDataSourceService).requireDataSource(1L, Permission.QUERY_USE);
     }
 
     @Test
     void metadataEndpointsRequireQueryUsePermission() {
         controller.getDatabases(1L);
-        verify(authorizedDataSourceService).requireDataSource(1L, "query.use");
+        controller.getTables(2L, "db", null, 1, 200);
+        controller.getColumns(3L, "db", "table");
+        controller.getDialectMetadata(4L);
+
+        for (long dataSourceId = 1; dataSourceId <= 4; dataSourceId++) {
+            verify(authorizedDataSourceService).requireDataSource(dataSourceId, Permission.QUERY_USE);
+        }
     }
 
     @Test
-    void exportCreationRequiresQueryExportPermission() {
+    void exportCreationDelegatesAuthorizationToService() {
         controller.createExportTask(1L, new QueryExportCreateRequest("select 1", "db", ExportFormat.CSV));
-        verify(authorizedDataSourceService).requireDataSource(1L, "query.export");
+
+        verify(queryExportService).createExportTask(1L, "select 1", "db", "csv");
+        verifyNoInteractions(authorizedDataSourceService);
     }
 
     @Test
@@ -53,9 +64,19 @@ class QueryControllerPermissionTest {
     }
 
     @Test
-    void taskListingAndDownloadRequireContext() {
+    void taskListingDetailsAndDownloadDelegateAuthorizationToService() {
+        ByteArrayResource resource = new ByteArrayResource(new byte[0]);
+        when(queryExportService.getDownloadFileName("t1")).thenReturn("export.csv");
+        when(queryExportService.getDownloadResource("t1")).thenReturn(resource);
+
         controller.listExportTasks();
         controller.getExportTask("t1");
-        verify(authorizedDataSourceService, Mockito.times(2)).requireContext();
+        assertThat(controller.downloadExportTask("t1").getBody()).isSameAs(resource);
+
+        verify(queryExportService).listTasks();
+        verify(queryExportService).getTask("t1");
+        verify(queryExportService).getDownloadFileName("t1");
+        verify(queryExportService).getDownloadResource("t1");
+        verifyNoInteractions(authorizedDataSourceService);
     }
 }

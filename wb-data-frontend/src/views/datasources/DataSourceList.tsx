@@ -13,7 +13,6 @@ import {
     testExistingConnection,
     updateDataSourceStatus,
 } from '../../api/datasource';
-import { getErrorMessage } from '../../utils/error';
 import { useAuthStore } from '../../utils/auth';
 import DataSourceForm from './DataSourceForm';
 import DataSourceListSkeleton from './DataSourceListSkeleton';
@@ -52,7 +51,7 @@ function patchCachedDataSourcePages(
 
 export default function DataSourceList() {
     const queryClient = useQueryClient();
-    const { showFeedback } = useOperationFeedback();
+    const { showFeedback, showSuccess, showError } = useOperationFeedback();
     const [searchParams, setSearchParams] = useSearchParams();
     const currentGroup = useAuthStore((s) => s.currentGroup);
     const permissions = useAuthStore((s) => s.permissions);
@@ -130,7 +129,8 @@ export default function DataSourceList() {
                 keyword: keyword || undefined,
                 groupId,
             }),
-        placeholderData: (previousData) => previousData,
+        placeholderData: (previousData, previousQuery) =>
+            groupId != null && previousQuery?.queryKey[1].groupId === groupId ? previousData : undefined,
         enabled: groupId != null,
     });
 
@@ -178,22 +178,14 @@ export default function DataSourceList() {
         },
         onSuccess: () => {
             setPendingDeleteTarget(null);
-            showFeedback({
-                tone: 'success',
-                title: '数据源已删除',
-                detail: '',
-            });
+            showSuccess('数据源已删除');
             void queryClient.invalidateQueries({ queryKey: ['dataSources'] });
         },
-        onError: (_error, _id, context) => {
+        onError: (error, _id, context) => {
             context?.previousPages.forEach(([queryKey, page]) => {
                 queryClient.setQueryData(queryKey, page);
             });
-            showFeedback({
-                tone: 'error',
-                title: '删除失败',
-                detail: '',
-            });
+            showError(error, '删除失败');
         },
         onSettled: () => {
             setPendingDeleteId(null);
@@ -219,22 +211,14 @@ export default function DataSourceList() {
             };
         },
         onSuccess: (_response, variables) => {
-            showFeedback({
-                tone: 'success',
-                title: variables.status === 'ENABLED' ? '数据源已启用' : '数据源已停用',
-                detail: '',
-            });
+            showSuccess(variables.status === 'ENABLED' ? '数据源已启用' : '数据源已停用');
             void queryClient.invalidateQueries({ queryKey: ['dataSources'] });
         },
-        onError: (_error, _variables, context) => {
+        onError: (error, _variables, context) => {
             context?.previousPages.forEach(([queryKey, page]) => {
                 queryClient.setQueryData(queryKey, page);
             });
-            showFeedback({
-                tone: 'error',
-                title: '状态更新失败',
-                detail: '',
-            });
+            showError(error, '状态更新失败');
         },
         onSettled: () => {
             setPendingStatusId(null);
@@ -311,11 +295,7 @@ export default function DataSourceList() {
                 detail: '',
             });
         } catch (error) {
-            showFeedback({
-                tone: 'error',
-                title: getErrorMessage(error, '连接测试失败'),
-                detail: '',
-            });
+            showError(error, '连接测试失败');
         } finally {
             setPendingTestId(null);
         }
@@ -412,11 +392,7 @@ export default function DataSourceList() {
                         }));
                     }
 
-                    showFeedback({
-                        tone: 'success',
-                        title: details.action === 'create' ? '数据源已创建' : '数据源已更新',
-                        detail: '',
-                    });
+                    showSuccess(details.action === 'create' ? '数据源已创建' : '数据源已更新');
 
                     void queryClient.invalidateQueries({ queryKey: ['dataSources'] });
                     if (details.action === 'create') {
