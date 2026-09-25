@@ -104,5 +104,13 @@ export const archiveParameterGroup = (groupId: number, id: number) =>
 export const restoreParameterGroup = (groupId: number, id: number) =>
     request.post<unknown, ParameterGroup>(parameterGroupPath(groupId, `/${id}/restore`));
 
+export interface ParameterGroupReferences {
+    totalCount: number;
+    sampleFlows: string[];
+}
+
+export const getParameterGroupReferences = (groupId: number, id: number) =>
+    request.get<unknown, ParameterGroupReferences>(parameterGroupPath(groupId, `/${id}/references`));
+
 export const previewParameterGroup = (groupId: number, id: number, data: ParameterPreviewRequest) =>
     request.post<unknown, ParameterPreview>(parameterGroupPath(groupId, `/${id}/preview`), data);
