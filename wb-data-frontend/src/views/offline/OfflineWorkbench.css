@@ -151,8 +151,16 @@
 .offline-tree-shell {
     flex: 1;
     min-height: 0;
-    overflow: auto;
+    overflow: hidden;
     padding-right: 2px;
+    display: flex;
+    flex-direction: column;
+}
+
+.offline-repo-tree {
+    flex: 1;
+    min-height: 0;
+    display: block;
 }
 
 .offline-tree-root,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle,
     ArrowUpRight,
@@ -19,6 +19,8 @@ import type {
     OfflineRepoTreeResponse,
 } from '../../api/offline';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
+import { OfflineRepoTree, type OfflineRepoTreeHandle } from './OfflineRepoTree';
+import { indexNodesByTreePath } from './repoTreePaths';
 import type { BranchDirtyState } from './useOfflineRepositoryWorkflow';
 
 interface BranchControls {
@@ -63,8 +65,10 @@ interface TreeControls {
     loading: boolean;
     flowLoading: boolean;
     activeFlowPath: string | null;
+    canWrite: boolean;
     onOpenFlow: (path: string) => void;
-    onContextMenu: (event: MouseEvent, node: OfflineRepoTreeNode) => void;
+    onContextMenu: (node: OfflineRepoTreeNode, position: { x: number; y: number }) => void;
+    onMoveNode: (sourceTreePath: string, newTreePath: string) => void;
 }
 
 interface OfflineWorkbenchSidebarProps {
@@ -85,85 +89,6 @@ function formatFlowPathDisplayName(flowPath: string) {
     return segments[segments.length - 1] ?? flowPath;
 }
 
-function collectTreeDirectoryIds(node: OfflineRepoTreeNode): string[] {
-    return node.children.flatMap((child) => {
-        if (child.kind !== 'DIRECTORY') {
-            return [];
-        }
-        return [child.id, ...collectTreeDirectoryIds(child)];
-    });
-}
-
-interface RepoTreeBranchProps {
-    node: OfflineRepoTreeNode;
-    depth: number;
-    activeFlowPath: string | null;
-    expandedIds: string[];
-    onToggle: (nodeId: string) => void;
-    onOpenFlow: (path: string) => void;
-    onContextMenu: (event: MouseEvent, node: OfflineRepoTreeNode) => void;
-}
-
-function RepoTreeBranch(props: RepoTreeBranchProps) {
-    const { node, depth, activeFlowPath, expandedIds, onToggle, onOpenFlow, onContextMenu } = props;
-    const hasChildren = node.children.length > 0;
-    const expanded = expandedIds.includes(node.id);
-    const indentStyle = { paddingLeft: `${depth * 14}px` };
-
-    if (node.kind === 'FLOW') {
-        return (
-            <button
-                type="button"
-                className={`offline-tree-row is-flow${node.path === activeFlowPath ? ' is-active' : ''}`}
-                style={indentStyle}
-                onClick={() => onOpenFlow(node.path)}
-                onContextMenu={(event) => onContextMenu(event, node)}
-            >
-                <span className="offline-tree-row-icon"><FileCode2 size={14} /></span>
-                <span className="offline-tree-row-label">{node.name}</span>
-            </button>
-        );
-    }
-
-    return (
-        <div className="offline-tree-branch">
-            <button
-                type="button"
-                className={`offline-tree-row is-directory${expanded ? ' is-expanded' : ''}`}
-                style={indentStyle}
-                onClick={() => onToggle(node.id)}
-                onContextMenu={(event) => onContextMenu(event, node)}
-            >
-                {hasChildren ? (
-                    <span className={`offline-tree-row-caret${expanded ? ' is-expanded' : ''}`}>
-                        <ChevronRight size={14} />
-                    </span>
-                ) : (
-                    <span className="offline-tree-row-spacer" />
-                )}
-                <span className="offline-tree-row-icon"><FolderOpen size={14} /></span>
-                <span className="offline-tree-row-label">{node.name}</span>
-            </button>
-            {hasChildren && expanded ? (
-                <div className="offline-tree-children">
-                    {node.children.map((child) => (
-                        <RepoTreeBranch
-                            key={child.id}
-                            node={child}
-                            depth={depth + 1}
-                            activeFlowPath={activeFlowPath}
-                            expandedIds={expandedIds}
-                            onToggle={onToggle}
-                            onOpenFlow={onOpenFlow}
-                            onContextMenu={onContextMenu}
-                        />
-                    ))}
-                </div>
-            ) : null}
-        </div>
-    );
-}
-
 function GitPushIcon({ dirty }: { dirty: boolean }) {
     return (
         <span style={{ position: 'relative', display: 'inline-flex' }}>
@@ -181,8 +106,8 @@ export function OfflineWorkbenchSidebar({
     tree,
 }: OfflineWorkbenchSidebarProps) {
     const branchSwitcherRef = useRef<HTMLDivElement>(null);
-    const treeGroupIdRef = useRef<number | null>(null);
-    const [expandedTreeIds, setExpandedTreeIds] = useState<string[]>([]);
+    const treeHandleRef = useRef<OfflineRepoTreeHandle>(null);
+    const [treeVisible, setTreeVisible] = useState(true);
     const branchMenuOpen = branch.menuOpen;
     const setBranchMenuOpen = branch.onMenuOpenChange;
     const currentBranch = useMemo(
@@ -195,24 +120,14 @@ export function OfflineWorkbenchSidebar({
         () => branch.branches.filter((item) => !item.current && item.name !== branch.label),
         [branch.branches, branch.label],
     );
+    const treeNodeIndex = useMemo(
+        () => (tree.data ? indexNodesByTreePath(tree.data.root) : null),
+        [tree.data],
+    );
 
     useEffect(() => {
-        if (!tree.data) {
-            treeGroupIdRef.current = null;
-            setExpandedTreeIds([]);
-            return;
-        }
-
-        const availableIds = [tree.data.root.id, ...collectTreeDirectoryIds(tree.data.root)];
-        if (treeGroupIdRef.current !== tree.data.groupId) {
-            treeGroupIdRef.current = tree.data.groupId;
-            setExpandedTreeIds(availableIds);
-            return;
-        }
-
-        const availableIdSet = new Set(availableIds);
-        setExpandedTreeIds((current) => current.filter((id) => availableIdSet.has(id)));
-    }, [tree.data]);
+        setTreeVisible(true);
+    }, [tree.data?.groupId]);
 
     useEffect(() => {
         if (!branchMenuOpen) return;
@@ -240,10 +155,13 @@ export function OfflineWorkbenchSidebar({
     }, [branchMenuOpen, setBranchMenuOpen]);
 
     const busy = repository.loading || tree.loading || tree.flowLoading;
-    const toggleTree = (nodeId: string) => {
-        setExpandedTreeIds((current) => current.includes(nodeId)
-            ? current.filter((item) => item !== nodeId)
-            : [...current, nodeId]);
+    const handleRootToggle = () => {
+        if (treeVisible) {
+            setTreeVisible(false);
+            return;
+        }
+        setTreeVisible(true);
+        requestAnimationFrame(() => treeHandleRef.current?.expandAll());
     };
 
     return (
@@ -460,39 +378,39 @@ export function OfflineWorkbenchSidebar({
                     </div>
                 ) : (
                     <div className="offline-tree-shell">
-                        <div className="offline-tree-root">
-                            <button
-                                type="button"
-                                className={`offline-tree-root-label${expandedTreeIds.length === 0 ? ' is-collapsed' : ''}`}
-                                onClick={() => {
-                                    const allIds = [tree.data!.root.id, ...collectTreeDirectoryIds(tree.data!.root)];
-                                    setExpandedTreeIds((current) => current.length > 0 ? [] : allIds);
+                        <button
+                            type="button"
+                            className={`offline-tree-root-label${treeVisible ? '' : ' is-collapsed'}`}
+                            onClick={handleRootToggle}
+                            onContextMenu={(event) => {
+                                event.preventDefault();
+                                tree.onContextMenu(tree.data!.root, { x: event.clientX, y: event.clientY });
+                            }}
+                        >
+                            <span className={`offline-tree-row-caret${treeVisible ? ' is-expanded' : ''}`}>
+                                <ChevronRight size={14} />
+                            </span>
+                            <span className="offline-tree-row-icon"><FolderOpen size={15} /></span>
+                            <span>{tree.data.root.name}</span>
+                        </button>
+                        {treeVisible ? (
+                            <OfflineRepoTree
+                                ref={treeHandleRef}
+                                className="offline-repo-tree"
+                                root={tree.data.root}
+                                dataKey={tree.data.groupId}
+                                activeFlowPath={tree.activeFlowPath}
+                                canWrite={tree.canWrite}
+                                onOpenFlow={tree.onOpenFlow}
+                                onMoveNode={tree.onMoveNode}
+                                onContextMenu={(treePath, position) => {
+                                    const node = treeNodeIndex?.get(treePath);
+                                    if (node) {
+                                        tree.onContextMenu(node, position);
+                                    }
                                 }}
-                                onContextMenu={(event) => tree.onContextMenu(event, tree.data!.root)}
-                            >
-                                <span className={`offline-tree-row-caret${expandedTreeIds.length > 0 ? ' is-expanded' : ''}`}>
-                                    <ChevronRight size={14} />
-                                </span>
-                                <span className="offline-tree-row-icon"><FolderOpen size={15} /></span>
-                                <span>{tree.data.root.name}</span>
-                            </button>
-                            {expandedTreeIds.length > 0 ? (
-                                <div className="offline-tree-children">
-                                    {tree.data.root.children.map((child) => (
-                                        <RepoTreeBranch
-                                            key={child.id}
-                                            node={child}
-                                            depth={1}
-                                            activeFlowPath={tree.activeFlowPath}
-                                            expandedIds={expandedTreeIds}
-                                            onToggle={toggleTree}
-                                            onOpenFlow={tree.onOpenFlow}
-                                            onContextMenu={tree.onContextMenu}
-                                        />
-                                    ))}
-                                </div>
-                            ) : null}
-                        </div>
+                            />
+                        ) : null}
                     </div>
                 )}
             </section>
