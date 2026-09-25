@@ -8,6 +8,7 @@ import {
     createParameterGroup,
     getParameterGroup,
     getParameterGroupPage,
+    getParameterGroupReferences,
     previewParameterGroup,
     updateParameterGroup,
 } from '../../api/parameterGroups';
@@ -19,6 +20,7 @@ vi.mock('../../api/parameterGroups', () => ({
     createParameterGroup: vi.fn(),
     getParameterGroup: vi.fn(),
     getParameterGroupPage: vi.fn(),
+    getParameterGroupReferences: vi.fn(),
     previewParameterGroup: vi.fn(),
     restoreParameterGroup: vi.fn(),
     updateParameterGroup: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock('../../api/parameterGroups', () => ({
 const getParameterGroupPageMock = vi.mocked(getParameterGroupPage);
 const createParameterGroupMock = vi.mocked(createParameterGroup);
 const getParameterGroupMock = vi.mocked(getParameterGroup);
+const getParameterGroupReferencesMock = vi.mocked(getParameterGroupReferences);
 const previewParameterGroupMock = vi.mocked(previewParameterGroup);
 const archiveParameterGroupMock = vi.mocked(archiveParameterGroup);
 const updateParameterGroupMock = vi.mocked(updateParameterGroup);
@@ -377,6 +380,7 @@ describe('ParameterGroupPage', () => {
     });
 
     it('archives an active parameter group after confirmation', async () => {
+        getParameterGroupReferencesMock.mockResolvedValue({ totalCount: 0, sampleFlows: [] });
         const queryClient = new QueryClient({
             defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
         });
@@ -389,8 +393,35 @@ describe('ParameterGroupPage', () => {
         );
 
         fireEvent.click(await screen.findByRole('button', { name: '归档日常公共参数' }));
+
+        expect(await screen.findByText('当前没有任务绑定该参数组。')).toBeTruthy();
+
         fireEvent.click(screen.getByRole('button', { name: '确认归档' }));
 
         await waitFor(() => expect(archiveParameterGroupMock).toHaveBeenCalledWith(5, 12));
+    });
+
+    it('shows binding impact with sample flows before archiving', async () => {
+        getParameterGroupReferencesMock.mockResolvedValue({
+            totalCount: 132,
+            sampleFlows: ['_flows/alpha', '_flows/beta', '_flows/gamma'],
+        });
+        const queryClient = new QueryClient({
+            defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+        });
+        render(
+            <QueryClientProvider client={queryClient}>
+                <MemoryRouter>
+                    <ParameterGroupPage />
+                </MemoryRouter>
+            </QueryClientProvider>,
+        );
+
+        fireEvent.click(await screen.findByRole('button', { name: '归档日常公共参数' }));
+
+        expect(await screen.findByText(/当前有/)).toBeTruthy();
+        expect(screen.getByText('132')).toBeTruthy();
+        expect(screen.getByText(/_flows\/alpha、_flows\/beta、_flows\/gamma 等 132 个/)).toBeTruthy();
+        expect(getParameterGroupReferencesMock).toHaveBeenCalledWith(5, 12);
     });
 });

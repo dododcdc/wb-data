@@ -912,3 +912,14 @@
     height: 14px;
     width: 68%;
 }
+
+.parameter-archive-references {
+    display: block;
+    margin-top: 8px;
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+}
+
+.parameter-archive-references strong {
+    color: var(--color-text-primary);
+}

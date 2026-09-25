@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Braces, ChevronLeft, ChevronRight, Plus, Search } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 
-import { archiveParameterGroup, getParameterGroupPage, restoreParameterGroup } from '../../api/parameterGroups';
+import { archiveParameterGroup, getParameterGroupPage, getParameterGroupReferences, restoreParameterGroup } from '../../api/parameterGroups';
 import type { ParameterGroupSummary } from '../../api/parameterGroups';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { Button } from '../../components/ui/button';
@@ -84,6 +84,14 @@ export default function ParameterGroupPage() {
     const total = pageQuery.data?.total ?? 0;
     const totalPages = Math.max(1, pageQuery.data?.pages ?? 1);
     const isInitialEmpty = !pageQuery.isLoading && !pageQuery.error && total === 0 && !keyword && !status;
+
+    const archivingTarget = actionTarget?.status === 'ACTIVE' ? actionTarget : null;
+    const referencesQuery = useQuery({
+        queryKey: ['parameter-group-references', groupId, archivingTarget?.id],
+        queryFn: () => getParameterGroupReferences(groupId!, archivingTarget!.id),
+        enabled: groupId != null && archivingTarget != null,
+        staleTime: 30_000,
+    });
 
     const openCreateDialog = () => {
         setEditingId(null);
@@ -317,9 +325,28 @@ export default function ParameterGroupPage() {
                     if (!open) setActionTarget(null);
                 }}
                 title={actionTarget?.status === 'ACTIVE' ? '归档参数组' : '恢复参数组'}
-                description={actionTarget?.status === 'ACTIVE'
-                    ? `归档后，新任务不能再引用“${actionTarget?.name ?? ''}”；已有任务仍保留当前版本。`
-                    : `恢复后，“${actionTarget?.name ?? ''}”可以再次被任务引用。`}
+                description={actionTarget?.status === 'ACTIVE' ? (
+                    <>
+                        <span>归档后，新任务不能再引用“{actionTarget.name}”；已有任务仍保留当前版本。</span>
+                        {referencesQuery.data ? (
+                            referencesQuery.data.totalCount > 0 ? (
+                                <span className="parameter-archive-references">
+                                    当前有 <strong>{referencesQuery.data.totalCount}</strong> 个任务绑定该参数组
+                                    （{referencesQuery.data.sampleFlows.join('、')}
+                                    {referencesQuery.data.totalCount > referencesQuery.data.sampleFlows.length
+                                        ? ` 等 ${referencesQuery.data.totalCount} 个`
+                                        : ''}）。
+                                    归档后这些任务将显示「已归档」，且无法升级绑定版本。
+                                </span>
+                            ) : (
+                                <span className="parameter-archive-references">当前没有任务绑定该参数组。</span>
+                            )
+                        ) : null}
+                        {referencesQuery.isError ? (
+                            <span className="parameter-archive-references">绑定引用情况读取失败，归档不受影响。</span>
+                        ) : null}
+                    </>
+                ) : `恢复后，“${actionTarget?.name ?? ''}”可以再次被任务引用。`}
                 confirmText={actionTarget?.status === 'ACTIVE' ? '确认归档' : '确认恢复'}
                 variant={actionTarget?.status === 'ACTIVE' ? 'warning' : 'default'}
                 icon="warning"
