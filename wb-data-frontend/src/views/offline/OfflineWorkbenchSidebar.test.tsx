@@ -13,12 +13,18 @@ function createTree(flowNames: string[]): OfflineRepoTreeResponse {
             kind: 'ROOT',
             name: 'policy',
             path: '_flows',
+            scheduleState: 'NONE',
+            schedulePeriod: null,
+            dependencyCount: 0,
             children: flowNames.map((name) => ({
                 id: `_flows/${name}/flow.yaml`,
                 kind: 'FLOW',
                 name,
                 path: `_flows/${name}/flow.yaml`,
                 children: [],
+                scheduleState: 'NONE',
+                schedulePeriod: null,
+                dependencyCount: 0,
             })),
         },
     };

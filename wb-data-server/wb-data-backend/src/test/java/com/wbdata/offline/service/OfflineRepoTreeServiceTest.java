@@ -110,4 +110,70 @@ class OfflineRepoTreeServiceTest {
                 .hasMessageContaining("_flows");
         assertThat(repo.resolve("scripts/x")).isDirectory();
     }
+
+    @Test
+    void repoTreeFlowNodesCarryScheduleAndDependencyStatus() throws Exception {
+        Path repo = repo();
+        Files.createDirectories(repo.resolve("_flows/daily-task"));
+        Files.writeString(repo.resolve("_flows/daily-task/flow.yaml"), """
+                id: daily-task
+                namespace: g1-main
+                tasks: []
+                labels:
+                  wbdataDependencies: "1:upstream_a,1:upstream_b"
+                triggers:
+                  - id: schedule
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 2 * * *"
+                    timezone: Asia/Shanghai
+                """);
+        Files.createDirectories(repo.resolve("_flows/disabled-task"));
+        Files.writeString(repo.resolve("_flows/disabled-task/flow.yaml"), """
+                id: disabled-task
+                namespace: g1-main
+                tasks: []
+                triggers:
+                  - id: schedule
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 3 * * 1"
+                    timezone: Asia/Shanghai
+                    disabled: true
+                """);
+        Files.createDirectories(repo.resolve("_flows/plain-task"));
+        Files.writeString(repo.resolve("_flows/plain-task/flow.yaml"), "id: plain-task\nnamespace: g1-main\ntasks: []\n");
+
+        var tree = service().getRepoTree(1L, "root");
+        var nodes = tree.root().children().stream()
+                .collect(java.util.stream.Collectors.toMap(n -> n.name(), n -> n));
+
+        var daily = nodes.get("daily-task");
+        assertThat(daily.scheduleState()).isEqualTo("ENABLED");
+        assertThat(daily.schedulePeriod()).isEqualTo("DAILY");
+        assertThat(daily.dependencyCount()).isEqualTo(2);
+
+        var disabled = nodes.get("disabled-task");
+        assertThat(disabled.scheduleState()).isEqualTo("DISABLED");
+        assertThat(disabled.schedulePeriod()).isEqualTo("WEEKLY");
+        assertThat(disabled.dependencyCount()).isZero();
+
+        var plain = nodes.get("plain-task");
+        assertThat(plain.scheduleState()).isEqualTo("NONE");
+        assertThat(plain.schedulePeriod()).isNull();
+        assertThat(plain.dependencyCount()).isZero();
+    }
+
+    @Test
+    void repoTreeToleratesUnparseableFlowYaml() throws Exception {
+        Path repo = repo();
+        Files.createDirectories(repo.resolve("_flows/broken"));
+        Files.writeString(repo.resolve("_flows/broken/flow.yaml"), "id: [unclosed\n  bad: {yaml");
+
+        var tree = service().getRepoTree(1L, "root");
+
+        assertThat(tree.root().children()).hasSize(1);
+        var broken = tree.root().children().getFirst();
+        assertThat(broken.kind()).isEqualTo("FLOW");
+        assertThat(broken.scheduleState()).isEqualTo("NONE");
+        assertThat(broken.dependencyCount()).isZero();
+    }
 }

@@ -21,6 +21,7 @@ public class OfflineRepoTreeService {
 
     private final OfflineProperties offlineProperties;
     private final RepoLockManager repoLockManager;
+    private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
 
     public OfflineRepoTreeResponse getRepoTree(Long groupId, String rootName) {
         return repoLockManager.withLock(groupId, () -> getRepoTreeUnlocked(groupId, rootName));
@@ -30,7 +31,7 @@ public class OfflineRepoTreeService {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
         return new OfflineRepoTreeResponse(
                 groupId,
-                new OfflineRepoTreeNodeResponse(
+                OfflineRepoTreeNodeResponse.directory(
                         "group-" + groupId,
                         "ROOT",
                         rootName,
@@ -74,15 +75,9 @@ public class OfflineRepoTreeService {
             if (insideFlows && isLeafFlowDirectory(path)) {
                 Path flowPath = path.resolve("flow.yaml");
                 String flowRelativePath = toRelativePath(repoRoot, flowPath);
-                return new OfflineRepoTreeNodeResponse(
-                        flowRelativePath,
-                        "FLOW",
-                        path.getFileName().toString(),
-                        flowRelativePath,
-                        List.of()
-                );
+                return flowNode(flowRelativePath, path.getFileName().toString(), flowPath);
             }
-            return new OfflineRepoTreeNodeResponse(
+            return OfflineRepoTreeNodeResponse.directory(
                     relativePath,
                     "DIRECTORY",
                     fileName,
@@ -94,15 +89,23 @@ public class OfflineRepoTreeService {
             if (!"flow.yaml".equals(fileName)) {
                 return null;
             }
-            return new OfflineRepoTreeNodeResponse(
-                    relativePath,
-                    "FLOW",
-                    resolveFlowDisplayName(path),
-                    relativePath,
-                    List.of()
-            );
+            return flowNode(relativePath, resolveFlowDisplayName(path), path);
         }
         return null;
+    }
+
+    private OfflineRepoTreeNodeResponse flowNode(String path, String name, Path flowFile) {
+        try {
+            String content = Files.readString(flowFile, StandardCharsets.UTF_8);
+            var schedule = yamlSupport.readSchedule(content);
+            int dependencyCount = yamlSupport.readDependencies(content).size();
+            String scheduleState = schedule == null ? "NONE" : schedule.enabled() ? "ENABLED" : "DISABLED";
+            String schedulePeriod = schedule == null || schedule.period() == null ? null : schedule.period().name();
+            return new OfflineRepoTreeNodeResponse(path, "FLOW", name, path, List.of(),
+                    scheduleState, schedulePeriod, dependencyCount);
+        } catch (RuntimeException | IOException ex) {
+            return new OfflineRepoTreeNodeResponse(path, "FLOW", name, path, List.of(), "NONE", null, 0);
+        }
     }
 
     private boolean isLeafFlowDirectory(Path directory) {

@@ -46,12 +46,17 @@ export interface OfflineRepoStatus {
     headCommitAt: string | null;
 }
 
+export type OfflineScheduleState = 'NONE' | 'DISABLED' | 'ENABLED';
+
 export interface OfflineRepoTreeNode {
     id: string;
     kind: 'ROOT' | 'DIRECTORY' | 'FLOW';
     name: string;
     path: string;
     children: OfflineRepoTreeNode[];
+    scheduleState: OfflineScheduleState;
+    schedulePeriod: 'HOURLY' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'CUSTOM' | null;
+    dependencyCount: number;
 }
 
 export interface OfflineRepoTreeResponse {

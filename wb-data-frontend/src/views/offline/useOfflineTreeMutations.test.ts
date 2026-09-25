@@ -157,6 +157,7 @@ describe('useOfflineTreeMutations', () => {
         const { result, params } = renderTreeMutations();
         act(() => result.current.openDeleteFlowDialogFromContext({
             id: 'test', name: 'test', path: '_flows/jack/test/flow.yaml', kind: 'FLOW', children: [],
+            scheduleState: 'NONE', schedulePeriod: null, dependencyCount: 0,
         }));
         await act(async () => { await result.current.handleDeleteFlow(); });
         expect(result.current.deleteFlowDialogOpen).toBe(true);
@@ -177,6 +178,9 @@ describe('useOfflineTreeMutations', () => {
                 path: '_flows/jack/test/flow.yaml',
                 kind: 'FLOW',
                 children: [],
+                scheduleState: 'NONE',
+                schedulePeriod: null,
+                dependencyCount: 0,
             });
         });
         await act(async () => {
@@ -197,6 +201,9 @@ describe('useOfflineTreeMutations', () => {
             path: '_flows/jack/test11/flow.yaml',
             kind: 'FLOW' as const,
             children: [],
+            scheduleState: 'NONE' as const,
+            schedulePeriod: null,
+            dependencyCount: 0,
         };
 
         act(() => {
@@ -228,6 +235,9 @@ describe('useOfflineTreeMutations', () => {
                 path: '_flows/jack/test11/flow.yaml',
                 kind: 'FLOW',
                 children: [],
+                scheduleState: 'NONE',
+                schedulePeriod: null,
+                dependencyCount: 0,
             });
             result.current.setRenameFlowName('test11_new');
         });
@@ -255,6 +265,9 @@ describe('useOfflineTreeMutations', () => {
                 path: '_flows/jack',
                 kind: 'DIRECTORY',
                 children: [],
+                scheduleState: 'NONE',
+                schedulePeriod: null,
+                dependencyCount: 0,
             });
             result.current.setRenameFolderName('jack_renamed');
         });
