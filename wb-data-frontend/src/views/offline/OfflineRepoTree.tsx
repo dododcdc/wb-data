@@ -41,6 +41,8 @@ interface OfflineRepoTreeProps extends OfflineRepoTreeCallbacks {
     activeFlowPath: string | null;
     canWrite: boolean;
     className?: string;
+    /** 注入 shadow DOM 的自定义 SVG sprite（行徽标符号） */
+    iconSpriteSheet?: string;
 }
 
 const HOST_THEME_STYLE = {
@@ -67,6 +69,7 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
             activeFlowPath,
             canWrite,
             className,
+            iconSpriteSheet,
         } = props;
 
         const callbacksRef = useRef(props);
@@ -82,6 +85,7 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
         const { model } = useFileTree({
             paths: [],
             sort: 'default',
+            icons: iconSpriteSheet ? { spriteSheet: iconSpriteSheet } : undefined,
             dragAndDrop: {
                 canDrag: () => canWriteRef.current,
                 canDrop: (event) => event.draggedPaths.every((dragged) => {

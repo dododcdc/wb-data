@@ -20,6 +20,7 @@ import type {
 } from '../../api/offline';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { OfflineRepoTree, type OfflineRepoTreeHandle } from './OfflineRepoTree';
+import { SCHEDULE_BADGE_SPRITE, renderScheduleBadge } from './offlineTreeBadges';
 import { indexNodesByTreePath } from './repoTreePaths';
 import type { BranchDirtyState } from './useOfflineRepositoryWorkflow';
 
@@ -401,6 +402,8 @@ export function OfflineWorkbenchSidebar({
                                 dataKey={tree.data.groupId}
                                 activeFlowPath={tree.activeFlowPath}
                                 canWrite={tree.canWrite}
+                                iconSpriteSheet={SCHEDULE_BADGE_SPRITE}
+                                renderBadge={renderScheduleBadge}
                                 onOpenFlow={tree.onOpenFlow}
                                 onMoveNode={tree.onMoveNode}
                                 onContextMenu={(treePath, position) => {
