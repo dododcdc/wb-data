@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { Home, RefreshCw } from 'lucide-react';
 import { isRouteErrorResponse, Link, useRouteError } from 'react-router-dom';
 import { isDynamicImportPreloadError, recoverFromVitePreloadError } from '../../utils/vitePreloadRecovery';
 import './RouteState.css';
@@ -58,9 +58,9 @@ export default function RouteErrorPage() {
                         <RefreshCw size={16} />
                         刷新页面
                     </button>
-                    <Link className="route-state-primary" to="/datasources">
-                        <AlertTriangle size={16} />
-                        返回安全页面
+                    <Link className="route-state-primary" to="/">
+                        <Home size={16} />
+                        返回首页
                     </Link>
                 </div>
             </section>
