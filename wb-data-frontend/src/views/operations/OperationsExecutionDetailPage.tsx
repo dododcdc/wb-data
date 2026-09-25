@@ -111,7 +111,7 @@ export default function OperationsExecutionDetailPage() {
     const currentGroup = useAuthStore((state) => state.currentGroup);
     const permissions = useAuthStore((state) => state.permissions);
     const systemAdmin = useAuthStore((state) => state.systemAdmin);
-    const { showFeedback } = useOperationFeedback();
+    const { showSuccess, showError } = useOperationFeedback();
     const groupId = currentGroup?.id ?? null;
     const [selectedTaskId, setSelectedTaskId] = useState<string | undefined>(undefined);
     const [activeLevels, setActiveLevels] = useState<Set<string>>(new Set());
@@ -156,12 +156,12 @@ export default function OperationsExecutionDetailPage() {
         ),
         onSuccess: () => {
             setRerunDialogOpen(false);
-            showFeedback({ tone: 'success', title: '已触发重跑', detail: '' });
+            showSuccess('已触发重跑');
             void queryClient.invalidateQueries({ queryKey: ['operations-executions'] });
             void queryClient.invalidateQueries({ queryKey: ['operations-execution', groupId, executionId] });
         },
-        onError: () => {
-            showFeedback({ tone: 'error', title: '重跑触发失败', detail: '' });
+        onError: (error) => {
+            showError(error, '重跑触发失败');
         },
     });
 

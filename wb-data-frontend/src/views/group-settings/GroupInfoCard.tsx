@@ -19,7 +19,7 @@ interface GroupInfoCardProps {
 
 export default function GroupInfoCard(props: GroupInfoCardProps) {
     const { data, canEdit, onSave, onSaveSuccess } = props;
-    const { showFeedback } = useOperationFeedback();
+    const { showSuccess } = useOperationFeedback();
 
     const [editing, setEditing] = useState(false);
     const [name, setName] = useState('');
@@ -72,7 +72,7 @@ export default function GroupInfoCard(props: GroupInfoCardProps) {
                 ),
             }));
             setEditing(false);
-            showFeedback({ tone: 'success', title: '项目组信息已更新', detail: '' });
+            showSuccess('项目组信息已更新');
             onSaveSuccess();
         } catch (err) {
             const apiError = err as { status?: number; message?: string } | null;

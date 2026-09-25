@@ -28,7 +28,7 @@ interface LocalSettingsTabProps {
 }
 
 export default function LocalSettingsTab({ groupId, canEdit }: LocalSettingsTabProps) {
-    const { showFeedback } = useOperationFeedback();
+    const { showFeedback, showSuccess, showError } = useOperationFeedback();
     const queryClient = useQueryClient();
 
     // Dialog state variables and element container refs to fix Radix portal focus traps
@@ -67,42 +67,31 @@ export default function LocalSettingsTab({ groupId, canEdit }: LocalSettingsTabP
     const createMutation = useMutation({
         mutationFn: ({ name, base }: { name: string; base: string }) => createBranch(groupId, name, base),
         onSuccess: () => {
-            showFeedback({ tone: 'success', title: '本地分支创建成功', detail: '' });
+            showSuccess('本地分支创建成功');
             setIsCreateOpen(false);
             setNewBranchName('');
             void queryClient.invalidateQueries({ queryKey: ['offline-branches', groupId] });
         },
-        onError: (err: unknown) => {
-            const error = err as { message?: string };
-            const message = error?.message?.trim();
-            showFeedback({
-                tone: 'error',
-                title: message || '创建分支失败',
-                detail: '',
-            });
+        onError: (error) => {
+            showError(error, '创建分支失败');
         },
     });
 
     const deleteMutation = useMutation({
         mutationFn: ({ name, force }: { name: string; force: boolean }) => deleteBranch(groupId, name, force),
         onSuccess: () => {
-            showFeedback({ tone: 'success', title: '本地分支删除成功', detail: '' });
+            showSuccess('本地分支删除成功');
             setPendingDeleteBranch(null);
             setForceDelete(false);
             void queryClient.invalidateQueries({ queryKey: ['offline-branches', groupId] });
         },
         onError: (err: unknown) => {
-            const error = err as { message?: string; response?: { status?: number } };
+            const error = err as { response?: { status?: number } };
             if (error?.response?.status === 409) {
                 // Trigger force delete confirm
                 setForceDelete(true);
             } else {
-                const message = error?.message?.trim();
-                showFeedback({
-                    tone: 'error',
-                    title: message || '删除分支失败',
-                    detail: '',
-                });
+                showError(err, '删除分支失败');
                 setPendingDeleteBranch(null);
             }
         },
@@ -111,19 +100,13 @@ export default function LocalSettingsTab({ groupId, canEdit }: LocalSettingsTabP
     const mergeMutation = useMutation({
         mutationFn: ({ source, target }: { source: string; target: string }) => mergeBranch(groupId, source, target),
         onSuccess: () => {
-            showFeedback({ tone: 'success', title: '分支合并成功', detail: '' });
+            showSuccess('分支合并成功');
             setIsMergeOpen(false);
             void queryClient.invalidateQueries({ queryKey: ['offline-repo-status', groupId] });
             void queryClient.invalidateQueries({ queryKey: ['offline-branches', groupId] });
         },
-        onError: (err: unknown) => {
-            const error = err as { message?: string };
-            const message = error?.message?.trim();
-            showFeedback({
-                tone: 'error',
-                title: message || '合并分支失败',
-                detail: '',
-            });
+        onError: (error) => {
+            showError(error, '合并分支失败');
         },
     });
 

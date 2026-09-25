@@ -70,6 +70,16 @@ describe('useOperationFeedback', () => {
         });
     });
 
+    it('showError honors a custom fallback detail', () => {
+        const { result } = renderHook(() => useOperationFeedback());
+        result.current.showError({}, '操作失败', '请稍后重试');
+        expect(useFeedbackStore.getState().current).toEqual({
+            tone: 'error',
+            title: '操作失败',
+            detail: '请稍后重试',
+        });
+    });
+
     it('dismissFeedback clears toast', () => {
         const { result } = renderHook(() => useOperationFeedback());
         result.current.showFeedback({ tone: 'info', title: '信息', detail: '' });

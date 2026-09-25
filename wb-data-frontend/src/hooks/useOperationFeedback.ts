@@ -50,11 +50,11 @@ export function useOperationFeedback() {
         show({ tone: 'success', title, detail: detail ?? '' });
     }, [show]);
 
-    const showError = useCallback((error: unknown, title: string) => {
+    const showError = useCallback((error: unknown, title: string, fallbackDetail?: string) => {
         show({
             tone: 'error',
             title,
-            detail: getErrorMessage(error, title),
+            detail: getErrorMessage(error, fallbackDetail ?? title),
         });
     }, [show]);
 

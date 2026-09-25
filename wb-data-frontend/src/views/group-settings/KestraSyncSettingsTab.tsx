@@ -22,7 +22,7 @@ interface KestraSyncSettingsTabProps {
 }
 
 export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit }: KestraSyncSettingsTabProps) {
-    const { showFeedback } = useOperationFeedback();
+    const { showSuccess, showError } = useOperationFeedback();
     const queryClient = useQueryClient();
 
     const { data: config, isLoading: configLoading } = useQuery({
@@ -44,11 +44,11 @@ export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit
     const createSyncMutation = useMutation({
         mutationFn: (branch: string) => createGitSyncConfig(groupId, branch),
         onSuccess: () => {
-            showFeedback({ tone: 'success', title: '同步分支已添加', detail: '' });
+            showSuccess('同步分支已添加');
             invalidateSyncConfigs();
         },
-        onError: () => {
-            showFeedback({ tone: 'error', title: '添加同步分支失败', detail: '' });
+        onError: (error) => {
+            showError(error, '添加同步分支失败');
         },
     });
 
@@ -56,33 +56,33 @@ export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit
     const triggerSyncMutation = useMutation({
         mutationFn: (id: number) => triggerGitSyncConfig(groupId, id),
         onSuccess: () => {
-            showFeedback({ tone: 'success', title: '同步已触发', detail: '' });
+            showSuccess('同步已触发');
             invalidateSyncConfigs();
         },
-        onError: () => {
-            showFeedback({ tone: 'error', title: '触发同步失败', detail: '' });
+        onError: (error) => {
+            showError(error, '触发同步失败');
         },
     });
 
     const deleteSyncMutation = useMutation({
         mutationFn: (id: number) => deleteGitSyncConfig(groupId, id),
         onSuccess: () => {
-            showFeedback({ tone: 'success', title: '已移出同步', detail: '' });
+            showSuccess('已移出同步');
             invalidateSyncConfigs();
         },
-        onError: () => {
-            showFeedback({ tone: 'error', title: '移出同步失败', detail: '' });
+        onError: (error) => {
+            showError(error, '移出同步失败');
         },
     });
 
     const updateStatusMutation = useMutation({
         mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) => updateGitSyncConfigStatus(groupId, id, enabled),
         onSuccess: () => {
-            showFeedback({ tone: 'success', title: '自动同步状态已更新', detail: '' });
+            showSuccess('自动同步状态已更新');
             invalidateSyncConfigs();
         },
-        onError: () => {
-            showFeedback({ tone: 'error', title: '更新同步状态失败', detail: '' });
+        onError: (error) => {
+            showError(error, '更新同步状态失败');
         },
     });
 
