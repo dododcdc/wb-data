@@ -10,8 +10,9 @@ import { useAuthStore } from '../../utils/auth';
 import OperationsCenter from './OperationsCenter';
 import * as SimpleSelectModule from '../../components/SimpleSelect';
 
-const { showFeedback } = vi.hoisted(() => ({
-    showFeedback: vi.fn(),
+const { showSuccess, showError } = vi.hoisted(() => ({
+    showSuccess: vi.fn(),
+    showError: vi.fn(),
 }));
 
 vi.mock('../../api/offline', () => ({
@@ -25,7 +26,7 @@ vi.mock('../../api/operations', () => ({
 }));
 
 vi.mock('../../hooks/useOperationFeedback', () => ({
-    useOperationFeedback: () => ({ showFeedback }),
+    useOperationFeedback: () => ({ showSuccess, showError }),
 }));
 
 vi.mock('./OperationsTimeFilter', () => ({

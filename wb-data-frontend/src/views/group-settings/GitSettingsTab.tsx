@@ -31,7 +31,7 @@ interface GitSettingsTabProps {
 }
 
 export default function GitSettingsTab({ groupId, canEdit }: GitSettingsTabProps) {
-    const { showFeedback } = useOperationFeedback();
+    const { showFeedback, showSuccess, showError } = useOperationFeedback();
     const [provider, setProvider] = useState('github');
     const [username, setUsername] = useState('');
     const [token, setToken] = useState('');
@@ -51,14 +51,14 @@ export default function GitSettingsTab({ groupId, canEdit }: GitSettingsTabProps
     const saveMutation = useMutation({
         mutationFn: (payload: SaveGitConfigPayload) => saveGitConfig(groupId, payload),
         onSuccess: () => {
-            showFeedback({ tone: 'success', title: '保存成功', detail: '' });
+            showSuccess('保存成功');
             setToken('');
             setConfigEditing(false);
             void queryClient.invalidateQueries({ queryKey: ['git-config', groupId] });
             void queryClient.invalidateQueries({ queryKey: ['git-sync-config', groupId] });
         },
-        onError: () => {
-            showFeedback({ tone: 'error', title: '保存失败', detail: '' });
+        onError: (error) => {
+            showError(error, '保存失败');
         },
     });
 
@@ -66,7 +66,7 @@ export default function GitSettingsTab({ groupId, canEdit }: GitSettingsTabProps
         mutationFn: () => deleteGitConfig(groupId),
         onSuccess: () => {
             setConfirmOpen(false);
-            showFeedback({ tone: 'success', title: '删除成功', detail: '' });
+            showSuccess('删除成功');
             setProvider('github');
             setUsername('');
             setToken('');
@@ -75,8 +75,8 @@ export default function GitSettingsTab({ groupId, canEdit }: GitSettingsTabProps
             void queryClient.invalidateQueries({ queryKey: ['git-config', groupId] });
             void queryClient.invalidateQueries({ queryKey: ['git-sync-config', groupId] });
         },
-        onError: () => {
-            showFeedback({ tone: 'error', title: '删除失败', detail: '' });
+        onError: (error) => {
+            showError(error, '删除失败');
         },
     });
 
@@ -104,13 +104,13 @@ export default function GitSettingsTab({ groupId, canEdit }: GitSettingsTabProps
         setTestLoading(true);
         try {
             await testGitConnection(groupId, { provider, username, token, baseUrl });
-            showFeedback({ tone: 'success', title: '连接成功', detail: '' });
-        } catch {
-            showFeedback({ tone: 'error', title: '连接失败', detail: '' });
+            showSuccess('连接成功');
+        } catch (error) {
+            showError(error, '连接失败');
         } finally {
             setTestLoading(false);
         }
-    }, [provider, username, token, baseUrl, showFeedback, groupId]);
+    }, [provider, username, token, baseUrl, showFeedback, showSuccess, showError, groupId]);
 
     const handleSave = useCallback(async () => {
         if (!username) {

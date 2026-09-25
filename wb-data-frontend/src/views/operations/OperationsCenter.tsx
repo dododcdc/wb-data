@@ -242,7 +242,7 @@ function LoadingRows() {
 export default function OperationsCenter() {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
-    const { showFeedback } = useOperationFeedback();
+    const { showSuccess, showError } = useOperationFeedback();
     const currentGroup = useAuthStore((state) => state.currentGroup);
     const permissions = useAuthStore((state) => state.permissions);
     const systemAdmin = useAuthStore((state) => state.systemAdmin);
@@ -326,11 +326,11 @@ export default function OperationsCenter() {
         },
         onSuccess: () => {
             setRerunTarget(null);
-            showFeedback({ tone: 'success', title: '已触发重跑', detail: '' });
+            showSuccess('已触发重跑');
             void queryClient.invalidateQueries({ queryKey: ['operations-executions'] });
         },
-        onError: () => {
-            showFeedback({ tone: 'error', title: '重跑触发失败', detail: '' });
+        onError: (error) => {
+            showError(error, '重跑触发失败');
         },
         onSettled: () => {
             setPendingRerunId(null);

@@ -12,8 +12,9 @@ import { formatLocalDateTime } from '../../lib/dateTime';
 import { useAuthStore } from '../../utils/auth';
 import OperationsExecutionDetailPage from './OperationsExecutionDetailPage';
 
-const { showFeedback } = vi.hoisted(() => ({
-    showFeedback: vi.fn(),
+const { showSuccess, showError } = vi.hoisted(() => ({
+    showSuccess: vi.fn(),
+    showError: vi.fn(),
 }));
 
 vi.mock('../../api/operations', () => ({
@@ -23,7 +24,7 @@ vi.mock('../../api/operations', () => ({
 }));
 
 vi.mock('../../hooks/useOperationFeedback', () => ({
-    useOperationFeedback: () => ({ showFeedback }),
+    useOperationFeedback: () => ({ showSuccess, showError }),
 }));
 
 vi.mock('react-virtuoso', () => ({
@@ -217,10 +218,6 @@ describe('OperationsExecutionDetailPage', () => {
             'exec-1',
             { reuseManualOverrides: true },
         ));
-        expect(showFeedback).toHaveBeenCalledWith({
-            tone: 'success',
-            title: '已触发重跑',
-            detail: '',
-        });
+        expect(showSuccess).toHaveBeenCalledWith('已触发重跑');
     });
 });

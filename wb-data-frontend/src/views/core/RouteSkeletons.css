@@ -16,7 +16,7 @@
         ),
         var(--color-bg-primary);
     background-size: 180% 100%;
-    animation: routeSkeletonShimmer 1.3s linear infinite;
+    animation: shimmer 1.3s linear infinite;
 }
 
 .route-skeleton-card {
@@ -257,15 +257,6 @@
 
 .route-skeleton-query-results-text.short {
     width: min(220px, 54%);
-}
-
-@keyframes routeSkeletonShimmer {
-    from {
-        background-position: 180% 0;
-    }
-    to {
-        background-position: -180% 0;
-    }
 }
 
 @media (max-width: 900px) {

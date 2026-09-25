@@ -57,7 +57,7 @@ function patchCachedUserPages(
 
 export default function UserList() {
     const queryClient = useQueryClient();
-    const { showFeedback } = useOperationFeedback();
+    const { showSuccess, showError } = useOperationFeedback();
     const [searchParams, setSearchParams] = useSearchParams();
     const [keywordInput, setKeywordInput] = useState(searchParams.get('keyword') ?? '');
     const [isComposing, setIsComposing] = useState(false);
@@ -157,22 +157,14 @@ export default function UserList() {
             };
         },
         onSuccess: (_response, variables) => {
-            showFeedback({
-                tone: 'success',
-                title: variables.status === 'ACTIVE' ? '用户已启用' : '用户已禁用',
-                detail: '',
-            });
+            showSuccess(variables.status === 'ACTIVE' ? '用户已启用' : '用户已禁用');
             void queryClient.invalidateQueries({ queryKey: ['users'] });
         },
-        onError: (_error, _variables, context) => {
+        onError: (error, _variables, context) => {
             context?.previousPages.forEach(([queryKey, page]) => {
                 queryClient.setQueryData(queryKey, page);
             });
-            showFeedback({
-                tone: 'error',
-                title: '状态更新失败',
-                detail: '',
-            });
+            showError(error, '状态更新失败');
         },
         onSettled: () => {
             setPendingStatusId(null);
@@ -239,11 +231,7 @@ export default function UserList() {
             }));
         }
 
-        showFeedback({
-            tone: 'success',
-            title: details.action === 'create' ? '用户已创建' : '用户已更新',
-            detail: '',
-        });
+        showSuccess(details.action === 'create' ? '用户已创建' : '用户已更新');
 
         void queryClient.invalidateQueries({ queryKey: ['users'] });
         if (details.action === 'create') {
@@ -393,11 +381,7 @@ export default function UserList() {
                 }}
                 onSuccess={() => {
                     setResetPasswordUser(null);
-                    showFeedback({
-                        tone: 'success',
-                        title: '密码已重置',
-                        detail: '',
-                    });
+                    showSuccess('密码已重置');
                 }}
             />
 
