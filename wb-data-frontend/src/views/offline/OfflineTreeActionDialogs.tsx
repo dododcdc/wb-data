@@ -1,6 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
-    ChevronRight,
     FileCode2,
     FolderOpen,
     FolderPlus,
@@ -13,6 +12,7 @@ import type { OfflineCrossGroupDependency, OfflineRepoTreeNode, OfflineRepoTreeR
 import { Button } from '../../components/ui/button';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import { DeleteFlowDependencyDialog } from './DeleteFlowDependencyDialog';
+import { OfflineRepoTree, type OfflineRepoTreeHandle } from './OfflineRepoTree';
 import {
     Dialog,
     DialogContent,
@@ -91,30 +91,6 @@ interface OfflineTreeActionDialogsProps {
     contextMenu: ContextMenuAction;
 }
 
-interface PathPickerNode {
-    id: string;
-    name: string;
-    path: string;
-    children: PathPickerNode[];
-}
-
-function pickerFromRepoNode(node: OfflineRepoTreeNode): PathPickerNode {
-    return {
-        id: node.id,
-        name: node.name,
-        path: node.path,
-        children: node.children
-            .filter((child) => child.kind === 'DIRECTORY')
-            .map(pickerFromRepoNode),
-    };
-}
-
-function normalizeToPickerNodes(root: OfflineRepoTreeNode): PathPickerNode[] {
-    return root.children
-        .filter((child) => child.kind === 'DIRECTORY' && child.name !== 'scripts')
-        .map(pickerFromRepoNode);
-}
-
 function PathPicker({
     rootNode,
     selectedPath,
@@ -125,124 +101,53 @@ function PathPicker({
     onSelect: (path: string) => void;
 }) {
     const [search, setSearch] = useState('');
-    const [rootExpanded, setRootExpanded] = useState(true);
-    const filteredNodes = useMemo(() => {
-        const query = search.trim().toLowerCase();
-        if (!query) return normalizeToPickerNodes(rootNode);
-
-        const flatPaths: Array<{ label: string; path: string }> = [];
-        const extract = (nodes: PathPickerNode[]) => {
-            nodes.forEach((node) => {
-                const relative = node.path.replace(/^_flows\/?/, '');
-                if (relative.toLowerCase().includes(query)) {
-                    flatPaths.push({ label: relative, path: relative });
-                }
-                extract(node.children);
-            });
-        };
-        extract(normalizeToPickerNodes(rootNode));
-        return flatPaths;
-    }, [rootNode, search]);
+    const treeRef = useRef<OfflineRepoTreeHandle>(null);
+    const composingRef = useRef(false);
+    const applySearch = (value: string) => {
+        treeRef.current?.setSearch(value.trim() ? value.trim() : null);
+    };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <Input
                 placeholder="搜索目录..."
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onCompositionStart={() => { composingRef.current = true; }}
+                onCompositionEnd={(event) => {
+                    composingRef.current = false;
+                    applySearch(event.currentTarget.value);
+                }}
+                onChange={(event) => {
+                    setSearch(event.target.value);
+                    if (!composingRef.current) {
+                        applySearch(event.target.value);
+                    }
+                }}
                 style={{ height: 32, fontSize: '0.84rem' }}
             />
-            <div style={{ border: '1px solid var(--color-border)', borderRadius: 6, maxHeight: 200, overflowY: 'auto', background: 'var(--color-surface)', padding: '8px 0' }}>
-                {search ? (
-                    filteredNodes.length > 0 ? (
-                        (filteredNodes as Array<{ label: string; path: string }>).map((item) => (
-                            <button
-                                key={item.path}
-                                type="button"
-                                className={`offline-tree-row${selectedPath === item.path ? ' is-active' : ''}`}
-                                style={{ paddingLeft: 12 }}
-                                onClick={() => onSelect(item.path)}
-                            >
-                                <span className="offline-tree-row-icon"><FolderOpen size={13} /></span>
-                                <span className="offline-tree-row-label">{item.label}</span>
-                            </button>
-                        ))
-                    ) : (
-                        <div style={{ padding: '8px 12px', fontSize: '0.8rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>
-                            无匹配的目录
-                        </div>
-                    )
-                ) : (
-                    <div className="offline-tree-root">
-                        <button
-                            type="button"
-                            className={`offline-tree-row${!selectedPath ? ' is-active' : ''}`}
-                            style={{ paddingLeft: 6 }}
-                            onClick={() => {
-                                onSelect('');
-                                setRootExpanded((expanded) => !expanded);
-                            }}
-                        >
-                            <span className={`offline-tree-row-caret${rootExpanded ? ' is-expanded' : ''}`}><ChevronRight size={14} /></span>
-                            <span className="offline-tree-row-icon"><FolderOpen size={13} /></span>
-                            <span className="offline-tree-row-label">{rootNode.name}</span>
-                        </button>
-                        {rootExpanded ? (
-                            <div className="offline-tree-children">
-                                {(filteredNodes as PathPickerNode[]).map((child) => (
-                                    <PathPickerBranch key={child.id} node={child} depth={1} selectedPath={selectedPath} onSelect={onSelect} />
-                                ))}
-                            </div>
-                        ) : null}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-}
-
-function PathPickerBranch({
-    node,
-    depth,
-    selectedPath,
-    onSelect,
-}: {
-    node: PathPickerNode;
-    depth: number;
-    selectedPath: string;
-    onSelect: (path: string) => void;
-}) {
-    const relativePath = node.path.replace(/^_flows\/?/, '');
-    const selected = selectedPath === relativePath || (selectedPath === '' && relativePath === '');
-    const hasChildren = node.children.length > 0;
-    const [expanded, setExpanded] = useState(selectedPath !== '' && selectedPath.startsWith(relativePath));
-
-    return (
-        <div className="offline-tree-branch">
-            <button
-                type="button"
-                className={`offline-tree-row is-directory${selected ? ' is-active' : ''}`}
-                style={{ paddingLeft: `${depth * 14 + 6}px` }}
-                onClick={() => {
-                    onSelect(relativePath);
-                    if (hasChildren) setExpanded((current) => !current);
-                }}
-            >
-                {hasChildren ? (
-                    <span className={`offline-tree-row-caret${expanded ? ' is-expanded' : ''}`}><ChevronRight size={14} /></span>
-                ) : (
-                    <span className="offline-tree-row-spacer" />
-                )}
-                <span className="offline-tree-row-icon"><FolderOpen size={13} /></span>
-                <span className="offline-tree-row-label">{node.name}</span>
-            </button>
-            {hasChildren && expanded ? (
-                <div className="offline-tree-children">
-                    {node.children.map((child) => (
-                        <PathPickerBranch key={child.id} node={child} depth={depth + 1} selectedPath={selectedPath} onSelect={onSelect} />
-                    ))}
+            <div style={{ border: '1px solid var(--color-border)', borderRadius: 6, background: 'var(--color-surface)', padding: '4px 2px' }}>
+                <button
+                    type="button"
+                    className={`offline-tree-row${!selectedPath ? ' is-active' : ''}`}
+                    style={{ paddingLeft: 12 }}
+                    onClick={() => onSelect('')}
+                >
+                    <span className="offline-tree-row-icon"><FolderOpen size={13} /></span>
+                    <span className="offline-tree-row-label">{rootNode.name}</span>
+                </button>
+                <div style={{ height: 168 }}>
+                    <OfflineRepoTree
+                        ref={treeRef}
+                        root={rootNode}
+                        dataKey="path-picker"
+                        directoriesOnly
+                        readonly
+                        canWrite={false}
+                        selectedTreePath={selectedPath ? `${selectedPath}/` : null}
+                        onSelectDirectory={(treePath) => onSelect(treePath.replace(/\/+$/, ''))}
+                    />
                 </div>
-            ) : null}
+            </div>
         </div>
     );
 }

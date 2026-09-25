@@ -16,7 +16,6 @@ import type {
 import type { OfflineRepoTreeNode } from '../../api/offline';
 import {
     flattenRepoTreePaths,
-    flowApiPathToTreePath,
     indexNodesByTreePath,
     isDirectoryTreePath,
     moveTreePath,
@@ -25,12 +24,14 @@ import {
 
 export interface OfflineRepoTreeHandle {
     expandAll: () => void;
+    setSearch: (value: string | null) => void;
 }
 
 interface OfflineRepoTreeCallbacks {
-    onOpenFlow: (apiPath: string) => void;
-    onMoveNode: (sourceTreePath: string, newTreePath: string) => void;
-    onContextMenu: (treePath: string, position: { x: number; y: number }) => void;
+    onOpenFlow?: (apiPath: string) => void;
+    onMoveNode?: (sourceTreePath: string, newTreePath: string) => void;
+    onContextMenu?: (treePath: string, position: { x: number; y: number }) => void;
+    onSelectDirectory?: (treePath: string) => void;
     renderBadge?: (node: OfflineRepoTreeNode) => FileTreeRowDecoration | null;
 }
 
@@ -38,11 +39,15 @@ interface OfflineRepoTreeProps extends OfflineRepoTreeCallbacks {
     root: OfflineRepoTreeNode;
     /** 变化时视为切换了仓库：重置并全部展开 */
     dataKey: string | number | null;
-    activeFlowPath: string | null;
+    selectedTreePath: string | null;
     canWrite: boolean;
     className?: string;
     /** 注入 shadow DOM 的自定义 SVG sprite（行徽标符号） */
     iconSpriteSheet?: string;
+    /** 仅渲染目录节点 */
+    directoriesOnly?: boolean;
+    /** 禁用拖拽与右键菜单 */
+    readonly?: boolean;
 }
 
 const HOST_THEME_STYLE = {
@@ -66,16 +71,21 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
         const {
             root,
             dataKey,
-            activeFlowPath,
+            selectedTreePath,
             canWrite,
             className,
             iconSpriteSheet,
+            directoriesOnly = false,
+            readonly = false,
         } = props;
 
         const callbacksRef = useRef(props);
         callbacksRef.current = props;
 
-        const paths = useMemo(() => flattenRepoTreePaths(root), [root]);
+        const paths = useMemo(() => {
+            const all = flattenRepoTreePaths(root);
+            return directoriesOnly ? all.filter(isDirectoryTreePath) : all;
+        }, [root, directoriesOnly]);
         const nodeIndex = useMemo(() => indexNodesByTreePath(root), [root]);
         const nodeIndexRef = useRef(nodeIndex);
         nodeIndexRef.current = nodeIndex;
@@ -86,7 +96,8 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
             paths: [],
             sort: 'default',
             icons: iconSpriteSheet ? { spriteSheet: iconSpriteSheet } : undefined,
-            dragAndDrop: {
+            fileTreeSearchMode: 'hide-non-matches',
+            dragAndDrop: readonly ? false : {
                 canDrag: () => canWriteRef.current,
                 canDrop: (event) => event.draggedPaths.every((dragged) => {
                     const targetDir = event.target.directoryPath;
@@ -98,28 +109,31 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
                     event.draggedPaths.forEach((dragged) => {
                         const next = moveTreePath(dragged, event.target.directoryPath);
                         if (next !== dragged) {
-                            callbacksRef.current.onMoveNode(dragged, next);
+                            callbacksRef.current.onMoveNode?.(dragged, next);
                         }
                     });
                 },
             },
             onSelectionChange: (selected) => {
-                const flowPath = selected.find((path) => !isDirectoryTreePath(path));
-                if (flowPath) {
-                    callbacksRef.current.onOpenFlow(treePathToFlowApiPath(flowPath));
+                const first = selected[0];
+                if (!first) return;
+                if (isDirectoryTreePath(first)) {
+                    callbacksRef.current.onSelectDirectory?.(first);
+                    return;
                 }
+                callbacksRef.current.onOpenFlow?.(treePathToFlowApiPath(first));
             },
             renderRowDecoration: ({ item }) => {
                 const node = nodeIndexRef.current.get(item.path);
                 if (!node || node.kind !== 'FLOW') return null;
                 return callbacksRef.current.renderBadge?.(node) ?? null;
             },
-            composition: {
+            composition: readonly ? undefined : {
                 contextMenu: {
                     enabled: true,
                     triggerMode: 'right-click',
                     onOpen: (item, context) => {
-                        callbacksRef.current.onContextMenu(item.path, {
+                        callbacksRef.current.onContextMenu?.(item.path, {
                             x: context.anchorRect.x,
                             y: context.anchorRect.y,
                         });
@@ -146,7 +160,7 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
         }, [model, paths, dataKey]);
 
         useEffect(() => {
-            const target = activeFlowPath ? flowApiPathToTreePath(activeFlowPath) : null;
+            const target = selectedTreePath;
             model.getSelectedPaths().forEach((selected) => {
                 if (selected !== target) model.getItem(selected)?.deselect();
             });
@@ -155,13 +169,16 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
             if (!item) return;
             if (!item.isSelected()) item.select();
             model.scrollToPath(target, { offset: 'nearest' });
-        }, [model, activeFlowPath, paths]);
+        }, [model, selectedTreePath, paths]);
 
         useImperativeHandle(ref, () => ({
             expandAll: () => {
                 directoryPaths(paths).forEach((path) => {
                     (model.getItem(path) as FileTreeDirectoryHandle | null)?.expand();
                 });
+            },
+            setSearch: (value) => {
+                model.setSearch(value);
             },
         }), [model, paths]);
 
