@@ -3,6 +3,7 @@ import { AxiosError, AxiosHeaders } from 'axios';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { OfflineRepoTreeNode } from '../../api/offline';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 import OfflineWorkbench from './OfflineWorkbench';
@@ -258,19 +259,16 @@ function makeRepoStatus() {
 }
 
 function makeRepoTree(options?: { includeFolder?: boolean; includeSecondFlow?: boolean }) {
-    const children: Array<{
-        id: string;
-        kind: 'FLOW' | 'DIRECTORY';
-        name: string;
-        path: string;
-        children: Array<never>;
-    }> = [
+    const children: OfflineRepoTreeNode[] = [
         {
             id: 'flow-1',
             kind: 'FLOW',
             name: 'Example Flow',
             path: '_flows/example/flow.yaml',
             children: [],
+            scheduleState: 'NONE',
+            schedulePeriod: null,
+            dependencyCount: 0,
         },
     ];
     if (options?.includeSecondFlow) {
@@ -280,6 +278,9 @@ function makeRepoTree(options?: { includeFolder?: boolean; includeSecondFlow?: b
             name: 'Second Flow',
             path: '_flows/second/flow.yaml',
             children: [],
+            scheduleState: 'NONE',
+            schedulePeriod: null,
+            dependencyCount: 0,
         });
     }
     if (options?.includeFolder) {
@@ -289,6 +290,9 @@ function makeRepoTree(options?: { includeFolder?: boolean; includeSecondFlow?: b
             name: 'Sub Folder',
             path: '_flows/sub',
             children: [],
+            scheduleState: 'NONE',
+            schedulePeriod: null,
+            dependencyCount: 0,
         });
     }
     return {
@@ -299,6 +303,9 @@ function makeRepoTree(options?: { includeFolder?: boolean; includeSecondFlow?: b
             name: '_flows',
             path: '_flows',
             children,
+            scheduleState: 'NONE' as const,
+            schedulePeriod: null,
+            dependencyCount: 0,
         },
     };
 }
