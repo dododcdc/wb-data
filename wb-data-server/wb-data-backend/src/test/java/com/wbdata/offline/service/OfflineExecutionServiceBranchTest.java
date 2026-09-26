@@ -355,7 +355,7 @@ class OfflineExecutionServiceBranchTest {
 
         service.createDebugExecution(
                 request,
-                Map.of("scripts/query.sql", "select ${v_day}"),
+                Map.of("scripts/query.sql", "select ^[v_day]"),
                 7L
         );
 

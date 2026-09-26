@@ -20,7 +20,7 @@ class SqlAwarePreparedStatementTest {
 
         PreparedStatement result = SqlAwarePreparedStatement.prepare(
                 connection,
-                "select 'a:tom,b:jack' where day = ${v_day} or previous_day = ${v_day}",
+                "select 'a:tom,b:jack' where day = ^[v_day] or previous_day = ^[v_day]",
                 Map.of("v_day", "20260825"),
                 (ignored, sql) -> {
                     assertThat(sql).isEqualTo("select 'a:tom,b:jack' where day = ? or previous_day = ?");
@@ -37,7 +37,7 @@ class SqlAwarePreparedStatementTest {
     void rejectsMissingBindingsInsteadOfBindingImplicitNull() {
         assertThatThrownBy(() -> SqlAwarePreparedStatement.prepare(
                 mock(Connection.class),
-                "select ${missing}",
+                "select ^[missing]",
                 Map.of(),
                 (ignored, sql) -> mock(PreparedStatement.class)
         )).isInstanceOf(IllegalArgumentException.class)

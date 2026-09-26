@@ -226,16 +226,16 @@ class TransferSeatunnelConfigBuilderTest {
     @Test
     void rendersInputParametersIntoFieldAndPartitionValuesWithoutEmbeddingRawText() {
         TransferRenderInput base = input("MYSQL", "HIVE", TransferWriteMode.OVERWRITE_PARTITION,
-                List.of(new TransferPartitionMapping("dt", TransferMappingKind.STATIC_VALUE, null, null, "${day}")), true);
+                List.of(new TransferPartitionMapping("dt", TransferMappingKind.STATIC_VALUE, null, null, "^[day]")), true);
         TransferConfig config = new TransferConfig(base.transferConfig().source(), base.transferConfig().target(),
-                List.of(new TransferFieldMapping("order_id", TransferMappingKind.STATIC_VALUE, null, null, "prefix-${value}"),
+                List.of(new TransferFieldMapping("order_id", TransferMappingKind.STATIC_VALUE, null, null, "prefix-^[value]"),
                         new TransferFieldMapping("amount", TransferMappingKind.SOURCE_FIELD, "amount", null)), base.transferConfig().partitions());
         String rendered = builder.build(new TransferRenderInput(config, base.sourceDataSource(), base.targetDataSource(),
                 base.sourceTableDetail(), base.targetTableDetail(), Map.of("day", "2026-07-19", "value", "中文'")));
 
         assertThat(rendered).contains("CONVERT(X'7072656669782de4b8ade6968727' USING utf8mb4) as `order_id`",
                         "CONVERT(X'323032362d30372d3139' USING utf8mb4) as `dt`")
-                .doesNotContain("${day}", "${value}", "中文'");
+                .doesNotContain("^[day]", "^[value]", "中文'");
     }
 
     private TransferRenderInput input(String sourceType,

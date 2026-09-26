@@ -39,7 +39,7 @@ class SqlStringLiteralTest {
                 Arguments.of("\0\r\n\t", "000d0a09"),
                 Arguments.of("' OR 1=1 --", "27204f5220313d31202d2d"),
                 Arguments.of("'; DROP TABLE t; --\\", "273b2044524f50205441424c4520743b202d2d5c"),
-                Arguments.of("${name}?", "247b6e616d657d3f")
+                Arguments.of("^[name]?", "5e5b6e616d655d3f")
         );
     }
 
@@ -61,7 +61,7 @@ class SqlStringLiteralTest {
     @Test
     void templateRenderingKeepsMaliciousValuesInsideTheHexExpression() {
         String value = "'; DROP TABLE t; --\\";
-        assertThat(SqlParameterTemplate.render("select * from t where name = ${value}",
+        assertThat(SqlParameterTemplate.render("select * from t where name = ^[value]",
                 name -> SqlStringLiteral.render("MYSQL", value)))
                 .isEqualTo("select * from t where name = CONVERT(X'273b2044524f50205441424c4520743b202d2d5c' USING utf8mb4)");
     }

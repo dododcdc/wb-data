@@ -10,6 +10,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 final class OfflineNodeTaskCompiler {
@@ -77,7 +78,83 @@ final class OfflineNodeTaskCompiler {
                 task.put("parameters", parametersExpression);
             }
         }
+        if (manageParameters && isRenderableScript(node.kind())) {
+            if (parametersExpression == null) {
+                task.remove("inputFiles");
+                Map<String, String> managedEnv = buildTransferEnv();
+                if (!managedEnv.isEmpty() && managedEnv.equals(task.get("env"))) {
+                    task.remove("env");
+                }
+            } else {
+                applyScriptParameters(task, node, parametersExpression);
+            }
+        }
         return task;
+    }
+
+    private static boolean isRenderableScript(String kind) {
+        return "HIVE_SQL".equalsIgnoreCase(kind) || "SHELL".equalsIgnoreCase(kind);
+    }
+
+    private void applyScriptParameters(Map<String, Object> task,
+                                       OfflineFlowNode node,
+                                       String parametersExpression) {
+        task.put("inputFiles", Map.of("wb-data-script-parameters.json", parametersExpression));
+        Map<String, String> env = buildTransferEnv();
+        if (!env.isEmpty()) {
+            task.put("env", env);
+        }
+        if ("HIVE_SQL".equalsIgnoreCase(node.kind())
+                && transferRuntimeSettings.runner() == TransferRunner.DOCKER) {
+            Map<String, Object> taskRunner = new LinkedHashMap<>();
+            taskRunner.put("type", "io.kestra.plugin.scripts.runner.docker.Docker");
+            taskRunner.put("networkMode", transferRuntimeSettings.dockerNetwork());
+            taskRunner.put("pullPolicy", "IF_NOT_PRESENT");
+            task.put("taskRunner", taskRunner);
+        }
+        task.put("commands", buildScriptRenderCommands(node, castCommands(task.get("commands"))));
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> castCommands(Object commands) {
+        if (commands instanceof List<?> list) {
+            return (List<String>) list;
+        }
+        return List.of();
+    }
+
+    private List<String> buildScriptRenderCommands(OfflineFlowNode node, List<String> originalCommands) {
+        String renderedPath = "/tmp/wb-data-script/" + node.taskId() + scriptExtension(node.scriptPath());
+        String quotedScript = shellQuote(node.scriptPath());
+        String quotedRendered = shellQuote(renderedPath);
+        String requestPath = "wb-data-script-request.json";
+        List<String> commands = new ArrayList<>();
+        commands.add("set -eu");
+        commands.add("mkdir -p /tmp/wb-data-script");
+        commands.add("{ printf '%s' '{\"kind\":\"" + node.kind().toUpperCase(Locale.ROOT)
+                + "\",\"script\":\"'; base64 -w 0 " + quotedScript
+                + "; printf '%s' '\",\"parameters\":'; cat 'wb-data-script-parameters.json'; printf '%s' '}'; } > "
+                + shellQuote(requestPath));
+        commands.add("curl --fail-with-body --show-error --silent -H \"X-WB-Data-Internal-Token: ${"
+                + transferRuntimeSettings.internalTokenEnv() + "}\" -H 'Content-Type: application/json' --data-binary @"
+                + shellQuote(requestPath) + " \"${" + transferRuntimeSettings.internalBaseUrlEnv()
+                + "}/api/v1/internal/offline/script/render\" -o " + quotedRendered);
+        for (String command : originalCommands) {
+            commands.add(command.replace(quotedScript, quotedRendered));
+        }
+        return commands;
+    }
+
+    private String scriptExtension(String scriptPath) {
+        if (scriptPath == null) {
+            return "";
+        }
+        int slash = Math.max(scriptPath.lastIndexOf('/'), scriptPath.lastIndexOf('\\'));
+        int dot = scriptPath.lastIndexOf('.');
+        if (dot > slash) {
+            return scriptPath.substring(dot);
+        }
+        return "";
     }
 
     static String resolveKestraQueryTaskType(String dataSourceType) {
@@ -149,6 +226,12 @@ final class OfflineNodeTaskCompiler {
             if (dataSource == null) {
                 clearJdbcTaskFields(task);
                 task.put("type", SHELL_COMMANDS_TASK_TYPE);
+                task.put("description", OfflineTaskMetadataCodec.mergeDataSource(
+                        readOptionalString(task, "description"),
+                        null,
+                        node.dataSourceType(),
+                        node.kind()
+                ));
                 task.put("namespaceFiles", buildNamespaceFilesConfig(node.scriptPath()));
                 task.put("commands", List.of("cat " + shellQuote(node.scriptPath()) + " # No data source selected"));
                 return;
@@ -189,6 +272,12 @@ final class OfflineNodeTaskCompiler {
             clearShellTaskFields(task);
             if (dataSource == null) {
                 task.put("type", SHELL_COMMANDS_TASK_TYPE);
+                task.put("description", OfflineTaskMetadataCodec.mergeDataSource(
+                        readOptionalString(task, "description"),
+                        null,
+                        "HIVE",
+                        "HIVE_SQL"
+                ));
                 task.put("namespaceFiles", buildNamespaceFilesConfig(node.scriptPath()));
                 task.put("commands", List.of("cat " + shellQuote(node.scriptPath()) + " # No data source selected"));
                 return;

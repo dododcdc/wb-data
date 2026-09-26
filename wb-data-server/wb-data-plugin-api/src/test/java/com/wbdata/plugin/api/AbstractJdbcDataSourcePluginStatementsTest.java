@@ -181,11 +181,11 @@ class AbstractJdbcDataSourcePluginStatementsTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"", "O'Reilly", "\"quoted\"", "C:\\tmp\\", "中文", "\0\r\n\t",
-            "'; DROP TABLE target; --\\", "${other}?"})
+            "'; DROP TABLE target; --\\", "^[other]?"})
     void bindsAllValuesAsStringsWithoutChangingSql(String value) {
         List<String> templates = List.of(SQL.getFirst(),
-                "INSERT INTO target VALUES (${value}, ${empty}, ${value})",
-                "UPDATE target SET name = ${value}");
+                "INSERT INTO target VALUES (^[value], ^[empty], ^[value])",
+                "UPDATE target SET name = ^[value]");
         plugin.executeStatements(info("MYSQL", "target"), templates,
                 Map.of("value", value, "empty", "", "unused", "ignored"), 19);
 
@@ -208,11 +208,11 @@ class AbstractJdbcDataSourcePluginStatementsTest {
 
     @Test
     void ignoresTemplatesInCommentsAndPreservesLiteralQuestionMarks() {
-        String sql = "SELECT '?' FROM target WHERE name = ${name} /* ${missing} */ -- ${bad\n# ${also_missing}";
+        String sql = "SELECT '?' FROM target WHERE name = ^[name] /* ^[missing] */ -- ^[bad\n# ^[also_missing]";
         plugin.executeStatements(info("POSTGRESQL", "target"), List.of(sql), Map.of("name", "中文"), 10);
 
         Session session = state.sessions.getFirst();
-        assertEquals(List.of(sql.replace("${name}", "?")), session.executed);
+        assertEquals(List.of(sql.replace("^[name]", "?")), session.executed);
         assertEquals(List.of("中文"), session.statements.getFirst().bindings);
         assertSessionClosed(session, 1);
     }
@@ -221,7 +221,7 @@ class AbstractJdbcDataSourcePluginStatementsTest {
     @ValueSource(ints = {1, 2, 3})
     void missingParametersAnywherePreventTheEntireStageFromConnecting(int invalidIndex) {
         List<String> statements = new ArrayList<>(List.of(SQL.get(1), SQL.get(2), SQL.get(3)));
-        statements.set(invalidIndex - 1, "UPDATE target SET name = ${missing}");
+        statements.set(invalidIndex - 1, "UPDATE target SET name = ^[missing]");
 
         SqlExecutionException error = assertThrows(SqlExecutionException.class,
                 () -> plugin.executeStatements(info("MYSQL", "target"), statements, Map.of(), 30));
@@ -241,7 +241,7 @@ class AbstractJdbcDataSourcePluginStatementsTest {
 
         SqlExecutionException error = assertThrows(SqlExecutionException.class,
                 () -> plugin.executeStatements(info("MYSQL", "target"), List.of(
-                        "INSERT INTO target VALUES (${present})", "UPDATE target SET name = ${missing}"), parameters, 30));
+                        "INSERT INTO target VALUES (^[present])", "UPDATE target SET name = ^[missing]"), parameters, 30));
 
         assertEquals(2, error.getStatementIndex());
         assertTrue(error.getCause() instanceof IllegalArgumentException);
@@ -257,7 +257,7 @@ class AbstractJdbcDataSourcePluginStatementsTest {
 
         SqlExecutionException error = assertThrows(SqlExecutionException.class,
                 () -> plugin.executeStatements(info("MYSQL", "target"), List.of(
-                        "UPDATE target SET name = ${missing}"), null, 30));
+                        "UPDATE target SET name = ^[missing]"), null, 30));
 
         assertEquals(1, error.getStatementIndex());
         assertTrue(error.getCause() instanceof IllegalArgumentException);
@@ -265,8 +265,8 @@ class AbstractJdbcDataSourcePluginStatementsTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"${_invalid}", "${unclosed", "'${value}'", "\"${value}\"",
-            "`${value}`", "$$ ${value} $$", "$tag$ ${value} $tag$"})
+    @ValueSource(strings = {"^[_invalid]", "^[unclosed", "'^[value]'", "\"^[value]\"",
+            "`^[value]`", "$$ ^[value] $$", "$tag$ ^[value] $tag$"})
     void invalidTemplatesInLaterStatementsPreventEarlierWrites(String template) {
         SqlExecutionException error = assertThrows(SqlExecutionException.class,
                 () -> plugin.executeStatements(info("MYSQL", "target"), List.of(SQL.get(1),
@@ -284,7 +284,7 @@ class AbstractJdbcDataSourcePluginStatementsTest {
 
         SqlExecutionException error = assertThrows(SqlExecutionException.class,
                 () -> plugin.executeStatements(info("MYSQL", "target"), List.of(SQL.getFirst(),
-                        "INSERT INTO target VALUES (${value})", SQL.get(2)), Map.of("value", "private"), 30));
+                        "INSERT INTO target VALUES (^[value])", SQL.get(2)), Map.of("value", "private"), 30));
 
         assertEquals(2, error.getStatementIndex());
         assertSame(state.failure, error.getCause());
