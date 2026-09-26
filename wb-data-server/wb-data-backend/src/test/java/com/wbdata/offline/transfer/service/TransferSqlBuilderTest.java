@@ -158,16 +158,16 @@ class TransferSqlBuilderTest {
     @ParameterizedTest
     @ValueSource(strings = {"MYSQL", "POSTGRESQL", "CLICKHOUSE", "HIVE"})
     void safelyRendersAllValueLocationsWithoutReplacingExistingQuestionMarks(String type) {
-        String value = "O'Reilly\\\n'); DROP TABLE orders; -- ? $(touch injected) ${other} 中文";
+        String value = "O'Reilly\\\n'); DROP TABLE orders; -- ? $(touch injected) ^[other] 中文";
         TransferConfig config = new TransferConfig(
                 new TransferEndpointConfig(1L, type, "sales", "orders",
-                        "note = '?' and id = ${value} /* ? ${ignored} */ and other = ?", null, null, null),
+                        "note = '?' and id = ^[value] /* ? ^[ignored] */ and other = ?", null, null, null),
                 new TransferEndpointConfig(2L, "HIVE", "warehouse", "dwd_orders", null,
                         TransferWriteMode.OVERWRITE_PARTITION, null, null),
                 List.of(new TransferFieldMapping("order_id", TransferMappingKind.STATIC_VALUE,
-                                null, null, "prefix-${value}-suffix"),
-                        new TransferFieldMapping("amount", TransferMappingKind.SOURCE_EXPRESSION, null, "concat('?', ${value})")),
-                List.of(new TransferPartitionMapping("dt", TransferMappingKind.STATIC_VALUE, null, null, "${value}")));
+                                null, null, "prefix-^[value]-suffix"),
+                        new TransferFieldMapping("amount", TransferMappingKind.SOURCE_EXPRESSION, null, "concat('?', ^[value])")),
+                List.of(new TransferPartitionMapping("dt", TransferMappingKind.STATIC_VALUE, null, null, "^[value]")));
         String quote = "POSTGRESQL".equals(type) ? "\"" : "`";
         String literal = literal(type, value);
         String sql = builder.buildSourceSql(config, null, detail(true), Map.of("value", value, "other", "not-expanded"));
@@ -175,14 +175,14 @@ class TransferSqlBuilderTest {
         assertThat(sql).isEqualTo("select " + literal(type, "prefix-" + value + "-suffix")
                 + " as " + quote + "order_id" + quote + ", concat('?', " + literal + ") as " + quote + "amount" + quote
                 + ", " + literal + " as " + quote + "dt" + quote + " from " + quote + "orders" + quote
-                + " where note = '?' and id = " + literal + " /* ? ${ignored} */ and other = ?")
-                .doesNotContain("DROP TABLE", "$(touch", "${other}", "中文", "not-expanded");
+                + " where note = '?' and id = " + literal + " /* ? ^[ignored] */ and other = ?")
+                .doesNotContain("DROP TABLE", "$(touch", "^[other]", "中文", "not-expanded");
     }
 
     @Test
     void legacyOverloadsDoNotSupplyParameterValues() {
         TransferConfig config = config(List.of(
-                new TransferFieldMapping("order_id", TransferMappingKind.STATIC_VALUE, null, null, "${value}"),
+                new TransferFieldMapping("order_id", TransferMappingKind.STATIC_VALUE, null, null, "^[value]"),
                 new TransferFieldMapping("amount", TransferMappingKind.SOURCE_FIELD, "amount", null)),
                 List.of(), TransferWriteMode.APPEND);
         assertThatIllegalArgumentException().isThrownBy(() -> builder.buildSourceSql(config, detail(false)))

@@ -72,11 +72,11 @@ public final class TransferParameters {
         StringBuilder result = new StringBuilder();
         int start = 0;
         int opening;
-        while ((opening = text.indexOf("${", start)) >= 0) {
+        while ((opening = text.indexOf("^[", start)) >= 0) {
             result.append(text, start, opening);
-            int closing = text.indexOf('}', opening + 2);
+            int closing = text.indexOf(']', opening + 2);
             if (closing < 0) {
-                throw new IllegalArgumentException("参数引用必须使用 ${name} 格式");
+                throw new IllegalArgumentException("参数引用必须使用 ^[name] 格式");
             }
             String name = SqlParameterTemplate.compile(text.substring(opening, closing + 1)).parameterNames().getFirst();
             result.append(value.apply(name));
@@ -101,7 +101,7 @@ public final class TransferParameters {
     }
 
     private static void rejectIdentifier(String value) {
-        if (value != null && value.contains("${")) {
+        if (value != null && value.contains("^[")) {
             throw new IllegalArgumentException("数据库名、表名和字段名不支持参数占位符");
         }
     }

@@ -17,7 +17,7 @@ class SqlParameterTemplateTest {
     @Test
     void compilesTemplateParametersInAppearanceOrder() {
         SqlParameterTemplate.Compilation result = SqlParameterTemplate.compile(
-                "select * from users where name = ${name} and day = ${v_day} or owner = ${name}"
+                "select * from users where name = ^[name] and day = ^[v_day] or owner = ^[name]"
         );
 
         assertThat(result.jdbcSql())
@@ -30,32 +30,32 @@ class SqlParameterTemplateTest {
         String sql = """
                 select 'a:tom,b:jack', "quoted:identifier", `mysql:identifier`, created_at::date
                 from users
-                where name = ${name}
+                where name = ^[name]
                   and body = $$ dollar :ignored $$
                   and tagged = $tag$ :also_ignored $tag$
-                -- :line_comment ${commented}
+                -- :line_comment ^[commented]
                 # :mysql_comment
                 /* outer :block_comment /* nested :nested */ still ignored */
                 """;
 
         SqlParameterTemplate.Compilation result = SqlParameterTemplate.compile(sql);
 
-        assertThat(result.jdbcSql()).isEqualTo(sql.replace("${name}", "?"));
+        assertThat(result.jdbcSql()).isEqualTo(sql.replace("^[name]", "?"));
         assertThat(result.parameterNames()).containsExactly("name");
     }
 
     @Test
     void rejectsTemplateParametersInAllQuotedContexts() {
-        assertThatThrownBy(() -> SqlParameterTemplate.compile("select '${v_day}'"))
+        assertThatThrownBy(() -> SqlParameterTemplate.compile("select '^[v_day]'"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("不能位于引号内");
-        assertThatThrownBy(() -> SqlParameterTemplate.compile("select \"${v_day}\""))
+        assertThatThrownBy(() -> SqlParameterTemplate.compile("select \"^[v_day]\""))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("不能位于引号内");
-        assertThatThrownBy(() -> SqlParameterTemplate.compile("select `${v_day}`"))
+        assertThatThrownBy(() -> SqlParameterTemplate.compile("select `^[v_day]`"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("不能位于引号内");
-        assertThatThrownBy(() -> SqlParameterTemplate.compile("select $$ ${v_day} $$"))
+        assertThatThrownBy(() -> SqlParameterTemplate.compile("select $$ ^[v_day] $$"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("不能位于引号内");
     }
@@ -72,19 +72,19 @@ class SqlParameterTemplateTest {
 
     @Test
     void rejectsMalformedParameterNames() {
-        assertThatThrownBy(() -> SqlParameterTemplate.compile("select ${_private}"))
+        assertThatThrownBy(() -> SqlParameterTemplate.compile("select ^[_private]"))
                 .hasMessageContaining("英文字母");
-        assertThatThrownBy(() -> SqlParameterTemplate.compile("select ${1value}"))
+        assertThatThrownBy(() -> SqlParameterTemplate.compile("select ^[1value]"))
                 .hasMessageContaining("英文字母");
-        assertThatThrownBy(() -> SqlParameterTemplate.compile("select ${name中文}"))
-                .hasMessageContaining("${name} 格式");
-        assertThatThrownBy(() -> SqlParameterTemplate.compile("select ${" + "a".repeat(65) + "}"))
+        assertThatThrownBy(() -> SqlParameterTemplate.compile("select ^[name中文]"))
+                .hasMessageContaining("^[name] 格式");
+        assertThatThrownBy(() -> SqlParameterTemplate.compile("select ^[" + "a".repeat(65) + "]"))
                 .hasMessageContaining("64");
     }
 
     @Test
     void rendersInAppearanceOrderWithoutReplacingQuestionMarkOperators() {
-        String sql = "select body ? ${key}, body ?| array[${key}], body ?& array[${other}], '?'";
+        String sql = "select body ? ^[key], body ?| array[^[key]], body ?& array[^[other]], '?'";
         List<String> names = new ArrayList<>();
         Map<String, String> values = Map.of("key", "中文'\\", "other", "");
 
@@ -106,10 +106,10 @@ class SqlParameterTemplateTest {
     void renderPreservesQuotedTextAndIgnoresEvenMalformedTemplatesInComments() {
         String sql = """
                 select 'it''s ?', 'back\\\\slash', "quoted?", `mysql?`, $$ ? $$, $tag$ ? $tag$
-                from users where name = ${name} and created_at::date = :day
-                -- ${ignored} '${malformed
-                # ${_invalid} "${ignored}"
-                /* ${ignored} /* ${1invalid} */ ${unterminated */
+                from users where name = ^[name] and created_at::date = :day
+                -- ^[ignored] '${malformed
+                # ^[_invalid] "^[ignored]"
+                /* ^[ignored] /* ^[1invalid] */ ^[unterminated */
                 """;
         List<String> names = new ArrayList<>();
 
@@ -118,22 +118,22 @@ class SqlParameterTemplateTest {
             return "unhex('61')";
         });
 
-        assertThat(rendered).isEqualTo(sql.replace("${name}", "unhex('61')"));
+        assertThat(rendered).isEqualTo(sql.replace("^[name]", "unhex('61')"));
         assertThat(names).containsExactly("name");
         assertThat(SqlParameterTemplate.compile(sql).parameterNames()).containsExactly("name");
     }
 
     @Test
     void doesNotScanTheRenderedExpressionAgain() {
-        assertThat(SqlParameterTemplate.render("select ${value}", name -> "'${other} ?'"))
-                .isEqualTo("select '${other} ?'");
+        assertThat(SqlParameterTemplate.render("select ^[value]", name -> "'^[other] ?'"))
+                .isEqualTo("select '^[other] ?'");
     }
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "select '${value}'", "select \"${value}\"", "select `${value}`",
-            "select $$ ${value} $$", "select $tag$ ${value} $tag$",
-            "select 'it''s ${value}'", "select 'it\\'s ${value}'"
+            "select '^[value]'", "select \"^[value]\"", "select `^[value]`",
+            "select $$ ^[value] $$", "select $tag$ ^[value] $tag$",
+            "select 'it''s ^[value]'", "select 'it\\'s ^[value]'"
     })
     void renderAndCompileRejectAllQuotedTemplates(String sql) {
         assertThatThrownBy(() -> SqlParameterTemplate.render(sql, name -> "'value'"))
@@ -143,8 +143,8 @@ class SqlParameterTemplateTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"${}", "${", "${_private}", "${1value}", "${name中文}",
-            "${name", "${name.value}", "${name value}", "${name:-default}"})
+    @ValueSource(strings = {"^[]", "^[", "^[_private]", "^[1value]", "^[name中文]",
+            "^[name", "^[name.value]", "^[name value]", "^[name:-default]"})
     void renderAndCompileRejectMalformedTemplates(String template) {
         assertThatThrownBy(() -> SqlParameterTemplate.render("select " + template, name -> "'value'"))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -156,12 +156,12 @@ class SqlParameterTemplateTest {
     void renderEnforcesNameLengthAndAllowsTheMaximum() {
         String maximumName = "a".repeat(64);
         List<String> names = new ArrayList<>();
-        assertThat(SqlParameterTemplate.render("select ${" + maximumName + "}", name -> {
+        assertThat(SqlParameterTemplate.render("select ^[" + maximumName + "]", name -> {
             names.add(name);
             return "'value'";
         })).isEqualTo("select 'value'");
         assertThat(names).containsExactly(maximumName);
-        assertThatThrownBy(() -> SqlParameterTemplate.render("select ${" + maximumName + "a}", name -> "'value'"))
+        assertThatThrownBy(() -> SqlParameterTemplate.render("select ^[" + maximumName + "a]", name -> "'value'"))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("64");
     }
 
@@ -177,9 +177,9 @@ class SqlParameterTemplateTest {
 
     @Test
     void rejectsNullRendererAndNullRenderedValues() {
-        assertThatThrownBy(() -> SqlParameterTemplate.render("select ${value}", null))
+        assertThatThrownBy(() -> SqlParameterTemplate.render("select ^[value]", null))
                 .isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> SqlParameterTemplate.render("select ${value}", name -> null))
+        assertThatThrownBy(() -> SqlParameterTemplate.render("select ^[value]", name -> null))
                 .isInstanceOf(NullPointerException.class);
     }
 }

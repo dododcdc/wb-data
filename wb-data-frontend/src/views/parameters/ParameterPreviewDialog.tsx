@@ -36,6 +36,25 @@ function toLocalInputValue(date: Date) {
     return local.toISOString().slice(0, 16);
 }
 
+function browserTimeZone() {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+}
+
+function timeRequirementsOf(definitions: ParameterDefinition[] | undefined) {
+    const items = definitions ?? [];
+    return {
+        hasTimeParameters: items.some((definition) => definition.valueSource === 'SYSTEM_TIME'),
+        requiresPlannedTime: items.some((definition) => (
+            definition.valueSource === 'SYSTEM_TIME'
+            && (definition.timeBasis ?? 'PLANNED_TIME') === 'PLANNED_TIME'
+        )),
+        requiresExecutionStartTime: items.some((definition) => (
+            definition.valueSource === 'SYSTEM_TIME'
+            && definition.timeBasis === 'EXECUTION_START_TIME'
+        )),
+    };
+}
+
 function renderValue(value: unknown) {
     if (value == null) return 'null';
     if (typeof value === 'string') return value;
@@ -71,20 +90,10 @@ export default function ParameterPreviewDialog({
     const [error, setError] = useState('');
     const [keyword, setKeyword] = useState('');
 
-    const timeRequirements = useMemo(() => {
-        const definitions = detail?.definitions ?? [];
-        return {
-            hasTimeParameters: definitions.some((definition) => definition.valueSource === 'SYSTEM_TIME'),
-            requiresPlannedTime: definitions.some((definition) => (
-                definition.valueSource === 'SYSTEM_TIME'
-                && (definition.timeBasis ?? 'PLANNED_TIME') === 'PLANNED_TIME'
-            )),
-            requiresExecutionStartTime: definitions.some((definition) => (
-                definition.valueSource === 'SYSTEM_TIME'
-                && definition.timeBasis === 'EXECUTION_START_TIME'
-            )),
-        };
-    }, [detail?.definitions]);
+    const timeRequirements = useMemo(
+        () => timeRequirementsOf(detail?.definitions),
+        [detail?.definitions],
+    );
 
     const timezoneOptions = useMemo(() => {
         const timezones = runtimeTimezone && !TIMEZONES.includes(runtimeTimezone)
@@ -143,8 +152,35 @@ export default function ParameterPreviewDialog({
         let cancelled = false;
         setDetailLoading(true);
         getParameterGroup(groupId, parameterGroup.id)
-            .then((res) => {
-                if (!cancelled) setDetail(res);
+            .then(async (res) => {
+                if (cancelled) return;
+                setDetail(res);
+                setDetailLoading(false);
+                const requirements = timeRequirementsOf(res.definitions);
+                if (!requirements.hasTimeParameters) return;
+
+                const now = toLocalInputValue(new Date());
+                const timezone = browserTimeZone();
+                const nextPlannedTime = requirements.requiresPlannedTime ? now : '';
+                const nextExecutionStartTime = requirements.requiresExecutionStartTime ? now : '';
+                setPlannedTime(nextPlannedTime);
+                setExecutionStartTime(nextExecutionStartTime);
+                setRuntimeTimezone(timezone);
+                setCalculating(true);
+                setError('');
+                try {
+                    const previewResult = await previewParameterGroup(groupId, parameterGroup.id, {
+                        plannedTime: requirements.requiresPlannedTime ? nextPlannedTime : null,
+                        executionStartTime: requirements.requiresExecutionStartTime ? nextExecutionStartTime : null,
+                        runtimeTimezone: timezone,
+                        overrides: {},
+                    });
+                    if (!cancelled) setPreview(previewResult);
+                } catch (cause) {
+                    if (!cancelled) setError(getErrorMessage(cause, '参数预览失败'));
+                } finally {
+                    if (!cancelled) setCalculating(false);
+                }
             })
             .catch((cause) => {
                 if (!cancelled) setError(getErrorMessage(cause, '参数定义加载失败'));
@@ -157,13 +193,6 @@ export default function ParameterPreviewDialog({
             cancelled = true;
         };
     }, [open, parameterGroup, groupId]);
-
-    const fillCurrentContext = () => {
-        const now = toLocalInputValue(new Date());
-        if (timeRequirements.requiresPlannedTime) setPlannedTime(now);
-        if (timeRequirements.requiresExecutionStartTime) setExecutionStartTime(now);
-        setRuntimeTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
-    };
 
     // Build unified parameter list merging definitions and resolved preview values
     const parameterItems = useMemo(() => {
@@ -239,22 +268,19 @@ export default function ParameterPreviewDialog({
                                 ? <span className="skeleton-line parameter-preview-banner-skeleton" role="status" aria-label="正在加载参数定义" />
                                 : !timeRequirements.hasTimeParameters
                                     ? '该参数组仅包含固定值，无需提供时间上下文。'
+                                    : calculating
+                                    ? '正在按浏览器当前时间与时区计算示例值。'
                                     : preview
-                                        ? <>时间参数已按 <code>{runtimeTimezone}</code> 和你提供的时间上下文计算。</>
-                                        : '时间参数尚未计算。请明确提供任务运行时区和所需时间后再计算。'}
+                                        ? <>时间参数已按 <code>{runtimeTimezone}</code> 与所选时间计算。</>
+                                        : '时间参数尚未计算。请提供任务运行时区和所需时间后再计算。'}
                         </div>
                     </div>
 
                     {timeRequirements.hasTimeParameters ? (
                         <div className="parameter-preview-context-card">
                             <div className="parameter-preview-context-title">
-                                <div>
-                                    <Clock3 size={14} className="text-muted-foreground" />
-                                    <span>预览时间上下文</span>
-                                </div>
-                                <Button type="button" variant="ghost" size="sm" onClick={fillCurrentContext}>
-                                    使用浏览器当前时间与时区
-                                </Button>
+                                <Clock3 size={14} className="text-muted-foreground" />
+                                <span>预览时间上下文</span>
                             </div>
                             <div className="parameter-preview-controls">
                                 {timeRequirements.requiresPlannedTime ? (
@@ -316,7 +342,7 @@ export default function ParameterPreviewDialog({
                                 <Search size={13} className="text-muted-foreground" />
                                 <input
                                     type="text"
-                                    placeholder="搜索参数名 (${key})、描述或示例值..."
+                                    placeholder="搜索参数名、描述或示例值..."
                                     value={keyword}
                                     onChange={(e) => setKeyword(e.target.value)}
                                 />
@@ -355,7 +381,7 @@ export default function ParameterPreviewDialog({
                                             <tr key={item.key}>
                                                 <td>
                                                     <div className="parameter-preview-key-cell">
-                                                        <code className="parameter-preview-key">{'${' + item.key + '}'}</code>
+                                                        <code className="parameter-preview-key">{item.key}</code>
                                                         {item.description ? (
                                                             <span className="parameter-preview-desc">{item.description}</span>
                                                         ) : null}

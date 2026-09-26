@@ -46,6 +46,10 @@ export function isJdbcSqlNodeKind(kind: OfflineFlowNodeKind) {
     return JDBC_SQL_NODE_KINDS.includes(kind);
 }
 
+export function supportsParameterInsertion(kind: OfflineFlowNodeKind) {
+    return isJdbcSqlNodeKind(kind) || kind === 'HIVE_SQL' || kind === 'SHELL';
+}
+
 export function getAllowedDataSourceTypes(kind: OfflineFlowNodeKind): string[] {
     switch (kind) {
         case 'SQL':

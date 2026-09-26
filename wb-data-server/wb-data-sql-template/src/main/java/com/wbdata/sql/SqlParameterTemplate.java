@@ -50,7 +50,7 @@ public final class SqlParameterTemplate {
                 int end = skipBlockComment(sql, index + 2);
                 renderedSql.append(sql, index, end);
                 index = end;
-            } else if (current == '$' && hasNext(sql, index, '{')) {
+            } else if (current == '^' && hasNext(sql, index, '[')) {
                 index = readTemplateParameter(sql, index, renderedSql, renderParameter);
             } else if (current == '$') {
                 int end = skipDollarQuote(sql, index);
@@ -71,18 +71,18 @@ public final class SqlParameterTemplate {
     }
 
     private static int readTemplateParameter(String sql,
-                                             int dollar,
+                                             int marker,
                                              StringBuilder renderedSql,
                                              Function<String, String> renderParameter) {
-        int start = dollar + 2;
+        int start = marker + 2;
         if (start >= sql.length() || !isAsciiLetter(sql.charAt(start))) {
-            throw syntax("参数引用必须以英文字母开头", dollar);
+            throw syntax("参数引用必须以英文字母开头", marker);
         }
         int end = readNameEnd(sql, start);
-        if (end >= sql.length() || sql.charAt(end) != '}') {
-            throw syntax("参数引用必须使用 ${name} 格式", dollar);
+        if (end >= sql.length() || sql.charAt(end) != ']') {
+            throw syntax("参数引用必须使用 ^[name] 格式", marker);
         }
-        String name = validateName(sql, start, end, dollar);
+        String name = validateName(sql, start, end, marker);
         renderedSql.append(Objects.requireNonNull(renderParameter.apply(name), "Rendered parameter: " + name));
         return end + 1;
     }
@@ -107,7 +107,7 @@ public final class SqlParameterTemplate {
     }
 
     private static void rejectTemplateInQuotedText(String sql, int start, int end) {
-        int placeholder = sql.indexOf("${", start);
+        int placeholder = sql.indexOf("^[", start);
         if (placeholder >= 0 && placeholder < end) {
             throw syntax("参数占位符不能位于引号内，请移除占位符两侧的引号", placeholder);
         }

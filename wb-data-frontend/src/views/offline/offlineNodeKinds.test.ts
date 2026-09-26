@@ -10,6 +10,7 @@ import {
     isJdbcSqlNodeKind,
     isOfflineFlowNodeKind,
     isSqlEditorNodeKind,
+    supportsParameterInsertion,
 } from './offlineNodeKinds';
 
 describe('offline node kinds', () => {
@@ -29,6 +30,10 @@ describe('offline node kinds', () => {
         expect(isOfflineFlowNodeKind('SQL')).toBe(true);
         expect(isJdbcSqlNodeKind('MYSQL')).toBe(true);
         expect(isJdbcSqlNodeKind('HIVE_SQL')).toBe(false);
+        expect(supportsParameterInsertion('MYSQL')).toBe(true);
+        expect(supportsParameterInsertion('HIVE_SQL')).toBe(true);
+        expect(supportsParameterInsertion('SHELL')).toBe(true);
+        expect(supportsParameterInsertion('TRANSFER')).toBe(false);
         expect(isSqlEditorNodeKind('CLICKHOUSE')).toBe(true);
         expect(getOfflineNodeKindLabel('MYSQL')).toBe('MySQL');
         expect(getOfflineNodeKindLabel('POSTGRESQL')).toBe('PostgreSQL');

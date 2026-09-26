@@ -787,7 +787,7 @@ describe('OfflineWorkbench commit UI', () => {
         fireEvent.click(await screen.findByRole('option', { name: /日常公共参数/ }));
         await within(dialog).findByText('日常公共参数');
         fireEvent.click(within(dialog).getByText('日常公共参数'));
-        await within(dialog).findByText('${v_day}');
+        await within(dialog).findByText('v_day');
         fireEvent.click(within(dialog).getByRole('button', { name: '暂存绑定' }));
 
         await waitFor(() => {

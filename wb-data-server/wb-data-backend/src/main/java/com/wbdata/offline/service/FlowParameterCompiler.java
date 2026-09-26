@@ -28,25 +28,29 @@ final class FlowParameterCompiler {
         Map<String, String> taskExpressions = new LinkedHashMap<>();
 
         for (OfflineFlowNode node : nodes) {
-            boolean transfer = "TRANSFER".equalsIgnoreCase(node.kind());
-            if (!transfer && !OfflineFlowNodeKinds.isJdbcSql(node.kind())) {
+            String nodeKind = parameterNodeKind(node.kind());
+            if (nodeKind == null) {
                 continue;
             }
-            String label = (transfer ? "传输" : "SQL") + " 节点“" + node.taskId() + "”";
+            String label = nodeKind + " 节点“" + node.taskId() + "”";
             Set<String> referenced;
             try {
-                if (transfer) {
+                if ("传输".equals(nodeKind)) {
                     TransferConfig config = transferConfigs.get(node.taskId());
                     if (config == null) {
                         throw badRequest(label + "缺少传输配置");
                     }
                     referenced = TransferParameters.references(config);
                 } else {
-                    String sql = scriptContents.get(node.scriptPath());
-                    if (sql == null) {
+                    String script = scriptContents.get(node.scriptPath());
+                    if (script == null) {
                         throw badRequest(label + "缺少脚本内容");
                     }
-                    referenced = scanner.scan(sql).parameters();
+                    referenced = switch (nodeKind) {
+                        case "HiveSQL" -> ScriptParameterRenderer.hiveReferences(script, definitions.keySet());
+                        case "Shell" -> ScriptParameterRenderer.shellReferences(script, definitions.keySet());
+                        default -> scanner.scan(script).parameters();
+                    };
                 }
             } catch (IllegalArgumentException ex) {
                 throw badRequest(label + "参数语法错误: " + ex.getMessage());
@@ -65,6 +69,22 @@ final class FlowParameterCompiler {
                 ? List.of()
                 : buildInputs(snapshot.definitions(), runtimeTimezone);
         return new Compilation(inputs, taskExpressions);
+    }
+
+    private String parameterNodeKind(String kind) {
+        if ("TRANSFER".equalsIgnoreCase(kind)) {
+            return "传输";
+        }
+        if (OfflineFlowNodeKinds.isJdbcSql(kind)) {
+            return "SQL";
+        }
+        if ("HIVE_SQL".equalsIgnoreCase(kind)) {
+            return "HiveSQL";
+        }
+        if ("SHELL".equalsIgnoreCase(kind)) {
+            return "Shell";
+        }
+        return null;
     }
 
     private Map<String, FlowParameterDefinitionSnapshot> indexDefinitions(FlowParameterSnapshot snapshot) {

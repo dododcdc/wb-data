@@ -156,11 +156,11 @@ class TransferSqlExecutionServiceTest {
     void preSqlValidatesAllNodeParametersBeforeLookingUpPlugin(String missing) {
         prepare("MYSQL");
         TransferRenderRequest request = new TransferRenderRequest(4L,
-                new TransferEndpointConfig(1L, "MYSQL", "source_db", "orders", "id = ${where}", null, null, null),
+                new TransferEndpointConfig(1L, "MYSQL", "source_db", "orders", "id = ^[where]", null, null, null),
                 new TransferEndpointConfig(2L, "MYSQL", "selected_db", "orders", null, TransferWriteMode.APPEND,
-                        List.of("delete from orders where id = ${pre}"), List.of("insert into audit values (${post})")),
-                List.of(new TransferFieldMapping("id", TransferMappingKind.SOURCE_EXPRESSION, null, "${expression}"),
-                        new TransferFieldMapping("label", TransferMappingKind.STATIC_VALUE, null, null, "${fixed}")), List.of());
+                        List.of("delete from orders where id = ^[pre]"), List.of("insert into audit values (^[post])")),
+                List.of(new TransferFieldMapping("id", TransferMappingKind.SOURCE_EXPRESSION, null, "^[expression]"),
+                        new TransferFieldMapping("label", TransferMappingKind.STATIC_VALUE, null, null, "^[fixed]")), List.of());
         Map<String, String> parameters = new java.util.HashMap<>(Map.of(
                 "where", "1", "fixed", "x", "expression", "2", "pre", "3", "post", "4"));
         parameters.remove(missing);
@@ -175,7 +175,7 @@ class TransferSqlExecutionServiceTest {
     void emptyPreSqlStillRejectsMissingPostParameter() {
         prepare("MYSQL");
         assertThatThrownBy(() -> service.executePreSql("internal-token",
-                request("MYSQL", List.of(), List.of("select ${post}")), Map.of()))
+                request("MYSQL", List.of(), List.of("select ^[post]")), Map.of()))
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("未提供的参数: post");
         verifyNoInteractions(plugins, plugin);
     }
@@ -186,7 +186,7 @@ class TransferSqlExecutionServiceTest {
         TransferRenderRequest base = request("HIVE", null, null);
         TransferRenderRequest request = new TransferRenderRequest(base.groupId(), base.source(), base.target(),
                 List.of(), List.of(new TransferPartitionMapping("dt", TransferMappingKind.STATIC_VALUE,
-                        null, null, "${partition}")));
+                        null, null, "^[partition]")));
         assertThatThrownBy(() -> service.executePreSql("internal-token", request, Map.of()))
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("未提供的参数: partition");
         verifyNoInteractions(plugins, plugin);
@@ -196,10 +196,10 @@ class TransferSqlExecutionServiceTest {
     @ValueSource(strings = {"MYSQL", "POSTGRESQL", "CLICKHOUSE"})
     void passesSameParameterMapAndUnrenderedStatementsToBothPhases(String type) {
         prepare(type);
-        List<String> pre = List.of("delete from orders where id = ${before}");
-        List<String> post = List.of("insert into audit values (${after}, ${before})");
+        List<String> pre = List.of("delete from orders where id = ^[before]");
+        List<String> post = List.of("insert into audit values (^[after], ^[before])");
         TransferRenderRequest request = request(type, pre, post);
-        Map<String, String> parameters = Map.of("before", "O'Reilly\n$(touch injected) ${after} 中文", "after", "done");
+        Map<String, String> parameters = Map.of("before", "O'Reilly\n$(touch injected) ^[after] 中文", "after", "done");
 
         service.executePreSql("internal-token", request, parameters);
         service.executePostSql("internal-token", request, parameters);

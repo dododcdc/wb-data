@@ -226,7 +226,7 @@ describe('TransferNodeDialog', () => {
                 fireEvent.click(screen.getByRole('button', { name: `${label} 1/5` }));
                 onChange.mockClear();
 
-                const sql = '  DELETE FROM orders_target\nWHERE dayno = ${v_day};  ';
+                const sql = '  DELETE FROM orders_target\nWHERE dayno = ^[v_day];  ';
                 const editor = screen.getByRole('textbox', { name: `${label} 第 1 条` });
                 fireEvent.change(editor, { target: { value: sql } });
 
@@ -356,7 +356,7 @@ describe('TransferNodeDialog', () => {
             fireEvent.click(screen.getByRole('button', { name: '后置 SQL 1/5' }));
             expect(screen.getByText(/每项仅填写一条 SQL，可换行；按编号顺序执行/)).toBeTruthy();
             expect(screen.getByText(/更换目标数据源、数据库或表会清空前后 SQL/)).toBeTruthy();
-            expect(screen.getByText('支持参数组 ${参数名} 值占位符，不要加引号；不支持动态数据库、表或字段名。', { exact: false })).toBeTruthy();
+            expect(screen.getByText('支持参数组 ^[参数名] 值占位符，不要加引号；不支持动态数据库、表或字段名。', { exact: false })).toBeTruthy();
             expect(screen.getByText('传输前执行，前置 SQL 失败则不进行传输。')).toBeTruthy();
             expect(screen.getByText('仅传输成功后执行。后置 SQL 失败会使节点失败，但不回滚已写入数据，请自行处理。')).toBeTruthy();
             const editor = screen.getByRole('textbox', { name: '前置 SQL 第 1 条' });
@@ -534,14 +534,14 @@ describe('TransferNodeDialog', () => {
         render(<TransferNodeDialog groupId={1} value={validTransfer} onChange={vi.fn()} />);
 
         const mappingPanel = screen.getByRole('heading', { name: '字段映射' }).closest('section')!;
-        expect(within(mappingPanel).getByText('在画布参数中绑定参数组。固定值（含分区）按文本填写，支持 ${参数名} 插值，不加 SQL 引号；SQL 表达式中的参数仅作值占位符，不要加引号。不支持动态数据库、表或字段名。')).toBeTruthy();
+        expect(within(mappingPanel).getByText('在画布参数中绑定参数组。固定值（含分区）按文本填写，支持 ^[参数名] 插值，不加 SQL 引号；SQL 表达式中的参数仅作值占位符，不要加引号。不支持动态数据库、表或字段名。')).toBeTruthy();
         expect(screen.getAllByText(/在画布参数中绑定参数组/)).toHaveLength(1);
     });
 
     it.each([
-        { kind: 'static_value', key: 'value', text: '${v_day}' },
-        { kind: 'static_value', key: 'value', text: 'day_${v_day}' },
-        { kind: 'source_expression', key: 'expression', text: 'CONCAT(id, ${v_day})' },
+        { kind: 'static_value', key: 'value', text: '^[v_day]' },
+        { kind: 'static_value', key: 'value', text: 'day_^[v_day]' },
+        { kind: 'source_expression', key: 'expression', text: 'CONCAT(id, ^[v_day])' },
     ] as const)('saves and restores $kind placeholders in mappings and partitions: $text', ({ kind, key, text }) => {
         const value: TransferConfig = {
             ...validTransfer,
@@ -553,8 +553,8 @@ describe('TransferNodeDialog', () => {
         const fieldInput = screen.getByLabelText('id 映射值');
         const partitionInput = screen.getByLabelText('dayno 映射值');
         const placeholder = kind === 'static_value'
-            ? '例如: 100、ACTIVE 或 ${v_day}'
-            : '例如: CONCAT(col, ${suffix})';
+            ? '例如: 100、ACTIVE 或 ^[v_day]'
+            : '例如: CONCAT(col, ^[suffix])';
         expect(fieldInput).toHaveProperty('placeholder', placeholder);
         expect(partitionInput).toHaveProperty('placeholder', placeholder);
         onChange.mockClear();
@@ -681,11 +681,11 @@ describe('TransferNodeDialog', () => {
 
         expect(screen.getByText('过滤条件（可选）')).toBeTruthy();
         expect(screen.getByText('WHERE')).toBeTruthy();
-        expect(screen.getByText('只填写 WHERE 后面的条件，语法按来源数据库执行。支持 ${参数名} 值占位符，不要加引号。')).toBeTruthy();
+        expect(screen.getByText('只填写 WHERE 后面的条件，语法按来源数据库执行。支持 ^[参数名] 值占位符，不要加引号。')).toBeTruthy();
         expect(screen.getByRole('button', { name: '展开过滤条件' })).toBeTruthy();
         onChange.mockClear();
 
-        const where = 'created_at >= ${v_day}';
+        const where = 'created_at >= ^[v_day]';
         const filter = screen.getByLabelText('过滤条件（可选）');
         fireEvent.change(filter, { target: { value: where } });
         expect(filter).toHaveProperty('value', where);

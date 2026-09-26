@@ -135,7 +135,7 @@ class OfflineNodeTaskCompilerTest {
         ObjectMapper mapper = new ObjectMapper();
         String value = "O'Reilly\n$(touch injected) ${TRANSFER_BACKEND_TOKEN} 中文 \"},\"config\":{} \\ %s";
         Map<String, String> config = Map.of("note", value);
-        Map<String, String> parameters = Map.of("value", value, "other", "${value}");
+        Map<String, String> parameters = Map.of("value", value, "other", "^[value]");
         if (!"missing-config".equals(failedPhase)) {
             java.nio.file.Files.writeString(tempDir.resolve("transfer.json"), mapper.writeValueAsString(config));
         }
@@ -262,6 +262,42 @@ class OfflineNodeTaskCompilerTest {
                 "namespaceFiles", Map.of("enabled", true, "include", List.of("scripts/shell_1.sh")),
                 "commands", List.of("bash 'scripts/shell_1.sh'")
         ));
+    }
+
+    @Test
+    void compile_rendersHiveAndShellParametersBeforeExecution() {
+        OfflineNodeTaskCompiler compiler = new OfflineNodeTaskCompiler();
+        String expression = "{{ {\"DWD\": inputs.DWD} | toJson }}";
+        DataSource hive = dataSource(2L, "HIVE");
+        OfflineFlowNode hiveNode = new OfflineFlowNode(
+                "hive_1", "HIVE_SQL", "scripts/hive_1.hql", 2L, "HIVE", null);
+
+        Map<String, Object> hiveTask = compiler.compile(null, hiveNode, Map.of(2L, hive), expression, true);
+
+        assertThat(hiveTask).containsEntry("inputFiles", Map.of("wb-data-script-parameters.json", expression));
+        assertThat(hiveTask).containsKey("taskRunner");
+        String hiveCommands = String.join("\n", (List<String>) hiveTask.get("commands"));
+        assertThat(hiveCommands).contains(
+                "set -eu",
+                "mkdir -p /tmp/wb-data-script",
+                "base64 -w 0 'scripts/hive_1.hql'",
+                "/api/v1/internal/offline/script/render",
+                "-f '/tmp/wb-data-script/hive_1.hql'");
+        assertThat(hiveCommands).doesNotContain("-f 'scripts/hive_1.hql'");
+
+        Map<String, Object> shellTask = compiler.compile(null, new OfflineFlowNode(
+                "shell_1", "SHELL", "scripts/shell_1.sh", null, null, null
+        ), Map.of(), expression, true);
+        String shellCommands = String.join("\n", (List<String>) shellTask.get("commands"));
+        assertThat(shellCommands).contains(
+                "base64 -w 0 'scripts/shell_1.sh'",
+                "bash '/tmp/wb-data-script/shell_1.sh'");
+        assertThat(shellTask).doesNotContainKey("containerImage");
+
+        Map<String, Object> cleared = compiler.compile(hiveTask, hiveNode, Map.of(2L, hive), null, true);
+        assertThat(cleared).doesNotContainKey("inputFiles");
+        assertThat((List<String>) cleared.get("commands")).containsExactly(
+                "beeline -u 'jdbc:hive2://db.example:3306/warehouse' -n 'analyst' -p 'existing-password' -f 'scripts/hive_1.hql'");
     }
 
     @Test

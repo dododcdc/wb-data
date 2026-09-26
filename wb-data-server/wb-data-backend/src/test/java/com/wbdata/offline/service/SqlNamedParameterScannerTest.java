@@ -10,8 +10,8 @@ class SqlNamedParameterScannerTest {
 
     @Test
     void findsTemplateParametersInFirstAppearanceOrderWithoutDuplicates() {
-        assertThat(scanner.scan("select * from users where name = ${name} "
-                + "and day = ${v_day} or owner = ${name}").parameters())
+        assertThat(scanner.scan("select * from users where name = ^[name] "
+                + "and day = ^[v_day] or owner = ^[name]").parameters())
                 .containsExactly("name", "v_day");
     }
 
@@ -20,13 +20,13 @@ class SqlNamedParameterScannerTest {
         String sql = """
                 select 'a:tom,b:jack', "quoted:identifier", `mysql:identifier`, created_at::date
                 from users
-                where name = ${name}
+                where name = ^[name]
                   and body = $$ dollar :ignored $$
                   and tagged = $tag$ :also_ignored $tag$
-                -- :line_comment ${commented}
+                -- :line_comment ^[commented]
                 # :mysql_comment
                 /* outer :block_comment /* nested :nested */ still ignored */
-                  and day = ${v_day}
+                  and day = ^[v_day]
                 """;
 
         assertThat(scanner.scan(sql).parameters()).containsExactly("name", "v_day");
@@ -34,13 +34,13 @@ class SqlNamedParameterScannerTest {
 
     @Test
     void rejectsQuotedTemplateParameters() {
-        assertThatThrownBy(() -> scanner.scan("select '${v_day}'"))
+        assertThatThrownBy(() -> scanner.scan("select '^[v_day]'"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("不能位于引号内");
-        assertThatThrownBy(() -> scanner.scan("select \"${v_day}\""))
+        assertThatThrownBy(() -> scanner.scan("select \"^[v_day]\""))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("不能位于引号内");
-        assertThatThrownBy(() -> scanner.scan("select `${v_day}`"))
+        assertThatThrownBy(() -> scanner.scan("select `^[v_day]`"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("不能位于引号内");
     }
@@ -53,13 +53,13 @@ class SqlNamedParameterScannerTest {
 
     @Test
     void rejectsMalformedTemplateParameters() {
-        assertThatThrownBy(() -> scanner.scan("select ${_private}"))
+        assertThatThrownBy(() -> scanner.scan("select ^[_private]"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("英文字母");
-        assertThatThrownBy(() -> scanner.scan("select ${1value}"))
+        assertThatThrownBy(() -> scanner.scan("select ^[1value]"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("英文字母");
-        assertThatThrownBy(() -> scanner.scan("select ${" + "a".repeat(65) + "}"))
+        assertThatThrownBy(() -> scanner.scan("select ^[" + "a".repeat(65) + "]"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("64");
     }

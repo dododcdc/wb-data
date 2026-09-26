@@ -72,7 +72,7 @@ export function ExecutionTimeContextDialog({
                     <DialogTitle>{requiresPlannedTime ? '选择参考计划时间' : '执行参数设置'}</DialogTitle>
                     <DialogDescription>
                         {requiresPlannedTime
-                            ? `当前任务定义了 ${parameterKeys.map((key) => `\${${key}}`).join('、')} 等计划时间参数。请选择这次执行要模拟的计划时间。`
+                            ? `当前任务定义了 ${parameterKeys.join('、')} 等计划时间参数。请选择这次执行要模拟的计划时间。`
                             : '本次调试执行将使用当前任务绑定的参数。您也可以临时提供覆盖值。'}
                     </DialogDescription>
                 </DialogHeader>
@@ -143,7 +143,7 @@ export function ExecutionTimeContextDialog({
                                                     onChange={(event) => handleOverrideEnabled(def.key, event.target.checked)}
                                                 />
                                                 <div className="w-28 shrink-0 truncate" title={def.key}>
-                                                    <code className="font-semibold">{`\${${def.key}}`}</code>
+                                                    <code className="font-semibold">{def.key}</code>
                                                 </div>
                                                 <div className="flex-1">
                                                     <Input

@@ -24,7 +24,7 @@ import {
     getOfflineNodeKindClassName,
     getOfflineNodeKindDescription,
     getOfflineNodeKindLabel,
-    isJdbcSqlNodeKind,
+    supportsParameterInsertion,
     isSqlEditorNodeKind,
 } from './offlineNodeKinds';
 
@@ -145,7 +145,7 @@ export function NodeEditorDialog({
 
     const handleInsertParameter = useCallback((key: string) => {
         const editor = editorRef.current;
-        const textToInsert = `\${${key}}`;
+        const textToInsert = `^[${key}]`;
         if (!editor) {
             onContentChange(content ? `${content} ${textToInsert}` : textToInsert);
             return;
@@ -178,7 +178,7 @@ export function NodeEditorDialog({
 
     if (!activeNode) return null;
     const isSqlNode = isSqlEditorNodeKind(activeNode.kind);
-    const supportsParameters = isJdbcSqlNodeKind(activeNode.kind);
+    const supportsParameters = supportsParameterInsertion(activeNode.kind);
     const isTransferNode = activeNode.kind === 'TRANSFER';
 
     const handleAttemptClose = () => onOpenChange(false);
@@ -244,12 +244,12 @@ export function NodeEditorDialog({
 
                         {supportsParameters && parameterDefinitions && parameterDefinitions.length > 0 && (
                             <>
-                                <div className="h-4 w-[1px] bg-gray-200" />
+                                {isSqlNode && <div className="h-4 w-[1px] bg-gray-200" />}
                                 <div className="relative" ref={paramMenuRef}>
                                     <button
                                         type="button"
                                         className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border border-dashed border-gray-300 hover:border-gray-400 text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-xs"
-                                        title="插入任务参数到 SQL"
+                                        title={activeNode.kind === 'SHELL' ? '插入任务参数到脚本' : '插入任务参数到 SQL'}
                                         onClick={() => setParamMenuOpen((prev) => !prev)}
                                     >
                                         <Braces size={13} className="text-gray-500" />
@@ -274,7 +274,7 @@ export function NodeEditorDialog({
                                                         }}
                                                     >
                                                         <code className="font-semibold text-emerald-700 group-hover:underline">
-                                                            :{param.key}
+                                                            ^[{param.key}]
                                                         </code>
                                                         <span className="text-[11px] text-muted-foreground truncate max-w-[120px]">
                                                             {param.valueSource === 'SYSTEM_TIME' ? (param.format ?? '时间') : (param.constantValue ?? '固定值')}

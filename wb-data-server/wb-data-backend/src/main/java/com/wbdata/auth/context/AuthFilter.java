@@ -30,6 +30,7 @@ public class AuthFilter extends OncePerRequestFilter {
             "/api/v1/auth/login",
             "/api/v1/datasources/plugins",
             "/api/v1/internal/offline/transfer/**",
+            "/api/v1/internal/offline/script/**",
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/swagger-ui.html"

@@ -484,7 +484,7 @@ export function FlowParameterDialog({
                                                 <ul className="flow-parameter-upgrade-diff-list">
                                                     {upgradePreview.diff.map((entry) => (
                                                         <li key={entry.key} className={`is-${entry.kind}`}>
-                                                            <code>{'${' + entry.key + '}'}</code>
+                                                            <code>{entry.key}</code>
                                                             {entry.kind === 'added' ? (
                                                                 <span>新增：{entry.after}</span>
                                                             ) : entry.kind === 'removed' ? (
@@ -528,7 +528,7 @@ export function FlowParameterDialog({
                                                         <Search size={13} className="flow-parameter-search-icon" />
                                                         <input
                                                             type="text"
-                                                            placeholder="搜索参数名 (${key}) 或描述..."
+                                                            placeholder="搜索参数名或描述..."
                                                             value={searchFilter}
                                                             onChange={(e) => {
                                                                 if (item.parameterGroupId) {
@@ -555,7 +555,7 @@ export function FlowParameterDialog({
                                                                     className={`flow-parameter-item-row ${isOverridden ? 'is-overridden' : ''}`}
                                                                 >
                                                                     <div className="flow-parameter-item-left">
-                                                                        <code>{'${' + def.key + '}'}</code>
+                                                                        <code>{def.key}</code>
                                                                         {def.description ? (
                                                                             <span className="flow-parameter-item-desc">
                                                                                 ({def.description})

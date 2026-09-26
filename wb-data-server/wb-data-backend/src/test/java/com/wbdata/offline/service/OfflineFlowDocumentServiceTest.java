@@ -555,7 +555,7 @@ class OfflineFlowDocumentServiceTest {
         when(dataSourceService.getById(1L)).thenReturn(mysqlDataSource());
 
         service.saveFlowDocument(sqlSaveRequest(
-                "select * from users where name = ${name} and day = ${v_day}",
+                "select * from users where name = ^[name] and day = ^[v_day]",
                 new FlowParameterBindingRequest(12L, 3)
         ));
 
@@ -579,7 +579,7 @@ class OfflineFlowDocumentServiceTest {
                         + "timeZone=\"Asia/Shanghai\")))} | toJson }}"
         );
         assertThat(Files.readString(repo.resolve("scripts/example/query.sql")))
-                .isEqualTo("select * from users where name = ${name} and day = ${v_day}");
+                .isEqualTo("select * from users where name = ^[name] and day = ^[v_day]");
         assertThat(Files.readString(repo.resolve(".wb-data/kestra-flows/example.yaml"))).isEqualTo(flowYaml);
 
         service.saveFlowDocument(sqlSaveRequest(
@@ -610,7 +610,7 @@ class OfflineFlowDocumentServiceTest {
         when(dataSourceService.getById(1L)).thenReturn(mysqlDataSource());
 
         assertThatThrownBy(() -> service.saveFlowDocument(sqlSaveRequest(
-                "select * from users where missing = ${missing}",
+                "select * from users where missing = ^[missing]",
                 new FlowParameterBindingRequest(12L, 3)
         )))
                 .hasMessageContaining("query")
@@ -636,11 +636,11 @@ class OfflineFlowDocumentServiceTest {
         when(dataSourceService.getById(1L)).thenReturn(mysqlDataSource());
 
         var saved = service.saveFlowDocument(sqlSaveRequest(
-                "select * from users where name = ${name}",
+                "select * from users where name = ^[name]",
                 new FlowParameterBindingRequest(12L, 3)
         ));
         SaveOfflineFlowDocumentRequest unsavedDraft = sqlSaveRequest(
-                "select * from users where name = ${name} and day = ${v_day}",
+                "select * from users where name = ^[name] and day = ^[v_day]",
                 null
         );
 
@@ -669,7 +669,7 @@ class OfflineFlowDocumentServiceTest {
                 .contains("inputs.wbdata_planned_time ?? trigger.date")
                 .doesNotContain("trigger.date ?? execution.startDate");
         assertThat(compiled.namespaceFileContents().get("scripts/example/query.sql"))
-                .isEqualTo("select * from users where name = ${name} and day = ${v_day}");
+                .isEqualTo("select * from users where name = ^[name] and day = ^[v_day]");
     }
 
     @Test
@@ -681,7 +681,7 @@ class OfflineFlowDocumentServiceTest {
         when(groups.get(1L, 12L)).thenReturn(group);
         when(groups.findByCode(1L, "daily_common")).thenReturn(Optional.of(group));
         OfflineFlowDocumentService service = service(properties, new RepoLockManager(), groups);
-        var saved = service.saveFlowDocument(transferParameterRequest("${name}", new FlowParameterBindingRequest(12L, 3)));
+        var saved = service.saveFlowDocument(transferParameterRequest("^[name]", new FlowParameterBindingRequest(12L, 3)));
         Path repo = properties.resolveRepoPath(1L);
         Path flow = repo.resolve("_flows/example/flow.yaml");
         Path sidecar = repo.resolve("transfers/example/transfer_1.transfer.json");
@@ -694,10 +694,10 @@ class OfflineFlowDocumentServiceTest {
         Map<String, Object> savedTask = (Map<String, Object>) savedWrapper.get("task");
         assertThat(savedTask.get("inputFiles")).isEqualTo(Map.of("wb-data-transfer-parameters.json",
                 "{{ {\"name\": inputs.name} | toJson }}"));
-        assertThat(savedSidecar).contains("prefix-${name}", "select ${name}").doesNotContain("小明", "parameters");
+        assertThat(savedSidecar).contains("prefix-^[name]", "select ^[name]").doesNotContain("小明", "parameters");
         assertThat(Files.readString(repo.resolve(".wb-data/kestra-flows/example.yaml"))).isEqualTo(savedYaml);
 
-        SaveOfflineFlowDocumentRequest draft = transferParameterRequest("${v_day}", null);
+        SaveOfflineFlowDocumentRequest draft = transferParameterRequest("^[v_day]", null);
         var compiled = service.compileFlowDraft(new DebugDocumentExecutionRequest(1L, "_flows/example/flow.yaml",
                 saved.documentHash(), saved.documentUpdatedAt(), draft.stages(), draft.edges(), draft.layout(),
                 List.of("transfer_1"), "SELECTED"));
@@ -710,9 +710,9 @@ class OfflineFlowDocumentServiceTest {
         assertThat(((Map<String, String>) task.get("inputFiles")).get("wb-data-transfer-parameters.json"))
                 .contains("inputs.name", "inputs.v_day", "inputs.wbdata_planned_time ?? trigger.date", "Asia/Shanghai");
         assertThat(compiled.namespaceFileContents().get("transfers/example/transfer_1.transfer.json"))
-                .contains("select ${v_day}");
+                .contains("select ^[v_day]");
 
-        SaveOfflineFlowDocumentRequest invalidDraft = transferParameterRequest("${missing}", null);
+        SaveOfflineFlowDocumentRequest invalidDraft = transferParameterRequest("^[missing]", null);
         assertThatThrownBy(() -> service.compileFlowDraft(new DebugDocumentExecutionRequest(1L, "_flows/example/flow.yaml",
                 saved.documentHash(), saved.documentUpdatedAt(), invalidDraft.stages(), invalidDraft.edges(), invalidDraft.layout(),
                 List.of("transfer_1"), "SELECTED"))).hasMessageContaining("transfer_1").hasMessageContaining("missing");
@@ -728,7 +728,7 @@ class OfflineFlowDocumentServiceTest {
         when(groups.get(1L, 12L)).thenReturn(parameterGroup(3, "ACTIVE"));
         OfflineFlowDocumentService service = service(properties, new RepoLockManager(), groups);
         assertThatThrownBy(() -> service.saveFlowDocument(
-                transferParameterRequest("${missing}", new FlowParameterBindingRequest(12L, 3))))
+                transferParameterRequest("^[missing]", new FlowParameterBindingRequest(12L, 3))))
                 .hasMessageContaining("transfer_1").hasMessageContaining("未定义参数: missing");
         Path repo = properties.resolveRepoPath(1L);
         assertThat(repo.resolve("_flows/example/flow.yaml")).doesNotExist();
@@ -740,8 +740,8 @@ class OfflineFlowDocumentServiceTest {
     private SaveOfflineFlowDocumentRequest transferParameterRequest(String postValue, FlowParameterBindingRequest binding) {
         TransferConfig transfer = new TransferConfig(validTransfer().source(),
                 new TransferEndpointConfig(2L, "MYSQL", "warehouse", "orders", null, TransferWriteMode.APPEND,
-                        List.of("select ${name}"), List.of("select " + postValue)),
-                List.of(new TransferFieldMapping("order_id", TransferMappingKind.STATIC_VALUE, null, null, "prefix-${name}")),
+                        List.of("select ^[name]"), List.of("select " + postValue)),
+                List.of(new TransferFieldMapping("order_id", TransferMappingKind.STATIC_VALUE, null, null, "prefix-^[name]")),
                 List.of());
         return new SaveOfflineFlowDocumentRequest(1L, "_flows/example/flow.yaml", null, 0L,
                 List.of(new SaveOfflineFlowStageRequest("main", List.of(new SaveOfflineFlowNodeRequest(

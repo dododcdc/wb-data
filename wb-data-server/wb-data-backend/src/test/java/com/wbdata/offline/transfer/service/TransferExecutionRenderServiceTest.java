@@ -120,7 +120,7 @@ class TransferExecutionRenderServiceTest {
         TransferRenderRequest base = request();
         TransferRenderRequest request = new TransferRenderRequest(base.groupId(), base.source(),
                 new TransferEndpointConfig(2L, "MYSQL", "warehouse", "dwd_orders", null, TransferWriteMode.APPEND,
-                        List.of("select ${pre}"), List.of("select ${post}")), base.fieldMappings(), base.partitions());
+                        List.of("select ^[pre]"), List.of("select ^[post]")), base.fieldMappings(), base.partitions());
 
         assertThatThrownBy(() -> service(metadataService).render("internal-token", request, Map.of("pre", "1")))
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("未提供的参数: post")
@@ -139,11 +139,11 @@ class TransferExecutionRenderServiceTest {
         when(metadataService.getTableDetail(target, "warehouse", "dwd_orders")).thenReturn(table("order_id"));
         TransferRenderRequest base = request();
         TransferRenderRequest request = new TransferRenderRequest(base.groupId(), base.source(), base.target(),
-                List.of(new TransferFieldMapping("order_id", TransferMappingKind.STATIC_VALUE, null, null, "${value}")), List.of());
+                List.of(new TransferFieldMapping("order_id", TransferMappingKind.STATIC_VALUE, null, null, "^[value]")), List.of());
 
         assertThat(service(metadataService).render("internal-token", request, Map.of("value", "中文'")))
                 .contains("CONVERT(X'e4b8ade6968727' USING utf8mb4) as `order_id`")
-                .doesNotContain("${value}", "中文'");
+                .doesNotContain("^[value]", "中文'");
     }
 
     private TransferExecutionRenderService service(TransferMetadataService metadataService) {

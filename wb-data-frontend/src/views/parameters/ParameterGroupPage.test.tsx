@@ -193,6 +193,7 @@ describe('ParameterGroupPage', () => {
         );
 
         fireEvent.click(await screen.findByRole('button', { name: '新建参数组' }));
+        expect(screen.getByText(/HiveSQL 里，值的位置会变成字符串/)).toBeTruthy();
         fireEvent.change(screen.getByLabelText('参数组名称'), { target: { value: '销售日批参数' } });
         fireEvent.change(screen.getByLabelText('参数组说明'), { target: { value: '销售任务共用参数' } });
         fireEvent.change(screen.getByLabelText('参数名 1'), { target: { value: 'tenant_name' } });
@@ -290,7 +291,7 @@ describe('ParameterGroupPage', () => {
         fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
 
         const firstConfirmation = screen.getByRole('dialog', { name: '确认移除参数？' });
-        expect(within(firstConfirmation).getByText('${tenant_name}')).toBeTruthy();
+        expect(within(firstConfirmation).getByText('tenant_name')).toBeTruthy();
         expect(updateParameterGroupMock).not.toHaveBeenCalled();
 
         fireEvent.click(within(firstConfirmation).getByRole('button', { name: '返回修改' }));
@@ -309,6 +310,72 @@ describe('ParameterGroupPage', () => {
         })));
     });
 
+    it('edits one parameter at a time and focuses a newly added parameter', async () => {
+        const queryClient = new QueryClient({
+            defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+        });
+        render(
+            <QueryClientProvider client={queryClient}>
+                <MemoryRouter>
+                    <ParameterGroupPage />
+                </MemoryRouter>
+            </QueryClientProvider>,
+        );
+
+        fireEvent.click(await screen.findByRole('button', { name: '编辑日常公共参数' }));
+        await screen.findByDisplayValue('日常公共参数');
+
+        expect(screen.getByRole('button', { name: '参数 tenant_name', pressed: true })).toBeTruthy();
+        expect(screen.getByDisplayValue('tenant_name')).toBeTruthy();
+        expect(screen.queryByDisplayValue('v_day')).toBeNull();
+
+        fireEvent.click(screen.getByRole('button', { name: '参数 v_day' }));
+        expect(screen.getByLabelText('参数名 2')).toBeTruthy();
+        expect(screen.getByDisplayValue('v_day')).toBeTruthy();
+        expect(screen.queryByLabelText('参数名 1')).toBeNull();
+
+        fireEvent.change(screen.getByLabelText('参数名 2'), { target: { value: '1bad' } });
+        fireEvent.click(screen.getByRole('button', { name: '参数 tenant_name' }));
+        fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+
+        expect(await screen.findByRole('alert')).toHaveProperty('textContent', '第 2 个参数名格式不正确');
+        expect(screen.getByLabelText('参数名 2').getAttribute('aria-invalid')).toBe('true');
+
+        fireEvent.click(screen.getByRole('button', { name: '添加参数' }));
+        await waitFor(() => {
+            expect(document.activeElement).toBe(screen.getByLabelText('参数名 3'));
+        });
+        expect(screen.getByRole('button', { name: '参数 3', pressed: true })).toBeTruthy();
+    });
+
+    it('filters the parameter list and opens the matching parameter', async () => {
+        const queryClient = new QueryClient({
+            defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+        });
+        render(
+            <QueryClientProvider client={queryClient}>
+                <MemoryRouter>
+                    <ParameterGroupPage />
+                </MemoryRouter>
+            </QueryClientProvider>,
+        );
+
+        fireEvent.click(await screen.findByRole('button', { name: '编辑日常公共参数' }));
+        await screen.findByDisplayValue('日常公共参数');
+
+        fireEvent.change(screen.getByLabelText('搜索参数'), { target: { value: 'v_day' } });
+
+        expect(screen.queryByRole('button', { name: '参数 tenant_name' })).toBeNull();
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '参数 v_day', pressed: true })).toBeTruthy();
+        });
+        expect(screen.getByLabelText('参数名 2')).toBeTruthy();
+        expect(screen.getByText('匹配 1 / 2')).toBeTruthy();
+
+        fireEvent.change(screen.getByLabelText('搜索参数'), { target: { value: '不存在的参数' } });
+        expect(screen.getByText('没有匹配的参数')).toBeTruthy();
+    });
+
     it('previews the values resolved for a parameter group', async () => {
         const queryClient = new QueryClient({
             defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -323,25 +390,60 @@ describe('ParameterGroupPage', () => {
 
         fireEvent.click(await screen.findByRole('button', { name: '预览日常公共参数' }));
 
-        expect(await screen.findByText('小明')).toBeTruthy();
-        expect(previewParameterGroupMock).not.toHaveBeenCalled();
-        expect(screen.getByText('${tenant_name}')).toBeTruthy();
-        expect(screen.getByText('${v_day}')).toBeTruthy();
+        expect(await screen.findByText('20260815')).toBeTruthy();
+        expect(screen.queryByRole('button', { name: '使用浏览器当前时间与时区' })).toBeNull();
+        expect(screen.getByText('小明')).toBeTruthy();
+        expect(screen.getByText('tenant_name')).toBeTruthy();
+        expect(screen.getByText('v_day')).toBeTruthy();
         expect(screen.getByText('固定值')).toBeTruthy();
         expect(screen.getByText('运行时日期')).toBeTruthy();
-        expect(screen.getByText('待计算')).toBeTruthy();
-
+        expect(screen.queryByText('待计算')).toBeNull();
         expect(screen.getByRole('button', { name: '计划时间' })).toBeTruthy();
         expect(screen.queryByRole('button', { name: '执行开始时间' })).toBeNull();
-        fireEvent.click(screen.getByRole('button', { name: '使用浏览器当前时间与时区' }));
-        fireEvent.click(screen.getByRole('button', { name: '计算预览' }));
         await waitFor(() => expect(previewParameterGroupMock).toHaveBeenCalledWith(5, 12, {
-            plannedTime: expect.any(String),
+            plannedTime: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/),
             executionStartTime: null,
-            runtimeTimezone: expect.any(String),
+            runtimeTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
             overrides: {},
         }));
-        expect(await screen.findByText('20260815')).toBeTruthy();
+    });
+
+    it('previews execution start time when a parameter uses that basis', async () => {
+        getParameterGroupMock.mockResolvedValueOnce({
+            ...await getParameterGroupMock(5, 12),
+            definitions: [{
+                id: 21,
+                key: 'v_start',
+                valueSource: 'SYSTEM_TIME',
+                constantValue: null,
+                timeBasis: 'EXECUTION_START_TIME',
+                format: 'yyyyMMdd',
+                offsetDays: 0,
+                description: null,
+                sortOrder: 0,
+            }],
+        });
+        const queryClient = new QueryClient({
+            defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+        });
+        render(
+            <QueryClientProvider client={queryClient}>
+                <MemoryRouter>
+                    <ParameterGroupPage />
+                </MemoryRouter>
+            </QueryClientProvider>,
+        );
+
+        fireEvent.click(await screen.findByRole('button', { name: '预览日常公共参数' }));
+
+        expect(await screen.findByRole('button', { name: '执行开始时间' })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: '计划时间' })).toBeNull();
+        await waitFor(() => expect(previewParameterGroupMock).toHaveBeenCalledWith(5, 12, {
+            plannedTime: null,
+            executionStartTime: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/),
+            runtimeTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+            overrides: {},
+        }));
     });
 
     it('shows constant-only values without asking for a time context', async () => {
