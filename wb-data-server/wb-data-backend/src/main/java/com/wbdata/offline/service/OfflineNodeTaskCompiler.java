@@ -127,7 +127,7 @@ final class OfflineNodeTaskCompiler {
         String renderedPath = "/tmp/wb-data-script/" + node.taskId() + scriptExtension(node.scriptPath());
         String quotedScript = shellQuote(node.scriptPath());
         String quotedRendered = shellQuote(renderedPath);
-        String requestPath = "wb-data-script-request.json";
+        String requestPath = "/tmp/wb-data-script/" + node.taskId() + "-request.json";
         List<String> commands = new ArrayList<>();
         commands.add("set -eu");
         commands.add("mkdir -p /tmp/wb-data-script");
@@ -135,7 +135,7 @@ final class OfflineNodeTaskCompiler {
                 + "\",\"script\":\"'; base64 -w 0 " + quotedScript
                 + "; printf '%s' '\",\"parameters\":'; cat 'wb-data-script-parameters.json'; printf '%s' '}'; } > "
                 + shellQuote(requestPath));
-        commands.add("curl --fail-with-body --show-error --silent -H \"X-WB-Data-Internal-Token: ${"
+        commands.add("curl --fail --show-error --silent -H \"X-WB-Data-Internal-Token: ${"
                 + transferRuntimeSettings.internalTokenEnv() + "}\" -H 'Content-Type: application/json' --data-binary @"
                 + shellQuote(requestPath) + " \"${" + transferRuntimeSettings.internalBaseUrlEnv()
                 + "}/api/v1/internal/offline/script/render\" -o " + quotedRendered);
@@ -348,14 +348,14 @@ final class OfflineNodeTaskCompiler {
 
     private List<String> buildTransferCommands(String taskId, String transferConfigPath) {
         String renderedConfigPath = "/tmp/wb-data-transfer/" + taskId + ".conf";
-        String requestPath = "wb-data-transfer-request.json";
+        String requestPath = "/tmp/wb-data-transfer/" + taskId + "-request.json";
         return List.of(
                 "set -eu",
                 "mkdir -p /tmp/wb-data-transfer",
                 "{ printf '%s' '{\"config\":'; cat " + shellQuote(transferConfigPath)
                         + "; printf '%s' ',\"parameters\":'; cat 'wb-data-transfer-parameters.json'; printf '%s' '}'; } > "
                         + shellQuote(requestPath),
-                "curl --fail-with-body --show-error --silent -H \"X-WB-Data-Internal-Token: ${"
+                "curl --fail --show-error --silent -H \"X-WB-Data-Internal-Token: ${"
                         + transferRuntimeSettings.internalTokenEnv() + "}\" -H 'Content-Type: application/json' "
                         + "--data-binary @" + shellQuote(requestPath) + " \"${"
                         + transferRuntimeSettings.internalBaseUrlEnv() + "}/api/v1/internal/offline/transfer/render\" "
@@ -366,10 +366,10 @@ final class OfflineNodeTaskCompiler {
         );
     }
 
-    private String buildTransferSqlCommand(String phase, String transferConfigPath) {
-        return "curl --fail-with-body --show-error --silent -H \"X-WB-Data-Internal-Token: ${"
+    private String buildTransferSqlCommand(String phase, String requestPath) {
+        return "curl --fail --show-error --silent -H \"X-WB-Data-Internal-Token: ${"
                 + transferRuntimeSettings.internalTokenEnv() + "}\" -H 'Content-Type: application/json' "
-                + "--data-binary @" + shellQuote(transferConfigPath) + " \"${"
+                + "--data-binary @" + shellQuote(requestPath) + " \"${"
                 + transferRuntimeSettings.internalBaseUrlEnv() + "}/api/v1/internal/offline/transfer/" + phase + "\"";
     }
 

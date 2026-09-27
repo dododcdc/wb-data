@@ -52,14 +52,14 @@ class OfflineNodeTaskCompilerTest {
         assertThat((List<String>) task.get("commands")).containsExactly(
                 "set -eu",
                 "mkdir -p /tmp/wb-data-transfer",
-                requestAssemblyCommand(transferPath),
-                "curl --fail-with-body --show-error --silent -H \"X-WB-Data-Internal-Token: ${TRANSFER_BACKEND_TOKEN}\" "
-                        + "-H 'Content-Type: application/json' --data-binary @'wb-data-transfer-request.json' "
+                requestAssemblyCommand("transfer_1", transferPath),
+                "curl --fail --show-error --silent -H \"X-WB-Data-Internal-Token: ${TRANSFER_BACKEND_TOKEN}\" "
+                        + "-H 'Content-Type: application/json' --data-binary @'/tmp/wb-data-transfer/transfer_1-request.json' "
                         + "\"${TRANSFER_BACKEND_URL}/api/v1/internal/offline/transfer/render\" "
                         + "-o /tmp/wb-data-transfer/transfer_1.conf",
-                sqlPhaseCommand("pre-sql", "wb-data-transfer-request.json"),
+                sqlPhaseCommand("pre-sql", "/tmp/wb-data-transfer/transfer_1-request.json"),
                 "/opt/seatunnel/bin/seatunnel.sh --config /tmp/wb-data-transfer/transfer_1.conf -m local",
-                sqlPhaseCommand("post-sql", "wb-data-transfer-request.json")
+                sqlPhaseCommand("post-sql", "/tmp/wb-data-transfer/transfer_1-request.json")
         );
     }
 
@@ -92,14 +92,14 @@ class OfflineNodeTaskCompilerTest {
         assertThat((List<String>) task.get("commands")).containsExactly(
                 "set -eu",
                 "mkdir -p /tmp/wb-data-transfer",
-                requestAssemblyCommand(transferPath),
-                "curl --fail-with-body --show-error --silent -H \"X-WB-Data-Internal-Token: ${TRANSFER_BACKEND_TOKEN}\" "
-                        + "-H 'Content-Type: application/json' --data-binary @'wb-data-transfer-request.json' "
+                requestAssemblyCommand("transfer_1", transferPath),
+                "curl --fail --show-error --silent -H \"X-WB-Data-Internal-Token: ${TRANSFER_BACKEND_TOKEN}\" "
+                        + "-H 'Content-Type: application/json' --data-binary @'/tmp/wb-data-transfer/transfer_1-request.json' "
                         + "\"${TRANSFER_BACKEND_URL}/api/v1/internal/offline/transfer/render\" "
                         + "-o /tmp/wb-data-transfer/transfer_1.conf",
-                sqlPhaseCommand("pre-sql", "wb-data-transfer-request.json"),
+                sqlPhaseCommand("pre-sql", "/tmp/wb-data-transfer/transfer_1-request.json"),
                 "/usr/local/seatunnel/bin/seatunnel.sh --config /tmp/wb-data-transfer/transfer_1.conf -m local",
-                sqlPhaseCommand("post-sql", "wb-data-transfer-request.json")
+                sqlPhaseCommand("post-sql", "/tmp/wb-data-transfer/transfer_1-request.json")
         );
     }
 
@@ -117,15 +117,38 @@ class OfflineNodeTaskCompilerTest {
         assertThat(task).containsEntry("inputFiles", Map.of("wb-data-transfer-parameters.json", expression));
     }
 
-    private String requestAssemblyCommand(String transferPath) {
-        return "{ printf '%s' '{\"config\":'; cat '" + transferPath
-                + "'; printf '%s' ',\"parameters\":'; cat 'wb-data-transfer-parameters.json'; printf '%s' '}'; } "
-                + "> 'wb-data-transfer-request.json'";
+    @Test
+    void compile_generatesScriptRenderCommandsUsingTmpRequestAndCurlFail() {
+        OfflineTransferProperties transferProperties = new OfflineTransferProperties();
+        transferProperties.setInternalBaseUrl("http://wb-data-backend:8080");
+        transferProperties.setInternalToken("test-token");
+        transferProperties.setInternalBaseUrlEnv("INTERNAL_BASE_URL");
+        transferProperties.setInternalTokenEnv("INTERNAL_TOKEN");
+        OfflineNodeTaskCompiler compiler = new OfflineNodeTaskCompiler(transferProperties);
+        OfflineFlowNode node = new OfflineFlowNode("shell_1", "SHELL", "scripts/task_1.sh", null, null, null);
+        String expression = "{{ {\"day\": inputs.day} | toJson }}";
+
+        Map<String, Object> task = compiler.compile(null, node, Map.of(), expression, true);
+
+        assertThat(task).containsEntry("inputFiles", Map.of("wb-data-script-parameters.json", expression));
+        assertThat((List<String>) task.get("commands")).containsExactly(
+                "set -eu",
+                "mkdir -p /tmp/wb-data-script",
+                "{ printf '%s' '{\"kind\":\"SHELL\",\"script\":\"'; base64 -w 0 'scripts/task_1.sh'; printf '%s' '\",\"parameters\":'; cat 'wb-data-script-parameters.json'; printf '%s' '}'; } > '/tmp/wb-data-script/shell_1-request.json'",
+                "curl --fail --show-error --silent -H \"X-WB-Data-Internal-Token: ${INTERNAL_TOKEN}\" -H 'Content-Type: application/json' --data-binary @'/tmp/wb-data-script/shell_1-request.json' \"${INTERNAL_BASE_URL}/api/v1/internal/offline/script/render\" -o '/tmp/wb-data-script/shell_1.sh'",
+                "bash '/tmp/wb-data-script/shell_1.sh'"
+        );
     }
 
-    private String sqlPhaseCommand(String phase, String transferPath) {
-        return "curl --fail-with-body --show-error --silent -H \"X-WB-Data-Internal-Token: ${TRANSFER_BACKEND_TOKEN}\" "
-                + "-H 'Content-Type: application/json' --data-binary @'" + transferPath + "' "
+    private String requestAssemblyCommand(String taskId, String transferPath) {
+        return "{ printf '%s' '{\"config\":'; cat '" + transferPath
+                + "'; printf '%s' ',\"parameters\":'; cat 'wb-data-transfer-parameters.json'; printf '%s' '}'; } "
+                + "> '/tmp/wb-data-transfer/" + taskId + "-request.json'";
+    }
+
+    private String sqlPhaseCommand(String phase, String requestPath) {
+        return "curl --fail --show-error --silent -H \"X-WB-Data-Internal-Token: ${TRANSFER_BACKEND_TOKEN}\" "
+                + "-H 'Content-Type: application/json' --data-binary @'" + requestPath + "' "
                 + "\"${TRANSFER_BACKEND_URL}/api/v1/internal/offline/transfer/" + phase + "\"";
     }
 
@@ -202,7 +225,7 @@ class OfflineNodeTaskCompilerTest {
                 if (executed.contains(phase)) {
                     assertThat(mapper.readTree(java.nio.file.Files.readString(body))).isEqualTo(expected);
                     assertThat(java.nio.file.Files.readString(body))
-                            .isEqualTo(java.nio.file.Files.readString(tempDir.resolve("wb-data-transfer-request.json")));
+                            .isEqualTo(java.nio.file.Files.readString(tempDir.resolve("rendered").resolve("transfer_1-request.json")));
                 } else {
                     assertThat(body).doesNotExist();
                 }
