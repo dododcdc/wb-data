@@ -1132,39 +1132,86 @@ button.offline-branch-row:disabled {
 }
 
 .offline-conflict-banner {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 30;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 18px;
-    padding: 16px;
-    border-radius: 18px;
-    border: 1px solid rgba(184, 134, 11, 0.22);
-    background: linear-gradient(135deg, rgba(184, 134, 11, 0.10), rgba(217, 119, 87, 0.07));
+    gap: 16px;
+    padding: 10px 16px;
+    border-radius: var(--radius-lg, 10px);
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-primary, #ffffff);
+    box-shadow: 0 8px 24px -4px rgba(80, 60, 40, 0.12), 0 2px 6px -1px rgba(80, 60, 40, 0.06);
+    max-width: min(640px, calc(100% - 32px));
+    animation: ofb-toast-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:is(.dark, [data-theme='dark']) .offline-conflict-banner {
+    background: var(--color-bg-primary, #1a1816);
+    border-color: var(--color-border);
+    box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.5), 0 2px 8px -1px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes ofb-toast-in {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -8px);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
 }
 
 .offline-conflict-copy {
     display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    color: var(--color-warning);
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.offline-conflict-icon {
+    flex-shrink: 0;
+    color: #d97706;
+}
+
+:is(.dark, [data-theme='dark']) .offline-conflict-icon {
+    color: #f59e0b;
+}
+
+.offline-conflict-message {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
 }
 
 .offline-conflict-copy strong {
-    display: block;
-    margin-bottom: 4px;
+    font-size: 0.82rem;
+    font-weight: 600;
     color: var(--color-text-primary);
+    line-height: 1.25;
 }
 
 .offline-conflict-copy p {
     margin: 0;
-    color: var(--color-text-secondary);
-    font-size: 0.86rem;
+    color: var(--color-text-muted);
+    font-size: 0.76rem;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .offline-conflict-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+    flex-shrink: 0;
 }
 
 .offline-empty-state {

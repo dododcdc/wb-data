@@ -74,8 +74,10 @@ public class FlowGraphDraftBuilder {
 
                 if (transferNode) {
                     transferConfigs.put(nodeReq.taskId(), nodeReq.transfer());
-                    namespaceFileContents.put(transferConfigPath,
-                            transferConfigFileService.serialize(groupId, flowPath, nodeReq.taskId(), nodeReq.transfer()));
+                    if (nodeReq.transfer() != null) {
+                        namespaceFileContents.put(transferConfigPath,
+                                transferConfigFileService.serialize(groupId, flowPath, nodeReq.taskId(), nodeReq.transfer()));
+                    }
                 } else {
                     scriptFileContents.put(nodeReq.scriptPath(), nodeReq.scriptContent());
                     namespaceFileContents.put(nodeReq.scriptPath(), nodeReq.scriptContent());
@@ -106,7 +108,9 @@ public class FlowGraphDraftBuilder {
             Files.writeString(scriptFile, entry.getValue(), StandardCharsets.UTF_8);
         }
         for (Map.Entry<String, TransferConfig> entry : graphDraft.transferConfigs().entrySet()) {
-            transferConfigFileService.write(repoPath, groupId, flowPath, entry.getKey(), entry.getValue());
+            if (entry.getValue() != null) {
+                transferConfigFileService.write(repoPath, groupId, flowPath, entry.getKey(), entry.getValue());
+            }
         }
         List<String> activeTransferPaths = graphDraft.nodes().stream()
                 .filter(node -> "TRANSFER".equalsIgnoreCase(node.kind()))

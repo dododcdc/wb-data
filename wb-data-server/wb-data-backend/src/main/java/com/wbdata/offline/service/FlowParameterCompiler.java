@@ -37,10 +37,7 @@ final class FlowParameterCompiler {
             try {
                 if ("传输".equals(nodeKind)) {
                     TransferConfig config = transferConfigs.get(node.taskId());
-                    if (config == null) {
-                        throw badRequest(label + "缺少传输配置");
-                    }
-                    referenced = TransferParameters.references(config);
+                    referenced = config == null ? Set.of() : TransferParameters.references(config);
                 } else {
                     String script = scriptContents.get(node.scriptPath());
                     if (script == null) {

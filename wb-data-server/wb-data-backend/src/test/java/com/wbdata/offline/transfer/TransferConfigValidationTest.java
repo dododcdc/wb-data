@@ -41,6 +41,21 @@ class TransferConfigValidationTest {
     }
 
     @Test
+    void acceptsUnconfiguredTransferNodeDraft() {
+        SaveOfflineFlowNodeRequest request = new SaveOfflineFlowNodeRequest(
+                "transfer_node_01",
+                null,
+                "TRANSFER",
+                null,
+                null,
+                null,
+                null
+        );
+
+        assertThat(validator.validate(request)).isEmpty();
+    }
+
+    @Test
     void acceptsTaskIdWithLeadingDigit() {
         SaveOfflineFlowNodeRequest request = new SaveOfflineFlowNodeRequest(
                 "1transfer_node",
