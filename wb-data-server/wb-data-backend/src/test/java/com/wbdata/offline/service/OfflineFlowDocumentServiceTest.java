@@ -18,6 +18,7 @@ import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.dto.DebugDocumentExecutionRequest;
 import com.wbdata.offline.dto.FlowParameterBindingRequest;
 import com.wbdata.offline.dto.NodePosition;
+import com.wbdata.offline.dto.OfflineFlowNodeResponse;
 import com.wbdata.offline.dto.OfflineFlowSchedule;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowNodeRequest;
@@ -735,6 +736,62 @@ class OfflineFlowDocumentServiceTest {
         assertThat(repo.resolve("_flows/example/.parameters.json")).doesNotExist();
         assertThat(repo.resolve("transfers/example/transfer_1.transfer.json")).doesNotExist();
         assertThat(repo.resolve(".wb-data/kestra-flows/example.yaml")).doesNotExist();
+    }
+
+    @Test
+    void saveFlowDocument_allowsUnboundSqlNodeAndPreservesKindAndType() throws Exception {
+        OfflineProperties properties = offlineProperties();
+        RepoLockManager repoLockManager = new RepoLockManager();
+        OfflineFlowDocumentService service = service(properties, repoLockManager);
+
+        SaveOfflineFlowDocumentRequest request = new SaveOfflineFlowDocumentRequest(
+                1L,
+                "_flows/test/test2/flow.yaml",
+                null,
+                0L,
+                List.of(new SaveOfflineFlowStageRequest(
+                        "main",
+                        List.of(new SaveOfflineFlowNodeRequest(
+                                "mysql_node_1",
+                                "-- SQL script",
+                                "MYSQL",
+                                "scripts/test/test2/mysql_node_1.sql",
+                                null,
+                                "MYSQL"
+                        ))
+                )),
+                List.of(),
+                Map.of("mysql_node_1", new NodePosition(100, 100)),
+                null,
+                null,
+                null,
+                "Asia/Shanghai",
+                null
+        );
+
+        OfflineFlowDocumentResponse response = service.saveFlowDocument(request);
+        assertThat(response).isNotNull();
+        OfflineFlowNodeResponse node = findNodeInResponse(response, "mysql_node_1");
+        assertThat(node).isNotNull();
+        assertThat(node.kind()).isEqualTo("MYSQL");
+        assertThat(node.dataSourceId()).isNull();
+        assertThat(node.dataSourceType()).isEqualTo("MYSQL");
+
+        OfflineFlowDocumentResponse reloaded = service.getFlowDocument(1L, "_flows/test/test2/flow.yaml");
+        OfflineFlowNodeResponse reloadedNode = findNodeInResponse(reloaded, "mysql_node_1");
+        assertThat(reloadedNode).isNotNull();
+        assertThat(reloadedNode.kind()).isEqualTo("MYSQL");
+        assertThat(reloadedNode.dataSourceId()).isNull();
+        assertThat(reloadedNode.dataSourceType()).isEqualTo("MYSQL");
+    }
+
+    private OfflineFlowNodeResponse findNodeInResponse(OfflineFlowDocumentResponse response, String taskId) {
+        for (var stage : response.stages()) {
+            for (OfflineFlowNodeResponse node : stage.nodes()) {
+                if (node.taskId().equals(taskId)) return node;
+            }
+        }
+        return null;
     }
 
     private SaveOfflineFlowDocumentRequest transferParameterRequest(String postValue, FlowParameterBindingRequest binding) {

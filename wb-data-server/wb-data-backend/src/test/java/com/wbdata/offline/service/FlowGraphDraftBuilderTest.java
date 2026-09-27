@@ -84,6 +84,19 @@ class FlowGraphDraftBuilderTest {
         assertThat(draft.nodes()).extracting(OfflineFlowNode::kind).containsExactly("SQL", "HIVE_SQL");
     }
 
+    @Test
+    void prepareAcceptsUnconfiguredTransferNodeWithoutFailing() throws Exception {
+        var transferNode = new SaveOfflineFlowNodeRequest(
+                "transfer_1", "", "TRANSFER", "transfers/example/transfer_1.transfer.json", null, null, null);
+        var draft = builder.prepare(1L, "_flows/example/flow.yaml",
+                List.of(new SaveOfflineFlowStageRequest("main", List.of(transferNode))),
+                List.of());
+
+        assertThat(draft.nodes()).extracting(OfflineFlowNode::kind).containsExactly("TRANSFER");
+        assertThat(draft.transferConfigs()).containsEntry("transfer_1", null);
+        assertThat(draft.namespaceFileContents()).doesNotContainKey("transfers/example/transfer_1.transfer.json");
+    }
+
     private SaveOfflineFlowNodeRequest node(String taskId, String kind, Long dataSourceId) {
         return new SaveOfflineFlowNodeRequest(taskId, "select 1", kind,
                 "scripts/example/" + taskId + ".sql", dataSourceId, "HIVE_SQL".equals(kind) ? "HIVE" : "MYSQL");

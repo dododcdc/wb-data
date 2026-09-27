@@ -281,6 +281,21 @@ describe('flowSaveTransaction', () => {
         expect(buildSaveFlowDocumentRequest(1, nextSession).stages[0].nodes[0]).not.toHaveProperty('transferDraft');
     });
 
+    it('detects unconfigured transfer nodes with neither transfer nor draft', () => {
+        const session = makeSession(makeFlowDocument({
+            stages: [{
+                stageId: 'main',
+                parallel: false,
+                nodes: [{ taskId: 'transfer_new', kind: 'TRANSFER' }],
+            }],
+        }));
+
+        expect(findFirstNodeWithInvalidTransferEditorDraft(session.workingDraft)).toMatchObject({
+            taskId: 'transfer_new',
+            kind: 'TRANSFER',
+        });
+    });
+
     it('prepares a save session by flushing pending editor draft content', () => {
         const pendingDraft: PendingNodeEditorDraft = {
             taskId: 'shell_node_1',

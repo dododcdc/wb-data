@@ -20,10 +20,10 @@ public record SaveOfflineFlowNodeRequest(
         this(taskId, scriptContent, kind, scriptPath, dataSourceId, dataSourceType, null);
     }
 
-    @AssertTrue(message = "Transfer nodes require transfer configuration; script nodes require scriptPath and scriptContent")
+    @AssertTrue(message = "Script nodes require scriptPath and scriptContent")
     public boolean isValidForNodeKind() {
         if ("TRANSFER".equalsIgnoreCase(kind)) {
-            return transfer != null;
+            return true;
         }
         return scriptContent != null && scriptPath != null && !scriptPath.isBlank();
     }

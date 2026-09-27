@@ -117,28 +117,28 @@ export function OfflineWorkbenchMainPanel({
                 onOpenExecutions={onOpenExecutionDialog}
             />
 
-            {staleDraft ? (
-                <section className="offline-conflict-banner">
-                    <div className="offline-conflict-copy">
-                        <AlertTriangle size={16} />
-                        <div>
-                            <strong>发现未保存的本地恢复稿</strong>
-                            <p>当前文件也有更新。你可以继续恢复稿，或加载仓库最新内容。</p>
-                        </div>
-                    </div>
-                    <div className="offline-conflict-actions">
-                        <Button type="button" variant="outline" size="sm" onClick={onDiscardStaleDraft}>
-                            加载最新内容
-                        </Button>
-                        <Button type="button" size="sm" onClick={onRestoreStaleDraft}>
-                            继续恢复稿
-                        </Button>
-                    </div>
-                </section>
-            ) : null}
-
             <section className="offline-canvas-stage">
                 <section className="offline-canvas-board">
+                    {staleDraft ? (
+                        <div className="offline-conflict-banner" role="alert">
+                            <div className="offline-conflict-copy">
+                                <AlertTriangle size={15} className="offline-conflict-icon" />
+                                <div className="offline-conflict-message">
+                                    <strong>发现未保存的本地恢复稿</strong>
+                                    <p>当前文件也有更新。你可以继续恢复稿，或加载仓库最新内容。</p>
+                                </div>
+                            </div>
+                            <div className="offline-conflict-actions">
+                                <Button type="button" variant="outline" size="sm" onClick={onDiscardStaleDraft} className="h-7 px-2.5 text-xs">
+                                    加载最新内容
+                                </Button>
+                                <Button type="button" size="sm" onClick={onRestoreStaleDraft} className="h-7 px-2.5 text-xs">
+                                    继续恢复稿
+                                </Button>
+                            </div>
+                        </div>
+                    ) : null}
+
                     <ReactFlowProvider key={activeFlowPath}>
                         <FlowCanvas
                             flowDocument={flowDocument}

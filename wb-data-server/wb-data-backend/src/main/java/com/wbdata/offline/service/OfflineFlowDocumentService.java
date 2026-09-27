@@ -230,6 +230,11 @@ public class OfflineFlowDocumentService {
                     request.stages(),
                     request.edges()
             );
+            for (OfflineFlowNode node : draft.nodes()) {
+                if ("TRANSFER".equalsIgnoreCase(node.kind()) && draft.transferConfigs().get(node.taskId()) == null) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "传输节点“" + node.taskId() + "”未配置传输规则，无法执行");
+                }
+            }
             var flowContent = offlineFlowContentService.getFlowContent(request.groupId(), request.flowPath());
             Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
             FlowParameterSnapshot parameterSnapshot = parameterSnapshotStore.read(repoPath, request.flowPath())
@@ -275,15 +280,6 @@ public class OfflineFlowDocumentService {
                 request.stages(),
                 request.edges()
         );
-
-        // SQL / HiveSQL 节点必须绑定数据源
-        for (var node : graphDraft.nodes()) {
-            if (OfflineFlowNodeKinds.requiresDataSource(node.kind())
-                    && node.dataSourceId() == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "节点 " + node.taskId() + " 保存前必须绑定数据源");
-            }
-        }
 
         FlowParameterCompiler.Compilation parameterCompilation = parameterCompiler.compile(
                 parameterSnapshot,
@@ -435,18 +431,21 @@ public class OfflineFlowDocumentService {
                 }
                 taskOrder.add(node.taskId());
                 if ("TRANSFER".equalsIgnoreCase(node.kind())) {
-                    TransferConfig transfer = transferConfigFileService.read(repoPath, node.transferConfigPath());
-                    Path transferFile = resolveRepoFile(repoPath, node.transferConfigPath());
-                    if (Files.isRegularFile(transferFile)) {
-                        updatedAt = Math.max(updatedAt, Files.getLastModifiedTime(transferFile).toMillis());
-                        String transferContent = Files.readString(transferFile, StandardCharsets.UTF_8);
-                        signature.append('\n')
-                                .append(node.taskId())
-                                .append('\n')
-                                .append(node.transferConfigPath())
-                                .append('\n')
-                                .append(transferContent);
-                        managedNodeFiles.add(transferFile);
+                    TransferConfig transfer = null;
+                    if (node.transferConfigPath() != null) {
+                        Path transferFile = resolveRepoFile(repoPath, node.transferConfigPath());
+                        if (Files.isRegularFile(transferFile)) {
+                            transfer = transferConfigFileService.read(repoPath, node.transferConfigPath());
+                            updatedAt = Math.max(updatedAt, Files.getLastModifiedTime(transferFile).toMillis());
+                            String transferContent = Files.readString(transferFile, StandardCharsets.UTF_8);
+                            signature.append('\n')
+                                    .append(node.taskId())
+                                    .append('\n')
+                                    .append(node.transferConfigPath())
+                                    .append('\n')
+                                    .append(transferContent);
+                            managedNodeFiles.add(transferFile);
+                        }
                     }
                     nodes.add(new OfflineFlowNodeResponse(
                             node.taskId(),

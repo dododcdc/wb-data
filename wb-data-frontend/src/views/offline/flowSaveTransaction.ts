@@ -202,7 +202,7 @@ export function findFirstNodeWithInvalidTransferEditorDraft(
         };
     });
 
-    return nodes.find((node) => node.kind === 'TRANSFER' && node.transferDraftValid === false) ?? null;
+    return nodes.find((node) => node.kind === 'TRANSFER' && (node.transferDraftValid === false || (!node.transfer && !node.transferDraft))) ?? null;
 }
 
 export function isSaveConflictError(error: unknown) {
