@@ -148,8 +148,8 @@
                     <archive>
                         <manifestEntries>
                             <X-Kestra-Name>${project.artifactId}</X-Kestra-Name>
-                            <X-Kestra-Title>WB-Data JDBC</X-Kestra-Title>
-                            <X-Kestra-Group>io.wbdata.kestra.jdbc</X-Kestra-Group>
+                            <X-Kestra-Title>WB-Data</X-Kestra-Title>
+                            <X-Kestra-Group>io.wbdata.kestra</X-Kestra-Group>
                             <X-Kestra-Description>${project.description}</X-Kestra-Description>
                             <X-Kestra-Version>${project.version}</X-Kestra-Version>
                         </manifestEntries>
