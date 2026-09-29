@@ -174,8 +174,8 @@ public class OperationsExecutionService {
         Map<String, String> rerunInputs = new LinkedHashMap<>();
         Map<String, String> originalInputs = original.inputs() == null ? Map.of() : original.inputs();
         Set<String> originalOverrideKeys = splitLabelValues(labels(original).get(PARAMETER_OVERRIDE_KEYS_LABEL));
-        String currentSnapshotId = FlowParameterMetadata.readSnapshotId(
-                kestraClient.getFlowSource(original.namespace(), original.flowId()));
+        String currentFlowSource = kestraClient.getFlowSource(original.namespace(), original.flowId());
+        String currentSnapshotId = FlowParameterMetadata.readSnapshotId(currentFlowSource);
         com.wbdata.offline.dto.FlowParameterSnapshot currentSnapshot =
                 currentSnapshotId == null || currentSnapshotId.isBlank()
                         ? null
@@ -199,7 +199,11 @@ public class OperationsExecutionService {
                 rerunInputs.put(overrideKey, value);
             }
         }
-        if (currentSnapshot != null && hasPlannedTimeParameter(currentSnapshot)) {
+        // 计划时间转发给所有声明了该 input 的 flow：参数体系（计划时间参数）与依赖闸门都会声明它；
+        // 重跑该期靠它让闸门与参数拿到原业务期，而不是重跑时刻
+        boolean forwardsPlannedTime = (currentSnapshot != null && hasPlannedTimeParameter(currentSnapshot))
+                || FlowParameterMetadata.declaresInput(currentFlowSource, ExecutionTimeContext.PLANNED_TIME_INPUT);
+        if (forwardsPlannedTime) {
             Instant plannedTime = readPlannedTime(original);
             if (plannedTime == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "原执行缺少计划时间，无法重跑");

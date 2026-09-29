@@ -548,6 +548,80 @@ class OperationsExecutionServiceTest {
     }
 
     @Test
+    void rerunExecution_forwardsPlannedTimeForGatedFlowWithoutParameterSnapshot() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        WbOperationExecutionActionMapper actionMapper = Mockito.mock(WbOperationExecutionActionMapper.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient, actionMapper);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        // 依赖闸门 flow：声明了 wbdata_planned_time input，但没有参数快照
+        when(kestraClient.getExecution("exec-main")).thenReturn(execution(
+                "exec-main", "g4-main", "daily", "FAILED",
+                "2026-06-07T02:00:00Z",
+                "2026-06-07T02:00:05Z",
+                "2026-06-07T02:00:06Z",
+                "2026-06-07T02:10:00Z",
+                List.of()));
+        when(kestraClient.getFlowSource("g4-main", "daily")).thenReturn("""
+                id: daily
+                namespace: g4-main
+                inputs:
+                  - id: wbdata_planned_time
+                    type: DATETIME
+                    required: false
+                  - id: wbdata_bypass_gate
+                    type: BOOL
+                    defaults: false
+                tasks: []
+                """);
+        when(kestraClient.createExecution(
+                Mockito.eq("g4-main"), Mockito.eq("daily"), Mockito.anyMap(), Mockito.anyMap()))
+                .thenReturn(execution("rerun-1", "g4-main", "daily", "CREATED", "2026-06-07T03:00:00Z"));
+        when(actionMapper.insert(Mockito.any())).thenReturn(1);
+
+        service.rerunExecution(4L, 9L, "exec-main", false);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> inputs = ArgumentCaptor.forClass(Map.class);
+        verify(kestraClient).createExecution(
+                Mockito.eq("g4-main"), Mockito.eq("daily"), inputs.capture(), Mockito.anyMap());
+        assertThat(inputs.getValue()).containsExactly(
+                Map.entry(ExecutionTimeContext.PLANNED_TIME_INPUT, "2026-06-07T02:00:00Z"));
+    }
+
+    @Test
+    void rerunExecution_rejectsGatedFlowRerunWhenOriginalHasNoPlannedTime() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        WbOperationExecutionActionMapper actionMapper = Mockito.mock(WbOperationExecutionActionMapper.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient, actionMapper);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        // 手动旁路执行：没有 trigger.date，也没有计划时间 input
+        when(kestraClient.getExecution("exec-main")).thenReturn(execution(
+                "exec-main", "g4-main", "daily", "FAILED",
+                null,
+                "2026-06-07T02:00:05Z",
+                "2026-06-07T02:00:06Z",
+                "2026-06-07T02:10:00Z",
+                List.of()));
+        when(kestraClient.getFlowSource("g4-main", "daily")).thenReturn("""
+                id: daily
+                namespace: g4-main
+                inputs:
+                  - id: wbdata_planned_time
+                    type: DATETIME
+                    required: false
+                tasks: []
+                """);
+
+        assertThatThrownBy(() -> service.rerunExecution(4L, 9L, "exec-main", false))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                        assertThat(exception.getReason()).isEqualTo("原执行缺少计划时间，无法重跑"));
+        verify(kestraClient, never()).createExecution(
+                Mockito.anyString(), Mockito.anyString(), Mockito.anyMap(), Mockito.anyMap());
+    }
+
+    @Test
     void rerunExecutionReusesManualOverridesOnlyWhenExplicitlyRequested() {
         GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
         KestraClient kestraClient = Mockito.mock(KestraClient.class);
