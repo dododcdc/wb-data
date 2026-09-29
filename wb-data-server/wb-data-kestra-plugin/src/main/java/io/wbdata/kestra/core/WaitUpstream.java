@@ -78,6 +78,10 @@ public class WaitUpstream extends Task implements RunnableTask<WaitUpstream.Wait
     private List<Upstream> upstreams = List.of();
 
     @NotNull
+    @Schema(title = "本任务所属项目组 ID", description = "用于从运行时命名空间推导分支段")
+    private Property<String> selfGroupId;
+
+    @NotNull
     @Schema(title = "本任务调度频率", description = "HOURLY | DAILY | WEEKLY | MONTHLY | YEARLY")
     private Property<String> period;
 
@@ -131,7 +135,8 @@ public class WaitUpstream extends Task implements RunnableTask<WaitUpstream.Wait
                     runContext.flowInfo().id(), ownPeriod, ownZone, planned, scheduleKey, pageable);
         }
 
-        List<ResolvedUpstream> resolved = resolveUpstreams(runContext, flowRepository, tenant);
+        List<ResolvedUpstream> resolved = resolveUpstreams(runContext, flowRepository, tenant,
+                runContext.flowInfo().namespace());
         if (resolved.isEmpty()) {
             logger.info("未配置前置任务，闸门直接通过 (scheduleKey={})", scheduleKey);
             return WaitOutput.builder().scheduleKey(scheduleKey).bypassed(false).build();
@@ -221,16 +226,19 @@ public class WaitUpstream extends Task implements RunnableTask<WaitUpstream.Wait
     }
 
     private List<ResolvedUpstream> resolveUpstreams(RunContext runContext, FlowRepositoryInterface flowRepository,
-                                                    String tenant) throws IllegalVariableEvaluationException {
+                                                    String tenant, String ownNamespace)
+            throws IllegalVariableEvaluationException {
+        String selfGroupId = renderRequired(runContext, this.selfGroupId, "selfGroupId");
         List<ResolvedUpstream> resolved = new ArrayList<>();
         for (Upstream upstream : upstreams == null ? List.<Upstream>of() : upstreams) {
-            String namespace = runContext.render(upstream.getNamespace()).as(String.class)
-                    .orElseThrow(() -> new IllegalStateException("前置任务 namespace 不能为空"));
+            String groupId = runContext.render(upstream.getGroupId()).as(String.class)
+                    .orElseThrow(() -> new IllegalStateException("前置任务 groupId 不能为空"));
             String flowId = runContext.render(upstream.getFlowId()).as(String.class)
                     .orElseThrow(() -> new IllegalStateException("前置任务 flowId 不能为空"));
+            String namespace = upstreamNamespace(selfGroupId, ownNamespace, groupId.trim());
             Flow flow = flowRepository.findById(tenant, namespace, flowId)
                     .orElseThrow(() -> new IllegalStateException(
-                            "前置任务不存在: " + namespace + "/" + flowId + "（可能已被删除，请先解除依赖）"));
+                            "前置任务不存在: " + namespace + "/" + flowId + "（可能已被删除或未同步，请先解除依赖）"));
             Schedule schedule = flow.getTriggers() == null ? null : flow.getTriggers().stream()
                     .filter(Schedule.class::isInstance).map(Schedule.class::cast)
                     .findFirst().orElse(null);
@@ -246,6 +254,20 @@ public class WaitUpstream extends Task implements RunnableTask<WaitUpstream.Wait
             resolved.add(new ResolvedUpstream(namespace, flowId, upstreamPeriod, upstreamZone));
         }
         return resolved;
+    }
+
+    /**
+     * 运行时命名空间推导：SyncFlows 会把 flow 同步到 g<groupId>-<branch> 命名空间（覆盖 YAML 里的 pg-N），
+     * 因此同一分支下前置任务的命名空间 = g<上游 groupId>-(本任务命名空间的分支段)。
+     * 分支名超长被 boundedIdentifier 截断时推导可能失配，属极端边缘场景，找不到 flow 时会报清晰错误。
+     */
+    static String upstreamNamespace(String selfGroupId, String ownNamespace, String upstreamGroupId) {
+        String selfPrefix = "g" + selfGroupId + "-";
+        if (ownNamespace == null || !ownNamespace.startsWith(selfPrefix)) {
+            throw new IllegalStateException(
+                    "依赖闸门要求运行时命名空间为 " + selfPrefix + "<branch> 形式，当前: " + ownNamespace);
+        }
+        return "g" + upstreamGroupId + "-" + ownNamespace.substring(selfPrefix.length());
     }
 
     /** 执行的计划时间：手动重跑以 wbdata_planned_time 输入为准，调度触发取 trigger.date。 */
@@ -322,8 +344,8 @@ public class WaitUpstream extends Task implements RunnableTask<WaitUpstream.Wait
     @NoArgsConstructor
     public static class Upstream {
         @NotNull
-        @Schema(title = "前置任务 namespace")
-        private Property<String> namespace;
+        @Schema(title = "前置任务所属项目组 ID")
+        private Property<String> groupId;
 
         @NotNull
         @Schema(title = "前置任务 flowId")

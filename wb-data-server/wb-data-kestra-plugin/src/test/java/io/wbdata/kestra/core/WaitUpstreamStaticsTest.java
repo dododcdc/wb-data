@@ -65,6 +65,20 @@ class WaitUpstreamStaticsTest {
     }
 
     @Test
+    void upstreamNamespace_derivesBranchSegmentFromOwnNamespace() {
+        assertThat(WaitUpstream.upstreamNamespace("4", "g4-main", "3")).isEqualTo("g3-main");
+        assertThat(WaitUpstream.upstreamNamespace("4", "g4-feature-policy-review", "12"))
+                .isEqualTo("g12-feature-policy-review");
+    }
+
+    @Test
+    void upstreamNamespace_rejectsNonBranchNamespace() {
+        assertThatThrownBy(() -> WaitUpstream.upstreamNamespace("4", "pg-4", "3"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("pg-4");
+    }
+
+    @Test
     void stateSets_matchSpec() {
         assertThat(WaitUpstream.SATISFIED_STATES).containsExactly(State.Type.SUCCESS);
         assertThat(WaitUpstream.TERMINAL_STATES).containsExactlyInAnyOrder(
