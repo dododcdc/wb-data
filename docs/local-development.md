@@ -8,8 +8,17 @@
 - Node.js 18+
 - Maven
 - Docker（MySQL、Kestra、Hive、ClickHouse 都走 Compose）
-- 离线执行 / 调度：仓库内的 Kestra Compose
-- 传输 / Hive 样例：再加 Hive Compose
+
+## 最小可跑组合
+
+按需要逐步起服务，不必全量：
+
+| 目标 | 需要启动 |
+| --- | --- |
+| 登录、管理端、数据源、自助查询 | MySQL → 后端 → 前端 |
+| 离线画布 / 调度 / Git 同步 | 上述 + Kestra |
+| 传输 / Hive 样例 | 上述 + Hive |
+| ClickHouse 查询 | 上述 + ClickHouse |
 
 ## 构建后端与插件
 
@@ -96,6 +105,18 @@ java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
 会创建 `sys_admin`、`ga_alpha`、`dev_alpha` 等测试账号，以及 `alpha`、`beta` 项目组。
 
 只做管理端、查询、数据源「测试连接」时，上面即可。要跑画布执行或传输，按 [离线任务怎么连库](#离线任务怎么连库) 补环境变量。
+
+### 开发期改代码后的重启循环
+
+后端没有热加载；改完代码用构建后的 JAR 重启：
+
+```bash
+cd wb-data-server
+mvn -pl wb-data-backend package -DskipTests   # 或全量 mvn clean install
+# 停掉旧进程后重新执行上面「启动后端」的 java -jar 命令
+```
+
+前端走 Vite HMR，改代码即时生效，无需重启。
 
 ## 启动前端
 
