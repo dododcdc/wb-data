@@ -1,10 +1,12 @@
 package com.wbdata.query.service.impl;
 
 import com.wbdata.datasource.entity.DataSource;
+import com.wbdata.datasource.plugin.DataSourceConnectionInfoFactory;
 import com.wbdata.datasource.plugin.DataSourcePluginRegistry;
 import com.wbdata.datasource.service.DataSourceService;
 import com.wbdata.plugin.api.ColumnMetadata;
-import com.wbdata.plugin.api.DataSourceConnectionInfo;
+import com.wbdata.plugin.api.DialectMetadata;
+import com.wbdata.plugin.api.DataSourcePlugin;
 import com.wbdata.plugin.api.PageResult;
 import com.wbdata.plugin.api.TableSummary;
 import com.wbdata.query.service.MetadataService;
@@ -20,6 +22,7 @@ public class MetadataServiceImpl implements MetadataService {
 
     private final DataSourceService dataSourceService;
     private final DataSourcePluginRegistry pluginRegistry;
+    private final DataSourceConnectionInfoFactory connectionInfoFactory;
 
     @Override
     public List<String> getDatabases(Long dataSourceId) {
@@ -29,7 +32,7 @@ public class MetadataServiceImpl implements MetadataService {
         }
 
         return pluginRegistry.getPlugin(ds.getType())
-                .map(plugin -> plugin.getDatabases(buildConnectionInfo(ds)))
+                .map(plugin -> plugin.getDatabases(connectionInfoFactory.pooled(ds)))
                 .orElse(Collections.emptyList());
     }
 
@@ -41,7 +44,7 @@ public class MetadataServiceImpl implements MetadataService {
         }
 
         return pluginRegistry.getPlugin(ds.getType())
-                .map(plugin -> plugin.getTables(buildConnectionInfo(ds), databaseName, keyword, page, size))
+                .map(plugin -> plugin.getTables(connectionInfoFactory.pooled(ds), databaseName, keyword, page, size))
                 .orElse(new PageResult<>(Collections.emptyList(), 0, page, size));
     }
 
@@ -53,32 +56,19 @@ public class MetadataServiceImpl implements MetadataService {
         }
 
         return pluginRegistry.getPlugin(ds.getType())
-                .map(plugin -> plugin.getColumns(buildConnectionInfo(ds), databaseName, tableName))
+                .map(plugin -> plugin.getColumns(connectionInfoFactory.pooled(ds), databaseName, tableName))
                 .orElse(Collections.emptyList());
     }
 
     @Override
-    public com.wbdata.plugin.api.DialectMetadata getDialectMetadata(Long dataSourceId) {
+    public DialectMetadata getDialectMetadata(Long dataSourceId) {
         DataSource ds = dataSourceService.getById(dataSourceId);
         if (ds == null) {
-            return new com.wbdata.plugin.api.DialectMetadata(null, null, null);
+            return new DialectMetadata(null, null, null);
         }
 
         return pluginRegistry.getPlugin(ds.getType())
-                .map(com.wbdata.plugin.api.DataSourcePlugin::getDialectMetadata)
-                .orElseGet(() -> new com.wbdata.plugin.api.DialectMetadata(null, null, null));
-    }
-
-    private DataSourceConnectionInfo buildConnectionInfo(DataSource ds) {
-        return new DataSourceConnectionInfo(
-                ds.getId(),
-                ds.getType(),
-                ds.getHost(),
-                ds.getPort(),
-                ds.getDatabaseName(),
-                ds.getUsername(),
-                ds.getPassword(),
-                ds.getConnectionParams()
-        );
+                .map(DataSourcePlugin::getDialectMetadata)
+                .orElseGet(() -> new DialectMetadata(null, null, null));
     }
 }

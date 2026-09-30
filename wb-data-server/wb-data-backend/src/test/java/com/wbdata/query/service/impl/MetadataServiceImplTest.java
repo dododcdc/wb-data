@@ -1,6 +1,7 @@
 package com.wbdata.query.service.impl;
 
 import com.wbdata.datasource.entity.DataSource;
+import com.wbdata.datasource.plugin.DataSourceConnectionInfoFactory;
 import com.wbdata.datasource.plugin.DataSourcePluginRegistry;
 import com.wbdata.datasource.service.DataSourceService;
 import com.wbdata.plugin.api.DataSourcePlugin;
@@ -18,7 +19,8 @@ class MetadataServiceImplTest {
     private final DataSourceService dataSourceService = Mockito.mock(DataSourceService.class);
     private final DataSourcePluginRegistry pluginRegistry = Mockito.mock(DataSourcePluginRegistry.class);
     private final DataSourcePlugin plugin = Mockito.mock(DataSourcePlugin.class);
-    private final MetadataServiceImpl service = new MetadataServiceImpl(dataSourceService, pluginRegistry);
+    private final DataSourceConnectionInfoFactory connectionInfoFactory = new DataSourceConnectionInfoFactory();
+    private final MetadataServiceImpl service = new MetadataServiceImpl(dataSourceService, pluginRegistry, connectionInfoFactory);
 
     @Test
     void missingDataSourceReturnsEmptyInsteadOfThrowing() {

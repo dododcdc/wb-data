@@ -1,6 +1,7 @@
 package com.wbdata.offline.transfer.service;
 
 import com.wbdata.datasource.entity.DataSource;
+import com.wbdata.datasource.plugin.DataSourceConnectionInfoFactory;
 import com.wbdata.datasource.plugin.DataSourcePluginRegistry;
 import com.wbdata.datasource.service.DataSourceService;
 import com.wbdata.offline.transfer.dto.TransferTableMetadataResponse;
@@ -31,7 +32,7 @@ class TransferMetadataServiceTest {
         when(plugin.getDatabases(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(List.of("transfer_demo", "archive"));
 
-        TransferMetadataService service = new TransferMetadataService(dataSourceService, pluginRegistry);
+        TransferMetadataService service = new TransferMetadataService(dataSourceService, pluginRegistry, new DataSourceConnectionInfoFactory());
 
         assertThat(service.getDatabases(11L)).containsExactly("transfer_demo", "archive");
     }
@@ -41,7 +42,7 @@ class TransferMetadataServiceTest {
         DataSourceService dataSourceService = mock(DataSourceService.class);
         DataSourcePluginRegistry pluginRegistry = mock(DataSourcePluginRegistry.class);
         when(dataSourceService.getById(12L)).thenReturn(dataSource(12L, "ORACLE"));
-        TransferMetadataService service = new TransferMetadataService(dataSourceService, pluginRegistry);
+        TransferMetadataService service = new TransferMetadataService(dataSourceService, pluginRegistry, new DataSourceConnectionInfoFactory());
 
         assertThatThrownBy(() -> service.getDatabases(12L))
                 .hasMessageContaining("暂不支持的数据源类型: ORACLE");
@@ -61,7 +62,7 @@ class TransferMetadataServiceTest {
                         List.of(new PartitionColumnMetadata("dayno", "string", "business day")),
                         true));
 
-        TransferMetadataService service = new TransferMetadataService(dataSourceService, pluginRegistry);
+        TransferMetadataService service = new TransferMetadataService(dataSourceService, pluginRegistry, new DataSourceConnectionInfoFactory());
 
         TransferTableMetadataResponse response = service.getTableMetadata(9L, "warehouse", "daily_orders");
 
@@ -83,7 +84,7 @@ class TransferMetadataServiceTest {
         when(plugin.getTableDetail(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString()))
                 .thenReturn(new TableDetail(List.of(column("order_id")), List.of(), false));
 
-        TransferMetadataService service = new TransferMetadataService(dataSourceService, pluginRegistry);
+        TransferMetadataService service = new TransferMetadataService(dataSourceService, pluginRegistry, new DataSourceConnectionInfoFactory());
 
         TransferTableMetadataResponse response = service.getTableMetadata(10L, "app", "orders");
 

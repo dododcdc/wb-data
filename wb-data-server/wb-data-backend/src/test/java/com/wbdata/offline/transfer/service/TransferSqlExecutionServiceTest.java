@@ -1,6 +1,7 @@
 package com.wbdata.offline.transfer.service;
 
 import com.wbdata.datasource.entity.DataSource;
+import com.wbdata.datasource.plugin.DataSourceConnectionInfoFactory;
 import com.wbdata.datasource.plugin.DataSourcePluginRegistry;
 import com.wbdata.offline.transfer.config.TransferInternalProperties;
 import com.wbdata.offline.transfer.dto.TransferEndpointConfig;
@@ -55,7 +56,8 @@ class TransferSqlExecutionServiceTest {
         properties.setInternalToken("internal-token");
         properties.setSqlTimeoutSeconds(17);
         service = new TransferSqlExecutionService(
-                new TransferExecutionGuard(properties, metadata, validatorFactory.getValidator()), plugins, properties);
+                new TransferExecutionGuard(properties, metadata, validatorFactory.getValidator()), plugins,
+                new DataSourceConnectionInfoFactory(), properties);
     }
 
     @AfterEach
