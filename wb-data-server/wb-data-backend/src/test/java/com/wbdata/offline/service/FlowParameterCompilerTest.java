@@ -229,13 +229,15 @@ class FlowParameterCompilerTest {
     }
 
     @Test
-    void rejectsUndefinedTransferParametersAndMissingTransferConfig() {
+    void rejectsUndefinedTransferParametersButToleratesMissingTransferConfig() {
         assertThatThrownBy(() -> compiler.compile(null, List.of(transferNode("orders")), Map.of(),
                 Map.of("orders", transfer(null, "^[missing]", "id", null, null))))
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("传输 节点“orders”")
                 .hasMessageContaining("未定义参数: missing");
-        assertThatThrownBy(() -> compiler.compile(null, List.of(transferNode("orders")), Map.of(), Map.of()))
-                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("缺少传输配置");
+        // 3febdb9 起草稿保存容忍未配置传输规则的 TRANSFER 节点（无引用继续编译）；
+        // 执行/提交前的拦截在 OfflineFlowDocumentService 的卡点，不在编译器
+        assertThat(compiler.compile(null, List.of(transferNode("orders")), Map.of(), Map.of()))
+                .isNotNull();
     }
 
     @ParameterizedTest
