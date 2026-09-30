@@ -1,10 +1,10 @@
 package com.wbdata.offline.transfer.service;
 
 import com.wbdata.datasource.entity.DataSource;
+import com.wbdata.datasource.plugin.DataSourceConnectionInfoFactory;
 import com.wbdata.datasource.plugin.DataSourcePluginRegistry;
 import com.wbdata.offline.transfer.config.TransferInternalProperties;
 import com.wbdata.offline.transfer.dto.TransferRenderRequest;
-import com.wbdata.plugin.api.DataSourceConnectionInfo;
 import com.wbdata.plugin.api.DataSourcePlugin;
 import com.wbdata.plugin.api.SqlExecutionException;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +21,7 @@ public class TransferSqlExecutionService {
 
     private final TransferExecutionGuard guard;
     private final DataSourcePluginRegistry pluginRegistry;
+    private final DataSourceConnectionInfoFactory connectionInfoFactory;
     private final TransferInternalProperties properties;
 
     public String executePreSql(String internalToken, TransferRenderRequest request, Map<String, String> parameters) {
@@ -47,10 +48,8 @@ public class TransferSqlExecutionService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "未找到目标数据源插件"));
         String phase = beforeTransfer ? "前置 SQL" : "后置 SQL";
         try {
-            plugin.executeStatements(new DataSourceConnectionInfo(
-                    target.getId(), target.getType(), target.getHost(), target.getPort(),
-                    request.target().database(), target.getUsername(), target.getPassword(), target.getConnectionParams()
-            ), statements, parameters, properties.getSqlTimeoutSeconds());
+            plugin.executeStatements(connectionInfoFactory.pooled(target, request.target().database()),
+                    statements, parameters, properties.getSqlTimeoutSeconds());
         } catch (SqlExecutionException e) {
             String detail = e.getStatementIndex() == 0 ? "连接失败" : "第 " + e.getStatementIndex() + " 条执行失败";
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,

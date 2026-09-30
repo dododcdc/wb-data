@@ -1,11 +1,11 @@
 package com.wbdata.offline.transfer.service;
 
 import com.wbdata.datasource.entity.DataSource;
+import com.wbdata.datasource.plugin.DataSourceConnectionInfoFactory;
 import com.wbdata.datasource.plugin.DataSourcePluginRegistry;
 import com.wbdata.datasource.service.DataSourceService;
 import com.wbdata.offline.transfer.dto.TransferTableMetadataResponse;
 import com.wbdata.offline.transfer.dto.TransferWriteModeOption;
-import com.wbdata.plugin.api.DataSourceConnectionInfo;
 import com.wbdata.plugin.api.PageResult;
 import com.wbdata.plugin.api.TableDetail;
 import com.wbdata.plugin.api.TableSummary;
@@ -31,18 +31,19 @@ public class TransferMetadataService {
 
     private final DataSourceService dataSourceService;
     private final DataSourcePluginRegistry pluginRegistry;
+    private final DataSourceConnectionInfoFactory connectionInfoFactory;
 
     public List<String> getDatabases(Long dataSourceId) {
         DataSource dataSource = requireSupportedDataSource(dataSourceId);
         return pluginRegistry.getPlugin(dataSource.getType())
-                .map(plugin -> plugin.getDatabases(buildConnectionInfo(dataSource)))
+                .map(plugin -> plugin.getDatabases(connectionInfoFactory.pooled(dataSource)))
                 .orElseThrow(() -> unsupportedType(dataSource.getType()));
     }
 
     public PageResult<TableSummary> getTables(Long dataSourceId, String databaseName, String keyword, int page, int size) {
         DataSource dataSource = requireSupportedDataSource(dataSourceId);
         return pluginRegistry.getPlugin(dataSource.getType())
-                .map(plugin -> plugin.getTables(buildConnectionInfo(dataSource), databaseName, keyword, page, size))
+                .map(plugin -> plugin.getTables(connectionInfoFactory.pooled(dataSource), databaseName, keyword, page, size))
                 .orElseThrow(() -> unsupportedType(dataSource.getType()));
     }
 
@@ -76,19 +77,7 @@ public class TransferMetadataService {
 
     public TableDetail getTableDetail(DataSource dataSource, String databaseName, String tableName) {
         return pluginRegistry.getPlugin(dataSource.getType())
-                .map(plugin -> plugin.getTableDetail(buildConnectionInfo(dataSource), databaseName, tableName))
+                .map(plugin -> plugin.getTableDetail(connectionInfoFactory.pooled(dataSource), databaseName, tableName))
                 .orElseThrow(() -> unsupportedType(dataSource.getType()));
-    }
-
-    private DataSourceConnectionInfo buildConnectionInfo(DataSource dataSource) {
-        return new DataSourceConnectionInfo(
-                dataSource.getId(),
-                dataSource.getType(),
-                dataSource.getHost(),
-                dataSource.getPort(),
-                dataSource.getDatabaseName(),
-                dataSource.getUsername(),
-                dataSource.getPassword(),
-                dataSource.getConnectionParams());
     }
 }
