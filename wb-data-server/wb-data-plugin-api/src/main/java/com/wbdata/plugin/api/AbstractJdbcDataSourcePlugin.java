@@ -3,18 +3,30 @@ package com.wbdata.plugin.api;
 import com.wbdata.sql.SqlParameterTemplate;
 
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.Driver;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 基于 JDBC 的数据源插件抽象基类
- * 
+ *
  * <p>
  * 默认情况下，各方法通过 {@link DriverManager} 创建原生 JDBC 连接。
- * 如需启用连接池，请通过 {@link #setConnectionSupplier(ConnectionSupplier)} 
+ * 如需启用连接池，请通过 {@link #setConnectionSupplier(ConnectionSupplier)}
  * 注入一个 {@link ConnectionSupplier}——通常由后端的
  * {@code DataSourceConnectionPoolManager} 在插件加载完成后执行。
  *
@@ -43,7 +55,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                 String jdbcUrl,
                 String driverClassName,
                 ClassLoader driverClassLoader)
-                throws Exception;
+        throws Exception;
     }
 
     /**
@@ -106,17 +118,17 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     }
 
     @Override
-    public java.util.List<String> getDatabases(DataSourceConnectionInfo connectionInfo) {
-        java.util.List<String> databases = new java.util.ArrayList<>();
+    public List<String> getDatabases(DataSourceConnectionInfo connectionInfo) {
+        List<String> databases = new ArrayList<>();
         try (Connection connection = getConnection(connectionInfo)) {
-            java.sql.DatabaseMetaData metaData = connection.getMetaData();
-            try (java.sql.ResultSet rs = metaData.getCatalogs()) {
+            DatabaseMetaData metaData = connection.getMetaData();
+            try (ResultSet rs = metaData.getCatalogs()) {
                 while (rs.next()) {
                     databases.add(rs.getString("TABLE_CAT"));
                 }
             }
             if (databases.isEmpty()) {
-                try (java.sql.ResultSet rs = metaData.getSchemas()) {
+                try (ResultSet rs = metaData.getSchemas()) {
                     while (rs.next()) {
                         databases.add(rs.getString("TABLE_SCHEM"));
                     }
@@ -130,19 +142,19 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
 
     @Override
     public PageResult<TableSummary> getTables(DataSourceConnectionInfo connectionInfo, String databaseName, String keyword, int page, int size) {
-        java.util.List<TableSummary> allMatched = new java.util.ArrayList<>();
+        List<TableSummary> allMatched = new ArrayList<>();
         try (Connection connection = getConnection(connectionInfo)) {
-            java.sql.DatabaseMetaData metaData = connection.getMetaData();
+            DatabaseMetaData metaData = connection.getMetaData();
 
-            String normalizedKeyword = keyword == null ? null : keyword.trim().toLowerCase(java.util.Locale.ROOT);
+            String normalizedKeyword = keyword == null ? null : keyword.trim().toLowerCase(Locale.ROOT);
             boolean hasKeyword = normalizedKeyword != null && !normalizedKeyword.isEmpty();
 
-            try (java.sql.ResultSet rs = metaData.getTables(databaseName, null, "%",
+            try (ResultSet rs = metaData.getTables(databaseName, null, "%",
                     new String[] { "TABLE", "VIEW" })) {
                 while (rs.next()) {
                     String tableName = rs.getString("TABLE_NAME");
                     if (hasKeyword && (tableName == null
-                            || !tableName.toLowerCase(java.util.Locale.ROOT).contains(normalizedKeyword))) {
+                            || !tableName.toLowerCase(Locale.ROOT).contains(normalizedKeyword))) {
                         continue;
                     }
                     String tableType = rs.getString("TABLE_TYPE");
@@ -154,22 +166,16 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
             throw new DataSourceException("获取表列表失败: " + databaseName, e);
         }
 
-        int total = allMatched.size();
-        int safePage = Math.max(page, 1);
-        int safeSize = size > 0 ? size : 200;
-        int fromIndex = Math.min((safePage - 1) * safeSize, total);
-        int toIndex = Math.min(fromIndex + safeSize, total);
-        java.util.List<TableSummary> data = new java.util.ArrayList<>(allMatched.subList(fromIndex, toIndex));
-        return new PageResult<>(data, total, safePage, safeSize);
+        return paginate(allMatched, page, size);
     }
 
     @Override
-    public java.util.List<ColumnMetadata> getColumns(DataSourceConnectionInfo connectionInfo, String databaseName, String tableName) {
-        java.util.Set<String> primaryKeys = new java.util.HashSet<>();
+    public List<ColumnMetadata> getColumns(DataSourceConnectionInfo connectionInfo, String databaseName, String tableName) {
+        Set<String> primaryKeys = new HashSet<>();
         try (Connection connection = getConnection(connectionInfo)) {
-            java.sql.DatabaseMetaData metaData = connection.getMetaData();
+            DatabaseMetaData metaData = connection.getMetaData();
 
-            try (java.sql.ResultSet pkRs = metaData.getPrimaryKeys(databaseName, null, tableName)) {
+            try (ResultSet pkRs = metaData.getPrimaryKeys(databaseName, null, tableName)) {
                 while (pkRs.next()) {
                     primaryKeys.add(pkRs.getString("COLUMN_NAME"));
                 }
@@ -177,15 +183,15 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                 // 某些驱动不支持 getPrimaryKeys，降级为全部当作非主键
             }
 
-            java.util.List<ColumnMetadata> columns = new java.util.ArrayList<>();
-            try (java.sql.ResultSet colRs = metaData.getColumns(databaseName, null, tableName, "%")) {
+            List<ColumnMetadata> columns = new ArrayList<>();
+            try (ResultSet colRs = metaData.getColumns(databaseName, null, tableName, "%")) {
                 while (colRs.next()) {
                     String columnName = colRs.getString("COLUMN_NAME");
                     columns.add(new ColumnMetadata(
                             columnName,
                             colRs.getString("TYPE_NAME"),
                             colRs.getInt("COLUMN_SIZE"),
-                            colRs.getInt("NULLABLE") == java.sql.DatabaseMetaData.columnNullable,
+                            colRs.getInt("NULLABLE") == DatabaseMetaData.columnNullable,
                             colRs.getString("REMARKS"),
                             primaryKeys.contains(columnName)));
                 }
@@ -198,7 +204,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
 
     @Override
     public TableDetail getTableDetail(DataSourceConnectionInfo connectionInfo, String databaseName, String tableName) {
-        return new TableDetail(getColumns(connectionInfo, databaseName, tableName), java.util.List.of(), false);
+        return new TableDetail(getColumns(connectionInfo, databaseName, tableName), List.of(), false);
     }
 
     @Override
@@ -214,7 +220,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                     // 某些驱动不支持 setCatalog
                 }
             }
-            try (java.sql.Statement statement = connection.createStatement()) {
+            try (Statement statement = connection.createStatement()) {
                 statement.setMaxRows(rowLimit);
                 boolean hasResultSet = statement.execute(request.sql());
                 if (hasResultSet) {
@@ -222,8 +228,8 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                 } else {
                     int updateCount = statement.getUpdateCount();
                     return new QueryResult(
-                            java.util.Collections.emptyList(),
-                            java.util.Collections.emptyList(),
+                            Collections.emptyList(),
+                            Collections.emptyList(),
                             System.currentTimeMillis() - startTime,
                             "Affected rows: " + updateCount,
                             false,
@@ -236,15 +242,18 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     }
 
     @Override
-    public void executeStatements(DataSourceConnectionInfo connectionInfo, java.util.List<String> statements,
+    public void executeStatements(DataSourceConnectionInfo connectionInfo, List<String> statements,
                                   Map<String, String> parameters, int timeoutSeconds) {
         if (statements.isEmpty()) {
             return;
         }
+        // statementIndex 的语义由 SqlExecutionException 定义：1-based 的语句序号；
+        // 连接建立或初始化失败时为 0。编译与执行共用同一序号——编译阶段缺参同样
+        // 指向具体语句，调用方（传输前后置 SQL）按序号提示"第 N 条"。
         int statementIndex = 0;
         try {
             // 整阶段先编译并校验参数，避免后续语句缺参时前面的写入已自动提交。
-            java.util.List<SqlParameterTemplate.Compilation> compiledStatements = new java.util.ArrayList<>();
+            List<SqlParameterTemplate.Compilation> compiledStatements = new ArrayList<>();
             for (String sql : statements) {
                 statementIndex++;
                 SqlParameterTemplate.Compilation compiled = SqlParameterTemplate.compile(sql);
@@ -261,7 +270,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                 connection.setAutoCommit(true);
                 for (SqlParameterTemplate.Compilation compiled : compiledStatements) {
                     statementIndex++;
-                    try (java.sql.PreparedStatement statement = connection.prepareStatement(compiled.jdbcSql())) {
+                    try (PreparedStatement statement = connection.prepareStatement(compiled.jdbcSql())) {
                         statement.setQueryTimeout(timeoutSeconds);
                         for (int index = 0; index < compiled.parameterNames().size(); index++) {
                             statement.setString(index + 1, parameters.get(compiled.parameterNames().get(index)));
@@ -279,29 +288,29 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
      * 从 Statement 中读取 ResultSet，解析列信息和行数据，封装为 QueryResult。
      * 仅在 {@code statement.execute()} 返回 true（即有结果集）时调用。
      */
-    private QueryResult buildQueryResult(java.sql.Statement statement, long startTime, int rowLimit) throws java.sql.SQLException {
-        try (java.sql.ResultSet rs = statement.getResultSet()) {
-            java.sql.ResultSetMetaData rsMeta = rs.getMetaData();
+    private QueryResult buildQueryResult(Statement statement, long startTime, int rowLimit) throws SQLException {
+        try (ResultSet rs = statement.getResultSet()) {
+            ResultSetMetaData rsMeta = rs.getMetaData();
             int colCount = rsMeta.getColumnCount();
 
-            java.util.List<ColumnMetadata> columns = new java.util.ArrayList<>();
+            List<ColumnMetadata> columns = new ArrayList<>();
             for (int i = 1; i <= colCount; i++) {
                 columns.add(new ColumnMetadata(
                         rsMeta.getColumnName(i),
                         rsMeta.getColumnTypeName(i),
                         rsMeta.getPrecision(i),
-                        rsMeta.isNullable(i) == java.sql.ResultSetMetaData.columnNullable,
+                        rsMeta.isNullable(i) == ResultSetMetaData.columnNullable,
                         "",
                         false));
             }
-            java.util.List<java.util.Map<String, Object>> rows = new java.util.ArrayList<>();
+            List<Map<String, Object>> rows = new ArrayList<>();
             boolean truncated = false;
             while (rs.next()) {
                 if (rows.size() >= rowLimit) {
                     truncated = true;
                     break;
                 }
-                java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+                Map<String, Object> row = new LinkedHashMap<>();
                 for (int i = 1; i <= colCount; i++) {
                     row.put(rsMeta.getColumnName(i), rs.getObject(i));
                 }
@@ -334,22 +343,22 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     @Override
     public DialectMetadata getDialectMetadata() {
         return new DialectMetadata(
-                java.util.List.of(
+                List.of(
                         "SELECT", "FROM", "WHERE", "AND", "OR", "LIMIT", "ORDER BY", "GROUP BY",
                         "HAVING", "JOIN", "LEFT JOIN", "RIGHT JOIN", "INNER JOIN", "ON", "AS",
                         "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER", "TABLE", "DATABASE",
                         "IN", "IS", "NULL", "NOT", "EXISTS", "COUNT", "SUM", "AVG", "MIN", "MAX",
                         "DISTINCT", "UNION", "ALL", "CASE", "WHEN", "THEN", "ELSE", "END", "ASC", "DESC"),
-                java.util.List.of(),
-                java.util.List.of());
+                List.of(),
+                List.of());
     }
 
     protected String emptyIfNull(String value) {
         return value == null ? "" : value;
     }
 
-    protected java.util.List<String> prioritizeConfiguredDatabase(java.util.List<String> databases, String configuredDatabase) {
-        java.util.List<String> normalized = new java.util.ArrayList<>();
+    protected List<String> prioritizeConfiguredDatabase(List<String> databases, String configuredDatabase) {
+        List<String> normalized = new ArrayList<>();
         for (String database : databases) {
             if (database != null && !database.isBlank()) {
                 normalized.add(database);
@@ -394,7 +403,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
 
     private String normalizeConnectionErrorMessage(String message) {
         String normalized = message.trim();
-        String lowerCaseMessage = normalized.toLowerCase(java.util.Locale.ROOT);
+        String lowerCaseMessage = normalized.toLowerCase(Locale.ROOT);
 
         if (lowerCaseMessage.contains("connection refused")
                 || lowerCaseMessage.contains("communications link failure")
@@ -422,8 +431,8 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
 
         if (lowerCaseMessage.contains("unknown database")
                 || lowerCaseMessage.contains("database does not exist")
-                || lowerCaseMessage.contains("schema")
-                && lowerCaseMessage.contains("does not exist")) {
+                || (lowerCaseMessage.contains("schema")
+                    && lowerCaseMessage.contains("does not exist"))) {
             return "默认数据库不存在，请检查数据库名称是否正确";
         }
 
@@ -484,5 +493,15 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
             DriverManager.registerDriver(new DriverShim(driver));
             REGISTERED_DRIVERS.add(registrationKey);
         }
+    }
+
+    /** 内存分页：JDBC 元数据接口无原生分页，全量取回后切页。 */
+    private static <T> PageResult<T> paginate(List<T> allMatched, int page, int size) {
+        int total = allMatched.size();
+        int safePage = Math.max(page, 1);
+        int safeSize = size > 0 ? size : 200;
+        int fromIndex = Math.min((safePage - 1) * safeSize, total);
+        int toIndex = Math.min(fromIndex + safeSize, total);
+        return new PageResult<>(new ArrayList<>(allMatched.subList(fromIndex, toIndex)), total, safePage, safeSize);
     }
 }
