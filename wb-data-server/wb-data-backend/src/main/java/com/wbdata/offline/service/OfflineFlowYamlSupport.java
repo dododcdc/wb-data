@@ -22,19 +22,12 @@ import java.util.Map;
 import java.util.Set;
 
 final class OfflineFlowYamlSupport {
-    static final String DEPENDENCIES_LABEL = "wbdataDependencies";
-    static final String FAILURE_POLICY_LABEL = "wbdataFailurePolicy";
-    static final String CROSS_GROUP_DEPENDENCY_LABEL = "wbdataCrossGroupDependency";
-    static final String GATE_TASK_ID = "wb_upstream_gate";
-    static final String GATE_TASK_TYPE = "io.wbdata.kestra.core.WaitUpstream";
-    static final String BYPASS_GATE_INPUT = "wbdata_bypass_gate";
-    private static final java.util.regex.Pattern REPO_NAMESPACE_PATTERN =
-            java.util.regex.Pattern.compile("^pg-(\\d+)$");
     private static final java.util.regex.Pattern READ_CALL_PATTERN =
             java.util.regex.Pattern.compile("\\{\\{\\s*read\\(\\s*['\"]([^'\"]+)['\"]\\s*\\)\\s*}}");
 
     private final FlowYamlCodec yaml;
     private final OfflineFlowScheduleYaml scheduleYaml;
+    private final OfflineFlowDependencyYaml dependencyYaml;
     private final OfflineNodeTaskCompiler nodeTaskCompiler;
 
     OfflineFlowYamlSupport() {
@@ -48,6 +41,7 @@ final class OfflineFlowYamlSupport {
     private OfflineFlowYamlSupport(OfflineNodeTaskCompiler nodeTaskCompiler) {
         this.yaml = new FlowYamlCodec();
         this.scheduleYaml = new OfflineFlowScheduleYaml(yaml);
+        this.dependencyYaml = new OfflineFlowDependencyYaml(yaml, scheduleYaml);
         this.nodeTaskCompiler = nodeTaskCompiler;
     }
 
@@ -94,7 +88,7 @@ final class OfflineFlowYamlSupport {
         Map<String, Object> root = yaml.loadRoot(source);
         root.put("namespace", debugNamespace);
         root.remove("triggers");
-        stripDependencyGate(root);
+        dependencyYaml.stripDependencyGate(root);
 
         Map<String, Object> labels = new LinkedHashMap<>();
         labels.putAll(yaml.asStringObjectMap(root.get("labels")));
@@ -186,222 +180,30 @@ final class OfflineFlowYamlSupport {
     }
 
     OfflineFlowDependencySettings readDependencyConfig(String source) {
-        return new OfflineFlowDependencySettings(
-                readDependencies(source), readFailurePolicy(source), readCrossGroupDependency(source));
+        return dependencyYaml.readDependencyConfig(source);
     }
 
     List<OfflineFlowDependencyRef> readDependencies(String source) {
-        return parseDependenciesLabel(readLabel(source, DEPENDENCIES_LABEL));
-    }
-
-    static List<OfflineFlowDependencyRef> parseDependenciesLabel(String value) {
-        if (value == null || value.isBlank()) {
-            return List.of();
-        }
-        List<OfflineFlowDependencyRef> refs = new ArrayList<>();
-        for (String entry : value.split(",")) {
-            String trimmed = entry.trim();
-            if (trimmed.isEmpty()) {
-                continue;
-            }
-            int separator = trimmed.indexOf(':');
-            if (separator <= 0 || separator == trimmed.length() - 1) {
-                continue;
-            }
-            try {
-                long groupId = Long.parseLong(trimmed.substring(0, separator).trim());
-                String flowId = trimmed.substring(separator + 1).trim();
-                if (!flowId.isEmpty()) {
-                    refs.add(new OfflineFlowDependencyRef(groupId, flowId));
-                }
-            } catch (NumberFormatException ignored) {
-                // 忽略无法解析的历史 label 项
-            }
-        }
-        return List.copyOf(refs);
-    }
-
-    static String encodeDependencies(List<OfflineFlowDependencyRef> dependencies) {
-        return String.join(",", dependencies.stream()
-                .map(ref -> ref.groupId() + ":" + ref.flowId())
-                .toList());
+        return dependencyYaml.readDependencies(source);
     }
 
     OfflineFailurePolicy readFailurePolicy(String source) {
-        return parseEnumLabel(readLabel(source, FAILURE_POLICY_LABEL),
-                OfflineFailurePolicy.class, OfflineFailurePolicy.CONTINUE);
+        return dependencyYaml.readFailurePolicy(source);
     }
 
     OfflineCrossGroupDependency readCrossGroupDependency(String source) {
-        return parseEnumLabel(readLabel(source, CROSS_GROUP_DEPENDENCY_LABEL),
-                OfflineCrossGroupDependency.class, OfflineCrossGroupDependency.ALLOW);
-    }
-
-    private static <E extends Enum<E>> E parseEnumLabel(String value, Class<E> type, E fallback) {
-        if (value == null || value.isBlank()) {
-            return fallback;
-        }
-        try {
-            return Enum.valueOf(type, value.trim().toUpperCase());
-        } catch (IllegalArgumentException ex) {
-            return fallback;
-        }
+        return dependencyYaml.readCrossGroupDependency(source);
     }
 
     String applyDependencyConfig(String source,
                                  List<OfflineFlowDependencyRef> dependencies,
                                  OfflineFailurePolicy failurePolicy,
                                  OfflineCrossGroupDependency crossGroupDependency) {
-        Map<String, Object> root = yaml.loadRoot(source);
-        Map<String, Object> labels = new LinkedHashMap<>();
-        labels.putAll(yaml.asStringObjectMap(root.get("labels")));
-        if (dependencies == null || dependencies.isEmpty()) {
-            labels.remove(DEPENDENCIES_LABEL);
-        } else {
-            labels.put(DEPENDENCIES_LABEL, encodeDependencies(dependencies));
-        }
-        if (failurePolicy == null || failurePolicy == OfflineFailurePolicy.CONTINUE) {
-            labels.remove(FAILURE_POLICY_LABEL);
-        } else {
-            labels.put(FAILURE_POLICY_LABEL, failurePolicy.name());
-        }
-        if (crossGroupDependency == null || crossGroupDependency == OfflineCrossGroupDependency.ALLOW) {
-            labels.remove(CROSS_GROUP_DEPENDENCY_LABEL);
-        } else {
-            labels.put(CROSS_GROUP_DEPENDENCY_LABEL, crossGroupDependency.name());
-        }
-        if (labels.isEmpty()) {
-            root.remove("labels");
-        } else {
-            root.put("labels", labels);
-        }
-        return applyDependencyGate(yaml.dump(root));
+        return dependencyYaml.applyDependencyConfig(source, dependencies, failurePolicy, crossGroupDependency);
     }
 
-    /**
-     * 依赖闸门段（WaitUpstream task + 旁路/计划时间 input）的统一重生成。
-     * 内容完全由 YAML 自身推导（namespace 的 pg-N、依赖/策略 labels、调度 trigger），
-     * 因此所有改动调度或依赖的编译路径在收尾时调用一次即可保持闸门一致；无依赖时自动剥除。
-     */
     String applyDependencyGate(String source) {
-        Map<String, Object> root = yaml.loadRoot(source);
-        List<Map<String, Object>> tasks = new ArrayList<>();
-        if (root.get("tasks") instanceof List<?> rawTasks) {
-            for (Object rawTask : rawTasks) {
-                if (rawTask instanceof Map<?, ?> taskMap) {
-                    tasks.add(new LinkedHashMap<>((Map<String, Object>) taskMap));
-                }
-            }
-        }
-        tasks.removeIf(task -> GATE_TASK_ID.equals(yaml.readOptionalString(task, "id")));
-        removeGateInputs(root);
-
-        List<OfflineFlowDependencyRef> dependencies = readDependencies(source);
-        if (dependencies.isEmpty()) {
-            root.put("tasks", tasks);
-            return yaml.dump(root);
-        }
-
-        ScheduleData schedule = readSchedule(source);
-        if (schedule == null || schedule.period() == null || schedule.period() == OfflineSchedulePeriod.CUSTOM) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "配置前置依赖需要先配置标准调度频率");
-        }
-        java.util.regex.Matcher namespaceMatcher = REPO_NAMESPACE_PATTERN
-                .matcher(yaml.requiredString(root, "namespace"));
-        if (!namespaceMatcher.matches()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务命名空间不合法，无法生成依赖闸门");
-        }
-
-        Map<String, Object> gate = new LinkedHashMap<>();
-        gate.put("id", GATE_TASK_ID);
-        gate.put("type", GATE_TASK_TYPE);
-        gate.put("selfGroupId", namespaceMatcher.group(1));
-        List<Map<String, Object>> upstreams = new ArrayList<>();
-        for (OfflineFlowDependencyRef ref : dependencies) {
-            Map<String, Object> upstream = new LinkedHashMap<>();
-            upstream.put("groupId", String.valueOf(ref.groupId()));
-            upstream.put("flowId", ref.flowId());
-            upstreams.add(upstream);
-        }
-        gate.put("upstreams", upstreams);
-        gate.put("period", schedule.period().name());
-        gate.put("cron", schedule.cron());
-        if (schedule.timezone() != null && !schedule.timezone().isBlank()) {
-            gate.put("timezone", schedule.timezone());
-        }
-        gate.put("plannedTime", "{{ inputs.wbdata_planned_time ?? trigger.date }}");
-        gate.put("failurePolicy", readFailurePolicy(source).name());
-        gate.put("bypass", "{{ inputs.wbdata_bypass_gate ?? false }}");
-        tasks.add(0, gate);
-        root.put("tasks", tasks);
-
-        ensureGateInputs(root);
-        return yaml.dump(root);
-    }
-
-    /** debug 执行旁路依赖闸门（已拍板）：剥除闸门 task 与旁路 input 声明。 */
-    private void stripDependencyGate(Map<String, Object> root) {
-        if (root.get("tasks") instanceof List<?> rawTasks) {
-            List<Map<String, Object>> retained = new ArrayList<>();
-            for (Object rawTask : rawTasks) {
-                if (rawTask instanceof Map<?, ?> taskMap
-                        && !GATE_TASK_ID.equals(yaml.readOptionalString((Map<String, Object>) taskMap, "id"))) {
-                    retained.add((Map<String, Object>) taskMap);
-                }
-            }
-            root.put("tasks", retained);
-        }
-        removeGateInputs(root);
-    }
-
-    /** 闸门专用 input 声明：按 id 合并，不覆盖参数编译已声明的同义 input。 */
-    private void ensureGateInputs(Map<String, Object> root) {
-        List<Map<String, Object>> inputs = mutableInputs(root);
-        if (inputs.stream().noneMatch(input -> ExecutionTimeContext.PLANNED_TIME_INPUT.equals(input.get("id")))) {
-            Map<String, Object> plannedTime = new LinkedHashMap<>();
-            plannedTime.put("id", ExecutionTimeContext.PLANNED_TIME_INPUT);
-            plannedTime.put("type", "DATETIME");
-            plannedTime.put("required", false);
-            inputs.add(plannedTime);
-        }
-        if (inputs.stream().noneMatch(input -> BYPASS_GATE_INPUT.equals(input.get("id")))) {
-            Map<String, Object> bypass = new LinkedHashMap<>();
-            bypass.put("id", BYPASS_GATE_INPUT);
-            bypass.put("type", "BOOL");
-            bypass.put("defaults", false);
-            inputs.add(bypass);
-        }
-        root.put("inputs", inputs);
-    }
-
-    private void removeGateInputs(Map<String, Object> root) {
-        if (!(root.get("inputs") instanceof List<?> rawInputs)) {
-            return;
-        }
-        List<Map<String, Object>> retained = new ArrayList<>();
-        for (Object rawInput : rawInputs) {
-            if (rawInput instanceof Map<?, ?> inputMap
-                    && !BYPASS_GATE_INPUT.equals(((Map<String, Object>) inputMap).get("id"))) {
-                retained.add(new LinkedHashMap<>((Map<String, Object>) inputMap));
-            }
-        }
-        if (retained.isEmpty()) {
-            root.remove("inputs");
-        } else {
-            root.put("inputs", retained);
-        }
-    }
-
-    private List<Map<String, Object>> mutableInputs(Map<String, Object> root) {
-        List<Map<String, Object>> inputs = new ArrayList<>();
-        if (root.get("inputs") instanceof List<?> rawInputs) {
-            for (Object rawInput : rawInputs) {
-                if (rawInput instanceof Map<?, ?> inputMap) {
-                    inputs.add(new LinkedHashMap<>((Map<String, Object>) inputMap));
-                }
-            }
-        }
-        return inputs;
+        return dependencyYaml.applyDependencyGate(source);
     }
 
     List<String> collectNamespaceFiles(String source) {
@@ -438,7 +240,7 @@ final class OfflineFlowYamlSupport {
                                  List<OfflineFlowNode> outNodes,
                                  List<FlowEdge> outEdges) {
         for (Map<String, Object> task : tasks) {
-            if (GATE_TASK_ID.equals(yaml.readOptionalString(task, "id"))) {
+            if (OfflineFlowDependencyYaml.GATE_TASK_ID.equals(yaml.readOptionalString(task, "id"))) {
                 // 依赖闸门是基础设施 task，不是画布节点
                 continue;
             }
@@ -736,7 +538,7 @@ final class OfflineFlowYamlSupport {
     private List<FlowStage> parseStages(List<Map<String, Object>> tasks) {
         List<FlowStage> stages = new ArrayList<>();
         for (Map<String, Object> task : tasks) {
-            if (GATE_TASK_ID.equals(yaml.readOptionalString(task, "id"))) {
+            if (OfflineFlowDependencyYaml.GATE_TASK_ID.equals(yaml.readOptionalString(task, "id"))) {
                 // 依赖闸门是基础设施 task，不是画布节点
                 continue;
             }
