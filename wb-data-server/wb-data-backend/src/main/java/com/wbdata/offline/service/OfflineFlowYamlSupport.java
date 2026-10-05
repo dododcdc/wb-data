@@ -7,15 +7,11 @@ import com.wbdata.offline.dto.OfflineFlowSchedule;
 import com.wbdata.offline.enums.OfflineCrossGroupDependency;
 import com.wbdata.offline.enums.OfflineFailurePolicy;
 import com.wbdata.offline.enums.OfflineSchedulePeriod;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,6 +28,7 @@ final class OfflineFlowYamlSupport {
     private final OfflineFlowScheduleYaml scheduleYaml;
     private final OfflineFlowDependencyYaml dependencyYaml;
     private final OfflineFlowGraphYaml graphYaml;
+    private final OfflineFlowDebugYaml debugYaml;
 
     OfflineFlowYamlSupport() {
         this(new OfflineNodeTaskCompiler());
@@ -46,6 +43,7 @@ final class OfflineFlowYamlSupport {
         this.scheduleYaml = new OfflineFlowScheduleYaml(yaml);
         this.dependencyYaml = new OfflineFlowDependencyYaml(yaml, scheduleYaml);
         this.graphYaml = new OfflineFlowGraphYaml(yaml, dependencyYaml, nodeTaskCompiler);
+        this.debugYaml = new OfflineFlowDebugYaml(yaml, dependencyYaml);
     }
 
     String buildEmptyFlowYaml(String flowId, String namespace) {
@@ -74,8 +72,8 @@ final class OfflineFlowYamlSupport {
                           String sourceRevision,
                           String mode,
                           List<String> selectedTaskIds) {
-        return buildDebugFlow(source, debugNamespace, flowPath, groupId, requestedBy, branch,
-                sourceRevision, mode, selectedTaskIds, Set.of());
+        return debugYaml.buildDebugFlow(source, debugNamespace, flowPath, groupId, requestedBy, branch,
+                sourceRevision, mode, selectedTaskIds);
     }
 
     String buildDebugFlow(String source,
@@ -88,40 +86,8 @@ final class OfflineFlowYamlSupport {
                           String mode,
                           List<String> selectedTaskIds,
                           Set<String> parameterOverrideKeys) {
-        Map<String, Object> root = yaml.loadRoot(source);
-        root.put("namespace", debugNamespace);
-        root.remove("triggers");
-        dependencyYaml.stripDependencyGate(root);
-
-        Map<String, Object> labels = new LinkedHashMap<>();
-        labels.putAll(yaml.asStringObjectMap(root.get("labels")));
-        labels.put("wbdataMode", "DEBUG");
-        labels.put("wbdataFlowPath", flowPath);
-        labels.put("wbdataGroupId", String.valueOf(groupId));
-        labels.put("wbdataRequestedBy", String.valueOf(requestedBy));
-        labels.put("wbdataBranch", branch);
-        labels.put("wbdataDebugNamespace", debugNamespace);
-        labels.put("wbdataSourceRevision", sourceRevision);
-        labels.put("wbdataSelectedTaskIds", String.join("---", new LinkedHashSet<>(selectedTaskIds)));
-        if (parameterOverrideKeys == null || parameterOverrideKeys.isEmpty()) {
-            labels.remove("wbdataParameterOverrideKeys");
-        } else {
-            labels.put("wbdataParameterOverrideKeys", String.join("---", parameterOverrideKeys));
-        }
-        root.put("labels", labels);
-
-        if (!"ALL".equalsIgnoreCase(mode) && !"SELECTED".equalsIgnoreCase(mode)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "执行模式不合法");
-        }
-        if ("SELECTED".equalsIgnoreCase(mode)) {
-            Set<String> selected = new LinkedHashSet<>(selectedTaskIds);
-            if (selected.isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择要执行的节点");
-            }
-            applySelection(yaml.requireTasks(root), selected);
-        }
-
-        return yaml.dump(root);
+        return debugYaml.buildDebugFlow(source, debugNamespace, flowPath, groupId, requestedBy, branch,
+                sourceRevision, mode, selectedTaskIds, parameterOverrideKeys);
     }
 
     String applyParameterSnapshotId(String source, String snapshotId) {
@@ -234,71 +200,6 @@ final class OfflineFlowYamlSupport {
                         java.util.Map<Long, com.wbdata.datasource.entity.DataSource> dataSourceMap,
                         FlowParameterCompiler.Compilation parameterCompilation) {
         return graphYaml.compileGraph(existingSource, nodes, edges, dataSourceMap, parameterCompilation);
-    }
-
-    private boolean applySelection(List<Map<String, Object>> tasks, Set<String> selectedTaskIds) {
-        boolean subtreeSelected = false;
-        for (Map<String, Object> task : tasks) {
-            boolean selected = selectedTaskIds.contains(yaml.requiredString(task, "id"));
-            boolean descendantSelected = false;
-            Object childTasks = task.get("tasks");
-            if (childTasks instanceof List<?> rawChildTasks && !rawChildTasks.isEmpty()) {
-                if (yaml.isDagTask(task)) {
-                    List<Map<String, Object>> dagChildren = yaml.castTaskList(rawChildTasks);
-                    List<Map<String, Object>> unwrappedChildren = new ArrayList<>();
-                    for (Map<String, Object> wrapper : dagChildren) {
-                        Object innerTask = wrapper.get("task");
-                        if (innerTask instanceof Map<?, ?> inner) {
-                            unwrappedChildren.add((Map<String, Object>) inner);
-                        }
-                    }
-                    descendantSelected = applySelection(unwrappedChildren, selectedTaskIds);
-                    pruneDagDependencies(dagChildren);
-                } else {
-                    descendantSelected = applySelection(yaml.castTaskList(rawChildTasks), selectedTaskIds);
-                }
-            }
-
-            boolean keepEnabled = selected || descendantSelected;
-            // For Dag containers, we keep them enabled if any descendant is selected
-            if (yaml.isDagTask(task)) {
-                if (!descendantSelected) {
-                    task.put("disabled", true);
-                }
-            } else if (!selected) {
-                task.put("disabled", true);
-            }
-            subtreeSelected = subtreeSelected || keepEnabled;
-        }
-        return subtreeSelected;
-    }
-
-    @SuppressWarnings("unchecked")
-    private void pruneDagDependencies(List<Map<String, Object>> dagTasks) {
-        Set<String> enabledTaskIds = new LinkedHashSet<>();
-        for (Map<String, Object> wrapper : dagTasks) {
-            Object innerTask = wrapper.get("task");
-            if (innerTask instanceof Map<?, ?> inner && !Boolean.TRUE.equals(inner.get("disabled"))) {
-                enabledTaskIds.add(yaml.requiredString((Map<String, Object>) inner, "id"));
-            }
-        }
-
-        for (Map<String, Object> wrapper : dagTasks) {
-            Object dependsOn = wrapper.get("dependsOn");
-            if (!(dependsOn instanceof List<?> dependencies)) {
-                continue;
-            }
-            List<String> retained = dependencies.stream()
-                    .filter(String.class::isInstance)
-                    .map(String.class::cast)
-                    .filter(enabledTaskIds::contains)
-                    .toList();
-            if (retained.isEmpty()) {
-                wrapper.remove("dependsOn");
-            } else {
-                wrapper.put("dependsOn", retained);
-            }
-        }
     }
 
     record FlowIdentity(String namespace, String flowId) {
