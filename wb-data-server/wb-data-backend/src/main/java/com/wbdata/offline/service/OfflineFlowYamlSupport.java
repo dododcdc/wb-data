@@ -9,8 +9,6 @@ import com.wbdata.offline.enums.OfflineFailurePolicy;
 import com.wbdata.offline.enums.OfflineSchedulePeriod;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
-import org.yaml.snakeyaml.DumperOptions;
-import org.yaml.snakeyaml.Yaml;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -37,7 +35,7 @@ final class OfflineFlowYamlSupport {
     private static final java.util.regex.Pattern READ_CALL_PATTERN =
             java.util.regex.Pattern.compile("\\{\\{\\s*read\\(\\s*['\"]([^'\"]+)['\"]\\s*\\)\\s*}}");
 
-    private final Yaml yaml;
+    private final FlowYamlCodec yaml;
     private final OfflineNodeTaskCompiler nodeTaskCompiler;
 
     OfflineFlowYamlSupport() {
@@ -49,10 +47,7 @@ final class OfflineFlowYamlSupport {
     }
 
     private OfflineFlowYamlSupport(OfflineNodeTaskCompiler nodeTaskCompiler) {
-        DumperOptions options = new DumperOptions();
-        options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
-        options.setPrettyFlow(true);
-        this.yaml = new Yaml(options);
+        this.yaml = new FlowYamlCodec();
         this.nodeTaskCompiler = nodeTaskCompiler;
     }
 
@@ -65,12 +60,12 @@ final class OfflineFlowYamlSupport {
     }
 
     FlowIdentity parseIdentity(String source) {
-        Map<String, Object> root = loadRoot(source);
-        return new FlowIdentity(requiredString(root, "namespace"), requiredString(root, "id"));
+        Map<String, Object> root = yaml.loadRoot(source);
+        return new FlowIdentity(yaml.requiredString(root, "namespace"), yaml.requiredString(root, "id"));
     }
 
     String readLabel(String source, String key) {
-        Object value = asStringObjectMap(loadRoot(source).get("labels")).get(key);
+        Object value = yaml.asStringObjectMap(yaml.loadRoot(source).get("labels")).get(key);
         return value == null ? null : value.toString();
     }
 
@@ -97,13 +92,13 @@ final class OfflineFlowYamlSupport {
                           String mode,
                           List<String> selectedTaskIds,
                           Set<String> parameterOverrideKeys) {
-        Map<String, Object> root = loadRoot(source);
+        Map<String, Object> root = yaml.loadRoot(source);
         root.put("namespace", debugNamespace);
         root.remove("triggers");
         stripDependencyGate(root);
 
         Map<String, Object> labels = new LinkedHashMap<>();
-        labels.putAll(asStringObjectMap(root.get("labels")));
+        labels.putAll(yaml.asStringObjectMap(root.get("labels")));
         labels.put("wbdataMode", "DEBUG");
         labels.put("wbdataFlowPath", flowPath);
         labels.put("wbdataGroupId", String.valueOf(groupId));
@@ -127,16 +122,16 @@ final class OfflineFlowYamlSupport {
             if (selected.isEmpty()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择要执行的节点");
             }
-            applySelection(requireTasks(root), selected);
+            applySelection(yaml.requireTasks(root), selected);
         }
 
         return yaml.dump(root);
     }
 
     String applyParameterSnapshotId(String source, String snapshotId) {
-        Map<String, Object> root = loadRoot(source);
+        Map<String, Object> root = yaml.loadRoot(source);
         Map<String, Object> labels = new LinkedHashMap<>();
-        labels.putAll(asStringObjectMap(root.get("labels")));
+        labels.putAll(yaml.asStringObjectMap(root.get("labels")));
         if (snapshotId == null || snapshotId.isBlank()) {
             labels.remove(ExecutionParameterSnapshotRegistry.LABEL_KEY);
         } else {
@@ -154,9 +149,9 @@ final class OfflineFlowYamlSupport {
         if (runtimeTimezone == null || runtimeTimezone.isBlank()) {
             return source;
         }
-        Map<String, Object> root = loadRoot(source);
+        Map<String, Object> root = yaml.loadRoot(source);
         Map<String, Object> labels = new LinkedHashMap<>();
-        labels.putAll(asStringObjectMap(root.get("labels")));
+        labels.putAll(yaml.asStringObjectMap(root.get("labels")));
         labels.put("wbdataRuntimeTimezone", runtimeTimezone.trim());
         root.put("labels", labels);
         return yaml.dump(root);
@@ -172,16 +167,16 @@ final class OfflineFlowYamlSupport {
     }
 
     ScheduleData readSchedule(String source) {
-        Map<String, Object> root = loadRoot(source);
+        Map<String, Object> root = yaml.loadRoot(source);
         Map<String, Object> trigger = findScheduleTrigger(root);
         if (trigger == null) {
             return null;
         }
-        String cron = requiredString(trigger, "cron");
+        String cron = yaml.requiredString(trigger, "cron");
         return new ScheduleData(
-                requiredString(trigger, "id"),
+                yaml.requiredString(trigger, "id"),
                 cron,
-                readOptionalString(trigger, "timezone"),
+                yaml.readOptionalString(trigger, "timezone"),
                 !Boolean.TRUE.equals(trigger.get("disabled")),
                 readPeriod(root, cron)
         );
@@ -235,7 +230,7 @@ final class OfflineFlowYamlSupport {
     }
 
     private String readLabelValue(Map<String, Object> root, String key) {
-        Object value = asStringObjectMap(root.get("labels")).get(key);
+        Object value = yaml.asStringObjectMap(root.get("labels")).get(key);
         return value == null ? null : value.toString();
     }
 
@@ -244,7 +239,7 @@ final class OfflineFlowYamlSupport {
     }
 
     String updateScheduleStatus(String source, boolean enabled) {
-        Map<String, Object> root = loadRoot(source);
+        Map<String, Object> root = yaml.loadRoot(source);
         Map<String, Object> trigger = findScheduleTrigger(root);
         if (trigger == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务尚未配置调度");
@@ -268,13 +263,13 @@ final class OfflineFlowYamlSupport {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "调度频率不能为空");
         }
 
-        Map<String, Object> root = loadRoot(source);
+        Map<String, Object> root = yaml.loadRoot(source);
         Map<String, Object> trigger = findScheduleTrigger(root);
         if (trigger == null) {
             trigger = new LinkedHashMap<>();
             trigger.put("id", "schedule");
             trigger.put("type", "io.kestra.plugin.core.trigger.Schedule");
-            ensureTriggers(root).add(trigger);
+            yaml.ensureTriggers(root).add(trigger);
         }
 
         trigger.put("cron", schedule.cron());
@@ -291,7 +286,7 @@ final class OfflineFlowYamlSupport {
         }
 
         Map<String, Object> labels = new LinkedHashMap<>();
-        labels.putAll(asStringObjectMap(root.get("labels")));
+        labels.putAll(yaml.asStringObjectMap(root.get("labels")));
         labels.put(SCHEDULE_PERIOD_LABEL, schedule.period().name());
         root.put("labels", labels);
         return applyDependencyGate(yaml.dump(root));
@@ -364,9 +359,9 @@ final class OfflineFlowYamlSupport {
                                  List<OfflineFlowDependencyRef> dependencies,
                                  OfflineFailurePolicy failurePolicy,
                                  OfflineCrossGroupDependency crossGroupDependency) {
-        Map<String, Object> root = loadRoot(source);
+        Map<String, Object> root = yaml.loadRoot(source);
         Map<String, Object> labels = new LinkedHashMap<>();
-        labels.putAll(asStringObjectMap(root.get("labels")));
+        labels.putAll(yaml.asStringObjectMap(root.get("labels")));
         if (dependencies == null || dependencies.isEmpty()) {
             labels.remove(DEPENDENCIES_LABEL);
         } else {
@@ -396,7 +391,7 @@ final class OfflineFlowYamlSupport {
      * 因此所有改动调度或依赖的编译路径在收尾时调用一次即可保持闸门一致；无依赖时自动剥除。
      */
     String applyDependencyGate(String source) {
-        Map<String, Object> root = loadRoot(source);
+        Map<String, Object> root = yaml.loadRoot(source);
         List<Map<String, Object>> tasks = new ArrayList<>();
         if (root.get("tasks") instanceof List<?> rawTasks) {
             for (Object rawTask : rawTasks) {
@@ -405,7 +400,7 @@ final class OfflineFlowYamlSupport {
                 }
             }
         }
-        tasks.removeIf(task -> GATE_TASK_ID.equals(readOptionalString(task, "id")));
+        tasks.removeIf(task -> GATE_TASK_ID.equals(yaml.readOptionalString(task, "id")));
         removeGateInputs(root);
 
         List<OfflineFlowDependencyRef> dependencies = readDependencies(source);
@@ -419,7 +414,7 @@ final class OfflineFlowYamlSupport {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "配置前置依赖需要先配置标准调度频率");
         }
         java.util.regex.Matcher namespaceMatcher = REPO_NAMESPACE_PATTERN
-                .matcher(requiredString(root, "namespace"));
+                .matcher(yaml.requiredString(root, "namespace"));
         if (!namespaceMatcher.matches()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务命名空间不合法，无法生成依赖闸门");
         }
@@ -457,7 +452,7 @@ final class OfflineFlowYamlSupport {
             List<Map<String, Object>> retained = new ArrayList<>();
             for (Object rawTask : rawTasks) {
                 if (rawTask instanceof Map<?, ?> taskMap
-                        && !GATE_TASK_ID.equals(readOptionalString((Map<String, Object>) taskMap, "id"))) {
+                        && !GATE_TASK_ID.equals(yaml.readOptionalString((Map<String, Object>) taskMap, "id"))) {
                     retained.add((Map<String, Object>) taskMap);
                 }
             }
@@ -517,30 +512,30 @@ final class OfflineFlowYamlSupport {
     }
 
     List<String> collectNamespaceFiles(String source) {
-        Map<String, Object> root = loadRoot(source);
+        Map<String, Object> root = yaml.loadRoot(source);
         Set<String> files = new LinkedHashSet<>();
-        collectNamespaceFiles(requireTasks(root), files);
+        collectNamespaceFiles(yaml.requireTasks(root), files);
         return List.copyOf(files);
     }
 
     FlowDocument parseDocument(String source) {
-        Map<String, Object> root = loadRoot(source);
+        Map<String, Object> root = yaml.loadRoot(source);
         return new FlowDocument(
-                requiredString(root, "id"),
-                requiredString(root, "namespace"),
-                parseStages(requireTasks(root))
+                yaml.requiredString(root, "id"),
+                yaml.requiredString(root, "namespace"),
+                parseStages(yaml.requireTasks(root))
         );
     }
 
     FlowGraph parseGraph(String source) {
-        Map<String, Object> root = loadRoot(source);
-        List<Map<String, Object>> tasks = requireTasks(root);
+        Map<String, Object> root = yaml.loadRoot(source);
+        List<Map<String, Object>> tasks = yaml.requireTasks(root);
         List<OfflineFlowNode> nodes = new ArrayList<>();
         List<FlowEdge> edges = new ArrayList<>();
         parseGraphTasks(tasks, nodes, edges);
         return new FlowGraph(
-                requiredString(root, "id"),
-                requiredString(root, "namespace"),
+                yaml.requiredString(root, "id"),
+                yaml.requiredString(root, "namespace"),
                 nodes,
                 edges
         );
@@ -550,13 +545,13 @@ final class OfflineFlowYamlSupport {
                                  List<OfflineFlowNode> outNodes,
                                  List<FlowEdge> outEdges) {
         for (Map<String, Object> task : tasks) {
-            if (GATE_TASK_ID.equals(readOptionalString(task, "id"))) {
+            if (GATE_TASK_ID.equals(yaml.readOptionalString(task, "id"))) {
                 // 依赖闸门是基础设施 task，不是画布节点
                 continue;
             }
-            if (isDagTask(task)) {
+            if (yaml.isDagTask(task)) {
                 // Dag: read tasks and their dependsOn
-                List<Map<String, Object>> childTasks = castTaskList((List<?>) task.get("tasks"));
+                List<Map<String, Object>> childTasks = yaml.castTaskList((List<?>) task.get("tasks"));
                 for (Map<String, Object> dagTaskEntry : childTasks) {
                     Map<String, Object> actualTask = (Map<String, Object>) dagTaskEntry.get("task");
                     if (actualTask == null) continue;
@@ -600,7 +595,7 @@ final class OfflineFlowYamlSupport {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "DAG 中存在环，请修正连线");
         }
 
-        Map<String, Object> root = loadRoot(existingSource);
+        Map<String, Object> root = yaml.loadRoot(existingSource);
         if (parameterCompilation != null) {
             if (parameterCompilation.inputs().isEmpty()) {
                 root.remove("inputs");
@@ -642,7 +637,7 @@ final class OfflineFlowYamlSupport {
         }
 
         // Build task map for looking up existing task definitions
-        Map<String, Map<String, Object>> existingTaskMap = buildExistingTaskMap(requireTasks(root));
+        Map<String, Map<String, Object>> existingTaskMap = buildExistingTaskMap(yaml.requireTasks(root));
 
         // Build compiled tasks list
         List<Map<String, Object>> compiledTasks = new ArrayList<>();
@@ -678,13 +673,13 @@ final class OfflineFlowYamlSupport {
     private Map<String, Map<String, Object>> buildExistingTaskMap(List<Map<String, Object>> tasks) {
         Map<String, Map<String, Object>> result = new LinkedHashMap<>();
         for (Map<String, Object> task : tasks) {
-            String id = readOptionalString(task, "id");
+            String id = yaml.readOptionalString(task, "id");
             if (id != null) {
-                if (isDagTask(task)) {
+                if (yaml.isDagTask(task)) {
                     Object childTasks = task.get("tasks");
                     if (childTasks instanceof List<?> rawChildren) {
                         List<Map<String, Object>> unmarshalledChildren = new ArrayList<>();
-                        for (Map<String, Object> wrapper : castTaskList(rawChildren)) {
+                        for (Map<String, Object> wrapper : yaml.castTaskList(rawChildren)) {
                             Object innerTask = wrapper.get("task");
                             if (innerTask instanceof Map<?, ?> inner) {
                                 unmarshalledChildren.add((Map<String, Object>) inner);
@@ -723,7 +718,7 @@ final class OfflineFlowYamlSupport {
     }
 
     private String readSqlReadPath(Map<String, Object> task) {
-        String sql = readOptionalString(task, "sql");
+        String sql = yaml.readOptionalString(task, "sql");
         if (sql == null || sql.isBlank()) {
             return null;
         }
@@ -765,34 +760,6 @@ final class OfflineFlowYamlSupport {
         return false;
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> loadRoot(String source) {
-        Object loaded = yaml.load(source);
-        if (!(loaded instanceof Map<?, ?> rawRoot)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow YAML 格式不合法");
-        }
-        return (Map<String, Object>) rawRoot;
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> requireTasks(Map<String, Object> root) {
-        Object tasks = root.get("tasks");
-        if (!(tasks instanceof List<?> rawTasks)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow YAML tasks 定义不合法");
-        }
-        if (rawTasks.isEmpty()) {
-            return List.of();
-        }
-        List<Map<String, Object>> normalized = new ArrayList<>();
-        for (Object rawTask : rawTasks) {
-            if (!(rawTask instanceof Map<?, ?> taskMap)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow YAML tasks 定义不合法");
-            }
-            normalized.add((Map<String, Object>) taskMap);
-        }
-        return normalized;
-    }
-
     private void collectNamespaceFiles(List<Map<String, Object>> tasks, Set<String> files) {
         for (Map<String, Object> task : tasks) {
             Map<String, Object> actualTask = task;
@@ -803,48 +770,20 @@ final class OfflineFlowYamlSupport {
             files.addAll(readNamespaceIncludePathsFromTask(actualTask));
             Object childTasks = actualTask.get("tasks");
             if (childTasks instanceof List<?> rawChildTasks && !rawChildTasks.isEmpty()) {
-                collectNamespaceFiles(castTaskList(rawChildTasks), files);
+                collectNamespaceFiles(yaml.castTaskList(rawChildTasks), files);
             }
         }
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> ensureTriggers(Map<String, Object> root) {
-        Object triggers = root.get("triggers");
-        if (triggers instanceof List<?> rawTriggers) {
-            List<Map<String, Object>> normalized = new ArrayList<>();
-            for (Object rawTrigger : rawTriggers) {
-                if (!(rawTrigger instanceof Map<?, ?> triggerMap)) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow YAML triggers 定义不合法");
-                }
-                normalized.add((Map<String, Object>) triggerMap);
-            }
-            root.put("triggers", normalized);
-            return normalized;
-        }
-
-        List<Map<String, Object>> created = new ArrayList<>();
-        root.put("triggers", created);
-        return created;
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> asStringObjectMap(Object value) {
-        if (value instanceof Map<?, ?> rawMap) {
-            return (Map<String, Object>) rawMap;
-        }
-        return new LinkedHashMap<>();
     }
 
     private boolean applySelection(List<Map<String, Object>> tasks, Set<String> selectedTaskIds) {
         boolean subtreeSelected = false;
         for (Map<String, Object> task : tasks) {
-            boolean selected = selectedTaskIds.contains(requiredString(task, "id"));
+            boolean selected = selectedTaskIds.contains(yaml.requiredString(task, "id"));
             boolean descendantSelected = false;
             Object childTasks = task.get("tasks");
             if (childTasks instanceof List<?> rawChildTasks && !rawChildTasks.isEmpty()) {
-                if (isDagTask(task)) {
-                    List<Map<String, Object>> dagChildren = castTaskList(rawChildTasks);
+                if (yaml.isDagTask(task)) {
+                    List<Map<String, Object>> dagChildren = yaml.castTaskList(rawChildTasks);
                     List<Map<String, Object>> unwrappedChildren = new ArrayList<>();
                     for (Map<String, Object> wrapper : dagChildren) {
                         Object innerTask = wrapper.get("task");
@@ -855,13 +794,13 @@ final class OfflineFlowYamlSupport {
                     descendantSelected = applySelection(unwrappedChildren, selectedTaskIds);
                     pruneDagDependencies(dagChildren);
                 } else {
-                    descendantSelected = applySelection(castTaskList(rawChildTasks), selectedTaskIds);
+                    descendantSelected = applySelection(yaml.castTaskList(rawChildTasks), selectedTaskIds);
                 }
             }
 
             boolean keepEnabled = selected || descendantSelected;
             // For Dag containers, we keep them enabled if any descendant is selected
-            if (isDagTask(task)) {
+            if (yaml.isDagTask(task)) {
                 if (!descendantSelected) {
                     task.put("disabled", true);
                 }
@@ -879,7 +818,7 @@ final class OfflineFlowYamlSupport {
         for (Map<String, Object> wrapper : dagTasks) {
             Object innerTask = wrapper.get("task");
             if (innerTask instanceof Map<?, ?> inner && !Boolean.TRUE.equals(inner.get("disabled"))) {
-                enabledTaskIds.add(requiredString((Map<String, Object>) inner, "id"));
+                enabledTaskIds.add(yaml.requiredString((Map<String, Object>) inner, "id"));
             }
         }
 
@@ -902,8 +841,8 @@ final class OfflineFlowYamlSupport {
     }
 
     private Map<String, Object> findScheduleTrigger(Map<String, Object> root) {
-        for (Map<String, Object> trigger : ensureTriggers(root)) {
-            if ("io.kestra.plugin.core.trigger.Schedule".equals(readOptionalString(trigger, "type"))) {
+        for (Map<String, Object> trigger : yaml.ensureTriggers(root)) {
+            if ("io.kestra.plugin.core.trigger.Schedule".equals(yaml.readOptionalString(trigger, "type"))) {
                 return trigger;
             }
         }
@@ -913,15 +852,15 @@ final class OfflineFlowYamlSupport {
     private List<FlowStage> parseStages(List<Map<String, Object>> tasks) {
         List<FlowStage> stages = new ArrayList<>();
         for (Map<String, Object> task : tasks) {
-            if (GATE_TASK_ID.equals(readOptionalString(task, "id"))) {
+            if (GATE_TASK_ID.equals(yaml.readOptionalString(task, "id"))) {
                 // 依赖闸门是基础设施 task，不是画布节点
                 continue;
             }
-            if (isDagTask(task)) {
+            if (yaml.isDagTask(task)) {
                 Object rawChildTasks = task.get("tasks");
                 if (rawChildTasks instanceof List<?> childTasks && !childTasks.isEmpty()) {
                     List<OfflineFlowNode> unwrappedNodes = new ArrayList<>();
-                    for (Map<String, Object> wrapper : castTaskList(childTasks)) {
+                    for (Map<String, Object> wrapper : yaml.castTaskList(childTasks)) {
                         Object innerTask = wrapper.get("task");
                         if (innerTask instanceof Map<?, ?> inner) {
                             unwrappedNodes.add(parseLeafNode((Map<String, Object>) inner));
@@ -934,16 +873,16 @@ final class OfflineFlowYamlSupport {
                     ));
                 }
             } else {
-                stages.add(new FlowStage(requiredString(task, "id"), false, List.of(parseLeafNode(task))));
+                stages.add(new FlowStage(yaml.requiredString(task, "id"), false, List.of(parseLeafNode(task))));
             }
         }
         return stages;
     }
 
     private OfflineFlowNode parseLeafNode(Map<String, Object> task) {
-        String taskId = requiredString(task, "id");
+        String taskId = yaml.requiredString(task, "id");
         OfflineTaskMetadataCodec.ParsedTaskMetadata metadata = OfflineTaskMetadataCodec.parse(
-                readOptionalString(task, "description")
+                yaml.readOptionalString(task, "description")
         );
         Long dataSourceId = metadata.dataSourceId();
         String dataSourceType = metadata.dataSourceType();
@@ -966,7 +905,7 @@ final class OfflineFlowYamlSupport {
         }
 
         // Infer kind and type
-        String typeAttr = readOptionalString(task, "type");
+        String typeAttr = yaml.readOptionalString(task, "type");
         if (typeAttr != null) {
             if ((dataSourceType == null || dataSourceType.isBlank())
                     && OfflineNodeTaskCompiler.isJdbcQueryTaskType(typeAttr)) {
@@ -1011,10 +950,6 @@ final class OfflineFlowYamlSupport {
     }
 
 
-    private boolean isDagTask(Map<String, Object> task) {
-        return "io.kestra.plugin.core.flow.Dag".equals(readOptionalString(task, "type"));
-    }
-
     @SuppressWarnings("unchecked")
     private List<String> readNamespaceIncludePathsFromTask(Map<String, Object> task) {
         LinkedHashSet<String> paths = new LinkedHashSet<>();
@@ -1049,31 +984,6 @@ final class OfflineFlowYamlSupport {
 
     private ResponseStatusException unsupportedTask(String reason) {
         return new ResponseStatusException(HttpStatus.BAD_REQUEST, reason);
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> castTaskList(List<?> rawChildTasks) {
-        List<Map<String, Object>> childTasks = new ArrayList<>();
-        for (Object rawTask : rawChildTasks) {
-            if (!(rawTask instanceof Map<?, ?> taskMap)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow YAML tasks 定义不合法");
-            }
-            childTasks.add((Map<String, Object>) taskMap);
-        }
-        return childTasks;
-    }
-
-    private String requiredString(Map<String, Object> root, String key) {
-        Object value = root.get(key);
-        if (value instanceof String text && !text.isBlank()) {
-            return text;
-        }
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow YAML 缺少字段: " + key);
-    }
-
-    private String readOptionalString(Map<String, Object> root, String key) {
-        Object value = root.get(key);
-        return value instanceof String text && !text.isBlank() ? text : null;
     }
 
     record FlowIdentity(String namespace, String flowId) {
