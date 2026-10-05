@@ -203,7 +203,7 @@ ClickHouse 侧预建表（`default` 库，MergeTree，`ORDER BY (dt, store_id, p
 | P-09 | 2026-09-20 | 提交校验 | 「保存并提交」要求**所有节点连入一张依赖图**（报「画布中存在未连接的节点」），但 debug 执行允许无连线并行节点——抽数任务「5 节点并行」的形态无法提交/推送/调度，只能改成星型（1 根 + 4 并行）。「保存任务」单独点也存在无提示失败的嫌疑（19:55 首次保存未连通节点时未见报错 toast，但也可能其实失败了没被发现） | 并行无连线节点应可提交（Kestra 天然支持无依赖并行 task），或校验口径前后一致并提前提示 | 中（设计矛盾） | 待裁决 |
 | P-10 | 2026-09-20 | 任务级依赖闸门 | 依赖配置已写入 YAML labels（`wbdataDependencies: 4:crm_ods_daily_extract`），调度 cron 正确生成（01:30/01:40），但分析任务 YAML **没有任何闸门逻辑**（无 LoopUntil / scheduleKey / waitFor）——依赖目前只是配置层记录，运行时到点即跑、不等上游同期成功。依赖对话框已提示「运行等待机制将在后续版本接入」，属预期内，记录观察 | §3.2 语义：start = max(自己计划时间, 前置同期完成时间) | 高（P2 核心能力未闭环） | 待裁决（P2 运行时尚未实现，非回归） |
 | P-11 | 2026-09-22 | git→Kestra 同步 | 推送成功后调度不触发。根因：分支上遗留的非法 flow 使 `sync-flows-g4-feature-policy-review` 持续 FAILED——`transfer-smoke.yaml` 含 Quartz 风格 6 段 cron（Kestra 只认 5 段，来自旧测试提交 `4cf5573`）；`__sched_test_b.yaml`、`test4.yaml` 是空 Dag 测试残留。已手工删除 6 段 cron 并推送，crm 两任务成功同步进 `g4-feature-policy-review`（带 Schedule trigger）。暴露三个问题：①非法 flow 能经「开调度→提交」进入 kestra-flows（编译侧无 cron/Dag 合法性校验）；②SyncFlows 遇非法 flow 只标 FAILED 继续同步其余（好），但失败无任何告警，用户只看到「推送成功」；③测试残留 flow 长期污染分支 | 推送成功 = 调度真的生效；同步失败应可感知 | 高（静默坏死） | 环境层已恢复：删 6 段 cron + 删两个空 Dag 残留并推送，同步 SUCCESS、crm 两任务带 Schedule 同步成功（2026-09-22）。平台层待裁决：a) 编译/提交侧加 flow 校验；b) 同步失败告警到运维中心 |
-| | | | | | | |
+| P-12 | 2026-09-23 | 调度业务日期 / ODS 分区 | 两任务按 Asia/Singapore 于 09-23 01:30/01:40 自动成功，但五表新快照实际写入 `dt=20260922`，没有 `20260923`。当次抽数日志明确出现 `dt=20260922`；抽数表达式为 MySQL `DATE_FORMAT(NOW(), '%Y%m%d')`，分析筛选为 Hive `date_format(current_date, 'yyyyMMdd')`。只读检查确认 MySQL session/global 时区为 SYSTEM、system 为 UTC，Hive local.time.zone=LOCAL、容器时区为 UTC；调度凌晨对应 UTC 前一天 | 快照日期与约定的调度业务日期一致，抽数和分析使用同一期日期 | 高（成功状态掩盖日期错位） | 仅记录，未修复、未重跑。建议后续统一传递按调度时区确定的业务日期；不能只靠各引擎当前日期，补跑/跨天延迟也需验证。详见 §11 |
 
 ---
 
@@ -216,3 +216,36 @@ ClickHouse 侧预建表（`default` 库，MergeTree，`ORDER BY (dt, store_id, p
 | 调度验证周期长 | 用 §5「临近时刻调度」技巧当天看到闸门行为，不必真等到凌晨 |
 | 依赖 P2 首次实战 | 闸门语义（同期对齐、不抢跑）以 [task-level-dependencies-v1.md](task-level-dependencies-v1.md) §3.2 为验收标准 |
 | 本地 Docker 资源 | MySQL + Hive + ClickHouse + Kestra 同时跑，注意内存 |
+
+## 11. 凌晨自动调度观察（2026-09-23）
+
+本轮只读核查，未改任务/环境配置，未手工重跑、追加源数据或提交推送。时间均为 Asia/Singapore（UTC+08:00）。运维中心浏览器展示与 Kestra 执行 API 一致；两次触发类型均为 `io.kestra.plugin.core.trigger.Schedule`，不是 debug/manual。
+
+| 任务 | 计划时间 | 实际开始 | 实际结束 | 状态 | 执行 ID |
+|------|----------|----------|----------|------|---------|
+| crm_ods_daily_extract | 09-23 01:30:00 | 01:30:01 | 01:31:46 | SUCCESS，5 个传输节点全部成功 | `13EPuJkEZdx0t9gIeL3B3k` |
+| crm_sales_daily_analysis | 09-23 01:40:00 | 01:40:01 | 01:40:48 | SUCCESS，HiveSQL → ClickHouse TRUNCATE → Transfer 全部成功 | `73YDOwSOt5JWiMqsFBna69` |
+
+当前正式 namespace 为 `g4-feature-policy-review`，两 flow 未禁用，Schedule 仍为 `30 1 * * *` / `40 1 * * *`、时区 Asia/Singapore；不是 §5 初始提议的 01:00/02:00。
+
+### 数据核对
+
+| 数据 | 本轮实际结果 |
+|------|--------------|
+| MySQL 五表 | user=100、store=10、product=100、orders=5000、order_item=12500 |
+| Hive 五表新快照 | 行数分别与源表一致，但分区为 **20260922**；现有分区为 20260919、20260922，没有 20260923 |
+| MySQL 聚合 / Hive DM / ClickHouse | 均为 1085 行、7 个交易日、销量 34250、销售额 8498687.50 |
+| ClickHouse 唯一业务键 | `(dt, store_id, product_id)` 去重后仍为 1085，无重复键 |
+| DM 交易日期范围 | 20260913～20260919；这是源订单交易日期，不是 ODS 快照日期，不能因其未变而判定未刷新 |
+
+**P-12 日期偏差的证据**：抽数执行日志在 `2026-09-22T17:30:58Z` 起明确记录 `dt=20260922`，与落表一致。MySQL `NOW()` 与 `UTC_TIMESTAMP()` 相同，session/global `time_zone=SYSTEM`、`system_time_zone=UTC`；Hive `hive.local.time.zone=LOCAL`，容器时区为 UTC。源映射使用 `DATE_FORMAT(NOW(), '%Y%m%d')`，分析使用 `date_format(current_date, 'yyyyMMdd')`，没有使用调度业务日期。因此两个引擎在 +08:00 凌晨均取到 UTC 前一天：链路能成功且数字一致，但未满足「当天快照」约定。
+
+### 尚不能验收的部分
+
+- **连续两天自动成功**：正式 namespace 下两 flow 各仅查到这 1 次执行，需另一天的真实调度证据。
+- **依赖等待 / 上游失败拦截**：本次上游提前约 8 分钟完成，无法证明闸门生效；P-10 仍未闭环。
+- **源数据变化后的刷新**：本轮未追加订单，结果与手工验证基线相同；行数和唯一键可排除重复累加，但不足以验证变化传播。
+- **字段内容完整性**：本轮核对数量、金额及业务键，未验收中文名称编码问题。
+- **日志级别噪声**：成功的 HiveSQL 节点在运维中心显示 166 条 ERROR，其中可见的 SLF4J 多绑定警告被标为 ERROR。该计数不能直接解释为 166 个业务错误，需另行核查 stderr 到日志级别的映射；本轮未断言所有 ERROR 都无害。
+
+结论：**首次真实凌晨自动调度成功、数值核对通过，但日期分区错误，整体场景尚未验收通过。**

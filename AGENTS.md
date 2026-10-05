@@ -80,4 +80,5 @@ WB_DATA_PASSWORD=<admin-密码> scripts/dev/smoke-verify.sh
 - [ ] 前端改动：`npm run lint`、`npm run test`、`npm run build` 通过。
 - [ ] 后端改动：`mvn clean install` 通过。
 - [ ] 逻辑变更：补充或更新对应测试。
+- [ ] 浮层 / 弹窗 / 滚动 / 拖拽类 UI 改动：已用真实浏览器实测关键交互，结论写入 PR 描述（盲区清单见 [测试策略](docs/testing-strategy.md#真实浏览器走查jsdom-盲区)）。
 - [ ] PR 描述说明变更意图、影响范围和验证方式。
