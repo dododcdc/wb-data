@@ -59,7 +59,7 @@ public class AuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String path = request.getRequestURI();
-        log.info("AuthFilter processing request: {} {}", request.getMethod(), path);
+        log.debug("AuthFilter processing request: {} {}", request.getMethod(), path);
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             filterChain.doFilter(request, response);
             return;

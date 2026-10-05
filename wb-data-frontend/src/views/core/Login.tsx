@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -32,9 +32,17 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function Login() {
     const navigate = useNavigate();
+    const location = useLocation();
     const token = useAuthStore((s) => s.token);
     const [showPassword, setShowPassword] = useState(false);
     const [serverError, setServerError] = useState('');
+
+    const redirectPath = useMemo(() => {
+        const from = (location.state as { from?: { pathname?: string; search?: string; hash?: string } } | null)?.from;
+        if (!from) return '/';
+        const target = `${from.pathname || ''}${from.search || ''}${from.hash || ''}`;
+        return target.startsWith('/login') || !target.startsWith('/') ? '/' : target;
+    }, [location.state]);
 
     const {
         register,
@@ -48,9 +56,9 @@ export default function Login() {
 
     useEffect(() => {
         if (token) {
-            navigate('/', { replace: true });
+            navigate(redirectPath, { replace: true });
         }
-    }, [token, navigate]);
+    }, [token, navigate, redirectPath]);
 
     if (token) return null;
 
@@ -62,7 +70,7 @@ export default function Login() {
             useAuthStore.getState().setUserInfo(res.user);
 
             // AuthGuard owns the initial context load as well as later refreshes.
-            navigate('/', { replace: true });
+            navigate(redirectPath, { replace: true });
         } catch (error) {
             setServerError(getErrorMessage(error, '登录失败，请稍后重试'));
         }
@@ -90,7 +98,7 @@ export default function Login() {
                             </div>
                         )}
 
-                        <div className="flex flex-col">
+                        <div className="flex flex-col gap-1.5">
                             <Input
                                 id="username"
                                 type="text"
@@ -102,9 +110,12 @@ export default function Login() {
                                 className="h-11"
                                 {...register('username')}
                             />
+                            {errors.username?.message && (
+                                <p className="text-xs text-destructive">{errors.username.message}</p>
+                            )}
                         </div>
 
-                        <div className="flex flex-col">
+                        <div className="flex flex-col gap-1.5">
                             <div className="relative">
                                 <Input
                                     id="password"
@@ -130,6 +141,9 @@ export default function Login() {
                                     )}
                                 </button>
                             </div>
+                            {errors.password?.message && (
+                                <p className="text-xs text-destructive">{errors.password.message}</p>
+                            )}
                         </div>
 
                         <Button

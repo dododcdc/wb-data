@@ -49,4 +49,25 @@ class AuthServiceTest {
             appender.stop();
         }
     }
+
+    @Test
+    void loginTrimsWhitespaceInUsername() {
+        WbUserMapper mapper = mock(WbUserMapper.class);
+        PasswordEncoder encoder = mock(PasswordEncoder.class);
+        AuthTokenService tokens = new AuthTokenService(mapper);
+        AuthService service = new AuthService(mapper, encoder, tokens);
+        WbUser user = new WbUser();
+        user.setId(42L);
+        user.setUsername("alice");
+        user.setPasswordHash("test-password-hash");
+        user.setSystemRole("USER");
+        user.setStatus("ACTIVE");
+        user.setAuthVersion(0L);
+        when(mapper.selectOne(any())).thenReturn(user);
+        when(encoder.matches("test-password", "test-password-hash")).thenReturn(true);
+
+        LoginResponse response = service.login(new LoginRequest("  alice  ", "test-password"));
+        assertThat(response).isNotNull();
+        assertThat(response.user().username()).isEqualTo("alice");
+    }
 }

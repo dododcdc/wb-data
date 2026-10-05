@@ -24,8 +24,9 @@ public class AuthService {
     private final AuthTokenService authTokenService;
 
     public LoginResponse login(LoginRequest request) {
+        String username = request.username() == null ? "" : request.username().trim();
         WbUser user = wbUserMapper.selectOne(new LambdaQueryWrapper<WbUser>()
-                .eq(WbUser::getUsername, request.username())
+                .eq(WbUser::getUsername, username)
                 .last("LIMIT 1"));
 
         if (user == null || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {

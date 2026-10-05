@@ -122,7 +122,9 @@ class AuthTokenServiceTest {
         String token = service.issueToken(user).accessToken();
         user.setDisplayName("New name");
 
-        assertThat(service.resolveToken(token)).isNotNull();
+        AuthSession resolved = service.resolveToken(token);
+        assertThat(resolved).isNotNull();
+        assertThat(resolved.displayName()).isEqualTo("New name");
     }
 
     private static WbUser user(long id, long version) {

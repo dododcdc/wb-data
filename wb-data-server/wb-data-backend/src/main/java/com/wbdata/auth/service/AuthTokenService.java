@@ -22,7 +22,7 @@ public class AuthTokenService {
 
     private final WbUserMapper userMapper;
     private final Cache<String, CachedSession> sessions = Caffeine.newBuilder()
-            .expireAfterWrite(TOKEN_TTL)
+            .expireAfterAccess(TOKEN_TTL)
             .maximumSize(10_000)
             .build();
 
@@ -58,7 +58,17 @@ public class AuthTokenService {
             sessions.invalidate(token);
             return null;
         }
-        return cached.session();
+        AuthSession currentSession = new AuthSession(
+                user.getId(),
+                user.getUsername(),
+                user.getDisplayName(),
+                user.getSystemRole(),
+                cached.session().expiresAt()
+        );
+        if (!currentSession.equals(cached.session())) {
+            sessions.put(token, new CachedSession(currentSession, user.getAuthVersion()));
+        }
+        return currentSession;
     }
 
     private record CachedSession(AuthSession session, long authVersion) {}
