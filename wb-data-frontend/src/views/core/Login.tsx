@@ -10,13 +10,7 @@ import { useAuthStore } from '@/utils/auth';
 import { getErrorMessage } from '@/utils/error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
+import './Login.css';
 
 const loginSchema = z.object({
     username: z
@@ -77,71 +71,65 @@ export default function Login() {
     }
 
     return (
-        <div
-            className="flex min-h-svh items-center justify-center p-4"
-            style={{
-                background: 'radial-gradient(circle at top left, rgba(217, 119, 87, 0.08), transparent 30%), #f3f1ec',
-            }}
-        >
-            <div className="flex w-full max-w-[860px] items-stretch justify-center">
+        <div className="login-shell">
+            <div className="login-stage">
                 {/* 品牌栏：仅桌面端展示，与登录卡片形成对照 */}
-                <div className="hidden flex-1 flex-col justify-center gap-8 pr-12 md:flex">
-                    <div className="flex items-center gap-3">
-                        <img src="/favicon.svg" alt="WB Data" className="size-10" />
+                <div className="login-brand">
+                    <div className="login-brand-mark">
+                        <img src="/favicon.svg" alt="WB Data" />
                         <div>
-                            <div className="text-xl font-bold tracking-tight">WB Data</div>
-                            <div className="text-sm text-muted-foreground">一站式数据处理中心</div>
+                            <div className="login-brand-name">WB Data</div>
+                            <div className="login-brand-tagline">一站式数据处理中心</div>
                         </div>
                     </div>
-                    <ul className="flex flex-col gap-4">
-                        <li className="flex items-start gap-3">
-                            <Database className="mt-0.5 size-4 shrink-0 text-[#d97757]" />
+                    <div className="login-brand-divider" />
+                    <ul className="login-features">
+                        <li className="login-feature">
+                            <div className="login-feature-icon"><Database /></div>
                             <div>
-                                <div className="text-sm font-medium">自助查询</div>
-                                <div className="text-xs text-muted-foreground">多数据源统一查询，SQL 即查即用</div>
+                                <div className="login-feature-title">自助查询</div>
+                                <div className="login-feature-desc">多数据源统一查询，SQL 即查即用</div>
                             </div>
                         </li>
-                        <li className="flex items-start gap-3">
-                            <GitBranch className="mt-0.5 size-4 shrink-0 text-[#d97757]" />
+                        <li className="login-feature">
+                            <div className="login-feature-icon"><GitBranch /></div>
                             <div>
-                                <div className="text-sm font-medium">离线开发</div>
-                                <div className="text-xs text-muted-foreground">可视化画布编排任务，Git 管理版本</div>
+                                <div className="login-feature-title">离线开发</div>
+                                <div className="login-feature-desc">可视化画布编排任务，Git 管理版本</div>
                             </div>
                         </li>
-                        <li className="flex items-start gap-3">
-                            <TerminalSquare className="mt-0.5 size-4 shrink-0 text-[#d97757]" />
+                        <li className="login-feature">
+                            <div className="login-feature-icon"><TerminalSquare /></div>
                             <div>
-                                <div className="text-sm font-medium">任务运维</div>
-                                <div className="text-xs text-muted-foreground">调度依赖与执行监控，一处管理</div>
+                                <div className="login-feature-title">任务运维</div>
+                                <div className="login-feature-desc">调度依赖与执行监控，一处管理</div>
                             </div>
                         </li>
                     </ul>
                 </div>
 
-                <Card className="w-full max-w-[400px] border bg-card shadow-sm">
-                    <CardHeader className="pb-4 text-center">
-                        <div className="mb-2 flex items-center justify-center gap-2.5 md:hidden">
-                            <img src="/favicon.svg" alt="WB Data" className="size-8" />
+                <div className="login-card">
+                    <div className="login-card-header">
+                        <div className="login-card-mobile-logo">
+                            <img src="/favicon.svg" alt="WB Data" />
                         </div>
-                        <CardTitle className="text-2xl font-bold tracking-tight">
-                            WB Data
-                        </CardTitle>
-                        <CardDescription>一站式数据处理中心</CardDescription>
-                    </CardHeader>
+                        <div className="login-card-title">WB Data</div>
+                        <div className="login-card-desc">一站式数据处理中心</div>
+                    </div>
 
-                    <CardContent>
+                    <div className="login-card-body">
                         <form
-                            className="flex flex-col gap-4"
+                            className="login-form"
                             noValidate
                             onSubmit={handleSubmit(onSubmit)}
                         >
                             {serverError && (
-                                <div className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                                <div className="login-server-error">
                                     {serverError}
                                 </div>
                             )}
 
-                            <div className="flex flex-col gap-1.5">
+                            <div className="login-field">
                                 <Input
                                     id="username"
                                     type="text"
@@ -150,15 +138,14 @@ export default function Login() {
                                     autoFocus
                                     aria-label="用户名"
                                     aria-invalid={!!errors.username}
-                                    className="h-11"
                                     {...register('username')}
                                 />
                                 {errors.username?.message && (
-                                    <p className="text-xs text-destructive">{errors.username.message}</p>
+                                    <p className="login-field-error">{errors.username.message}</p>
                                 )}
                             </div>
 
-                            <div className="flex flex-col gap-1.5">
+                            <div className="login-field">
                                 <div className="relative">
                                     <Input
                                         id="password"
@@ -167,13 +154,13 @@ export default function Login() {
                                         autoComplete="current-password"
                                         aria-label="密码"
                                         aria-invalid={!!errors.password}
-                                        className="h-11 pr-10"
+                                        className="pr-10"
                                         {...register('password')}
                                     />
                                     <button
                                         type="button"
                                         tabIndex={-1}
-                                        className="absolute inset-y-0 right-0 flex w-10 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground"
+                                        className="login-password-toggle"
                                         onClick={() => setShowPassword((v) => !v)}
                                         aria-label={showPassword ? '隐藏密码' : '显示密码'}
                                     >
@@ -185,13 +172,13 @@ export default function Login() {
                                     </button>
                                 </div>
                                 {errors.password?.message && (
-                                    <p className="text-xs text-destructive">{errors.password.message}</p>
+                                    <p className="login-field-error">{errors.password.message}</p>
                                 )}
                             </div>
 
                             <Button
                                 type="submit"
-                                className="mt-1 h-11 w-full text-base font-semibold"
+                                className="login-submit"
                                 disabled={isSubmitting}
                             >
                                 {isSubmitting && (
@@ -200,8 +187,8 @@ export default function Login() {
                                 {isSubmitting ? '登录中...' : '登录'}
                             </Button>
                         </form>
-                    </CardContent>
-                </Card>
+                    </div>
+                </div>
             </div>
         </div>
     );
