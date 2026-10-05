@@ -6,45 +6,40 @@ import com.wbdata.offline.config.OfflineKestraProperties;
 import com.wbdata.offline.kestra.KestraClient;
 import com.wbdata.offline.kestra.KestraExecutionSnapshot;
 import com.wbdata.offline.kestra.KestraLogEntry;
-import com.wbdata.offline.kestra.KestraTaskRunSnapshot;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.util.UriUtils;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.net.URLEncoder;
 import java.net.Authenticator;
 import java.net.PasswordAuthentication;
 import java.net.Proxy;
 import java.net.ProxySelector;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.LinkedHashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * Kestra API 的 HTTP 传输层：认证、请求发送、错误映射与端点路径拼装。
+ * JSON payload 解析见 {@link KestraPayloadParser}，multipart 构造见 {@link KestraMultipartBodies}。
+ */
 @Service
 public class KestraHttpClient implements KestraClient {
 
-    private static final String DOCKER_TASK_RUNNER_TYPE = "io.kestra.plugin.scripts.runner.docker.Docker";
-
     private final OfflineKestraProperties properties;
-    private final ObjectMapper objectMapper;
+    private final KestraPayloadParser payloadParser;
     private final HttpClient httpClient;
     private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
     private volatile Set<String> cachedTaskTypes;
@@ -63,7 +58,7 @@ public class KestraHttpClient implements KestraClient {
 
     KestraHttpClient(OfflineKestraProperties properties, ObjectMapper objectMapper, HttpClient httpClient) {
         this.properties = properties;
-        this.objectMapper = objectMapper;
+        this.payloadParser = new KestraPayloadParser(objectMapper);
         this.httpClient = httpClient;
     }
 
@@ -126,28 +121,14 @@ public class KestraHttpClient implements KestraClient {
         if (!isSuccessful(response.statusCode())) {
             throw toKestraException(response, "校验任务失败");
         }
-        try {
-            JsonNode root = objectMapper.readTree(response.body());
-            List<String> violations = new ArrayList<>();
-            if (root.isArray()) {
-                for (JsonNode item : root) {
-                    String constraints = readText(item.path("constraints"));
-                    if (constraints != null && !constraints.isBlank()) {
-                        violations.add(constraints);
-                    }
-                }
-            }
-            return violations;
-        } catch (IOException ex) {
-            throw new IllegalStateException("解析 Kestra 校验结果失败", ex);
-        }
+        return payloadParser.readViolations(response.body());
     }
 
     @Override
     public void upsertNamespaceFile(String namespace, String path, String content) {
         ensureCredentialsConfigured();
         String boundary = "----wb-data-file-" + UUID.randomUUID().toString().replace("-", "");
-        byte[] body = buildFileUploadBody(boundary, path, content);
+        byte[] body = KestraMultipartBodies.fileUploadBody(boundary, path, content);
         HttpResponse<byte[]> response = send(
                 "POST",
                 "/api/v1/" + properties.getTenant() + "/namespaces/" + encode(namespace) + "/files?path=" + encodeQueryParam(path),
@@ -167,7 +148,7 @@ public class KestraHttpClient implements KestraClient {
                                                     Map<String, String> labels) {
         ensureCredentialsConfigured();
         String boundary = "----wb-data-" + UUID.randomUUID().toString().replace("-", "");
-        byte[] body = buildExecutionBody(boundary, inputs);
+        byte[] body = KestraMultipartBodies.executionBody(boundary, inputs);
         HttpResponse<byte[]> response = send(
                 "POST",
                 buildCreateExecutionPath(namespace, flowId, labels),
@@ -178,7 +159,7 @@ public class KestraHttpClient implements KestraClient {
         if (!isSuccessful(response.statusCode())) {
             throw toKestraException(response, "创建执行失败");
         }
-        return readExecution(response.body());
+        return payloadParser.readExecution(response.body());
     }
 
     private String buildCreateExecutionPath(String namespace,
@@ -193,32 +174,6 @@ public class KestraHttpClient implements KestraClient {
                 .map(entry -> "labels=" + encodeQueryParam(entry.getKey() + ":" + entry.getValue()))
                 .collect(java.util.stream.Collectors.joining("&"));
         return path + "?" + query;
-    }
-
-    private byte[] buildExecutionBody(String boundary, Map<String, String> inputs) {
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        try {
-            for (Map.Entry<String, String> input : inputs.entrySet()) {
-                String key = input.getKey();
-                if (key == null || !key.matches("[A-Za-z][A-Za-z0-9_]{0,63}")) {
-                    throw new IllegalArgumentException("Kestra input 名称不合法: " + key);
-                }
-                if (input.getValue() == null) {
-                    throw new IllegalArgumentException("Kestra input 不能为空: " + key);
-                }
-                output.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
-                output.write(("Content-Disposition: form-data; name=\"" + key + "\"\r\n")
-                        .getBytes(StandardCharsets.UTF_8));
-                output.write("Content-Type: text/plain; charset=UTF-8\r\n\r\n"
-                        .getBytes(StandardCharsets.UTF_8));
-                output.write(input.getValue().getBytes(StandardCharsets.UTF_8));
-                output.write("\r\n".getBytes(StandardCharsets.UTF_8));
-            }
-            output.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-            return output.toByteArray();
-        } catch (IOException ex) {
-            throw new UncheckedIOException(ex);
-        }
     }
 
     @Override
@@ -239,13 +194,13 @@ public class KestraHttpClient implements KestraClient {
                 throw toKestraException(response, "查询执行列表失败");
             }
             try {
-                JsonNode root = objectMapper.readTree(response.body());
+                JsonNode root = payloadParser.readTree(response.body());
                 JsonNode results = root.path("results");
                 if (!results.isArray() || results.isEmpty()) {
                     break;
                 }
                 for (JsonNode item : results) {
-                    executions.add(readExecution(item));
+                    executions.add(payloadParser.readExecution(item));
                 }
                 int total = root.path("total").asInt(executions.size());
                 if (executions.size() >= total || results.size() < size) {
@@ -272,11 +227,7 @@ public class KestraHttpClient implements KestraClient {
         if (!isSuccessful(response.statusCode())) {
             throw toKestraException(response, "查询执行脚本失败");
         }
-        try {
-            return readText(objectMapper.readTree(response.body()).path("source"));
-        } catch (IOException ex) {
-            throw new IllegalStateException("解析 Kestra Flow 源码失败", ex);
-        }
+        return payloadParser.readFlowSource(response.body());
     }
 
     @Override
@@ -292,7 +243,7 @@ public class KestraHttpClient implements KestraClient {
         if (!isSuccessful(response.statusCode())) {
             throw toKestraException(response, "查询执行详情失败");
         }
-        return readExecution(response.body());
+        return payloadParser.readExecution(response.body());
     }
 
     @Override
@@ -308,27 +259,7 @@ public class KestraHttpClient implements KestraClient {
         if (!isSuccessful(response.statusCode())) {
             throw toKestraException(response, "查询执行日志失败");
         }
-
-        try {
-            JsonNode root = objectMapper.readTree(response.body());
-            List<KestraLogEntry> entries = new ArrayList<>();
-            if (root.isArray()) {
-                for (JsonNode item : root) {
-                    KestraLogEntry entry = new KestraLogEntry(
-                            readInstant(item.path("timestamp"), item.path("date")),
-                            readText(item.path("taskId")),
-                            readText(item.path("level")),
-                            readText(item.path("message"))
-                    );
-                    if (taskId == null || taskId.equals(entry.taskId())) {
-                        entries.add(entry);
-                    }
-                }
-            }
-            return entries;
-        } catch (IOException ex) {
-            throw new IllegalStateException("解析 Kestra 日志失败", ex);
-        }
+        return payloadParser.readLogs(response.body(), taskId);
     }
 
     @Override
@@ -351,51 +282,29 @@ public class KestraHttpClient implements KestraClient {
         return getTaskTypes().contains(taskType);
     }
 
-    private KestraExecutionSnapshot readExecution(byte[] payload) {
-        try {
-            return readExecution(objectMapper.readTree(payload));
-        } catch (IOException ex) {
-            throw new IllegalStateException("解析 Kestra 执行详情失败", ex);
+    private Set<String> getTaskTypes() {
+        Set<String> snapshot = cachedTaskTypes;
+        if (snapshot != null) {
+            return snapshot;
         }
-    }
 
-    private KestraExecutionSnapshot readExecution(JsonNode root) {
-        JsonNode state = root.path("state");
-        List<KestraTaskRunSnapshot> taskRuns = new ArrayList<>();
-        JsonNode taskRunList = root.path("taskRunList");
-        if (taskRunList.isArray()) {
-            for (JsonNode taskRun : taskRunList) {
-                JsonNode taskState = taskRun.path("state");
-                taskRuns.add(new KestraTaskRunSnapshot(
-                        readText(taskRun.path("taskId")),
-                        readText(taskState.path("current")),
-                        readInstant(taskState.path("startDate"), taskRun.path("startDate")),
-                        readInstant(taskState.path("endDate"), taskRun.path("endDate"))
-                ));
+        synchronized (this) {
+            if (cachedTaskTypes != null) {
+                return cachedTaskTypes;
             }
+            HttpResponse<byte[]> response = send(
+                    "GET",
+                    "/api/v1/plugins",
+                    null,
+                    null,
+                    "application/json"
+            );
+            if (!isSuccessful(response.statusCode())) {
+                throw toKestraException(response, "查询 Kestra 插件列表失败");
+            }
+            cachedTaskTypes = payloadParser.readTaskTypes(response.body());
+            return cachedTaskTypes;
         }
-
-        return new KestraExecutionSnapshot(
-                readText(root.path("id")),
-                readText(root.path("namespace")),
-                readText(root.path("flowId")),
-                readText(state.path("current")),
-                readInstant(root.path("trigger").path("variables").path("date")),
-                readInstant(state.path("startDate"), firstHistoryDate(state), root.path("createdAt"), root.path("createdDate")),
-                readInstant(state.path("startDate"), root.path("startDate")),
-                readInstant(state.path("endDate"), root.path("endDate")),
-                taskRuns,
-                readStringMap(root.path("inputs")),
-                readLabels(root.path("labels"))
-        );
-    }
-
-    private JsonNode firstHistoryDate(JsonNode state) {
-        JsonNode histories = state.path("histories");
-        if (histories.isArray() && !histories.isEmpty()) {
-            return histories.get(0).path("date");
-        }
-        return objectMapper.nullNode();
     }
 
     private HttpResponse<byte[]> send(String method,
@@ -426,77 +335,6 @@ public class KestraHttpClient implements KestraClient {
         }
     }
 
-    private Set<String> getTaskTypes() {
-        Set<String> snapshot = cachedTaskTypes;
-        if (snapshot != null) {
-            return snapshot;
-        }
-
-        synchronized (this) {
-            if (cachedTaskTypes != null) {
-                return cachedTaskTypes;
-            }
-            HttpResponse<byte[]> response = send(
-                    "GET",
-                    "/api/v1/plugins",
-                    null,
-                    null,
-                    "application/json"
-            );
-            if (!isSuccessful(response.statusCode())) {
-                throw toKestraException(response, "查询 Kestra 插件列表失败");
-            }
-            try {
-                JsonNode root = objectMapper.readTree(response.body());
-                Set<String> taskTypes = new LinkedHashSet<>();
-                if (root.isArray()) {
-                    for (JsonNode plugin : root) {
-                        JsonNode tasks = plugin.path("tasks");
-                        if (tasks.isArray()) {
-                            for (JsonNode task : tasks) {
-                                String cls = readText(task.path("cls"));
-                                if (cls != null && !cls.isBlank()) {
-                                    taskTypes.add(cls);
-                                }
-                            }
-                        }
-                        JsonNode aliases = plugin.path("aliases");
-                        if (aliases.isArray()) {
-                            for (JsonNode alias : aliases) {
-                                String value = readText(alias);
-                                if (value != null && !value.isBlank()) {
-                                    taskTypes.add(value);
-                                }
-                            }
-                        }
-                        JsonNode taskRunners = plugin.path("taskRunners");
-                        if (taskRunners.isArray()) {
-                            for (JsonNode taskRunner : taskRunners) {
-                                String cls = readText(taskRunner.path("cls"));
-                                if (cls != null && !cls.isBlank()) {
-                                    taskTypes.add(cls);
-                                }
-                            }
-                        }
-                        if (isDockerPlugin(plugin)) {
-                            taskTypes.add(DOCKER_TASK_RUNNER_TYPE);
-                        }
-                    }
-                }
-                cachedTaskTypes = Set.copyOf(taskTypes);
-                return cachedTaskTypes;
-            } catch (IOException ex) {
-                throw new IllegalStateException("解析 Kestra 插件列表失败", ex);
-            }
-        }
-    }
-
-    private boolean isDockerPlugin(JsonNode plugin) {
-        return "plugin-docker".equals(readText(plugin.path("name")))
-                || "io.kestra.plugin.docker".equals(readText(plugin.path("group")))
-                || "io.kestra.plugin.docker".equals(readText(plugin.path("manifest").path("X-Kestra-Group")));
-    }
-
     private ResponseStatusException toKestraException(HttpResponse<byte[]> response, String defaultMessage) {
         String message = new String(response.body(), StandardCharsets.UTF_8);
         if (message == null || message.isBlank()) {
@@ -519,51 +357,6 @@ public class KestraHttpClient implements KestraClient {
         }
         String body = new String(response.body(), StandardCharsets.UTF_8);
         return body.contains("Flow id already exists");
-    }
-
-    private String readText(JsonNode node) {
-        return node == null || node.isMissingNode() || node.isNull() ? null : node.asText();
-    }
-
-    private Map<String, String> readStringMap(JsonNode node) {
-        if (node == null || node.isMissingNode() || node.isNull()) {
-            return Map.of();
-        }
-        Map<String, String> values = new LinkedHashMap<>();
-        if (node.isObject()) {
-            node.fields().forEachRemaining(entry -> {
-                JsonNode value = entry.getValue();
-                values.put(entry.getKey(), value.isValueNode() ? readText(value) : value.toString());
-            });
-        }
-        return values;
-    }
-
-    private Map<String, String> readLabels(JsonNode labelsNode) {
-        if (labelsNode == null) {
-            return Map.of();
-        }
-        Map<String, String> labels = new LinkedHashMap<>();
-        if (labelsNode.isArray()) {
-            for (JsonNode element : labelsNode) {
-                if (element.has("key") && element.has("value")) {
-                    labels.put(element.get("key").asText(), readText(element.get("value")));
-                }
-            }
-        } else if (labelsNode.isObject()) {
-            labelsNode.fields().forEachRemaining(entry -> labels.put(entry.getKey(), readText(entry.getValue())));
-        }
-        return labels;
-    }
-
-    private Instant readInstant(JsonNode... candidates) {
-        for (JsonNode candidate : candidates) {
-            String value = readText(candidate);
-            if (value != null && !value.isBlank()) {
-                return Instant.parse(value);
-            }
-        }
-        return null;
     }
 
     private String basicAuthorization() {
@@ -599,22 +392,6 @@ public class KestraHttpClient implements KestraClient {
             });
         }
         return path.toString();
-    }
-
-    private byte[] buildFileUploadBody(String boundary, String path, String content) {
-        String filename = Path.of(path).getFileName().toString();
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        try {
-            output.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
-            output.write(("Content-Disposition: form-data; name=\"fileContent\"; filename=\"" + filename + "\"\r\n")
-                    .getBytes(StandardCharsets.UTF_8));
-            output.write("Content-Type: application/octet-stream\r\n\r\n".getBytes(StandardCharsets.UTF_8));
-            output.write(content.getBytes(StandardCharsets.UTF_8));
-            output.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-            return output.toByteArray();
-        } catch (IOException ex) {
-            throw new UncheckedIOException("构造 Kestra 文件上传请求失败", ex);
-        }
     }
 
     private void ensureCredentialsConfigured() {
