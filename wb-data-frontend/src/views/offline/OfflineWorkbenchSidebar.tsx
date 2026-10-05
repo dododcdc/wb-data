@@ -69,7 +69,7 @@ interface TreeControls {
     canWrite: boolean;
     onOpenFlow: (path: string) => void;
     onContextMenu: (node: OfflineRepoTreeNode, position: { x: number; y: number }) => void;
-    onMoveNode: (sourceTreePath: string, newTreePath: string) => void;
+    onMoveNode: (sourceTreePath: string, newTreePath: string) => Promise<void>;
 }
 
 interface OfflineWorkbenchSidebarProps {
@@ -363,7 +363,7 @@ export function OfflineWorkbenchSidebar({
             </div>
 
             <section className="offline-rail-panel offline-rail-panel-grow">
-                {tree.loading ? (
+                {tree.loading && !tree.data ? (
                     <div className="offline-rail-empty" role="status">
                         <span className="sr-only">正在加载项目树</span>
                         <div className="offline-rail-tree-skeleton" aria-hidden="true">
@@ -382,38 +382,40 @@ export function OfflineWorkbenchSidebar({
                         <button
                             type="button"
                             className={`offline-tree-root-label${treeVisible ? '' : ' is-collapsed'}`}
+                            title={tree.data.root.name}
                             onClick={handleRootToggle}
                             onContextMenu={(event) => {
                                 event.preventDefault();
-                                tree.onContextMenu(tree.data!.root, { x: event.clientX, y: event.clientY });
+                                if (creation.canWrite) tree.onContextMenu(tree.data!.root, { x: event.clientX, y: event.clientY });
                             }}
                         >
                             <span className={`offline-tree-row-caret${treeVisible ? ' is-expanded' : ''}`}>
                                 <ChevronRight size={14} />
                             </span>
                             <span className="offline-tree-row-icon"><FolderOpen size={15} /></span>
-                            <span>{tree.data.root.name}</span>
+                            <span className="offline-tree-row-label">{tree.data.root.name}</span>
                         </button>
-                        {treeVisible ? (
+                        <div hidden={!treeVisible} style={{ flex: 1, minHeight: 0 }}>
                             <OfflineRepoTree
+                                key={`${tree.data.groupId}:${branch.label}`}
                                 ref={treeHandleRef}
                                 className="offline-repo-tree"
                                 root={tree.data.root}
-                                dataKey={tree.data.groupId}
+                                dataKey={`${tree.data.groupId}:${branch.label}`}
                                 selectedTreePath={tree.activeFlowPath ? flowApiPathToTreePath(tree.activeFlowPath) : null}
-                                canWrite={tree.canWrite}
+                                canWrite={tree.canWrite && !busy && !branch.switching}
                                 iconSpriteSheet={SCHEDULE_BADGE_SPRITE}
                                 renderBadge={renderScheduleBadge}
                                 onOpenFlow={tree.onOpenFlow}
                                 onMoveNode={tree.onMoveNode}
                                 onContextMenu={(treePath, position) => {
                                     const node = treeNodeIndex?.get(treePath);
-                                    if (node) {
+                                    if (node && (node.kind === 'FLOW' || creation.canWrite)) {
                                         tree.onContextMenu(node, position);
                                     }
                                 }}
                             />
-                        ) : null}
+                        </div>
                     </div>
                 )}
             </section>

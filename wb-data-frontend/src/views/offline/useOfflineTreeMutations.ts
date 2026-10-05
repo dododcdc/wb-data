@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     createOfflineFolder,
     deleteOfflineFlow,
@@ -100,6 +100,20 @@ export function useOfflineTreeMutations({
     const [renameFolderOriginalName, setRenameFolderOriginalName] = useState('');
     const [renameFolderPath, setRenameFolderPath] = useState('');
     const [renameFolderLoading, setRenameFolderLoading] = useState(false);
+    const currentRef = useRef({ groupId, activeFlowPath, draftSession, generation: 0 });
+    currentRef.current = {
+        groupId, activeFlowPath, draftSession,
+        generation: currentRef.current.generation + (currentRef.current.groupId === groupId ? 0 : 1),
+    };
+
+    useEffect(() => {
+        if (!contextMenuOpen) return;
+        const dismiss = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setContextMenuOpen(false);
+        };
+        document.addEventListener('keydown', dismiss);
+        return () => document.removeEventListener('keydown', dismiss);
+    }, [contextMenuOpen]);
 
     useEffect(() => {
         if (defaultTimezone) {
@@ -327,72 +341,60 @@ export function useOfflineTreeMutations({
         setContextMenuOpen(true);
     }, []);
 
+    const handleCopyFlowName = useCallback(async (node: OfflineRepoTreeNode) => {
+        setContextMenuOpen(false);
+        try {
+            await navigator.clipboard.writeText(node.name);
+            showFeedback({ tone: 'success', title: '任务名称已复制', detail: '' });
+        } catch {
+            showFeedback({
+                tone: 'error',
+                title: '复制任务名称失败',
+                detail: '请检查浏览器剪贴板权限，并使用 HTTPS 或 localhost 访问。',
+            });
+        }
+    }, [showFeedback]);
+
     const handleMoveNode = useCallback(async (sourceTreePath: string, newTreePath: string) => {
         if (!groupId) return;
         const node = resolveTreeNode(sourceTreePath);
         if (!node || node.kind === 'ROOT') return;
+        const generation = currentRef.current.generation;
+        const isCurrent = () => currentRef.current.generation === generation;
+        const isFlow = node.kind === 'FLOW';
+        const toApiPath = isFlow ? treePathToFlowApiPath : treePathToFolderApiPath;
+        const oldPath = toApiPath(sourceTreePath);
+        const newPath = toApiPath(newTreePath);
+        const containsPath = (path: string | null | undefined) => !!path
+            && (isFlow ? path === oldPath : path.startsWith(`${oldPath}/`));
 
-        if (node.kind === 'FLOW') {
-            const oldPath = treePathToFlowApiPath(sourceTreePath);
-            const newPath = treePathToFlowApiPath(newTreePath);
-            try {
-                await moveOfflineFlow(groupId, oldPath, newPath);
-                if (draftSession?.path === oldPath) {
-                    leaveCurrentFlow(draftSession);
-                    setDraftSession(null);
-                }
-                moveRecoverySnapshot(groupId, oldPath, newPath);
-                if (activeFlowPath === oldPath) {
-                    setActiveFlowPath(newPath);
-                }
-                showFeedback({ tone: 'success', title: '任务已移动', detail: node.name });
-                await refreshRepoTree();
-                if (activeFlowPath === oldPath) {
-                    await openFlowDocument(newPath);
-                }
-            } catch (error) {
-                showFeedback({ tone: 'error', title: getErrorMessage(error, '移动任务失败'), detail: '' });
-                await refreshRepoTree();
-            }
-            return;
-        }
-
-        const oldPath = treePathToFolderApiPath(sourceTreePath);
-        const newPath = treePathToFolderApiPath(newTreePath);
         try {
-            await moveOfflineFolder(groupId, oldPath, newPath);
-            if (draftSession?.path && draftSession.path.startsWith(`${oldPath}/`)) {
-                leaveCurrentFlow(draftSession);
+            await (isFlow ? moveOfflineFlow : moveOfflineFolder)(groupId, oldPath, newPath);
+            const current = currentRef.current;
+            if (isCurrent() && current.draftSession && containsPath(current.draftSession.path)) {
+                leaveCurrentFlow(current.draftSession);
                 setDraftSession(null);
             }
-            moveFolderRecoverySnapshots(groupId, oldPath, newPath);
-            const reopenedPath = activeFlowPath && activeFlowPath.startsWith(`${oldPath}/`)
-                ? activeFlowPath.replace(oldPath, newPath)
+            if (isFlow) moveRecoverySnapshot(groupId, oldPath, newPath);
+            else moveFolderRecoverySnapshots(groupId, oldPath, newPath);
+            if (!isCurrent()) return;
+
+            const reopenedPath = containsPath(current.activeFlowPath)
+                ? newPath + current.activeFlowPath!.slice(oldPath.length)
                 : null;
-            if (reopenedPath) {
-                setActiveFlowPath(reopenedPath);
-            }
-            showFeedback({ tone: 'success', title: '文件夹已移动', detail: node.name });
+            if (reopenedPath) setActiveFlowPath(reopenedPath);
+            showFeedback({ tone: 'success', title: isFlow ? '任务已移动' : '文件夹已移动', detail: node.name });
             await refreshRepoTree();
-            if (reopenedPath) {
+            if (isCurrent() && reopenedPath && (currentRef.current.activeFlowPath === reopenedPath
+                || currentRef.current.activeFlowPath === current.activeFlowPath)) {
                 await openFlowDocument(reopenedPath);
             }
         } catch (error) {
-            showFeedback({ tone: 'error', title: getErrorMessage(error, '移动文件夹失败'), detail: '' });
+            if (!isCurrent()) return;
+            showFeedback({ tone: 'error', title: getErrorMessage(error, isFlow ? '移动任务失败' : '移动文件夹失败'), detail: '' });
             await refreshRepoTree();
         }
-    }, [
-        activeFlowPath,
-        draftSession,
-        groupId,
-        leaveCurrentFlow,
-        openFlowDocument,
-        refreshRepoTree,
-        resolveTreeNode,
-        setActiveFlowPath,
-        setDraftSession,
-        showFeedback,
-    ]);
+    }, [groupId, leaveCurrentFlow, openFlowDocument, refreshRepoTree, resolveTreeNode, setActiveFlowPath, setDraftSession, showFeedback]);
 
     const openNewFlowDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
         setContextMenuOpen(false);
@@ -509,6 +511,7 @@ export function useOfflineTreeMutations({
         handleDeleteFolder,
         handleRenameFolder,
         handleContextMenu,
+        handleCopyFlowName,
         handleMoveNode,
         openNewFlowDialogFromContext,
         openNewFolderDialogFromContext,

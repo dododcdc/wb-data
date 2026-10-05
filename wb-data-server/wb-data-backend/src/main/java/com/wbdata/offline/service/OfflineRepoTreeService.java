@@ -21,6 +21,7 @@ public class OfflineRepoTreeService {
 
     private final OfflineProperties offlineProperties;
     private final RepoLockManager repoLockManager;
+    private final OfflineKestraFlowFileService kestraFlowFileService;
     private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
 
     public OfflineRepoTreeResponse getRepoTree(Long groupId, String rootName) {
@@ -227,45 +228,10 @@ public class OfflineRepoTreeService {
 
     private void moveFolderUnlocked(Long groupId, String path, String newPath) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
-        Path flowsRoot = repoPath.resolve("_flows").normalize();
-        Path oldPath = resolveSafePath(repoPath, path);
-        if (oldPath.equals(flowsRoot) || !oldPath.startsWith(flowsRoot)) {
-            throw new IllegalArgumentException("只能移动 _flows 目录下的文件夹");
-        }
-
-        Path targetPath = resolveSafePath(repoPath, newPath);
-        if (targetPath.equals(flowsRoot) || !targetPath.startsWith(flowsRoot)) {
-            throw new IllegalArgumentException("文件夹只能移动到 _flows 目录下");
-        }
-        OfflineRepoPaths.assertValidSegments(flowsRoot.relativize(targetPath));
-        if (targetPath.equals(oldPath)) {
-            return;
-        }
-        if (targetPath.startsWith(oldPath)) {
-            throw new IllegalArgumentException("不能移动到自身子目录");
-        }
-        if (Files.exists(targetPath)) {
-            throw new IllegalArgumentException("目标位置已存在同名文件夹");
-        }
-
-        String oldSubPath = flowsRoot.relativize(oldPath).toString().replace('\\', '/');
-        String newSubPath = flowsRoot.relativize(targetPath).toString().replace('\\', '/');
-        Path scriptsRoot = repoPath.resolve("scripts").normalize();
-        Path oldScriptsPath = scriptsRoot.resolve(oldSubPath).normalize();
-        Path newScriptsPath = scriptsRoot.resolve(newSubPath).normalize();
-
+        Path oldPath = OfflineRepoPaths.resolveDirectory(repoPath, path);
+        Path targetPath = OfflineRepoPaths.resolveDirectory(repoPath, newPath);
         try {
-            Files.createDirectories(targetPath.getParent());
-            if (Files.exists(oldPath)) {
-                Files.move(oldPath, targetPath);
-            }
-
-            if (Files.exists(oldScriptsPath)) {
-                Files.createDirectories(newScriptsPath.getParent());
-                Files.move(oldScriptsPath, newScriptsPath);
-            }
-
-            updateFlowReferences(targetPath, oldSubPath, newSubPath);
+            OfflineRepoPaths.moveDirectory(repoPath, oldPath, targetPath, false, kestraFlowFileService);
         } catch (IOException ex) {
             throw new IllegalStateException("移动文件夹失败", ex);
         }
@@ -280,25 +246,6 @@ public class OfflineRepoTreeService {
             throw new IllegalArgumentException("非法路径");
         }
         return resolved;
-    }
-
-    private void updateFlowReferences(Path root, String oldRelativePath, String newRelativePath) throws IOException {
-        String oldPrefix = "scripts/" + oldRelativePath + "/";
-        String newPrefix = "scripts/" + newRelativePath + "/";
-
-        try (var stream = Files.walk(root)) {
-            List<Path> flowFiles = stream
-                    .filter(p -> "flow.yaml".equals(p.getFileName().toString()))
-                    .toList();
-
-            for (Path flowFile : flowFiles) {
-                String content = Files.readString(flowFile, StandardCharsets.UTF_8);
-                String updatedContent = content.replace(oldPrefix, newPrefix);
-                if (!content.equals(updatedContent)) {
-                    Files.writeString(flowFile, updatedContent, StandardCharsets.UTF_8);
-                }
-            }
-        }
     }
 
     private void deleteDirectory(Path dir) throws IOException {

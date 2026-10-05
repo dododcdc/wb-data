@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
+    Copy,
     FileCode2,
     FolderOpen,
     FolderPlus,
@@ -71,6 +72,7 @@ interface ContextMenuAction {
     position: { x: number; y: number } | null;
     node: OfflineRepoTreeNode | null;
     onOpenChange: (open: boolean) => void;
+    onCopyFlowName: (node: OfflineRepoTreeNode) => void;
     onOpenNewFlow: (node: OfflineRepoTreeNode) => void;
     onOpenNewFolder: (node: OfflineRepoTreeNode) => void;
     onOpenRenameFlow: (node: OfflineRepoTreeNode) => void;
@@ -128,7 +130,8 @@ function PathPicker({
             <div style={{ border: '1px solid var(--color-border)', borderRadius: 6, background: 'var(--color-surface)', padding: '4px 2px' }}>
                 <button
                     type="button"
-                    className={`offline-tree-row${!selectedPath ? ' is-active' : ''}`}
+                    className={`offline-tree-row is-directory${!selectedPath ? ' is-active' : ''}`}
+                    title={rootNode.name}
                     style={{ paddingLeft: 12 }}
                     onClick={() => onSelect('')}
                 >
@@ -340,6 +343,15 @@ export function OfflineTreeActionDialogs({
     contextMenu,
 }: OfflineTreeActionDialogsProps) {
     const node = contextMenu.node;
+    const menuRef = useRef<HTMLDivElement>(null);
+    useLayoutEffect(() => {
+        if (!contextMenu.open || !contextMenu.position || !menuRef.current) return;
+        const menu = menuRef.current;
+        const rect = menu.getBoundingClientRect();
+        menu.style.left = `${Math.max(8, Math.min(contextMenu.position.x, window.innerWidth - rect.width - 8))}px`;
+        menu.style.top = `${Math.max(8, Math.min(contextMenu.position.y, window.innerHeight - rect.height - 8))}px`;
+        menu.querySelector('button')?.focus();
+    }, [contextMenu.open, contextMenu.position]);
 
     return (
         <>
@@ -376,6 +388,7 @@ export function OfflineTreeActionDialogs({
 
             {contextMenu.open && contextMenu.position ? (
                 <div
+                    ref={menuRef}
                     className="offline-context-menu"
                     style={{ position: 'fixed', left: contextMenu.position.x, top: contextMenu.position.y }}
                     onClick={(event) => event.stopPropagation()}
@@ -401,14 +414,22 @@ export function OfflineTreeActionDialogs({
                             ) : null}
                         </>
                     ) : null}
-                    {node?.kind === 'FLOW' && canWrite ? (
+                    {node?.kind === 'FLOW' ? (
                         <>
-                            <button type="button" className="offline-context-menu-item" onClick={() => contextMenu.onOpenRenameFlow(node)}>
-                                <Pencil size={13} />重命名
+                            <button type="button" className="offline-context-menu-item" onClick={() => contextMenu.onCopyFlowName(node)}>
+                                <Copy size={13} />复制任务名称
                             </button>
-                            <button type="button" className="offline-context-menu-item danger" onClick={() => contextMenu.onOpenDeleteFlow(node)}>
-                                <Trash2 size={13} />删除
-                            </button>
+                            {canWrite ? (
+                                <>
+                                    <div className="offline-context-menu-separator" />
+                                    <button type="button" className="offline-context-menu-item" onClick={() => contextMenu.onOpenRenameFlow(node)}>
+                                        <Pencil size={13} />重命名
+                                    </button>
+                                    <button type="button" className="offline-context-menu-item danger" onClick={() => contextMenu.onOpenDeleteFlow(node)}>
+                                        <Trash2 size={13} />删除
+                                    </button>
+                                </>
+                            ) : null}
                         </>
                     ) : null}
                 </div>

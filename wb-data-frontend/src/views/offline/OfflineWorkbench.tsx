@@ -37,7 +37,7 @@ import { OfflineWorkbenchMainPanel } from './OfflineWorkbenchMainPanel';
 import { preloadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
 import { useOfflineTreeMutations } from './useOfflineTreeMutations';
-import { indexNodesByTreePath } from './repoTreePaths';
+import { indexNodesByTreePath, updateRepoTreeFlowStatus } from './repoTreePaths';
 import { prefetchNodeEditorDataSources } from './useNodeEditorDataSources';
 import { useFlowExecutionAndSchedule } from './useFlowExecutionAndSchedule';
 import { useFlowEditingSession } from './useFlowEditingSession';
@@ -167,6 +167,16 @@ export default function OfflineWorkbench() {
         updateCanvasEdges,
         commitCanvasLayout,
     } = flowEditing;
+
+    const savedDocument = draftSession?.baseDocument;
+    useEffect(() => {
+        if (!savedDocument || savedDocument.groupId !== groupId) return;
+        setRepoTree((current) => {
+            if (!current || current.groupId !== groupId) return current;
+            const root = updateRepoTreeFlowStatus(current.root, savedDocument);
+            return root === current.root ? current : { ...current, root };
+        });
+    }, [groupId, savedDocument]);
 
     useEffect(() => {
         setDependencyDialogOpen(false);
@@ -412,6 +422,7 @@ export default function OfflineWorkbench() {
         handleDeleteFolder,
         handleRenameFolder,
         handleContextMenu,
+        handleCopyFlowName,
         handleMoveNode,
         openNewFlowDialogFromContext,
         openNewFolderDialogFromContext,
@@ -425,7 +436,7 @@ export default function OfflineWorkbench() {
         activeFlowPath,
         draftSession,
         defaultTimezone,
-        refreshRepoTree,
+        refreshRepoTree: refreshWorkspace,
         openFlowDocument,
         leaveCurrentFlow,
         setActiveFlowPath,
@@ -646,10 +657,10 @@ export default function OfflineWorkbench() {
                             loading: treeLoading,
                             flowLoading,
                             activeFlowPath,
-                            canWrite,
+                            canWrite: canWrite && !nodeEditorOpen && draftSaveState !== 'saving' && !isDirty,
                             onOpenFlow: (path) => void openFlowDocument(path),
                             onContextMenu: handleContextMenu,
-                            onMoveNode: (sourceTreePath, newTreePath) => void handleMoveNode(sourceTreePath, newTreePath),
+                            onMoveNode: handleMoveNode,
                         }}
                     />
                 </ResizablePanel>
@@ -910,6 +921,7 @@ export default function OfflineWorkbench() {
                     position: contextMenuPosition,
                     node: contextMenuNode,
                     onOpenChange: setContextMenuOpen,
+                    onCopyFlowName: (node) => void handleCopyFlowName(node),
                     onOpenNewFlow: openNewFlowDialogFromContext,
                     onOpenNewFolder: openNewFolderDialogFromContext,
                     onOpenRenameFlow: openRenameFlowDialogFromContext,

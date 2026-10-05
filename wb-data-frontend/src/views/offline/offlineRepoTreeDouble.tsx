@@ -1,42 +1,37 @@
-import { forwardRef, useImperativeHandle } from 'react';
+import { forwardRef, useImperativeHandle, useState, type ComponentPropsWithoutRef } from 'react';
 
-import type { OfflineRepoTreeNode } from '../../api/offline';
-import { toTreePath } from './repoTreePaths';
+import type { OfflineRepoTree as RepoTree, OfflineRepoTreeHandle } from './OfflineRepoTree';
+import { indexNodesByTreePath } from './repoTreePaths';
 
-interface OfflineRepoTreeDoubleProps {
-    root: OfflineRepoTreeNode;
-    onOpenFlow: (apiPath: string) => void;
-    onContextMenu: (treePath: string, position: { x: number; y: number }) => void;
-}
+type OfflineRepoTreeDoubleProps = ComponentPropsWithoutRef<typeof RepoTree>;
 
-function Branch({ node, props }: { node: OfflineRepoTreeNode; props: OfflineRepoTreeDoubleProps }) {
-    return (
-        <div>
-            <button
-                type="button"
-                onClick={() => {
-                    if (node.kind === 'FLOW') {
-                        props.onOpenFlow(node.path);
-                    }
-                }}
-                onContextMenu={(event) => {
-                    event.preventDefault();
-                    props.onContextMenu(toTreePath(node), { x: event.clientX, y: event.clientY });
-                }}
-            >
-                {node.name}
-            </button>
-            {node.children.map((child) => <Branch key={child.id} node={child} props={props} />)}
-        </div>
-    );
-}
-
-export const OfflineRepoTree = forwardRef<unknown, OfflineRepoTreeDoubleProps>(
+export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTreeDoubleProps>(
     function OfflineRepoTreeDouble(props, ref) {
-        useImperativeHandle(ref, () => ({ expandAll: () => undefined }));
+        const [search, setSearch] = useState<string | null>(null);
+        useImperativeHandle(ref, () => ({ expandAll: () => undefined, setSearch }));
+        const nodes = [...indexNodesByTreePath(props.root)].filter(([path, node]) => (
+            (!props.directoriesOnly || node.kind === 'DIRECTORY')
+            && (!search || path.toLowerCase().includes(search.toLowerCase()))
+        ));
         return (
             <div>
-                {props.root.children.map((child) => <Branch key={child.id} node={child} props={props} />)}
+                {search && nodes.length === 0 ? <p role="status">没有匹配的目录</p> : null}
+                {nodes.map(([path, node]) => (
+                    <button
+                        key={path}
+                        type="button"
+                        onClick={() => {
+                            if (node.kind === 'FLOW') props.onOpenFlow?.(node.path);
+                            else props.onSelectDirectory?.(path);
+                        }}
+                        onContextMenu={(event) => {
+                            event.preventDefault();
+                            if (!props.readonly) props.onContextMenu?.(path, { x: event.clientX, y: event.clientY });
+                        }}
+                    >
+                        {node.name}
+                    </button>
+                ))}
             </div>
         );
     },

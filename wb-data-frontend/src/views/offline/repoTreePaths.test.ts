@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { OfflineRepoTreeNode } from '../../api/offline';
+import type { OfflineFlowDocument, OfflineRepoTreeNode } from '../../api/offline';
 import {
     flattenRepoTreePaths,
     flowApiPathToTreePath,
@@ -9,6 +9,7 @@ import {
     toTreePath,
     treePathToFlowApiPath,
     treePathToFolderApiPath,
+    updateRepoTreeFlowStatus,
 } from './repoTreePaths';
 
 function flow(path: string, name: string): OfflineRepoTreeNode {
@@ -112,5 +113,71 @@ describe('flattenRepoTreePaths', () => {
         const index = indexNodesByTreePath(tree);
         expect(index.get('x/')?.kind).toBe('DIRECTORY');
         expect(index.get('x/task-a')?.kind).toBe('FLOW');
+    });
+});
+
+describe('updateRepoTreeFlowStatus', () => {
+    const document: OfflineFlowDocument = {
+        groupId: 4,
+        path: '_flows/x/task-a/flow.yaml',
+        flowId: 'task-a',
+        namespace: 'team',
+        documentHash: 'persisted-hash',
+        documentUpdatedAt: 123,
+        stages: [], edges: [], layout: {},
+        schedule: { enabled: true, period: 'DAILY', cron: '0 0 * * *', timezone: 'UTC' },
+        dependencyConfig: {
+            dependencies: [{ groupId: 4, flowId: 'upstream-a' }, { groupId: 5, flowId: 'upstream-b' }],
+            failurePolicy: 'PAUSE', crossGroupDependency: 'ALLOW',
+        },
+    };
+
+    it.each([true, false])('maps persisted schedule enabled=%s and dependency count, copying only the affected branch', (enabled) => {
+        const target = flow(document.path, 'task-a');
+        const sibling = flow('_flows/x/task-b/flow.yaml', 'task-b');
+        const untouched = directory('_flows/y', 'y', []);
+        const tree = root([directory('_flows/x', 'x', [target, sibling]), untouched]);
+        const updated = updateRepoTreeFlowStatus(tree, {
+            ...document, schedule: { ...document.schedule!, enabled },
+        });
+
+        expect(updated).not.toBe(tree);
+        expect(updated.children[0]).not.toBe(tree.children[0]);
+        expect(updated.children[0].children[0]).toEqual({
+            ...target, scheduleState: enabled ? 'ENABLED' : 'DISABLED', schedulePeriod: 'DAILY', dependencyCount: 2,
+        });
+        expect(updated.children[0].children[1]).toBe(sibling);
+        expect(updated.children[1]).toBe(untouched);
+        expect(target.scheduleState).toBe('NONE');
+        expect(target.dependencyCount).toBe(0);
+    });
+
+    it.each([null, undefined])('clears status when the persisted document has schedule=%s and no dependency config', (schedule) => {
+        const target = { ...flow(document.path, 'task-a'), scheduleState: 'DISABLED' as const, schedulePeriod: 'WEEKLY' as const, dependencyCount: 3 };
+        const tree = root([target]);
+        const updated = updateRepoTreeFlowStatus(tree, { ...document, schedule, dependencyConfig: undefined });
+        expect(updated.children[0]).toEqual({ ...target, scheduleState: 'NONE', schedulePeriod: null, dependencyCount: 0 });
+        expect(target.dependencyCount).toBe(3);
+    });
+
+    it('keeps all references when status is unchanged, even if other persisted document fields differ', () => {
+        const tree = updateRepoTreeFlowStatus(root([directory('_flows/x', 'x', [flow(document.path, 'task-a')])]), document);
+        const updated = updateRepoTreeFlowStatus(tree, {
+            ...document,
+            documentHash: 'new-persisted-hash',
+            schedule: { ...document.schedule!, cron: '0 1 * * *' },
+            dependencyConfig: {
+                ...document.dependencyConfig!,
+                dependencies: [{ groupId: 4, flowId: 'other-a' }, { groupId: 4, flowId: 'other-b' }],
+            },
+        });
+        expect(updated).toBe(tree);
+        expect(updated.children).toBe(tree.children);
+        expect(updated.children[0].children[0]).toBe(tree.children[0].children[0]);
+    });
+
+    it('keeps the root reference when the saved flow is not in the tree', () => {
+        const tree = root([flow('_flows/unrelated/flow.yaml', 'unrelated')]);
+        expect(updateRepoTreeFlowStatus(tree, document)).toBe(tree);
     });
 });

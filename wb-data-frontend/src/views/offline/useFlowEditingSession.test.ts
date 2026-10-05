@@ -1014,4 +1014,72 @@ describe('useFlowEditingSession', () => {
             }),
         );
     });
+
+    it('resets draftSaveState and draftSaveError when opening or switching to another flow', async () => {
+        vi.mocked(getOfflineFlowDocument).mockResolvedValue(makeFlowDocument());
+        vi.mocked(saveOfflineFlowDocument).mockRejectedValue(new Error('节点 mysql_node_1 保存前必须绑定数据源'));
+        const { result } = renderSessionHook();
+
+        await act(async () => {
+            await result.current.openFlowDocument('_flows/jack/test2/flow.yaml');
+        });
+
+        // Trigger failed save on test2
+        await act(async () => {
+            await result.current.persistDraft();
+        });
+
+        expect(result.current.draftSaveState).toBe('error');
+        expect(result.current.draftSaveError).toBe('节点 mysql_node_1 保存前必须绑定数据源');
+
+        // Switch to test1
+        await act(async () => {
+            await result.current.openFlowDocument('_flows/jack/test1/flow.yaml');
+        });
+
+        expect(result.current.activeFlowPath).toBe('_flows/jack/test1/flow.yaml');
+        expect(result.current.draftSaveState).toBe('idle');
+        expect(result.current.draftSaveError).toBeNull();
+    });
+
+    it('does not allow in-flight draft save of a previous flow to pollute active flow draftSaveState', async () => {
+        let rejectSave: (err: Error) => void = () => {};
+        const slowSavePromise = new Promise<never>((_, reject) => {
+            rejectSave = reject;
+        });
+        vi.mocked(getOfflineFlowDocument).mockResolvedValue(makeFlowDocument());
+        vi.mocked(saveOfflineFlowDocument).mockImplementation(() => slowSavePromise);
+        const { result } = renderSessionHook();
+
+        await act(async () => {
+            await result.current.openFlowDocument('_flows/jack/test2/flow.yaml');
+        });
+
+        // Start in-flight save on test2 (do not await)
+        let savePromise: Promise<boolean> | null = null;
+        act(() => {
+            savePromise = result.current.persistDraft();
+        });
+
+        expect(result.current.draftSaveState).toBe('saving');
+
+        // Switch to test1 while test2 save is in flight
+        await act(async () => {
+            await result.current.openFlowDocument('_flows/jack/test1/flow.yaml');
+        });
+
+        expect(result.current.activeFlowPath).toBe('_flows/jack/test1/flow.yaml');
+        expect(result.current.draftSaveState).toBe('idle');
+
+        // Now the in-flight save for test2 fails
+        await act(async () => {
+            rejectSave(new Error('节点 mysql_node_1 保存前必须绑定数据源'));
+            await savePromise?.catch(() => {});
+        });
+
+        // test1 draftSaveState must STILL be idle, not contaminated with test2's error
+        expect(result.current.activeFlowPath).toBe('_flows/jack/test1/flow.yaml');
+        expect(result.current.draftSaveState).toBe('idle');
+        expect(result.current.draftSaveError).toBeNull();
+    });
 });
