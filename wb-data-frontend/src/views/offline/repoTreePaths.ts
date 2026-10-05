@@ -1,4 +1,4 @@
-import type { OfflineRepoTreeNode } from '../../api/offline';
+import type { OfflineFlowDocument, OfflineRepoTreeNode } from '../../api/offline';
 
 const FLOWS_PREFIX = '_flows/';
 const FLOW_FILE_SUFFIX = '/flow.yaml';
@@ -65,4 +65,16 @@ export function indexNodesByTreePath(root: OfflineRepoTreeNode): Map<string, Off
     };
     walk(root);
     return index;
+}
+
+export function updateRepoTreeFlowStatus(root: OfflineRepoTreeNode, document: OfflineFlowDocument): OfflineRepoTreeNode {
+    if (root.kind === 'FLOW' && root.path === document.path) {
+        const scheduleState = document.schedule ? document.schedule.enabled ? 'ENABLED' : 'DISABLED' : 'NONE';
+        const schedulePeriod = document.schedule?.period ?? null;
+        const dependencyCount = document.dependencyConfig?.dependencies.length ?? 0;
+        if (root.scheduleState === scheduleState && root.schedulePeriod === schedulePeriod && root.dependencyCount === dependencyCount) return root;
+        return { ...root, scheduleState, schedulePeriod, dependencyCount };
+    }
+    const children = root.children.map((child) => updateRepoTreeFlowStatus(child, document));
+    return children.some((child, index) => child !== root.children[index]) ? { ...root, children } : root;
 }

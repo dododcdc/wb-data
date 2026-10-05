@@ -17,14 +17,14 @@ function badgeSymbol(id: string, letter: string, circleColor: string, letterColo
     return `<symbol id="${id}" viewBox="0 0 16 16">`
         + `<circle cx="8" cy="8" r="7" fill="${circleColor}"/>`
         + `<text x="8" y="8" text-anchor="middle" dominant-baseline="central"`
-        + ` font-size="8.5" font-weight="700" font-family="inherit" fill="${letterColor}">${letter}</text>`
+        + ` font-size="10" font-weight="600" font-family="inherit" fill="${letterColor}">${letter}</text>`
         + `</symbol>`;
 }
 
-export const SCHEDULE_BADGE_SPRITE = `<svg xmlns="http://www.w3.org/2000/svg">${
+export const SCHEDULE_BADGE_SPRITE = `<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" style="position:absolute">${
     Object.values(PERIOD_META).map(({ letter }) => {
         const key = letter.toLowerCase();
-        return badgeSymbol(`wb-schedule-${key}`, letter, '#3b82f6', '#f472b6')
+        return badgeSymbol(`wb-schedule-${key}`, letter, '#1e40af', '#ffffff')
             + badgeSymbol(`wb-schedule-${key}-disabled`, letter, '#9ca3af', '#e5e7eb');
     }).join('')
 }</svg>`;

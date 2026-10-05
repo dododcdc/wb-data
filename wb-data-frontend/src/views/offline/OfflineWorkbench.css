@@ -189,7 +189,8 @@
     background: transparent;
     color: var(--color-text-secondary);
     font: inherit;
-    font-size: 0.8rem;
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
     font-weight: 600;
     text-align: left;
     cursor: pointer;
@@ -264,7 +265,7 @@ button.offline-tree-row {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.84rem;
+    font-size: 0.875rem;
 }
 
 .offline-rail-empty {

@@ -4,14 +4,11 @@ import {
     useImperativeHandle,
     useMemo,
     useRef,
+    useState,
     type CSSProperties,
 } from 'react';
 import { FileTree, useFileTree } from '@pierre/trees/react';
-import type {
-    FileTreeDirectoryHandle,
-    FileTreeRowDecoration,
-    FileTreeVisibleRow,
-} from '@pierre/trees';
+import type { FileTree as FileTreeModel, FileTreeDirectoryHandle, FileTreeRowDecoration } from '@pierre/trees';
 
 import type { OfflineRepoTreeNode } from '../../api/offline';
 import {
@@ -29,7 +26,7 @@ export interface OfflineRepoTreeHandle {
 
 interface OfflineRepoTreeCallbacks {
     onOpenFlow?: (apiPath: string) => void;
-    onMoveNode?: (sourceTreePath: string, newTreePath: string) => void;
+    onMoveNode?: (sourceTreePath: string, newTreePath: string) => Promise<void>;
     onContextMenu?: (treePath: string, position: { x: number; y: number }) => void;
     onSelectDirectory?: (treePath: string) => void;
     renderBadge?: (node: OfflineRepoTreeNode) => FileTreeRowDecoration | null;
@@ -37,16 +34,12 @@ interface OfflineRepoTreeCallbacks {
 
 interface OfflineRepoTreeProps extends OfflineRepoTreeCallbacks {
     root: OfflineRepoTreeNode;
-    /** 变化时视为切换了仓库：重置并全部展开 */
     dataKey: string | number | null;
     selectedTreePath: string | null;
     canWrite: boolean;
     className?: string;
-    /** 注入 shadow DOM 的自定义 SVG sprite（行徽标符号） */
     iconSpriteSheet?: string;
-    /** 仅渲染目录节点 */
     directoriesOnly?: boolean;
-    /** 禁用拖拽与右键菜单 */
     readonly?: boolean;
 }
 
@@ -59,33 +52,50 @@ const HOST_THEME_STYLE = {
     '--trees-theme-list-active-selection-fg': 'var(--color-text-primary)',
     '--trees-theme-focus-ring': 'rgba(217, 119, 87, 0.4)',
     '--trees-theme-scrollbar-thumb': 'var(--color-border)',
-    fontSize: '0.84rem',
+    '--trees-font-family-override': 'var(--font-sans)',
+    '--trees-font-size-override': '0.875rem',
 } as CSSProperties;
 
-function directoryPaths(paths: readonly string[]): string[] {
-    return paths.filter(isDirectoryTreePath);
+const ROW_STYLES = `
+    [data-item-type="folder"] { font-weight: 500; }
+    [data-item-type="file"] > [data-item-section="icon"] { display: none; }
+    [data-item-section="content"] { order: 1; }
+    [data-item-section="decoration"] { flex: none; width: 16px; transform: translateY(1px); }
+    [data-item-section="git"], [data-item-section="action"] { order: 2; }
+`;
+
+function resetTreePaths(model: FileTreeModel, paths: string[], expandAll = false) {
+    const search = model.isSearchOpen() ? model.getSearchValue() : null;
+    model.setSearch(null);
+    const directories = paths.filter(isDirectoryTreePath);
+    const expanded = new Set(directories.filter((path) => expandAll
+        || (model.getItem(path) as FileTreeDirectoryHandle | null)?.isExpanded()));
+    model.resetPaths(paths, { initialExpandedPaths: [...expanded] });
+    // Initial expansion also opens ancestors; restore explicitly collapsed parents afterward.
+    directories.filter((path) => !expanded.has(path)).forEach((path) => {
+        (model.getItem(path) as FileTreeDirectoryHandle | null)?.collapse();
+    });
+    model.setSearch(search);
 }
 
 export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTreeProps>(
     function OfflineRepoTree(props, ref) {
         const {
-            root,
-            dataKey,
-            selectedTreePath,
-            canWrite,
-            className,
-            iconSpriteSheet,
-            directoriesOnly = false,
-            readonly = false,
+            root, dataKey, selectedTreePath, canWrite, className, iconSpriteSheet,
+            directoriesOnly = false, readonly = false,
         } = props;
-
         const callbacksRef = useRef(props);
         callbacksRef.current = props;
+        const movingRef = useRef(false);
+        const syncingSelectionRef = useRef(false);
+        const [noSearchMatches, setNoSearchMatches] = useState(false);
 
         const paths = useMemo(() => {
             const all = flattenRepoTreePaths(root);
             return directoriesOnly ? all.filter(isDirectoryTreePath) : all;
         }, [root, directoriesOnly]);
+        const pathsRef = useRef(paths);
+        pathsRef.current = paths;
         const nodeIndex = useMemo(() => indexNodesByTreePath(root), [root]);
         const nodeIndexRef = useRef(nodeIndex);
         nodeIndexRef.current = nodeIndex;
@@ -95,47 +105,60 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
         const { model } = useFileTree({
             paths: [],
             sort: 'default',
+            itemHeight: 30,
+            flattenEmptyDirectories: false,
             icons: iconSpriteSheet ? { spriteSheet: iconSpriteSheet } : undefined,
+            unsafeCSS: ROW_STYLES,
             fileTreeSearchMode: 'hide-non-matches',
             dragAndDrop: readonly ? false : {
-                canDrag: () => canWriteRef.current,
-                canDrop: (event) => event.draggedPaths.every((dragged) => {
-                    const targetDir = event.target.directoryPath;
-                    if (targetDir === null) return true;
-                    if (targetDir === dragged) return false;
-                    return !(isDirectoryTreePath(dragged) && targetDir.startsWith(dragged));
-                }),
-                onDropComplete: (event) => {
-                    event.draggedPaths.forEach((dragged) => {
-                        const next = moveTreePath(dragged, event.target.directoryPath);
-                        if (next !== dragged) {
-                            callbacksRef.current.onMoveNode?.(dragged, next);
-                        }
-                    });
+                canDrag: (dragged) => canWriteRef.current && !movingRef.current && dragged.length === 1,
+                canDrop: (event) => canWriteRef.current && !movingRef.current
+                    && event.draggedPaths.length === 1 && event.draggedPaths.every((dragged) => {
+                        const targetDir = event.target.directoryPath;
+                        if (targetDir === dragged || (targetDir && isDirectoryTreePath(dragged) && targetDir.startsWith(dragged))) return false;
+                        const next = moveTreePath(dragged, targetDir);
+                        const basename = next.replace(/\/$/, '');
+                        return next !== dragged && !nodeIndexRef.current.has(basename)
+                            && !nodeIndexRef.current.has(`${basename}/`);
+                    }),
+                onDropComplete: async (event) => {
+                    const dragged = event.draggedPaths[0];
+                    const next = moveTreePath(dragged, event.target.directoryPath);
+                    movingRef.current = true;
+                    // Trees mutates optimistically; keep server paths authoritative until persistence completes.
+                    syncingSelectionRef.current = true;
+                    resetTreePaths(model, pathsRef.current);
+                    syncingSelectionRef.current = false;
+                    try {
+                        await callbacksRef.current.onMoveNode?.(dragged, next);
+                    } finally {
+                        movingRef.current = false;
+                    }
                 },
             },
             onSelectionChange: (selected) => {
                 const first = selected[0];
-                if (!first) return;
+                if (syncingSelectionRef.current || movingRef.current || !first
+                    || first === callbacksRef.current.selectedTreePath || !nodeIndexRef.current.has(first)) return;
                 if (isDirectoryTreePath(first)) {
                     callbacksRef.current.onSelectDirectory?.(first);
-                    return;
+                } else {
+                    callbacksRef.current.onOpenFlow?.(treePathToFlowApiPath(first));
                 }
-                callbacksRef.current.onOpenFlow?.(treePathToFlowApiPath(first));
             },
             renderRowDecoration: ({ item }) => {
                 const node = nodeIndexRef.current.get(item.path);
-                if (!node || node.kind !== 'FLOW') return null;
-                return callbacksRef.current.renderBadge?.(node) ?? null;
+                return node?.kind === 'FLOW' ? callbacksRef.current.renderBadge?.(node) ?? null : null;
             },
             composition: readonly ? undefined : {
                 contextMenu: {
                     enabled: true,
                     triggerMode: 'right-click',
                     onOpen: (item, context) => {
+                        context.close({ restoreFocus: false });
                         callbacksRef.current.onContextMenu?.(item.path, {
                             x: context.anchorRect.x,
-                            y: context.anchorRect.y,
+                            y: context.anchorRect.bottom,
                         });
                     },
                 },
@@ -146,49 +169,58 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
         useEffect(() => {
             const isSameScope = lastDataKeyRef.current === dataKey;
             lastDataKeyRef.current = dataKey;
-            let expanded: string[];
-            if (isSameScope) {
-                const visible = model.getVisibleRows(0, model.getVisibleCount());
-                expanded = visible
-                    .filter((row: FileTreeVisibleRow) => row.kind === 'directory' && row.isExpanded)
-                    .map((row) => row.path)
-                    .filter((path) => paths.includes(path));
-            } else {
-                expanded = directoryPaths(paths);
-            }
-            model.resetPaths(paths, { initialExpandedPaths: expanded });
+            syncingSelectionRef.current = true;
+            resetTreePaths(model, paths, !isSameScope);
+            syncingSelectionRef.current = false;
+            setNoSearchMatches(!!model.getSearchValue() && model.getSearchMatchingPaths().length === 0);
         }, [model, paths, dataKey]);
 
         useEffect(() => {
-            const target = selectedTreePath;
+            syncingSelectionRef.current = true;
             model.getSelectedPaths().forEach((selected) => {
-                if (selected !== target) model.getItem(selected)?.deselect();
+                if (selected !== selectedTreePath) model.getItem(selected)?.deselect();
             });
-            if (!target) return;
-            const item = model.getItem(target);
-            if (!item) return;
-            if (!item.isSelected()) item.select();
-            model.scrollToPath(target, { offset: 'nearest' });
+            if (selectedTreePath) {
+                const item = model.getItem(selectedTreePath);
+                if (item && !item.isSelected()) item.select();
+                if (item) model.scrollToPath(selectedTreePath, { offset: 'nearest' });
+            }
+            syncingSelectionRef.current = false;
         }, [model, selectedTreePath, paths]);
 
         useImperativeHandle(ref, () => ({
             expandAll: () => {
-                directoryPaths(paths).forEach((path) => {
+                paths.filter(isDirectoryTreePath).forEach((path) => {
                     (model.getItem(path) as FileTreeDirectoryHandle | null)?.expand();
                 });
             },
             setSearch: (value) => {
+                syncingSelectionRef.current = true;
                 model.setSearch(value);
+                syncingSelectionRef.current = false;
+                // This Trees version shows all rows when its search finds no matches.
+                setNoSearchMatches(!!value && model.getSearchMatchingPaths().length === 0);
             },
         }), [model, paths]);
 
         return (
-            <FileTree
-                model={model}
+            <div
                 className={className}
-                style={HOST_THEME_STYLE}
-                renderContextMenu={() => null}
-            />
+                style={{ minHeight: 0, height: '100%' }}
+                onMouseMove={(event) => {
+                    // Mouseover does not cross the shadow boundary when moving between tree rows.
+                    const label = event.nativeEvent.composedPath().find((target): target is HTMLElement => (
+                        target instanceof HTMLElement && target.dataset.itemSection === 'content'
+                    ));
+                    const name = label?.closest('[data-type="item"]')?.getAttribute('aria-label');
+                    if (label && name && label.title !== name) label.title = name;
+                }}
+            >
+                {noSearchMatches ? <p className="offline-rail-empty" role="status">没有匹配的目录</p> : null}
+                <div hidden={noSearchMatches} style={{ height: '100%' }}>
+                    <FileTree model={model} style={{ ...HOST_THEME_STYLE, display: 'block', height: '100%' }} />
+                </div>
+            </div>
         );
     },
 );

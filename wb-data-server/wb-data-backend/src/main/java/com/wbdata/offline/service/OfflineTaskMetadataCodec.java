@@ -63,11 +63,22 @@ final class OfflineTaskMetadataCodec {
                                   String dataSourceType,
                                   String nodeKind) {
         String cleaned = strip(existingDescription);
-        StringBuilder metadata = new StringBuilder(PREFIX)
-                .append(" dataSourceId=").append(dataSourceId)
-                .append(";dataSourceType=").append(dataSourceType);
+        StringBuilder metadata = new StringBuilder(PREFIX);
+        boolean hasEntry = false;
+        if (dataSourceId != null) {
+            metadata.append(" dataSourceId=").append(dataSourceId);
+            hasEntry = true;
+        }
+        if (dataSourceType != null && !dataSourceType.isBlank()) {
+            metadata.append(hasEntry ? ";" : " ").append("dataSourceType=").append(dataSourceType);
+            hasEntry = true;
+        }
         if (nodeKind != null && !nodeKind.isBlank()) {
-            metadata.append(";nodeKind=").append(nodeKind);
+            metadata.append(hasEntry ? ";" : " ").append("nodeKind=").append(nodeKind);
+            hasEntry = true;
+        }
+        if (!hasEntry) {
+            return cleaned;
         }
         return appendMetadata(cleaned, metadata.toString());
     }

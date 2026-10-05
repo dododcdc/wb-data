@@ -108,11 +108,24 @@ export function moveRecoverySnapshot(groupId: number, oldPath: string, newPath: 
         return;
     }
 
+    const oldTaskDirectory = oldPath.match(/^_flows\/(.+)\/[^/]+$/)?.[1];
+    const newTaskDirectory = newPath.match(/^_flows\/(.+)\/[^/]+$/)?.[1];
+    const oldScriptPrefix = oldTaskDirectory ? `scripts/${oldTaskDirectory}/` : null;
+    const newScriptPrefix = newTaskDirectory ? `scripts/${newTaskDirectory}/` : null;
+
     writeRecoverySnapshot(groupId, newPath, {
         ...snapshot,
         document: {
             ...snapshot.document,
             path: newPath,
+            stages: snapshot.document.stages.map((stage) => ({
+                ...stage,
+                nodes: stage.nodes.map((node) => (
+                    oldScriptPrefix && newScriptPrefix && node.scriptPath?.startsWith(oldScriptPrefix)
+                        ? { ...node, scriptPath: `${newScriptPrefix}${node.scriptPath.slice(oldScriptPrefix.length)}` }
+                        : node
+                )),
+            })),
         },
     });
     removeRecoverySnapshot(groupId, oldPath);

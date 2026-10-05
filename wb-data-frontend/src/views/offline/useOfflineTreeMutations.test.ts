@@ -362,4 +362,37 @@ describe('useOfflineTreeMutations', () => {
         expect(params.showFeedback).toHaveBeenCalledWith(expect.objectContaining({ tone: 'error' }));
         expect(params.refreshRepoTree).toHaveBeenCalled();
     });
+
+    it.each(['group', 'flow'])('does not replace the editor after switching %s during a move', async (scope) => {
+        const offlineApi = await import('../../api/offline');
+        let finishMove!: () => void;
+        vi.mocked(offlineApi.moveOfflineFlow).mockImplementation(() => new Promise((resolve) => {
+            finishMove = () => resolve(undefined as never);
+        }));
+        const { result, params, rerender } = renderTreeMutations({
+            resolveTreeNode: () => ({
+                id: 'test', name: 'test', path: '_flows/jack/test/flow.yaml', kind: 'FLOW',
+                children: [], scheduleState: 'NONE', schedulePeriod: null, dependencyCount: 0,
+            }),
+        });
+        let move!: Promise<void>;
+        act(() => { move = result.current.handleMoveNode('jack/test', 'archive/test'); });
+        if (scope === 'group') params.groupId = 2;
+        params.activeFlowPath = '_flows/other/flow.yaml';
+        params.draftSession = makeSession(params.activeFlowPath);
+        rerender();
+        await act(async () => { finishMove(); await move; });
+
+        expect(params.setDraftSession).not.toHaveBeenCalled();
+        expect(params.setActiveFlowPath).not.toHaveBeenCalled();
+        expect(params.openFlowDocument).not.toHaveBeenCalled();
+        if (scope === 'group') expect(params.showFeedback).not.toHaveBeenCalled();
+    });
+
+    it('dismisses the context menu with Escape', () => {
+        const { result } = renderTreeMutations();
+        act(() => result.current.setContextMenuOpen(true));
+        act(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
+        expect(result.current.contextMenuOpen).toBe(false);
+    });
 });

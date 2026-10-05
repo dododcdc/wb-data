@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { OfflineRepoTreeNode } from '../../api/offline';
-import { renderScheduleBadge } from './offlineTreeBadges';
+import { renderScheduleBadge, SCHEDULE_BADGE_SPRITE } from './offlineTreeBadges';
 
 function flow(overrides: Partial<OfflineRepoTreeNode> = {}): OfflineRepoTreeNode {
     return {
@@ -48,5 +48,18 @@ describe('renderScheduleBadge', () => {
         const badge = renderScheduleBadge(flow({ scheduleState: 'ENABLED', schedulePeriod: period }));
         expect(badge).not.toBeNull();
         expect(JSON.stringify(badge)).toContain('wb-schedule-');
+    });
+});
+
+describe('SCHEDULE_BADGE_SPRITE', () => {
+    it.each(['H', 'D', 'W', 'M', 'Y', 'C'])('uses dark blue and white for %s while preserving the disabled palette', (letter) => {
+        const sprite = new DOMParser().parseFromString(SCHEDULE_BADGE_SPRITE, 'image/svg+xml');
+        const enabled = sprite.getElementById(`wb-schedule-${letter.toLowerCase()}`);
+        const disabled = sprite.getElementById(`wb-schedule-${letter.toLowerCase()}-disabled`);
+
+        expect(enabled?.querySelector('circle')?.getAttribute('fill')).toBe('#1e40af');
+        expect(enabled?.querySelector('text')?.getAttribute('fill')).toBe('#ffffff');
+        expect(disabled?.querySelector('circle')?.getAttribute('fill')).toBe('#9ca3af');
+        expect(disabled?.querySelector('text')?.getAttribute('fill')).toBe('#e5e7eb');
     });
 });

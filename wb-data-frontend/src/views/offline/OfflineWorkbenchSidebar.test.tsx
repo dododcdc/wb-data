@@ -91,11 +91,11 @@ function renderSidebar(treeData: OfflineRepoTreeResponse) {
     const view = render(<OfflineWorkbenchSidebar {...props} />, { wrapper: TooltipProvider });
     return {
         ...view,
-        rerenderTree(nextTreeData: OfflineRepoTreeResponse) {
+        rerenderTree(nextTreeData: OfflineRepoTreeResponse, loading = false) {
             view.rerender(
                 <OfflineWorkbenchSidebar
                     {...props}
-                    tree={{ ...props.tree, data: nextTreeData }}
+                    tree={{ ...props.tree, data: nextTreeData, loading }}
                 />,
             );
         },
@@ -115,13 +115,24 @@ describe('OfflineWorkbenchSidebar', () => {
         const view = renderSidebar(createTree(['existing']));
         const root = view.container.querySelector('button.offline-tree-root-label');
 
-        expect(screen.getByRole('button', { name: 'existing' })).toBeTruthy();
+        const existing = screen.getByRole('button', { name: 'existing' });
         fireEvent.click(root!);
         expect(screen.queryByRole('button', { name: 'existing' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'existing', hidden: true })).toBe(existing);
 
         view.rerenderTree(createTree(['existing', 'test1']));
 
         expect(screen.queryByRole('button', { name: 'existing' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'test1' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'existing', hidden: true })).toBe(existing);
+    });
+
+    it('keeps the loaded tree mounted while a refresh is pending', () => {
+        const data = createTree(['existing']);
+        const view = renderSidebar(data);
+        const existing = screen.getByRole('button', { name: 'existing' });
+        view.rerenderTree(data, true);
+        expect(screen.getByRole('button', { name: 'existing' })).toBe(existing);
+        expect(screen.queryByText('正在加载项目树')).toBeNull();
     });
 });

@@ -511,6 +511,7 @@ async function openFolderDeleteDialog() {
 describe('OfflineWorkbench commit UI', () => {
     afterEach(() => {
         cleanup();
+        vi.unstubAllGlobals();
     });
 
     beforeEach(async () => {
@@ -581,6 +582,71 @@ describe('OfflineWorkbench commit UI', () => {
                 sortOrder: 0,
             }],
         });
+    });
+
+    it.each([true, false])('copies the displayed task name without opening it (write access: %s)', async (canWrite) => {
+        authState.systemAdmin = false;
+        authState.permissions = canWrite ? ['offline.write'] : [];
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        vi.stubGlobal('navigator', Object.create(navigator, { clipboard: { value: { writeText } } }));
+        const api = await import('../../api/offline');
+        vi.mocked(api.getOfflineRepoTree).mockResolvedValue(makeRepoTree({ includeFolder: true }));
+        renderOfflineWorkbench();
+        fireEvent.contextMenu(await screen.findByRole('button', { name: 'Example Flow' }), { clientX: 120, clientY: 80 });
+        const copy = await screen.findByRole('button', { name: '复制任务名称' });
+        expect(!!screen.queryByRole('button', { name: '重命名' })).toBe(canWrite);
+        expect(!!screen.queryByRole('button', { name: '删除' })).toBe(canWrite);
+        fireEvent.click(copy);
+        await waitFor(() => expect(writeText).toHaveBeenCalledWith('Example Flow'));
+        expect(feedbackSpy).toHaveBeenCalledWith({ tone: 'success', title: '任务名称已复制', detail: '' });
+        expect(screen.queryByRole('button', { name: '复制任务名称' })).toBeNull();
+        expect(api.getOfflineFlowDocument).not.toHaveBeenCalled();
+        expect(api.saveOfflineFlowDocument).not.toHaveBeenCalled();
+        fireEvent.contextMenu(screen.getByRole('button', { name: 'Sub Folder' }));
+        expect(screen.queryByRole('button', { name: '复制任务名称' })).toBeNull();
+        if (!canWrite) expect(document.querySelector('.offline-context-menu')).toBeNull();
+    });
+
+    it.each(['denied', 'unavailable'])('reports a clipboard %s error without claiming success', async (outcome) => {
+        authState.systemAdmin = false;
+        authState.permissions = ['offline.write'];
+        const clipboard = outcome === 'denied'
+            ? { writeText: vi.fn().mockRejectedValue(new Error('NotAllowedError')) }
+            : undefined;
+        vi.stubGlobal('navigator', Object.create(navigator, { clipboard: { value: clipboard } }));
+        renderOfflineWorkbench();
+        fireEvent.contextMenu(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.click(await screen.findByRole('button', { name: '复制任务名称' }));
+        await waitFor(() => expect(feedbackSpy).toHaveBeenCalledWith({
+            tone: 'error', title: '复制任务名称失败', detail: '请检查浏览器剪贴板权限，并使用 HTTPS 或 localhost 访问。',
+        }));
+        expect(feedbackSpy).not.toHaveBeenCalledWith(expect.objectContaining({ title: '任务名称已复制' }));
+        expect(screen.queryByRole('button', { name: '复制任务名称' })).toBeNull();
+    });
+
+    it('searches and selects a directory in the create dialog without flow callbacks', async () => {
+        authState.permissions = ['offline.write'];
+        const api = await import('../../api/offline');
+        vi.mocked(api.getOfflineRepoTree).mockResolvedValue(makeRepoTree({ includeFolder: true }));
+        renderOfflineWorkbench();
+        await screen.findByRole('button', { name: 'Sub Folder' });
+        fireEvent.click(screen.getByRole('button', { name: '新建' }));
+        fireEvent.click(screen.getByRole('button', { name: '新建文件夹' }));
+        const dialog = within(await screen.findByRole('dialog', { name: '新建文件夹' }));
+        expect(dialog.queryByRole('button', { name: 'Example Flow' })).toBeNull();
+        const search = dialog.getByPlaceholderText('搜索目录...');
+        fireEvent.change(search, { target: { value: 'missing' } });
+        expect(dialog.getByRole('status').textContent).toBe('没有匹配的目录');
+        expect(dialog.queryByRole('button', { name: 'Sub Folder' })).toBeNull();
+        fireEvent.change(search, { target: { value: '' } });
+        expect(dialog.queryByRole('status')).toBeNull();
+        fireEvent.change(search, { target: { value: 'sub' } });
+        fireEvent.contextMenu(dialog.getByRole('button', { name: 'Sub Folder' }));
+        fireEvent.click(dialog.getByRole('button', { name: 'Sub Folder' }));
+        expect(dialog.getByText(/已选：sub/)).toBeTruthy();
+        expect(api.getOfflineFlowDocument).not.toHaveBeenCalled();
+        fireEvent.click(dialog.getByRole('button', { name: '取消' }));
+        expect(screen.queryByRole('dialog', { name: '新建文件夹' })).toBeNull();
     });
 
     it.each(['success', 'error'] as const)('ignores stale tree %s after changing group', async (outcome) => {

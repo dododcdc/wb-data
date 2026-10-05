@@ -227,6 +227,9 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         syncCanvasRefsFromDocument(nextSession.workingDraft);
         setActiveFlowPath(path);
         setDraftSessionSync(nextSession);
+        setDraftSaveState('idle');
+        setDraftSavedAt(null);
+        setDraftSaveError(null);
     }, [clearPendingNodeEditorDraft, groupId, setDraftSessionSync, syncCanvasRefsFromDocument]);
 
     const leaveCurrentFlow = useCallback((
@@ -329,6 +332,9 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         setFlowCommitDirty(false);
         setSaveConflictState(null);
         setSaveConflictPending(false);
+        setDraftSaveState('idle');
+        setDraftSavedAt(null);
+        setDraftSaveError(null);
         resetExecutionAndSchedule?.();
     }, [
         resetExecutionAndSchedule,
@@ -585,6 +591,8 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         const prepared = prepareCurrentSessionForSave(options?.nodeOverride);
         if (!prepared) return false;
         const sessionForSave = prepared.sessionForSave;
+        const savingFlowPath = sessionForSave.path;
+        const isCurrentGroupAction = captureGroupActionGuard(groupId);
 
         setSavingFlow(true);
         setDraftSaveState('saving');
@@ -593,35 +601,49 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
 
             const response = await persistFlowSession(sessionForSave);
             const nextSession = rebaseFlowDraftSession(sessionForSave, response);
-            setDraftSessionSync(nextSession);
             removeRecoverySnapshot(groupId, sessionForSave.path);
-            await Promise.all([
-                refreshCurrentFlowCommitStatus(),
-                options?.refreshRepo ? refreshRepoStatus() : Promise.resolve(),
-            ]);
-            setDraftSaveState('saved');
-            setDraftSavedAt(Date.now());
-            setDraftSaveError(null);
+
+            if (!isCurrentGroupAction()) return false;
+
+            if (activeFlowPathRef.current === savingFlowPath) {
+                setDraftSessionSync(nextSession);
+                await Promise.all([
+                    refreshCurrentFlowCommitStatus(),
+                    options?.refreshRepo ? refreshRepoStatus() : Promise.resolve(),
+                ]);
+                setDraftSaveState('saved');
+                setDraftSavedAt(Date.now());
+                setDraftSaveError(null);
+            }
             return true;
         } catch (error) {
+            if (!isCurrentGroupAction()) return false;
+
             if (isSaveConflictError(error)) {
                 writeRecoverySnapshot(groupId, sessionForSave.path, buildRecoverySnapshotFromSession(sessionForSave, Date.now()));
-                setSaveConflictState({
-                    path: sessionForSave.path,
-                    pendingSession: sessionForSave,
-                });
-                // 冲突弹窗期间暂停自动保存，待用户裁决后恢复
-                setDraftSaveState('idle');
+                if (activeFlowPathRef.current === savingFlowPath) {
+                    setSaveConflictState({
+                        path: sessionForSave.path,
+                        pendingSession: sessionForSave,
+                    });
+                    // 冲突弹窗期间暂停自动保存，待用户裁决后恢复
+                    setDraftSaveState('idle');
+                }
                 return false;
             }
-            setDraftSaveState('error');
-            setDraftSaveError(getErrorMessage(error, ''));
+            if (activeFlowPathRef.current === savingFlowPath) {
+                setDraftSaveState('error');
+                setDraftSaveError(getErrorMessage(error, ''));
+            }
             return false;
         } finally {
-            setSavingFlow(false);
+            if (isCurrentGroupAction() && activeFlowPathRef.current === savingFlowPath) {
+                setSavingFlow(false);
+            }
         }
     }, [
         activeFlowPath,
+        captureGroupActionGuard,
         groupId,
         persistFlowSession,
         prepareCurrentSessionForSave,
@@ -656,15 +678,15 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             const currentSession = draftSessionRef.current;
             const pendingDraft = pendingNodeEditorDraftRef.current;
             const pendingDraftChanged = hasPendingNodeEditorDraftChanges(currentSession, pendingDraft);
+            // 提交前校验数据源/Transfer 完整性（不校验连通性，见提案 D2）
+            if (!validateDocumentForAction()) {
+                return false;
+            }
             if (
                 mode === 'save-and-commit'
                 && currentSession
                 && (hasFlowDraftChanges(currentSession) || pendingDraftChanged)
             ) {
-                // 提交前校验数据源/Transfer 完整性（不校验连通性，见提案 D2）
-                if (!validateDocumentForAction()) {
-                    return false;
-                }
                 const saved = await persistDraft({ refreshRepo: false });
                 if (!saved) return false;
             }

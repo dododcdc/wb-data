@@ -103,23 +103,16 @@ public class OfflineFlowContentService {
 
     private void deleteFlowUnlocked(Long groupId, String path) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
-        Path flowPath = resolveFlowPath(repoPath, path);
-        Path flowDir = flowPath.getParent();
-        if (flowDir == null || !flowDir.startsWith(repoPath)) {
-            throw new IllegalArgumentException("任务路径不合法");
-        }
-
-        // Extract flow directory name (e.g., "_flows/demo" -> "demo")
-        String flowDirName = flowDir.getFileName().toString();
+        Path flowDir = OfflineRepoPaths.resolveFlowDirectory(repoPath, path);
+        Path scriptsDir = repoPath.resolve("scripts")
+                .resolve(repoPath.resolve("_flows").relativize(flowDir));
+        OfflineRepoPaths.assertNoSymlinks(repoPath, scriptsDir);
 
         try {
-            // Delete the _flows/{flowDir} directory (contains flow.yaml and .layout.json)
+            // Delete the flow directory and its hierarchical scripts mirror.
             if (Files.exists(flowDir)) {
                 deleteDirectory(flowDir);
             }
-
-            // Delete the scripts/{flowDir} directory
-            Path scriptsDir = repoPath.resolve("scripts").resolve(flowDirName);
             if (Files.exists(scriptsDir)) {
                 deleteDirectory(scriptsDir);
             }
@@ -136,60 +129,10 @@ public class OfflineFlowContentService {
 
     private void moveFlowUnlocked(Long groupId, String path, String newPath) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
-        Path flowPath = resolveFlowPath(repoPath, path);
-        Path flowDir = flowPath.getParent();
-        Path flowsRoot = repoPath.resolve("_flows").normalize();
-        if (flowDir == null || flowDir.equals(flowsRoot) || !flowDir.startsWith(flowsRoot)) {
-            throw new IllegalArgumentException("任务路径不合法");
-        }
-
-        Path newFlowDir = resolveFlowPath(repoPath, newPath).getParent();
-        if (newFlowDir == null || newFlowDir.equals(flowsRoot) || !newFlowDir.startsWith(flowsRoot)) {
-            throw new IllegalArgumentException("任务只能移动到 _flows 目录下");
-        }
-        OfflineRepoPaths.assertValidSegments(flowsRoot.relativize(newFlowDir));
-        if (newFlowDir.equals(flowDir)) {
-            return;
-        }
-        if (newFlowDir.startsWith(flowDir)) {
-            throw new IllegalArgumentException("不能移动到任务目录内部");
-        }
-        if (Files.exists(newFlowDir)) {
-            throw new IllegalArgumentException("目标位置已存在同名任务");
-        }
-
-        Path scriptsRoot = repoPath.resolve("scripts").normalize();
-        String oldSubPath = flowsRoot.relativize(flowDir).toString().replace('\\', '/');
-        String newSubPath = flowsRoot.relativize(newFlowDir).toString().replace('\\', '/');
-        Path oldScriptsDir = scriptsRoot.resolve(oldSubPath).normalize();
-        Path newScriptsDir = scriptsRoot.resolve(newSubPath).normalize();
-
+        Path flowDir = OfflineRepoPaths.resolveFlowDirectory(repoPath, path);
+        Path newFlowDir = OfflineRepoPaths.resolveFlowDirectory(repoPath, newPath);
         try {
-            Files.createDirectories(newFlowDir.getParent());
-            Files.move(flowDir, newFlowDir);
-
-            if (Files.exists(oldScriptsDir)) {
-                Files.createDirectories(newScriptsDir.getParent());
-                Files.move(oldScriptsDir, newScriptsDir);
-            }
-
-            Path movedFlowPath = newFlowDir.resolve("flow.yaml");
-            if (Files.exists(movedFlowPath)) {
-                String content = Files.readString(movedFlowPath, StandardCharsets.UTF_8);
-                String updatedContent = content.replace(
-                        "scripts/" + oldSubPath + "/",
-                        "scripts/" + newSubPath + "/"
-                );
-                if (!content.equals(updatedContent)) {
-                    Files.writeString(movedFlowPath, updatedContent, StandardCharsets.UTF_8);
-                }
-            }
-
-            if (!flowDir.getFileName().equals(newFlowDir.getFileName())) {
-                Files.deleteIfExists(kestraFlowFileService.resolveFlowFile(repoPath, path));
-            }
-            kestraFlowFileService.syncFlowFile(repoPath,
-                    repoPath.relativize(movedFlowPath).toString().replace('\\', '/'));
+            OfflineRepoPaths.moveDirectory(repoPath, flowDir, newFlowDir, true, kestraFlowFileService);
         } catch (IOException ex) {
             throw new IllegalStateException("移动任务失败", ex);
         }
