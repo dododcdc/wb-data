@@ -2,7 +2,7 @@ import { lazy } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getAuthContext } from '../api/auth';
@@ -138,6 +138,31 @@ describe('AuthGuard', () => {
         fireEvent.click(await screen.findByRole('button', { name: '重试' }));
         await screen.findByText('workspace');
         expect(useAuthStore.getState().token).toBe('token');
+    });
+
+    it('redirects to /login and preserves current location in state when unauthenticated', () => {
+        useAuthStore.getState().clearAuth();
+        let stateLocation: unknown;
+        function LoginTarget() {
+            const loc = useLocation();
+            stateLocation = loc.state;
+            return <div>login</div>;
+        }
+        client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        render(
+            <QueryClientProvider client={client}>
+                <MemoryRouter initialEntries={['/workspace/subpath']}>
+                    <Routes>
+                        <Route path="/login" element={<LoginTarget />} />
+                        <Route element={<AuthGuard />}>
+                            <Route path="/workspace/subpath" element={<Workspace />} />
+                        </Route>
+                    </Routes>
+                </MemoryRouter>
+            </QueryClientProvider>,
+        );
+        expect(screen.getByText('login')).toBeTruthy();
+        expect(stateLocation).toEqual({ from: expect.objectContaining({ pathname: '/workspace/subpath' }) });
     });
 });
 

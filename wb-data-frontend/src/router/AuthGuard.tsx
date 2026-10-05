@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { Suspense, type ReactNode } from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 
 import { useAuthContext } from '../hooks/useAuthContext';
 import { useAuthStore } from '../utils/auth';
@@ -12,11 +12,12 @@ export function withRouteSuspense(element: ReactNode, fallback: ReactNode = null
 }
 
 export function AuthGuard() {
+    const location = useLocation();
     const token = useAuthStore((s) => s.token);
     const contextLoaded = useAuthStore((s) => s.contextLoaded);
     const contextQuery = useAuthContext();
 
-    if (!token) return <Navigate to="/login" replace />;
+    if (!token) return <Navigate to="/login" state={{ from: location }} replace />;
     if (!contextLoaded) {
         if (contextQuery.isError && !contextQuery.isFetching) {
             return (
