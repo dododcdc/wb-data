@@ -22,7 +22,6 @@ import java.util.Map;
 import java.util.Set;
 
 final class OfflineFlowYamlSupport {
-    static final String SCHEDULE_PERIOD_LABEL = "wbdataSchedulePeriod";
     static final String DEPENDENCIES_LABEL = "wbdataDependencies";
     static final String FAILURE_POLICY_LABEL = "wbdataFailurePolicy";
     static final String CROSS_GROUP_DEPENDENCY_LABEL = "wbdataCrossGroupDependency";
@@ -31,11 +30,11 @@ final class OfflineFlowYamlSupport {
     static final String BYPASS_GATE_INPUT = "wbdata_bypass_gate";
     private static final java.util.regex.Pattern REPO_NAMESPACE_PATTERN =
             java.util.regex.Pattern.compile("^pg-(\\d+)$");
-    private static final String RECOVER_MISSED_SCHEDULES_NONE = "NONE";
     private static final java.util.regex.Pattern READ_CALL_PATTERN =
             java.util.regex.Pattern.compile("\\{\\{\\s*read\\(\\s*['\"]([^'\"]+)['\"]\\s*\\)\\s*}}");
 
     private final FlowYamlCodec yaml;
+    private final OfflineFlowScheduleYaml scheduleYaml;
     private final OfflineNodeTaskCompiler nodeTaskCompiler;
 
     OfflineFlowYamlSupport() {
@@ -48,6 +47,7 @@ final class OfflineFlowYamlSupport {
 
     private OfflineFlowYamlSupport(OfflineNodeTaskCompiler nodeTaskCompiler) {
         this.yaml = new FlowYamlCodec();
+        this.scheduleYaml = new OfflineFlowScheduleYaml(yaml);
         this.nodeTaskCompiler = nodeTaskCompiler;
     }
 
@@ -65,8 +65,7 @@ final class OfflineFlowYamlSupport {
     }
 
     String readLabel(String source, String key) {
-        Object value = yaml.asStringObjectMap(yaml.loadRoot(source).get("labels")).get(key);
-        return value == null ? null : value.toString();
+        return yaml.readLabelValue(yaml.loadRoot(source), key);
     }
 
     String buildDebugFlow(String source,
@@ -167,129 +166,23 @@ final class OfflineFlowYamlSupport {
     }
 
     ScheduleData readSchedule(String source) {
-        Map<String, Object> root = yaml.loadRoot(source);
-        Map<String, Object> trigger = findScheduleTrigger(root);
-        if (trigger == null) {
-            return null;
-        }
-        String cron = yaml.requiredString(trigger, "cron");
-        return new ScheduleData(
-                yaml.requiredString(trigger, "id"),
-                cron,
-                yaml.readOptionalString(trigger, "timezone"),
-                !Boolean.TRUE.equals(trigger.get("disabled")),
-                readPeriod(root, cron)
-        );
-    }
-
-    private OfflineSchedulePeriod readPeriod(Map<String, Object> root, String cron) {
-        String label = readLabelValue(root, SCHEDULE_PERIOD_LABEL);
-        if (label != null) {
-            try {
-                return OfflineSchedulePeriod.valueOf(label.trim().toUpperCase());
-            } catch (IllegalArgumentException ignored) {
-                // 未知 label 值按未设置处理，回退到 cron 推断
-            }
-        }
-        return inferPeriodFromCron(cron);
-    }
-
-    static OfflineSchedulePeriod inferPeriodFromCron(String cron) {
-        if (cron == null) {
-            return OfflineSchedulePeriod.CUSTOM;
-        }
-        String[] parts = cron.trim().split("\\s+");
-        if (parts.length != 5) {
-            return OfflineSchedulePeriod.CUSTOM;
-        }
-        if (isFixedNumber(parts[0]) && "*".equals(parts[1]) && "*".equals(parts[2])
-                && "*".equals(parts[3]) && "*".equals(parts[4])) {
-            return OfflineSchedulePeriod.HOURLY;
-        }
-        if (isFixedNumber(parts[0]) && isFixedNumber(parts[1]) && "*".equals(parts[2])
-                && "*".equals(parts[3]) && "*".equals(parts[4])) {
-            return OfflineSchedulePeriod.DAILY;
-        }
-        if (isFixedNumber(parts[0]) && isFixedNumber(parts[1]) && isFixedNumber(parts[2])
-                && "*".equals(parts[3]) && "*".equals(parts[4])) {
-            return OfflineSchedulePeriod.MONTHLY;
-        }
-        if (isFixedNumber(parts[0]) && isFixedNumber(parts[1]) && "*".equals(parts[2])
-                && "*".equals(parts[3]) && isFixedNumber(parts[4])) {
-            return OfflineSchedulePeriod.WEEKLY;
-        }
-        if (isFixedNumber(parts[0]) && isFixedNumber(parts[1]) && isFixedNumber(parts[2])
-                && isFixedNumber(parts[3]) && "*".equals(parts[4])) {
-            return OfflineSchedulePeriod.YEARLY;
-        }
-        return OfflineSchedulePeriod.CUSTOM;
-    }
-
-    private static boolean isFixedNumber(String field) {
-        return field.matches("\\d{1,2}");
-    }
-
-    private String readLabelValue(Map<String, Object> root, String key) {
-        Object value = yaml.asStringObjectMap(root.get("labels")).get(key);
-        return value == null ? null : value.toString();
+        return scheduleYaml.readSchedule(source);
     }
 
     String updateSchedule(String source, String cron, String timezone, OfflineSchedulePeriod period) {
-        return applySchedule(source, new OfflineFlowSchedule(cron, timezone, true, period));
+        return applyDependencyGate(scheduleYaml.updateSchedule(source, cron, timezone, period));
     }
 
     String updateScheduleStatus(String source, boolean enabled) {
-        Map<String, Object> root = yaml.loadRoot(source);
-        Map<String, Object> trigger = findScheduleTrigger(root);
-        if (trigger == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务尚未配置调度");
-        }
-        if (enabled) {
-            trigger.remove("disabled");
-        } else {
-            trigger.put("disabled", true);
-        }
-        return yaml.dump(root);
+        return scheduleYaml.updateScheduleStatus(source, enabled);
     }
 
+    /** 调度变更后闸门统一重生成，保持「调度 → 闸门」链式不变量。 */
     String applySchedule(String source, OfflineFlowSchedule schedule) {
         if (schedule == null) {
             return source;
         }
-        if (schedule.cron() == null || schedule.cron().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cron 表达式不能为空");
-        }
-        if (schedule.period() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "调度频率不能为空");
-        }
-
-        Map<String, Object> root = yaml.loadRoot(source);
-        Map<String, Object> trigger = findScheduleTrigger(root);
-        if (trigger == null) {
-            trigger = new LinkedHashMap<>();
-            trigger.put("id", "schedule");
-            trigger.put("type", "io.kestra.plugin.core.trigger.Schedule");
-            yaml.ensureTriggers(root).add(trigger);
-        }
-
-        trigger.put("cron", schedule.cron());
-        if (schedule.timezone() == null || schedule.timezone().isBlank()) {
-            trigger.remove("timezone");
-        } else {
-            trigger.put("timezone", schedule.timezone());
-        }
-        trigger.put("recoverMissedSchedules", RECOVER_MISSED_SCHEDULES_NONE);
-        if (schedule.enabled()) {
-            trigger.remove("disabled");
-        } else {
-            trigger.put("disabled", true);
-        }
-
-        Map<String, Object> labels = new LinkedHashMap<>();
-        labels.putAll(yaml.asStringObjectMap(root.get("labels")));
-        labels.put(SCHEDULE_PERIOD_LABEL, schedule.period().name());
-        root.put("labels", labels);
-        return applyDependencyGate(yaml.dump(root));
+        return applyDependencyGate(scheduleYaml.applySchedule(source, schedule));
     }
 
     OfflineFlowDependencySettings readDependencyConfig(String source) {
@@ -838,15 +731,6 @@ final class OfflineFlowYamlSupport {
                 wrapper.put("dependsOn", retained);
             }
         }
-    }
-
-    private Map<String, Object> findScheduleTrigger(Map<String, Object> root) {
-        for (Map<String, Object> trigger : yaml.ensureTriggers(root)) {
-            if ("io.kestra.plugin.core.trigger.Schedule".equals(yaml.readOptionalString(trigger, "type"))) {
-                return trigger;
-            }
-        }
-        return null;
     }
 
     private List<FlowStage> parseStages(List<Map<String, Object>> tasks) {

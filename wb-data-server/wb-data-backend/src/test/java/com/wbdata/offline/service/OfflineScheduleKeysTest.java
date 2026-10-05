@@ -70,31 +70,31 @@ class OfflineScheduleKeysTest {
 
     @Test
     void inferPeriod_recognizesStandardShapes() {
-        assertThat(OfflineFlowYamlSupport.inferPeriodFromCron("30 * * * *"))
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("30 * * * *"))
                 .isEqualTo(OfflineSchedulePeriod.HOURLY);
-        assertThat(OfflineFlowYamlSupport.inferPeriodFromCron("0 2 * * *"))
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("0 2 * * *"))
                 .isEqualTo(OfflineSchedulePeriod.DAILY);
-        assertThat(OfflineFlowYamlSupport.inferPeriodFromCron("0 2 * * 1"))
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("0 2 * * 1"))
                 .isEqualTo(OfflineSchedulePeriod.WEEKLY);
-        assertThat(OfflineFlowYamlSupport.inferPeriodFromCron("15 3 1 * *"))
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("15 3 1 * *"))
                 .isEqualTo(OfflineSchedulePeriod.MONTHLY);
-        assertThat(OfflineFlowYamlSupport.inferPeriodFromCron("0 0 1 1 *"))
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("0 0 1 1 *"))
                 .isEqualTo(OfflineSchedulePeriod.YEARLY);
     }
 
     @Test
     void inferPeriod_fallsBackToCustom() {
-        assertThat(OfflineFlowYamlSupport.inferPeriodFromCron("* * * * *"))
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("* * * * *"))
                 .isEqualTo(OfflineSchedulePeriod.CUSTOM);
-        assertThat(OfflineFlowYamlSupport.inferPeriodFromCron("*/5 * * * *"))
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("*/5 * * * *"))
                 .isEqualTo(OfflineSchedulePeriod.CUSTOM);
-        assertThat(OfflineFlowYamlSupport.inferPeriodFromCron("0 1,8,13 * * *"))
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("0 1,8,13 * * *"))
                 .isEqualTo(OfflineSchedulePeriod.CUSTOM);
-        assertThat(OfflineFlowYamlSupport.inferPeriodFromCron("0 2 * * 1,3,5"))
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("0 2 * * 1,3,5"))
                 .isEqualTo(OfflineSchedulePeriod.CUSTOM);
-        assertThat(OfflineFlowYamlSupport.inferPeriodFromCron("not a cron"))
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("not a cron"))
                 .isEqualTo(OfflineSchedulePeriod.CUSTOM);
-        assertThat(OfflineFlowYamlSupport.inferPeriodFromCron(null))
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron(null))
                 .isEqualTo(OfflineSchedulePeriod.CUSTOM);
     }
 }

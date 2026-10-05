@@ -113,4 +113,9 @@ final class FlowYamlCodec {
         Object value = root.get(key);
         return value instanceof String text && !text.isBlank() ? text : null;
     }
+
+    String readLabelValue(Map<String, Object> root, String key) {
+        Object value = asStringObjectMap(root.get("labels")).get(key);
+        return value == null ? null : value.toString();
+    }
 }
