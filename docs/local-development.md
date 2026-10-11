@@ -59,13 +59,14 @@ docker compose -f docker/docker-compose.mysql.yml up -d
 
 配置分两层：`application.yml` 不放敏感默认值；`application-dev.yml` 承接本地默认值，用 `SPRING_PROFILES_ACTIVE=dev` 启用。
 
-dev profile 提供的本地默认值：
+dev profile 提供的本地默认值（可通过 `WB_DATA_INFRA_HOST=localhost` 切回本机 Docker）：
 
 | 配置 | dev 默认值 |
 | --- | --- |
 | 服务端口 | `8080` |
-| 元数据库 | `jdbc:mysql://localhost:3306/wb_data`，密码 `1111` |
-| Kestra | `http://localhost:8090`，账号 `admin@kestra.io` |
+| 基础设施主机 (`WB_DATA_INFRA_HOST`) | `omarchy.local`（台式机 `192.168.1.5`，Docker Context 为 `pc`） |
+| 元数据库 | `jdbc:mysql://${WB_DATA_INFRA_HOST:omarchy.local}:3306/wb_data`，密码 `1111` |
+| Kestra | `http://${WB_DATA_INFRA_HOST:omarchy.local}:8090`，账号 `admin@kestra.io` |
 | 离线仓库目录 | `<启动目录>/../../output/offline-live/repos` |
 | 插件目录 | `<启动目录>/../../plugins`（必须是绝对路径，默认值按 `user.dir` 拼） |
 | CORS 允许来源 | `http://localhost:5173`、`http://127.0.0.1:5173` |
@@ -149,7 +150,7 @@ WB_DATA_KESTRA_PASSWORD=<kestra-password> \
 docker compose -f docker/docker-compose.kestra.yml up -d --build
 ```
 
-启动后地址 `http://localhost:8090`。后端使用相同的 `WB_DATA_KESTRA_USERNAME` 和 `WB_DATA_KESTRA_PASSWORD`。真实密码只通过环境变量提供，不要写入 Compose 或提交到 Git。
+启动后地址 `http://omarchy.local:8090`（本机 Docker 则为 `http://localhost:8090`）。后端使用相同的 `WB_DATA_KESTRA_USERNAME` 和 `WB_DATA_KESTRA_PASSWORD`。真实密码只通过环境变量提供，不要写入 Compose 或提交到 Git。
 
 升级时必须改 Compose 里的精确 `vX.Y.Z`，并重跑 [Kestra 参数能力研究](research/kestra-parameter-capabilities.md) 的阶段 0 矩阵。
 
@@ -181,21 +182,21 @@ Kestra 自己还有一个 `wb-data-kestra-postgres`（宿主机 `5433`），那�
 
 ## 本地数据源怎么填
 
-界面 **host 填 `localhost` 或 `127.0.0.1`**，端口填宿主机映射端口。不要填 Docker 服务名，也不要在 host 里填 `host.docker.internal`：后端在宿主机上做「测试连接」，这个名字在部分机器上会被代理或 VPN 劫持。
+当 Docker 跑在局域网台式机（`omarchy.local` / `192.168.1.5`）时，界面 **host 填 `omarchy.local` 或 `192.168.1.5`**（若用本机 Docker 则填 `localhost` 或 `127.0.0.1`），端口填宿主机映射端口。不要填 Docker 服务名，也**不要**在数据源 host 里填 `host.docker.internal`：后端在宿主机上做「测试连接」，在 Mac 上无法将 `host.docker.internal` 解析到远端容器宿主机，且在部分机器上会被代理或 VPN 劫持。
 
 | 用途 | 类型 | host | 端口 | 默认数据库 | 用户名 | 密码 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 元数据 / 传输测试 MySQL | MySQL | `localhost` | `3306` | `wb_data` 或 `transfer_demo` | `root` 或 `wbdata` | `1111` 或 `wbdata123` |
-| Hive | Hive | `localhost` | `10000` | `default` | `hive` | 留空 |
-| ClickHouse | ClickHouse | `localhost` | `8123` | `default` | `wbdata` | `wbdata123` |
+| 元数据 / 传输测试 MySQL | MySQL | `omarchy.local`（本机为 `localhost`） | `3306` | `wb_data` 或 `transfer_demo` | `root` 或 `wbdata` | `1111` 或 `wbdata123` |
+| Hive | Hive | `omarchy.local`（本机为 `localhost`） | `10000` | `default` | `hive` | 留空 |
+| ClickHouse | ClickHouse | `omarchy.local`（本机为 `localhost`） | `8123` | `default` | `wbdata` | `wbdata123` |
 
 Hive 还有一项 **Hive Metastore URI**，传输写 Hive 时必填：
 
 ```text
-thrift://host.docker.internal:9083
+thrift://omarchy.local:9083
 ```
 
-不要填 `thrift://localhost:9083`。这项不走下面的 host 改写。
+（或 `thrift://host.docker.internal:9083`；台式机容器 DNS 已将 `omarchy.local` 与 `host.docker.internal` 均绑定至容器网关 `172.17.0.1`。）不要填 `thrift://localhost:9083`，这项不走下面的 host 改写。
 
 `scripts/dev/transfer-smoke.sh` 会在 `policy` 组写入或更新 `it_transfer_mysql`、`it_transfer_hive`，字段与上表一致。`smoke_it_mysql_api` 由 `scripts/dev/smoke-verify.sh` 按同一套传输 MySQL 连接创建。
 
@@ -203,18 +204,18 @@ thrift://host.docker.internal:9083
 
 ## 离线任务怎么连库
 
-前端、后端在宿主机；Kestra 默认在 Docker 里。SQL 节点在 Kestra 进程内连库；传输节点默认再起一个 SeaTunnel 容器。容器里的 `localhost` 是该容器自己，不是宿主机。
+前端、后端在宿主机（Mac）；Kestra 与数据库默认在台式机 `omarchy.local`（`192.168.1.5`）的 Docker 里。SQL 节点在 Kestra 进程内连库；传输节点默认再起一个 SeaTunnel 容器。容器里的 `localhost` 是该容器自己，不是宿主机。
 
-因此本地约定是：
+因此约定是：
 
-1. 数据源 host 继续填 `localhost`，保证「测试连接」走宿主机端口映射。
-2. 本地用 `SPRING_PROFILES_ACTIVE=dev` 时，改写默认已是 `host.docker.internal`，不必再手写环境变量。未开 dev 时必须显式加上：
+1. 数据源 host 填 `omarchy.local`（或 `192.168.1.5`）：Mac 后端通过局域网 mDNS 解析到 `192.168.1.5` 做「测试连接」，台式机内 Kestra / SeaTunnel 容器通过容器 DNS 将 `omarchy.local` 解析到 `172.17.0.1` 直连宿主机映射端口。
+2. 若数据源 host 填了 `localhost`，本地用 `SPRING_PROFILES_ACTIVE=dev` 时，改写默认已是 `host.docker.internal`（台式机容器内同样解析到 `172.17.0.1`），不必再手写环境变量。未开 dev 时必须显式加上：
 
 ```bash
 WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE=host.docker.internal
 ```
 
-3. 编译 JDBC URL 时，host 为 `localhost` / `127.0.0.1` / `::1` 会换成该值，端口不变。`localhost:3306` 在任务里变成 `host.docker.internal:3306`，从容器打到宿主机映射，再进 MySQL 容器。
+3. 编译 JDBC URL 时，host 为 `localhost` / `127.0.0.1` / `::1` 会换成该值，端口不变；host 为 `omarchy.local` 或具体 IP 时保持原样。
 4. 画布调试执行按**当前后端配置**编译草稿，加上改写并重启后端即可生效。写入 Git、同步到 Kestra 正式 Flow 的 YAML 是保存时生成的；改过改写或传输 runner 之后要重新保存。
 5. 生产不要设这个变量，数据源填各方都能解析的真实地址。
 
@@ -224,17 +225,16 @@ WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE=host.docker.internal
 cd wb-data-server/wb-data-backend
 SPRING_PROFILES_ACTIVE=dev \
 DB_PASSWORD=<mysql-password> \
-WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE=host.docker.internal \
 java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
 ```
 
-还要跑传输节点时，SeaTunnel 容器需要回连后端渲染配置，并加入 Compose 网络、挂上 Hive warehouse：
+还要跑传输节点时，SeaTunnel 容器需要回连 Mac 后端渲染配置（若 Docker 在台式机上，`WB_DATA_TRANSFER_INTERNAL_BASE_URL` 填 Mac 的局域网 IP，例如 `http://192.168.1.2:8080`；若在本机 Docker 则填 `http://host.docker.internal:8080`），并加入 Compose 网络、挂上 Hive warehouse：
 
 ```bash
 SPRING_PROFILES_ACTIVE=dev \
 DB_PASSWORD=<mysql-password> \
 WB_DATA_TRANSFER_INTERNAL_TOKEN=dev-transfer-token \
-WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://host.docker.internal:8080 \
+WB_DATA_TRANSFER_INTERNAL_BASE_URL=http://<mac-lan-ip>:8080 \
 WB_DATA_TRANSFER_DOCKER_NETWORK=wb-data_default \
 WB_DATA_TRANSFER_DOCKER_VOLUMES=wb-data_hive-warehouse:/opt/hive/data/warehouse \
 WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE=host.docker.internal \

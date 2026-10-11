@@ -4,15 +4,17 @@
 
 ## 本地离线执行（必读）
 
-本地 Kestra 跑在 Docker 里。只要 `SPRING_PROFILES_ACTIVE=dev`，host 改写默认就是 `host.docker.internal`，**不要**把数据源 host 填成 `host.docker.internal`（界面「测试连接」会失败）。
+日常开发采用「宿主机跑前后端 + 局域网台式机 `omarchy.local`（`192.168.1.5`，Docker Context 为 `pc`）跑全套 Docker 容器（MySQL、Kestra、Hive、ClickHouse、SeaTunnel）」。
 
-未开 `dev` profile、却要跑画布执行 / 传输时，启动后端必须带：
+- `SPRING_PROFILES_ACTIVE=dev` 下，后端默认连接 `omarchy.local:3306`（MySQL）与 `http://omarchy.local:8090`（Kestra），可通过 `WB_DATA_INFRA_HOST=localhost` 切回本机 Docker。
+- 界面录入数据源时，Host 填 **`omarchy.local`**（或 `192.168.1.5`；若用本机 Docker 则填 `localhost`），**不要**把数据源 host 填成 `host.docker.internal`（界面「测试连接」会失败）。
+- 台式机容器内 DNS 已将 `omarchy.local` 与 `host.docker.internal` 均解析至宿主机网关 `172.17.0.1`。未开 `dev` profile、且数据源填 `localhost` 跑画布执行 / 传输时，启动后端必须带：
 
 ```bash
 WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE=host.docker.internal
 ```
 
-漏了这个，SQL / 传输节点会 Connection refused。生产不要设该变量。详情见 [本地开发 · 离线任务怎么连库](docs/local-development.md#离线任务怎么连库)。
+漏了这个，SQL / 传输节点连 `localhost` 会 Connection refused。生产不要设该变量。详情见 [本地开发 · 离线任务怎么连库](docs/local-development.md#离线任务怎么连库)。
 
 ## 代码约定
 

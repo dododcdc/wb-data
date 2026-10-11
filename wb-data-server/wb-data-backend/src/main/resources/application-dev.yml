@@ -2,6 +2,7 @@
 # 生产部署不要使用本 profile，所有敏感配置通过环境变量显式注入。
 spring:
   datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://${WB_DATA_INFRA_HOST:omarchy.local}:3306/wb_data?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true}
     password: ${DB_PASSWORD:1111}
 
 wbdata:
@@ -12,5 +13,7 @@ wbdata:
     transfer:
       container-host-rewrite: ${WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE:host.docker.internal}
     kestra:
+      base-url: ${WB_DATA_KESTRA_BASE_URL:http://${WB_DATA_INFRA_HOST:omarchy.local}:8090}
       username: ${WB_DATA_KESTRA_USERNAME:admin@kestra.io}
       password: ${WB_DATA_KESTRA_PASSWORD:Admin1234!}
+
