@@ -9,7 +9,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Locale;
 
-final class GitSyncFlowSourceBuilder {
+public final class GitSyncFlowSourceBuilder {
     static final String SYSTEM_NAMESPACE = "system";
 
     private static final int KESTRA_IDENTIFIER_MAX_LENGTH = 150;
@@ -17,7 +17,8 @@ final class GitSyncFlowSourceBuilder {
     private GitSyncFlowSourceBuilder() {
     }
 
-    static String buildKestraNamespace(Long groupId, String branch) {
+    /** 运行时命名空间推导：g<groupId>-<branch>，与依赖闸门 WaitUpstream 的推导保持一致。 */
+    public static String buildKestraNamespace(Long groupId, String branch) {
         return boundedIdentifier("g" + groupId + "-", branch);
     }
 

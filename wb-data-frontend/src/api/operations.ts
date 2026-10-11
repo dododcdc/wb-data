@@ -25,6 +25,7 @@ export interface OperationsExecutionListItem {
     endDate: string | null;
     durationMs: number | null;
     rerunnable: boolean;
+    rerun: boolean;
 }
 
 export interface OperationsExecutionListResponse {
@@ -131,6 +132,66 @@ export const getOperationsExecutionLogs = (groupId: number, executionId: string,
 
     return request.get<unknown, OperationsExecutionLogEntry[]>(
         `${groupScopedPath(groupId, `/operations/executions/${encodeURIComponent(executionId)}/logs`)}${suffix}`
+    );
+};
+
+export interface OperationsInstanceExecutionItem {
+    id: string;
+    status: string;
+    plannedAt: string | null;
+    createdAt: string | null;
+    startDate: string | null;
+    endDate: string | null;
+    durationMs: number | null;
+    rerun: boolean;
+}
+
+export interface OperationsInstanceUpstreamItem {
+    groupId: number;
+    groupName: string | null;
+    flowId: string;
+    namespace: string;
+    scheduleKey: string;
+    state: string;
+    satisfied: boolean;
+    accessible: boolean;
+    executionId: string | null;
+}
+
+export interface OperationsInstanceDiagnosis {
+    flowId: string;
+    branch: string;
+    namespace: string;
+    scheduleKey: string | null;
+    period: string | null;
+    cron: string | null;
+    timezone: string | null;
+    scheduleEnabled: boolean;
+    plannedFireAt: string | null;
+    state: string;
+    reason: string | null;
+    executions: OperationsInstanceExecutionItem[];
+    upstreams: OperationsInstanceUpstreamItem[];
+    prevScheduleKey: string | null;
+    nextScheduleKey: string | null;
+}
+
+export interface OperationsInstanceDiagnosisQuery {
+    branch?: string | null;
+    flowId?: string | null;
+    scheduleKey?: string | null;
+    executionId?: string | null;
+}
+
+export const getOperationsInstanceDiagnosis = (groupId: number, query: OperationsInstanceDiagnosisQuery) => {
+    const params = new URLSearchParams();
+    if (query.branch?.trim()) params.set('branch', query.branch.trim());
+    if (query.flowId?.trim()) params.set('flowId', query.flowId.trim());
+    if (query.scheduleKey?.trim()) params.set('scheduleKey', query.scheduleKey.trim());
+    if (query.executionId?.trim()) params.set('executionId', query.executionId.trim());
+    const suffix = params.size > 0 ? `?${params.toString()}` : '';
+    return request.get<unknown, OperationsInstanceDiagnosis>(
+        `${groupScopedPath(groupId, '/operations/instances/diagnosis')}${suffix}`
     );
 };
 

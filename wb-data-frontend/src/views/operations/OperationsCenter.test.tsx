@@ -122,6 +122,7 @@ describe('OperationsCenter', () => {
                     endDate: '2026-06-07T01:03:12Z',
                     durationMs: 190000,
                     rerunnable: true,
+                    rerun: false,
                 },
                 {
                     id: 'exec-2',
@@ -135,6 +136,7 @@ describe('OperationsCenter', () => {
                     endDate: '2026-06-07T00:01:01Z',
                     durationMs: 60000,
                     rerunnable: false,
+                    rerun: true,
                 },
             ],
         });
@@ -180,7 +182,7 @@ describe('OperationsCenter', () => {
                 <MemoryRouter>
                     <Routes>
                         <Route path="/" element={<OperationsCenter />} />
-                        <Route path="/operations/executions/:executionId" element={<div>execution detail route</div>} />
+                        <Route path="/operations/instances" element={<div>execution detail route</div>} />
                     </Routes>
                 </MemoryRouter>
             </QueryClientProvider>
@@ -191,6 +193,7 @@ describe('OperationsCenter', () => {
         renderPage();
 
         expect(await screen.findByText('daily_policy')).toBeTruthy();
+        expect(screen.getByText('重跑')).toBeTruthy();
         expect(screen.queryByText('运维中心')).toBeNull();
         expect(screen.getAllByText('feature/policy-review').length).toBeGreaterThan(0);
         expect(screen.getAllByText('失败').length).toBeGreaterThan(0);
@@ -243,6 +246,7 @@ describe('OperationsCenter', () => {
                     endDate: '2026-06-07T01:03:12Z',
                     durationMs: 190000,
                     rerunnable: true,
+                    rerun: false,
                 },
             ],
         });

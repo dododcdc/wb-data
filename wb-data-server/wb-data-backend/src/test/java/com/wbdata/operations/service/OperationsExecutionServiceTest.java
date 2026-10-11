@@ -46,7 +46,7 @@ class OperationsExecutionServiceTest {
                 .map(component -> component.getName()))
                 .containsExactly(
                         "id", "namespace", "flowId", "branch", "status",
-                        "plannedAt", "createdAt", "startDate", "endDate", "durationMs", "rerunnable"
+                        "plannedAt", "createdAt", "startDate", "endDate", "durationMs", "rerunnable", "rerun"
                 );
         assertThat(Arrays.stream(OperationsExecutionDetailResponse.class.getRecordComponents())
                 .map(component -> component.getName()))

@@ -93,6 +93,13 @@ public class OperationsExecutionService {
                 .skip((long) (page - 1) * pageSize)
                 .limit(pageSize)
                 .toList();
+        Set<String> rerunIds = findRerunIds(pageExecutions);
+        pageExecutions = pageExecutions.stream()
+                .map(item -> new OperationsExecutionListItem(
+                        item.id(), item.namespace(), item.flowId(), item.branch(), item.status(),
+                        item.plannedAt(), item.createdAt(), item.startDate(), item.endDate(),
+                        item.durationMs(), item.rerunnable(), rerunIds.contains(item.id())))
+                .toList();
 
         return new OperationsExecutionListResponse(
                 namespaceToBranch.values().stream().toList(),
@@ -335,8 +342,26 @@ public class OperationsExecutionService {
                 execution.startDate(),
                 execution.endDate(),
                 durationMs(execution.startDate(), execution.endDate()),
-                rerunnable(execution.status())
+                rerunnable(execution.status()),
+                false
         );
+    }
+
+    private Set<String> findRerunIds(List<OperationsExecutionListItem> pageExecutions) {
+        List<String> ids = pageExecutions.stream().map(OperationsExecutionListItem::id).toList();
+        if (ids.isEmpty()) {
+            return Set.of();
+        }
+        List<WbOperationExecutionAction> actions = actionMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<WbOperationExecutionAction>()
+                        .eq(WbOperationExecutionAction::getActionType, "RERUN")
+                        .in(WbOperationExecutionAction::getNewExecutionId, ids));
+        if (actions == null) {
+            return Set.of();
+        }
+        return actions.stream()
+                .map(WbOperationExecutionAction::getNewExecutionId)
+                .collect(java.util.stream.Collectors.toSet());
     }
 
     private OperationsExecutionDetailResponse toDetail(Long groupId,

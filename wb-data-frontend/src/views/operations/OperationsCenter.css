@@ -214,6 +214,31 @@
     font-weight: 500;
 }
 
+.operations-flow-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.operations-flow-cell .operations-flow {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.operations-rerun-badge {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    height: 20px;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg-primary));
+    color: var(--color-accent);
+    font-size: 0.72rem;
+    font-weight: 650;
+}
+
 .operations-branch {
     color: var(--color-text-secondary);
     font-family: var(--font-mono);

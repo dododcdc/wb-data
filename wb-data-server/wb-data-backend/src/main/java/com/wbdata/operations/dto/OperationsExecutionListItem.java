@@ -13,6 +13,7 @@ public record OperationsExecutionListItem(
         Instant startDate,
         Instant endDate,
         Long durationMs,
-        boolean rerunnable
+        boolean rerunnable,
+        boolean rerun
 ) {
 }

@@ -100,7 +100,7 @@ function DetailLink({ row }: { row: OperationsExecutionListItem }) {
     return (
         <Link
             className="operations-icon-action"
-            to={`/operations/executions/${encodeURIComponent(row.id)}`}
+            to={`/operations/instances?execution=${encodeURIComponent(row.id)}`}
             aria-label={`查看 ${row.flowId} 详情`}
             title="查看详情"
         >
@@ -362,7 +362,7 @@ export default function OperationsCenter() {
     };
 
     const openExecutionDetail = (executionId: string) => {
-        navigate(`/operations/executions/${encodeURIComponent(executionId)}`);
+        navigate(`/operations/instances?execution=${encodeURIComponent(executionId)}`);
     };
 
     if (groupId == null) {
@@ -500,7 +500,10 @@ export default function OperationsCenter() {
                                         }}
                                     >
                                         <td>
-                                            <span className="operations-flow" title={row.flowId}>{row.flowId}</span>
+                                            <span className="operations-flow-cell">
+                                                <span className="operations-flow" title={row.flowId}>{row.flowId}</span>
+                                                {row.rerun && <span className="operations-rerun-badge">重跑</span>}
+                                            </span>
                                         </td>
                                         <td>
                                             <span className="operations-branch" title={row.branch}>{row.branch}</span>

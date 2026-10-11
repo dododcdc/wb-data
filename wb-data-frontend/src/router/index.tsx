@@ -17,7 +17,7 @@ import {
     loadNotFoundModule,
     loadOfflineWorkbenchModule,
     loadOperationsCenterModule,
-    loadOperationsExecutionDetailPageModule,
+    loadOperationsInstancePageModule,
     loadParameterGroupPageModule,
     loadQueryModule,
     loadUnauthorizedModule,
@@ -32,7 +32,7 @@ const DataSourceList = lazy(loadDataSourceListModule);
 const OfflineWorkbench = lazy(loadOfflineWorkbenchModule);
 const ExecutionDetailPage = lazy(loadExecutionDetailPageModule);
 const OperationsCenter = lazy(loadOperationsCenterModule);
-const OperationsExecutionDetailPage = lazy(loadOperationsExecutionDetailPageModule);
+const OperationsInstancePage = lazy(loadOperationsInstancePageModule);
 const ParameterGroupPage = lazy(loadParameterGroupPageModule);
 const Query = lazy(loadQueryModule);
 const UserList = lazy(loadUserListModule);
@@ -211,12 +211,22 @@ const router = createBrowserRouter([
                         ],
                     },
                     {
+                        path: 'operations/instances',
+                        element: <RequirePermission required="offline.read" />,
+                        children: [
+                            {
+                                index: true,
+                                element: withRouteSuspense(<OperationsInstancePage />),
+                            },
+                        ],
+                    },
+                    {
                         path: 'operations/executions/:executionId',
                         element: <RequirePermission required="offline.read" />,
                         children: [
                             {
                                 index: true,
-                                element: withRouteSuspense(<OperationsExecutionDetailPage />),
+                                element: withRouteSuspense(<OperationsInstancePage />),
                             },
                         ],
                     },
