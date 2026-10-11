@@ -63,4 +63,11 @@ docs/credentials.md
 
 .superpowers/
 .sisyphus/
+.firecrawl/
 wb-data-frontend/*.png
+wb-data-frontend/minimax-output/
+__pycache__/
+scripts/dev/gen_ecommerce_demo_data.py
+scripts/dev/init/ecommerce/
+
+
