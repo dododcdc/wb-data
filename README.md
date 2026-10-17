@@ -26,11 +26,13 @@ WB-Data 是一个面向数据团队的一站式协作平台，把数据源管理
 wb-data/
 ├── wb-data-frontend/          # React 前端
 ├── wb-data-server/            # Maven 多模块后端和数据源插件
-│   ├── wb-data-backend/       # Spring Boot 应用
+│   ├── wb-data-common-core/   # 跨进程纯 Java 共享内核（SQL 模板与调度周期计算）
 │   ├── wb-data-plugin-api/    # 数据源插件 SPI
-│   └── wb-data-plugin-*/      # 各数据源插件实现
+│   ├── wb-data-plugins/       # 各数据源插件实现（MySQL / PostgreSQL / Hive / ClickHouse）
+│   ├── wb-data-kestra-plugin/ # Kestra 扩展任务插件
+│   └── wb-data-backend/       # Spring Boot 应用
 ├── docker/                    # 本地 Kestra、Hive、MySQL 和 SeaTunnel 容器配置
-├── plugins/                   # prepare-plugins.sh 准备的运行时插件 JAR
+├── plugins/                   # Maven 打包自动同步的运行时插件 JAR
 ├── scripts/                   # 开发辅助脚本
 └── docs/                      # 当前有效的开发与测试说明
 ```

@@ -6,26 +6,21 @@
 
     <parent>
         <groupId>com.wbdata</groupId>
-        <artifactId>wb-data-parent</artifactId>
+        <artifactId>wb-data-plugins</artifactId>
         <version>0.0.1-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>wb-data-sql-template</artifactId>
-    <name>wb-data-sql-template</name>
+    <artifactId>wb-data-plugin-clickhouse</artifactId>
+    <name>wb-data-plugin-clickhouse</name>
+    <packaging>jar</packaging>
 
     <dependencies>
         <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <version>5.10.2</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.assertj</groupId>
-            <artifactId>assertj-core</artifactId>
-            <version>3.24.2</version>
-            <scope>test</scope>
+            <groupId>com.clickhouse</groupId>
+            <artifactId>clickhouse-jdbc</artifactId>
+            <version>${clickhouse.driver.version}</version>
+            <classifier>all</classifier>
         </dependency>
     </dependencies>
 
@@ -33,8 +28,11 @@
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.2.5</version>
+                <artifactId>maven-shade-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
             </plugin>
         </plugins>
     </build>

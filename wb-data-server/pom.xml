@@ -11,26 +11,69 @@
     <name>wb-data-parent</name>
 
     <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <java.version>21</java.version>
         <maven.compiler.release>${java.version}</maven.compiler.release>
+        <spring-boot.version>3.2.2</spring-boot.version>
         <mysql.driver.version>9.2.0</mysql.driver.version>
         <postgresql.driver.version>42.7.5</postgresql.driver.version>
         <hive.jdbc.version>4.2.0</hive.jdbc.version>
         <clickhouse.driver.version>0.7.2</clickhouse.driver.version>
+        <lombok.version>1.18.38</lombok.version>
+        <junit-jupiter.version>5.10.2</junit-jupiter.version>
+        <assertj.version>3.24.2</assertj.version>
+        <mockito.version>5.11.0</mockito.version>
         <maven.compiler.plugin.version>3.11.0</maven.compiler.plugin.version>
+        <maven.surefire.plugin.version>3.2.5</maven.surefire.plugin.version>
         <maven.shade.plugin.version>3.5.2</maven.shade.plugin.version>
+        <maven.antrun.plugin.version>3.1.0</maven.antrun.plugin.version>
     </properties>
 
     <modules>
-        <module>wb-data-sql-template</module>
+        <module>wb-data-common-core</module>
         <module>wb-data-plugin-api</module>
-        <module>wb-data-plugin-mysql</module>
-        <module>wb-data-plugin-hive</module>
-        <module>wb-data-plugin-postgresql</module>
-        <module>wb-data-plugin-clickhouse</module>
+        <module>wb-data-plugins</module>
         <module>wb-data-kestra-plugin</module>
         <module>wb-data-backend</module>
     </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.wbdata</groupId>
+                <artifactId>wb-data-common-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.wbdata</groupId>
+                <artifactId>wb-data-plugin-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit-jupiter.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.assertj</groupId>
+                <artifactId>assertj-core</artifactId>
+                <version>${assertj.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-core</artifactId>
+                <version>${mockito.version}</version>
+                <scope>test</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <build>
         <pluginManagement>
@@ -41,7 +84,13 @@
                     <version>${maven.compiler.plugin.version}</version>
                     <configuration>
                         <release>${java.version}</release>
+                        <parameters>true</parameters>
                     </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven.surefire.plugin.version}</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
@@ -73,6 +122,11 @@
                             </goals>
                         </execution>
                     </executions>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-antrun-plugin</artifactId>
+                    <version>${maven.antrun.plugin.version}</version>
                 </plugin>
             </plugins>
         </pluginManagement>

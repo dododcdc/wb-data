@@ -6,26 +6,20 @@
 
     <parent>
         <groupId>com.wbdata</groupId>
-        <artifactId>wb-data-parent</artifactId>
+        <artifactId>wb-data-plugins</artifactId>
         <version>0.0.1-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>wb-data-plugin-postgresql</artifactId>
-    <name>wb-data-plugin-postgresql</name>
+    <artifactId>wb-data-plugin-mysql</artifactId>
+    <name>wb-data-plugin-mysql</name>
     <packaging>jar</packaging>
 
     <dependencies>
         <dependency>
-            <groupId>com.wbdata</groupId>
-            <artifactId>wb-data-plugin-api</artifactId>
-            <version>${project.version}</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-            <version>${postgresql.driver.version}</version>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>${mysql.driver.version}</version>
         </dependency>
     </dependencies>
 
@@ -34,6 +28,10 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
             </plugin>
         </plugins>
     </build>

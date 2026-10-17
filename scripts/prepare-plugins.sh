@@ -4,20 +4,36 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 MAVEN_DIR="${ROOT_DIR}/wb-data-server"
 PLUGINS_DIR="${ROOT_DIR}/plugins"
+PLUGIN_MODULES=(
+  "wb-data-plugins/wb-data-plugin-mysql"
+  "wb-data-plugins/wb-data-plugin-hive"
+  "wb-data-plugins/wb-data-plugin-postgresql"
+  "wb-data-plugins/wb-data-plugin-clickhouse"
+)
 
 mkdir -p "${PLUGINS_DIR}"
 
-cd "${MAVEN_DIR}"
+need_build=0
+if [[ "${1:-}" == "--rebuild" ]]; then
+  need_build=1
+else
+  for mod in "${PLUGIN_MODULES[@]}"; do
+    if ! compgen -G "${MAVEN_DIR}/${mod}/target/*-plugin.jar" > /dev/null; then
+      need_build=1
+      break
+    fi
+  done
+fi
 
-mvn -q \
-  -pl wb-data-plugin-mysql,wb-data-plugin-hive,wb-data-plugin-postgresql,wb-data-plugin-clickhouse \
-  -am \
-  -DskipTests \
-  install
+if [[ "${need_build}" -eq 1 ]]; then
+  cd "${MAVEN_DIR}"
+  IFS=,
+  mvn -q -pl "${PLUGIN_MODULES[*]}" -am -DskipTests package
+  unset IFS
+fi
 
-cp -f "${MAVEN_DIR}"/wb-data-plugin-mysql/target/*-plugin.jar "${PLUGINS_DIR}/"
-cp -f "${MAVEN_DIR}"/wb-data-plugin-hive/target/*-plugin.jar "${PLUGINS_DIR}/"
-cp -f "${MAVEN_DIR}"/wb-data-plugin-postgresql/target/*-plugin.jar "${PLUGINS_DIR}/"
-cp -f "${MAVEN_DIR}"/wb-data-plugin-clickhouse/target/*-plugin.jar "${PLUGINS_DIR}/"
+for mod in "${PLUGIN_MODULES[@]}"; do
+  cp -f "${MAVEN_DIR}/${mod}"/target/*-plugin.jar "${PLUGINS_DIR}/"
+done
 
 echo "Prepared plugin jars in ${PLUGINS_DIR}"
