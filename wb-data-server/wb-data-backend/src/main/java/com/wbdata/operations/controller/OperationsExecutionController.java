@@ -6,7 +6,7 @@ import com.wbdata.auth.enums.Permission;
 import com.wbdata.common.Result;
 import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
-import com.wbdata.offline.dto.ExecutionLogEntry;
+import com.wbdata.offline.execution.dto.ExecutionLogEntry;
 import com.wbdata.operations.dto.OperationsExecutionQuery;
 import com.wbdata.operations.dto.OperationsExecutionRerunRequest;
 import com.wbdata.operations.dto.OperationsExecutionRerunResponse;

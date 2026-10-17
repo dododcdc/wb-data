@@ -1,5 +1,7 @@
 package com.wbdata.group.service;
 
+import com.wbdata.common.dto.PageQuery;
+
 import com.wbdata.auth.enums.GroupRole;
 import com.wbdata.auth.enums.SystemRole;
 import com.wbdata.group.dto.AddMemberRequest;

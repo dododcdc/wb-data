@@ -1,10 +1,15 @@
 package com.wbdata.offline.controller;
 
+import com.wbdata.offline.dto.DeleteOfflineFlowRequest;
+import com.wbdata.offline.enums.OfflineCrossGroupDependency;
+import com.wbdata.offline.enums.OfflineFailurePolicy;
+import com.wbdata.offline.schedule.dto.OfflineFlowDependencySettings;
+
 import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.dto.ProjectGroupContextItem;
 import com.wbdata.auth.service.AuthContextService;
 import com.wbdata.auth.service.AuthSession;
-import com.wbdata.offline.dto.FlowParameterBindingRequest;
+import com.wbdata.offline.parameter.dto.FlowParameterBindingRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.service.OfflineFlowContentService;
 import com.wbdata.offline.service.OfflineFlowDependencyService;
@@ -46,7 +51,7 @@ class OfflineFlowControllerTest {
         controller.saveFlowDocument(context, new SaveOfflineFlowDocumentRequest(
                 999L, "_flows/example/flow.yaml", "hash", 1L,
                 List.of(), List.of(), Map.of(), null, null, bindings, "Asia/Singapore",
-                new com.wbdata.offline.dto.OfflineFlowDependencySettings(List.of(),
+                new com.wbdata.offline.schedule.dto.OfflineFlowDependencySettings(List.of(),
                         com.wbdata.offline.enums.OfflineFailurePolicy.PAUSE,
                         com.wbdata.offline.enums.OfflineCrossGroupDependency.DENY)
         ));

@@ -1,8 +1,10 @@
 package com.wbdata.datasource.controller;
 
+import com.wbdata.auth.enums.Permission;
+
 import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.service.AuthSession;
-import com.wbdata.auth.service.AuthorizedDataSourceService;
+import com.wbdata.datasource.service.AuthorizedDataSourceService;
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.datasource.plugin.DataSourceConnectionPoolManager;
 import com.wbdata.datasource.plugin.DataSourcePluginRegistry;

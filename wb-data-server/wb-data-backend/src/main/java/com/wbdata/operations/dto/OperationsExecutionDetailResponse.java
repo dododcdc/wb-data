@@ -1,7 +1,7 @@
 package com.wbdata.operations.dto;
 
-import com.wbdata.offline.dto.ExecutionParameterValueResponse;
-import com.wbdata.offline.dto.ExecutionTaskRun;
+import com.wbdata.offline.parameter.dto.ExecutionParameterValueResponse;
+import com.wbdata.offline.execution.dto.ExecutionTaskRun;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;

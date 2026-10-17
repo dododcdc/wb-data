@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.wbdata.auth.context.RequireGroupAuth;
 import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
-import com.wbdata.auth.service.AuthorizedDataSourceService;
+import com.wbdata.datasource.service.AuthorizedDataSourceService;
 import com.wbdata.common.Result;
 import com.wbdata.datasource.dto.DataSourceSaveDTO;
 import com.wbdata.datasource.dto.DataSourceResponse;

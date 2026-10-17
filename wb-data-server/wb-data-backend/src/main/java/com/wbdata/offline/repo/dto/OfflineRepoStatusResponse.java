@@ -1,0 +1,19 @@
+package com.wbdata.offline.repo.dto;
+
+import java.time.Instant;
+
+public record OfflineRepoStatusResponse(
+        Long groupId,
+        String repoPath,
+        boolean exists,
+        boolean gitInitialized,
+        boolean dirty,
+        boolean ahead,
+        boolean hasRemote,
+        boolean hasUpstream,
+        String branch,
+        String headCommitId,
+        String headCommitMessage,
+        Instant headCommitAt
+) {
+}

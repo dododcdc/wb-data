@@ -1,17 +1,20 @@
 package com.wbdata.operations.service;
 
+import com.wbdata.offline.parameter.dto.ExecutionParameterValueResponse;
+import com.wbdata.offline.parameter.dto.FlowParameterSnapshot;
+
 import com.wbdata.git.dto.GitSyncConfigResponse;
 import com.wbdata.git.service.GitSyncConfigService;
 import com.wbdata.offline.kestra.KestraClient;
 import com.wbdata.offline.kestra.KestraExecutionSnapshot;
 import com.wbdata.offline.kestra.KestraLogEntry;
 import com.wbdata.offline.kestra.KestraTaskRunSnapshot;
-import com.wbdata.offline.service.ExecutionParameterResolver;
-import com.wbdata.offline.service.ExecutionParameterSnapshotRegistry;
-import com.wbdata.offline.service.ExecutionTimeContext;
-import com.wbdata.offline.service.FlowParameterMetadata;
-import com.wbdata.offline.dto.ExecutionLogEntry;
-import com.wbdata.offline.dto.ExecutionTaskRun;
+import com.wbdata.offline.parameter.service.ExecutionParameterResolver;
+import com.wbdata.offline.parameter.service.ExecutionParameterSnapshotRegistry;
+import com.wbdata.offline.parameter.service.ExecutionTimeContext;
+import com.wbdata.offline.parameter.service.FlowParameterMetadata;
+import com.wbdata.offline.execution.dto.ExecutionLogEntry;
+import com.wbdata.offline.execution.dto.ExecutionTaskRun;
 import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
 import com.wbdata.operations.dto.OperationsExecutionListItem;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
@@ -183,7 +186,7 @@ public class OperationsExecutionService {
         Set<String> originalOverrideKeys = splitLabelValues(labels(original).get(PARAMETER_OVERRIDE_KEYS_LABEL));
         String currentFlowSource = kestraClient.getFlowSource(original.namespace(), original.flowId());
         String currentSnapshotId = FlowParameterMetadata.readSnapshotId(currentFlowSource);
-        com.wbdata.offline.dto.FlowParameterSnapshot currentSnapshot =
+        com.wbdata.offline.parameter.dto.FlowParameterSnapshot currentSnapshot =
                 currentSnapshotId == null || currentSnapshotId.isBlank()
                         ? null
                         : parameterSnapshotRegistry.find(groupId, currentSnapshotId)
@@ -220,7 +223,7 @@ public class OperationsExecutionService {
         return Map.copyOf(rerunInputs);
     }
 
-    private boolean definesParameter(com.wbdata.offline.dto.FlowParameterSnapshot snapshot, String key) {
+    private boolean definesParameter(com.wbdata.offline.parameter.dto.FlowParameterSnapshot snapshot, String key) {
         return snapshot.definitions().stream().anyMatch(definition -> key.equals(definition.key()));
     }
 
@@ -432,7 +435,7 @@ public class OperationsExecutionService {
         return new ParameterDetail(resolution.status(), resolution.parameters());
     }
 
-    private boolean hasPlannedTimeParameter(com.wbdata.offline.dto.FlowParameterSnapshot snapshot) {
+    private boolean hasPlannedTimeParameter(com.wbdata.offline.parameter.dto.FlowParameterSnapshot snapshot) {
         return snapshot.definitions().stream()
                 .anyMatch(definition -> "SYSTEM_TIME".equals(definition.valueSource())
                         && "PLANNED_TIME".equals(
@@ -469,7 +472,7 @@ public class OperationsExecutionService {
 
     private record ParameterDetail(
             String status,
-            List<com.wbdata.offline.dto.ExecutionParameterValueResponse> parameters
+            List<com.wbdata.offline.parameter.dto.ExecutionParameterValueResponse> parameters
     ) {
     }
 

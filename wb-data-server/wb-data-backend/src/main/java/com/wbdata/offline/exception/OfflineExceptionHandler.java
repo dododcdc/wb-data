@@ -1,7 +1,7 @@
 package com.wbdata.offline.exception;
 
 import com.wbdata.common.Result;
-import com.wbdata.offline.dto.DirtyWorkingTreeResponse;
+import com.wbdata.offline.repo.dto.DirtyWorkingTreeResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;

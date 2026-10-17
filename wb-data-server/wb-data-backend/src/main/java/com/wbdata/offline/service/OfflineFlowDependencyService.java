@@ -1,20 +1,22 @@
 package com.wbdata.offline.service;
 
+import com.wbdata.offline.repo.service.RepoLockManager;
+
 import com.wbdata.auth.dto.ProjectGroupContextItem;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.auth.enums.SystemRole;
 import com.wbdata.auth.service.PermissionService;
 import com.wbdata.offline.config.OfflineProperties;
-import com.wbdata.offline.dto.OfflineDependencyCandidateResponse;
-import com.wbdata.offline.dto.OfflineDependencyConfigResponse;
-import com.wbdata.offline.dto.OfflineDependencyItemResponse;
-import com.wbdata.offline.dto.OfflineDependentItemResponse;
+import com.wbdata.offline.schedule.dto.OfflineDependencyCandidateResponse;
+import com.wbdata.offline.schedule.dto.OfflineDependencyConfigResponse;
+import com.wbdata.offline.schedule.dto.OfflineDependencyItemResponse;
+import com.wbdata.offline.schedule.dto.OfflineDependentItemResponse;
 import com.wbdata.offline.dto.OfflineFlowContentResponse;
-import com.wbdata.offline.dto.OfflineFlowDependencyRef;
-import com.wbdata.offline.dto.OfflineFlowDependencySettings;
+import com.wbdata.offline.schedule.dto.OfflineFlowDependencyRef;
+import com.wbdata.offline.schedule.dto.OfflineFlowDependencySettings;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowRequest;
-import com.wbdata.offline.dto.UpdateOfflineDependenciesRequest;
+import com.wbdata.offline.schedule.dto.UpdateOfflineDependenciesRequest;
 import com.wbdata.offline.enums.OfflineCrossGroupDependency;
 import com.wbdata.offline.enums.OfflineSchedulePeriod;
 import org.springframework.http.HttpStatus;

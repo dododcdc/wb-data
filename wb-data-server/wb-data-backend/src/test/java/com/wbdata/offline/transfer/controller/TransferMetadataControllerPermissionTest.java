@@ -3,7 +3,7 @@ package com.wbdata.offline.transfer.controller;
 import com.wbdata.auth.context.RequireGroupAuth;
 import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
-import com.wbdata.auth.service.AuthorizedDataSourceService;
+import com.wbdata.datasource.service.AuthorizedDataSourceService;
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.offline.transfer.service.TransferMetadataService;
 import com.wbdata.plugin.api.PageResult;

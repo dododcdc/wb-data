@@ -1,5 +1,13 @@
 package com.wbdata.group.service;
 
+import com.wbdata.group.dto.AddMemberRequest;
+import com.wbdata.group.dto.AddMembersRequest;
+import com.wbdata.group.dto.AvailableUserResponse;
+import com.wbdata.group.dto.GroupSettingsResponse;
+import com.wbdata.group.dto.MemberResponse;
+import com.wbdata.group.dto.UpdateGroupSettingsRequest;
+import com.wbdata.group.dto.UpdateMemberRoleRequest;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;

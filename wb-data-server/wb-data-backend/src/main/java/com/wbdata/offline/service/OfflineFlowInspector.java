@@ -1,6 +1,6 @@
 package com.wbdata.offline.service;
 
-import com.wbdata.offline.dto.OfflineFlowDependencyRef;
+import com.wbdata.offline.schedule.dto.OfflineFlowDependencyRef;
 import com.wbdata.offline.enums.OfflineFailurePolicy;
 import com.wbdata.offline.enums.OfflineSchedulePeriod;
 
@@ -23,6 +23,14 @@ public final class OfflineFlowInspector {
                 yamlSupport.readDependencies(source),
                 yamlSupport.readFailurePolicy(source)
         );
+    }
+
+    public FlowIdentity parseIdentity(String source) {
+        OfflineFlowYamlSupport.FlowIdentity identity = yamlSupport.parseIdentity(source);
+        return new FlowIdentity(identity.namespace(), identity.flowId());
+    }
+
+    public record FlowIdentity(String namespace, String flowId) {
     }
 
     public record InspectedSchedule(

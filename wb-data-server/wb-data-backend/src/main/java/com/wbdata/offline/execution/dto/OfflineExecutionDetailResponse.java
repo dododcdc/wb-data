@@ -1,0 +1,23 @@
+package com.wbdata.offline.execution.dto;
+
+import com.wbdata.offline.parameter.dto.ExecutionParameterValueResponse;
+
+import java.time.Instant;
+import java.util.List;
+
+public record OfflineExecutionDetailResponse(
+        String executionId,
+        String mode,
+        String flowPath,
+        Long requestedBy,
+        String branch,
+        String sourceRevision,
+        String status,
+        Instant createdAt,
+        Instant startDate,
+        Instant endDate,
+        List<ExecutionTaskRun> taskRuns,
+        String parameterResolutionStatus,
+        List<ExecutionParameterValueResponse> parameters
+) {
+}

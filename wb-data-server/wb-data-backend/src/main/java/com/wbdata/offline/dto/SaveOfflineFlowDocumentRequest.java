@@ -1,5 +1,9 @@
 package com.wbdata.offline.dto;
 
+import com.wbdata.offline.parameter.dto.FlowParameterBindingRequest;
+import com.wbdata.offline.schedule.dto.OfflineFlowDependencySettings;
+import com.wbdata.offline.schedule.dto.OfflineFlowSchedule;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 

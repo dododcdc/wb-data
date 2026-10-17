@@ -1,5 +1,7 @@
 package com.wbdata.auth.service;
 
+import com.wbdata.datasource.service.AuthorizedDataSourceService;
+
 import com.wbdata.auth.context.AuthContext;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.datasource.entity.DataSource;

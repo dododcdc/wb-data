@@ -1,5 +1,7 @@
 package com.wbdata.offline.transfer.service;
 
+import com.wbdata.offline.transfer.dto.TransferRenderRequest;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.offline.transfer.dto.TransferConfig;
 import com.wbdata.offline.transfer.dto.TransferEndpointConfig;

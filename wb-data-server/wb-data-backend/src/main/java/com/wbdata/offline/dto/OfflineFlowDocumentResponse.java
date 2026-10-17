@@ -1,5 +1,9 @@
 package com.wbdata.offline.dto;
 
+import com.wbdata.offline.parameter.dto.FlowParameterBindingResponse;
+import com.wbdata.offline.schedule.dto.OfflineFlowDependencySettings;
+import com.wbdata.offline.schedule.dto.OfflineFlowSchedule;
+
 import java.util.List;
 import java.util.Map;
 

@@ -1,9 +1,11 @@
 package com.wbdata.offline.service;
 
+import com.wbdata.offline.repo.service.RepoLockManager;
+
 import com.wbdata.offline.config.OfflineProperties;
-import com.wbdata.offline.dto.CreateFolderRequest;
-import com.wbdata.offline.dto.OfflineRepoTreeNodeResponse;
-import com.wbdata.offline.dto.OfflineRepoTreeResponse;
+import com.wbdata.offline.repo.dto.CreateFolderRequest;
+import com.wbdata.offline.repo.dto.OfflineRepoTreeNodeResponse;
+import com.wbdata.offline.repo.dto.OfflineRepoTreeResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

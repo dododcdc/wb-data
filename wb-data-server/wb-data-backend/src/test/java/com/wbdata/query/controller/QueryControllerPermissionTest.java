@@ -1,7 +1,7 @@
 package com.wbdata.query.controller;
 
 import com.wbdata.auth.enums.Permission;
-import com.wbdata.auth.service.AuthorizedDataSourceService;
+import com.wbdata.datasource.service.AuthorizedDataSourceService;
 import com.wbdata.plugin.api.QueryResult;
 import com.wbdata.query.dto.QueryExportCreateRequest;
 import com.wbdata.query.enums.ExportFormat;

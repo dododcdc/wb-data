@@ -1,7 +1,7 @@
 package com.wbdata.offline.service;
 
-import com.wbdata.offline.dto.FlowParameterDefinitionSnapshot;
-import com.wbdata.offline.dto.FlowParameterSnapshot;
+import com.wbdata.offline.parameter.dto.FlowParameterDefinitionSnapshot;
+import com.wbdata.offline.parameter.dto.FlowParameterSnapshot;
 import com.wbdata.offline.transfer.dto.TransferConfig;
 import com.wbdata.offline.transfer.dto.TransferEndpointConfig;
 import com.wbdata.offline.transfer.dto.TransferFieldMapping;

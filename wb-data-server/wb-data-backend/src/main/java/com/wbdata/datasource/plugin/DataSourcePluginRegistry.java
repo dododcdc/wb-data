@@ -1,5 +1,7 @@
 package com.wbdata.datasource.plugin;
 
+import com.wbdata.datasource.entity.DataSource;
+
 import com.wbdata.plugin.api.DataSourcePlugin;
 import com.wbdata.plugin.api.DataSourcePluginDescriptor;
 import com.wbdata.plugin.api.AbstractJdbcDataSourcePlugin;

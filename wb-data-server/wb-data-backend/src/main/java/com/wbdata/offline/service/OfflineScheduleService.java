@@ -1,10 +1,10 @@
 package com.wbdata.offline.service;
 
 import com.wbdata.offline.dto.OfflineFlowContentResponse;
-import com.wbdata.offline.dto.OfflineScheduleResponse;
+import com.wbdata.offline.schedule.dto.OfflineScheduleResponse;
 import com.wbdata.offline.dto.SaveOfflineFlowRequest;
-import com.wbdata.offline.dto.UpdateOfflineScheduleRequest;
-import com.wbdata.offline.dto.UpdateOfflineScheduleStatusRequest;
+import com.wbdata.offline.schedule.dto.UpdateOfflineScheduleRequest;
+import com.wbdata.offline.schedule.dto.UpdateOfflineScheduleStatusRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;

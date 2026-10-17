@@ -1,5 +1,7 @@
 package com.wbdata.offline.service;
 
+import com.wbdata.offline.repo.service.RepoLockManager;
+
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;

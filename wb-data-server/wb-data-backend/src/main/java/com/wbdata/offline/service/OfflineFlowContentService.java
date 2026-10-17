@@ -1,5 +1,7 @@
 package com.wbdata.offline.service;
 
+import com.wbdata.offline.repo.service.RepoLockManager;
+
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.dto.OfflineFlowContentResponse;
 import com.wbdata.offline.dto.SaveOfflineFlowRequest;

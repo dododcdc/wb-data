@@ -1,6 +1,6 @@
 package com.wbdata.git.service;
 
-import com.wbdata.offline.service.OfflineGitRemotePort;
+import com.wbdata.offline.repo.service.OfflineGitRemotePort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

@@ -8,7 +8,7 @@ import com.wbdata.git.service.GitSyncConfigService;
 import com.wbdata.offline.kestra.KestraClient;
 import com.wbdata.offline.kestra.KestraExecutionSnapshot;
 import com.wbdata.offline.kestra.KestraTaskRunSnapshot;
-import com.wbdata.offline.service.ExecutionTimeContext;
+import com.wbdata.offline.parameter.service.ExecutionTimeContext;
 import com.wbdata.operations.dto.OperationsInstanceDiagnosisResponse;
 import com.wbdata.operations.entity.WbOperationExecutionAction;
 import com.wbdata.operations.mapper.WbOperationExecutionActionMapper;

@@ -1,8 +1,10 @@
 package com.wbdata.query.service.impl;
 
+import com.wbdata.common.Result;
+
 import com.wbdata.auth.context.AuthContext;
 import com.wbdata.auth.enums.Permission;
-import com.wbdata.auth.service.AuthorizedDataSourceService;
+import com.wbdata.datasource.service.AuthorizedDataSourceService;
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.plugin.api.QueryResult;
 import com.wbdata.query.dto.QueryExportTaskResponse;

@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.wbdata.auth.context.AuthContext;
 import com.wbdata.auth.service.AuthSession;
-import com.wbdata.auth.service.AuthorizedDataSourceService;
+import com.wbdata.datasource.service.AuthorizedDataSourceService;
 import com.wbdata.auth.service.GroupAuthorizationService;
 import com.wbdata.auth.service.PermissionService;
 import com.wbdata.datasource.entity.DataSource;

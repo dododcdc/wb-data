@@ -6,7 +6,6 @@ import com.wbdata.auth.enums.Permission;
 import com.wbdata.common.Result;
 import com.wbdata.common.dto.PageQuery;
 import com.wbdata.common.dto.PageResult;
-import com.wbdata.offline.service.FlowParameterReferenceService;
 import com.wbdata.parameter.dto.CreateParameterGroupRequest;
 import com.wbdata.parameter.dto.ParameterGroupReferencesResponse;
 import com.wbdata.parameter.dto.ParameterGroupResponse;
@@ -14,6 +13,7 @@ import com.wbdata.parameter.dto.ParameterGroupSummaryResponse;
 import com.wbdata.parameter.dto.ParameterPreviewRequest;
 import com.wbdata.parameter.dto.ParameterPreviewResponse;
 import com.wbdata.parameter.dto.UpdateParameterGroupRequest;
+import com.wbdata.parameter.service.ParameterGroupReferencePort;
 import com.wbdata.parameter.service.ParameterGroupService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -35,7 +35,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class ParameterGroupController {
     private final ParameterGroupService parameterGroupService;
-    private final FlowParameterReferenceService flowParameterReferenceService;
+    private final ParameterGroupReferencePort parameterGroupReferencePort;
 
     @Operation(summary = "参数组列表")
     @GetMapping
@@ -97,10 +97,8 @@ public class ParameterGroupController {
             @RequireGroupAuth(Permission.PARAMETER_READ) GroupAuthContext context,
             @PathVariable Long id) {
         ParameterGroupResponse group = parameterGroupService.get(context.groupId(), id);
-        FlowParameterReferenceService.References references = flowParameterReferenceService.scan(
-                context.groupId(), group.code());
-        return Result.success(new ParameterGroupReferencesResponse(
-                references.totalCount(), references.sampleFlows()));
+        return Result.success(parameterGroupReferencePort.findReferences(
+                context.groupId(), group.code()));
     }
 
     @Operation(summary = "预览参数解析结果")

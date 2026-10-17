@@ -1,7 +1,7 @@
 package com.wbdata.offline.service;
 
-import com.wbdata.offline.dto.OfflineFlowDependencyRef;
-import com.wbdata.offline.dto.OfflineFlowSchedule;
+import com.wbdata.offline.schedule.dto.OfflineFlowDependencyRef;
+import com.wbdata.offline.schedule.dto.OfflineFlowSchedule;
 import com.wbdata.offline.enums.OfflineCrossGroupDependency;
 import com.wbdata.offline.enums.OfflineFailurePolicy;
 import com.wbdata.offline.enums.OfflineSchedulePeriod;

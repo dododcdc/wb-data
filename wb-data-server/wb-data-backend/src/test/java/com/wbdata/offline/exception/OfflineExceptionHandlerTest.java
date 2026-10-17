@@ -1,6 +1,6 @@
 package com.wbdata.offline.exception;
 
-import com.wbdata.offline.dto.DirtyWorkingTreeResponse;
+import com.wbdata.offline.repo.dto.DirtyWorkingTreeResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 

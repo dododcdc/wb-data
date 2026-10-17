@@ -1,6 +1,6 @@
 package com.wbdata.offline.service;
 
-import com.wbdata.offline.dto.OfflineFlowSchedule;
+import com.wbdata.offline.schedule.dto.OfflineFlowSchedule;
 import com.wbdata.offline.enums.OfflineSchedulePeriod;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
