@@ -64,38 +64,29 @@ java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
 
 没有 `WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE` 时，SQL 节点和传输任务在容器里连 `localhost` 会 Connection refused。`scripts/dev/smoke-verify.sh` 的 SQL loopback 场景依赖这个变量。
 
-## 3. 准备 smoke 环境
+## 3. 一键运行冒烟验证
 
-从仓库根目录：
+从仓库根目录执行统一的 `scripts/dev/smoke-verify.sh`：
 
 ```bash
-DB_PASSWORD=<metadata-mysql-password> \
-scripts/dev/transfer-smoke.sh
+# 秒级全模块 API 冒烟（认证 / 数据源 / 项目组 / 自助查询 / 参数组 / 离线开发 / 运维中心）
+WB_DATA_PASSWORD=<admin-密码> scripts/dev/smoke-verify.sh --quick
+
+# 完整传输与执行冒烟（自动准备 MySQL/Hive 测试表、幂等创建数据源并验证 Kestra + SeaTunnel 全场景）
+WB_DATA_PASSWORD=<admin-密码> scripts/dev/smoke-verify.sh --transfer
+
+# 仅准备 Docker 测试表（不跑 API 验证）
+scripts/dev/smoke-verify.sh --prep-only
 ```
 
-脚本会：
+在 `--transfer`（或默认无参）模式下，脚本会自动：
 
-1. 构建本地 SeaTunnel 镜像。
-2. 启动 Docker MySQL（若尚未运行），并重置 `transfer_demo` 测试表。
-3. 启动 Hive Metastore / HiveServer2，并重置 Hive 测试表。
+1. 构建或检查本地 SeaTunnel 镜像（可通过 `SKIP_SEATUNNEL_BUILD=1` 跳过重编）。
+2. 启动 Docker MySQL（若尚未运行），并执行 `scripts/dev/init/transfer/mysql/001_schema.sql` 重置 `transfer_demo` 测试表。
+3. 启动 Hive Metastore / HiveServer2，并执行 `scripts/dev/init/transfer/hive/001_schema.sql` 重置 Hive 测试表。
 4. 检查已有 Kestra 容器和 API。
-5. 在 `policy` 组写入或更新 `it_transfer_mysql`、`it_transfer_hive`。
-
-后端在 `18080` 等非默认端口时：
-
-```bash
-WB_DATA_TRANSFER_BACKEND_HOST_PORT=18080 scripts/dev/transfer-smoke.sh
-```
-
-## 4. 产品内验证
-
-确认 `policy` 组里有 `it_transfer_mysql`、`it_transfer_hive`，然后：
-
-```bash
-WB_DATA_PASSWORD=<admin-密码> scripts/dev/smoke-verify.sh
-```
-
-脚本通过后端 API 建数据源、建 flow、触发执行并断言目标库数据。覆盖范围见 [测试策略](testing-strategy.md)。走 debug 执行接口（`wb-debug-*` 命名空间），按设计不进运维中心列表；git push 到 Kestra 的同步链路和调度触发仍需在界面手动验证。
+5. 通过后端 `/api/v1/datasources` REST API 在 `policy` 组幂等创建或更新 `it_transfer_mysql`、`it_transfer_hive`、`smoke_it_mysql_api`（默认 host 为 `WB_DATA_INFRA_HOST=omarchy.local`，自动经过应用层 Jasypt 加密）。
+6. 建 flow、触发调试执行并断言目标库数据。覆盖范围见 [测试策略](testing-strategy.md)。走 debug 执行接口（`wb-debug-*` 命名空间），按设计不进运维中心列表；git push 到 Kestra 的同步链路和调度触发仍需在界面手动验证。
 
 测试表：
 

@@ -198,7 +198,7 @@ thrift://omarchy.local:9083
 
 （或 `thrift://host.docker.internal:9083`；台式机容器 DNS 已将 `omarchy.local` 与 `host.docker.internal` 均绑定至容器网关 `172.17.0.1`。）不要填 `thrift://localhost:9083`，这项不走下面的 host 改写。
 
-`scripts/dev/transfer-smoke.sh` 会在 `policy` 组写入或更新 `it_transfer_mysql`、`it_transfer_hive`，字段与上表一致。`smoke_it_mysql_api` 由 `scripts/dev/smoke-verify.sh` 按同一套传输 MySQL 连接创建。
+`scripts/dev/smoke-verify.sh` 会通过后端 REST API 在 `policy` 组幂等创建或更新 `it_transfer_mysql`、`it_transfer_hive`、`smoke_it_mysql_api`，字段与上表一致。
 
 画布「执行」用当前草稿里的 `dataSourceId` 当场编译，不自动写 Git。仓库里的 YAML 仍是上次「保存 Flow」的结果。
 

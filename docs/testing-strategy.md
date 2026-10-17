@@ -9,17 +9,17 @@
 | 层 | 内容 | 命令 | 何时跑 |
 | --- | --- | --- | --- |
 | L0 单元测试 | 前端 vitest（jsdom）、后端 JUnit + Mockito，全部不依赖外部服务 | 前端 `npm run test`；后端 `mvn clean install` | 每次提交前 |
-| L3 集成冒烟 | 真实 MySQL / Hive / Kestra / SeaTunnel 全链路 | `scripts/dev/transfer-smoke.sh` 准备环境，`scripts/dev/smoke-verify.sh` 自动验证 | 改动执行链路、数据源、调度相关代码后；发版前 |
+| L3 集成冒烟 | 全模块 API 冒烟（`--quick`）与真实 MySQL / Hive / Kestra / SeaTunnel 全链路（`--transfer`） | `scripts/dev/smoke-verify.sh`（内置环境准备、REST 幂等数据源准备与自动验证） | 改动后端模块、执行链路、数据源、调度相关代码后；发版前 |
 | 浏览器走查（L2 职责） | 真实浏览器实际操作 | 见 [真实浏览器走查](#真实浏览器走查jsdom-盲区) | 视觉 / 交互改动 |
 
 L0 与 L3 之间目前没有自动化集成层（无 `@SpringBootTest`、无 Testcontainers）。这是有意的暂缓决策，见下文。测试数量以命令实际输出为准，不在本文维护。
 
 ## L3 冒烟怎么用
 
-1. 环境准备（幂等，可重复跑）：`DB_PASSWORD=<元数据库密码> scripts/dev/transfer-smoke.sh`
-2. 自动验证（幂等，可重复跑）：`WB_DATA_PASSWORD=<admin 密码> scripts/dev/smoke-verify.sh`
+1. 全模块 API 快速冒烟（秒级，覆盖认证、数据源、项目组/Git、自助查询、参数组引用统计、离线开发、运维中心）：`WB_DATA_PASSWORD=<admin 密码> scripts/dev/smoke-verify.sh --quick`
+2. 完整传输与执行冒烟（自动准备 MySQL/Hive 测试表、通过 REST API 幂等创建/更新数据源并跑 Kestra + SeaTunnel 全场景）：`WB_DATA_PASSWORD=<admin 密码> scripts/dev/smoke-verify.sh --transfer`（默认无参等价于 `--transfer`，也可传 `--all` 一次性跑完 `--quick` + `--transfer`，或 `--prep-only` 仅初始化测试容器与表）
 
-verify 脚本通过后端 API 完成：登录 → 定位 `policy` 项目组 → 重置测试数据 → 依次验证八个场景：
+`smoke-verify.sh` 通过后端 API 完成：登录 → 定位 `policy` 项目组 → 幂等确保测试数据源（`it_transfer_mysql`、`it_transfer_hive`、`smoke_it_mysql_api`，默认连接 `WB_DATA_INFRA_HOST=omarchy.local`）→ 重置测试数据 → 依次验证场景：
 
 - 数据源管理：API 创建数据源 + 测试连接（`smoke_it_mysql_api`，重复执行时复用）
 - MySQL → MySQL `append`（使用上一步创建的数据源）
