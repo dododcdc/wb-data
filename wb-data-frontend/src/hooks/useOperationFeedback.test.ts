@@ -60,13 +60,20 @@ describe('useOperationFeedback', () => {
         });
     });
 
-    it('showError uses fallback title when error has no message', () => {
+    it('showError omits detail when error has no message or matches title', () => {
         const { result } = renderHook(() => useOperationFeedback());
         result.current.showError({}, '操作失败');
         expect(useFeedbackStore.getState().current).toEqual({
             tone: 'error',
             title: '操作失败',
-            detail: '操作失败',
+            detail: '',
+        });
+
+        result.current.showError(new Error('操作失败'), '操作失败');
+        expect(useFeedbackStore.getState().current).toEqual({
+            tone: 'error',
+            title: '操作失败',
+            detail: '',
         });
     });
 

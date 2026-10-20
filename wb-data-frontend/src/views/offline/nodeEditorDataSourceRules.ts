@@ -12,11 +12,13 @@ export function validateSqlNodeDataSourceRequirement({
     dataSourceId,
     dataSourceType,
     strict,
+    taskId,
 }: {
     kind: OfflineFlowNodeKind;
     dataSourceId?: number;
     dataSourceType?: string;
     strict: boolean;
+    taskId?: string;
 }): {
     allowed: boolean;
     feedback: FeedbackPayload | null;
@@ -27,6 +29,7 @@ export function validateSqlNodeDataSourceRequirement({
 
     const allowedTypes = getAllowedDataSourceTypes(kind);
     const kindLabel = getOfflineNodeKindLabel(kind);
+    const nodePrefix = taskId ? `节点「${taskId}」` : `${kindLabel} 节点`;
 
     if (dataSourceId && dataSourceType && !allowedTypes.includes(dataSourceType.toUpperCase())) {
         return {
@@ -35,10 +38,10 @@ export function validateSqlNodeDataSourceRequirement({
                 tone: 'error',
                 title: '数据源类型不匹配',
                 detail: kind === 'HIVE_SQL'
-                    ? 'HiveSQL 节点只能绑定 Hive 数据源。'
+                    ? `${nodePrefix}仅支持 Hive 数据源`
                     : kind === 'SQL'
-                        ? 'SQL 节点仅支持 MySQL、PostgreSQL、ClickHouse 数据源。'
-                        : `${kindLabel} 节点只能绑定 ${kindLabel} 数据源。`,
+                        ? `${nodePrefix}仅支持 MySQL / PostgreSQL / ClickHouse`
+                        : `${nodePrefix}仅支持 ${kindLabel} 数据源`,
             },
         };
     }
@@ -53,7 +56,7 @@ export function validateSqlNodeDataSourceRequirement({
             feedback: {
                 tone: 'error',
                 title: '请先选择数据源',
-                detail: `${kindLabel} 节点必须绑定数据源`,
+                detail: `${nodePrefix}未绑定数据源`,
             },
         };
     }
@@ -63,7 +66,7 @@ export function validateSqlNodeDataSourceRequirement({
         feedback: {
             tone: 'info',
             title: '建议绑定数据源',
-            detail: '保存或提交前需补齐',
+            detail: '提交前需补齐',
         },
     };
 }

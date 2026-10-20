@@ -122,7 +122,7 @@ export default function Layout() {
         try {
             await selectAuthGroup(queryClient, groupId);
         } catch (error) {
-            showError(error, '切换项目组失败', '未能切换项目组，请重试');
+            showError(error, '切换项目组失败');
         }
     }, [queryClient, showError]);
 
@@ -140,7 +140,7 @@ export default function Layout() {
             showFeedback({
                 tone: 'error',
                 title: '退出失败',
-                detail: '未能确认服务端注销，请重试。',
+                detail: '请稍后重试',
             });
         } finally {
             logoutPendingRef.current = false;

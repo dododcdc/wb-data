@@ -68,7 +68,7 @@ interface UseQueryExecutionParams {
     showFeedback: (payload: FeedbackPayload, durationMs?: number) => void;
 }
 
-const DOWNLOAD_ERROR_MESSAGE = '导出文件下载失败，请稍后重试。';
+const DOWNLOAD_ERROR_MESSAGE = '请稍后重试';
 
 async function resolveDownloadErrorMessage(error: unknown) {
     const data = (error as { response?: { data?: unknown } }).response?.data;

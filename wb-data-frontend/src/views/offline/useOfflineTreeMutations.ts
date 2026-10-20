@@ -153,8 +153,8 @@ export function useOfflineTreeMutations({
         } catch (error) {
             showFeedback({
                 tone: 'error',
-                title: getErrorMessage(error, '创建任务失败'),
-                detail: '',
+                title: '创建任务失败',
+                detail: getErrorMessage(error, ''),
             });
         } finally {
             setNewFlowCreating(false);
@@ -177,8 +177,8 @@ export function useOfflineTreeMutations({
         } catch (error) {
             showFeedback({
                 tone: 'error',
-                title: getErrorMessage(error, '创建文件夹失败'),
-                detail: '',
+                title: '创建文件夹失败',
+                detail: getErrorMessage(error, ''),
             });
         } finally {
             setNewFolderCreating(false);
@@ -203,8 +203,8 @@ export function useOfflineTreeMutations({
             setDeleteFlowError(getErrorMessage(error, '删除任务失败'));
             showFeedback({
                 tone: 'error',
-                title: getErrorMessage(error, '删除任务失败'),
-                detail: '',
+                title: '删除任务失败',
+                detail: getErrorMessage(error, ''),
             });
         } finally {
             setDeleteFlowLoading(false);
@@ -236,8 +236,8 @@ export function useOfflineTreeMutations({
         } catch (error) {
             showFeedback({
                 tone: 'error',
-                title: getErrorMessage(error, '重命名任务失败'),
-                detail: '',
+                title: '重命名任务失败',
+                detail: getErrorMessage(error, ''),
             });
         } finally {
             setRenameFlowLoading(false);
@@ -277,8 +277,8 @@ export function useOfflineTreeMutations({
         } catch (error) {
             showFeedback({
                 tone: 'error',
-                title: getErrorMessage(error, '删除文件夹失败'),
-                detail: '',
+                title: '删除文件夹失败',
+                detail: getErrorMessage(error, ''),
             });
         } finally {
             setDeleteFolderLoading(false);
@@ -314,8 +314,8 @@ export function useOfflineTreeMutations({
         } catch (error) {
             showFeedback({
                 tone: 'error',
-                title: getErrorMessage(error, '重命名文件夹失败'),
-                detail: '',
+                title: '重命名文件夹失败',
+                detail: getErrorMessage(error, ''),
             });
         } finally {
             setRenameFolderLoading(false);
@@ -349,8 +349,8 @@ export function useOfflineTreeMutations({
         } catch {
             showFeedback({
                 tone: 'error',
-                title: '复制任务名称失败',
-                detail: '请检查浏览器剪贴板权限，并使用 HTTPS 或 localhost 访问。',
+                title: '复制失败',
+                detail: '请检查浏览器剪贴板权限',
             });
         }
     }, [showFeedback]);
@@ -391,7 +391,11 @@ export function useOfflineTreeMutations({
             }
         } catch (error) {
             if (!isCurrent()) return;
-            showFeedback({ tone: 'error', title: getErrorMessage(error, isFlow ? '移动任务失败' : '移动文件夹失败'), detail: '' });
+            showFeedback({
+                tone: 'error',
+                title: isFlow ? '移动任务失败' : '移动文件夹失败',
+                detail: getErrorMessage(error, ''),
+            });
             await refreshRepoTree();
         }
     }, [groupId, leaveCurrentFlow, openFlowDocument, refreshRepoTree, resolveTreeNode, setActiveFlowPath, setDraftSession, showFeedback]);

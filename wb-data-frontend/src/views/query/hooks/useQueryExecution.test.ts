@@ -115,7 +115,7 @@ describe('useQueryExecution download feedback', () => {
         expect(showFeedback).toHaveBeenCalledWith({
             tone: 'error',
             title: '下载失败',
-            detail: '导出文件下载失败，请稍后重试。',
+            detail: '请稍后重试',
         });
     });
 });

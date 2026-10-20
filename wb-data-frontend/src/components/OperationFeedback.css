@@ -8,11 +8,11 @@
     z-index: var(--z-toast);
 
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
     padding: 10px 16px;
     min-width: 200px;
-    max-width: 480px;
+    max-width: min(560px, calc(100vw - 32px));
 
     background: var(--color-bg-primary);
     border: 1px solid var(--color-border);
@@ -35,7 +35,7 @@
 
 .ofb-main {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
     flex: 1;
     min-width: 0;
@@ -46,6 +46,7 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    height: 20px;
 }
 
 .ofb-toast.is-success .ofb-icon {
@@ -62,9 +63,12 @@
 
 .ofb-copy {
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
-    gap: 8px;
+    column-gap: 8px;
+    row-gap: 2px;
     min-width: 0;
+    line-height: 20px;
     color: var(--color-text-primary);
     font-size: var(--text-md);
     font-weight: 500;
@@ -79,7 +83,10 @@
     margin: 0;
     color: var(--color-text-muted);
     font-size: var(--text-sm);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }

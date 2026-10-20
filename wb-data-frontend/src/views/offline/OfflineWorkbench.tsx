@@ -151,6 +151,7 @@ export default function OfflineWorkbench() {
         stageNodeEditorDraft,
         saveNodeEditorDraft,
         flushDraftNow,
+        validateDocumentForAction,
         draftSaveState,
         draftSavedAt,
         draftSaveError,
@@ -281,6 +282,10 @@ export default function OfflineWorkbench() {
         if (!flowDocument) return {};
         const issues: Record<string, string | null> = {};
         flattenFlowDocumentNodes(flowDocument).forEach(node => {
+            if (node.kind === 'TRANSFER' && (node.transferDraftValid === false || (!node.transfer && !node.transferDraft))) {
+                issues[node.taskId] = 'Transfer 配置未完成';
+                return;
+            }
             const validation = validateSqlNodeDataSourceRequirement({
                 kind: node.kind,
                 dataSourceId: node.dataSourceId,
@@ -510,8 +515,8 @@ export default function OfflineWorkbench() {
         });
         showFeedback(validation.feedback ?? {
             tone: 'success',
-            title: '已写入本机草稿，自动保存后生效',
-            detail: '',
+            title: '草稿已暂存',
+            detail: '自动保存后生效',
         });
     }, [activeNodeId, flowDocument, saveNodeEditorDraft, showFeedback]);
 
@@ -585,8 +590,9 @@ export default function OfflineWorkbench() {
 
     const handleOpenFlowCommitDialog = useCallback(() => {
         if (!groupId || !activeFlowPath || !flowDocument) return;
+        if (!validateDocumentForAction()) return;
         setFlowCommitDialogOpen(true);
-    }, [groupId, activeFlowPath, flowDocument]);
+    }, [groupId, activeFlowPath, flowDocument, validateDocumentForAction]);
 
     const handleOpenRepoCommitDialog = useCallback(() => {
         if (!groupId) return;
@@ -788,7 +794,7 @@ export default function OfflineWorkbench() {
                         if (!canWrite) return;
                         setDraftSession((current) => current ? updateFlowDependencyDraft(current, config) : current);
                         setDependencyDialogOpen(false);
-                        showSuccess('依赖配置已暂存', '自动保存后写入仓库');
+                        showSuccess('依赖配置已暂存', '自动保存后生效');
                     }}
                 />
             ) : null}

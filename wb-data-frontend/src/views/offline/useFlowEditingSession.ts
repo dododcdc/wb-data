@@ -400,9 +400,9 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         }
 
         if (failureReason === 'duplicate') {
-            showFeedback({ tone: 'error', title: '重命名失败', detail: '已存在相同名称的节点。' });
+            showFeedback({ tone: 'error', title: '重命名失败', detail: '节点名称已存在' });
         } else if (failureReason === 'invalid-format') {
-            showFeedback({ tone: 'error', title: '重命名失败', detail: '节点名称仅支持字母、数字和下划线。' });
+            showFeedback({ tone: 'error', title: '重命名失败', detail: '仅支持字母、数字和下划线' });
         }
     }, [setDraftSessionSync, showFeedback, syncCanvasRefsFromDocument]);
 
@@ -437,7 +437,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         }
 
         if (failureReason === 'max-nodes') {
-            showFeedback({ tone: 'info', title: '节点数量已达上限', detail: '离线任务最多支持 20 个节点，请精简任务设计。' });
+            showFeedback({ tone: 'info', title: '节点数量已达上限', detail: '单任务最多支持 20 个节点' });
         }
     }, [setDraftSessionSync, showFeedback, syncCanvasRefsFromDocument]);
 
@@ -556,7 +556,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             showFeedback({
                 tone: 'error',
                 title: 'Transfer 配置未完成',
-                detail: `${invalidTransferDraftNode.taskId} 存在未完成的 Transfer 配置，请补齐字段映射后再保存或提交。`,
+                detail: `请完善节点「${invalidTransferDraftNode.taskId}」的配置`,
             });
             return false;
         }
@@ -568,6 +568,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
                 dataSourceId: invalidNode.dataSourceId,
                 dataSourceType: invalidNode.dataSourceType,
                 strict: true,
+                taskId: invalidNode.taskId,
             });
             if (!validation.allowed && validation.feedback) {
                 showFeedback(validation.feedback);
@@ -851,6 +852,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         commitCanvasLayout,
         persistDraft,
         flushDraftNow,
+        validateDocumentForAction,
         commitCurrentFlow,
         closeSaveConflict,
         discardSaveConflict,

@@ -14,6 +14,8 @@ export function OperationFeedback() {
     if (!current) return null;
 
     const Icon = toneIcon[current.tone];
+    const detail = current.detail?.trim();
+    const showDetail = Boolean(detail && detail !== current.title.trim());
 
     return (
         <section
@@ -27,7 +29,7 @@ export function OperationFeedback() {
                 </div>
                 <div className="ofb-copy">
                     <strong>{current.title}</strong>
-                    {current.detail && <p>{current.detail}</p>}
+                    {showDetail && <p>{detail}</p>}
                 </div>
             </div>
         </section>

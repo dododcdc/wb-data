@@ -319,8 +319,8 @@ export function useFlowExecutionAndSchedule({
             const stoppedCount = await stopAllOfflineExecutions(groupId, activeFlowPath);
             showFeedback({
                 tone: 'info',
-                title: '已发送批量停止请求',
-                detail: stoppedCount > 0 ? `共请求停止 ${stoppedCount} 条执行。` : '当前没有运行中的执行。',
+                title: stoppedCount > 0 ? `已请求停止 ${stoppedCount} 条执行` : '当前无运行中的执行',
+                detail: '',
             });
             await refreshExecutions(activeExecutionId);
         } catch (error) {
@@ -419,7 +419,7 @@ export function useFlowExecutionAndSchedule({
         showFeedback({
             tone: 'success',
             title: '调度配置已暂存',
-            detail: '',
+            detail: '自动保存后生效',
         });
     }, [draftSession, schedule?.enabled, scheduleCron, schedulePeriod, scheduleTimezone, setDraftSession, showFeedback]);
 
@@ -455,7 +455,7 @@ export function useFlowExecutionAndSchedule({
         showFeedback({
             tone: 'success',
             title: enabled ? '调度开启已暂存' : '调度关闭已暂存',
-            detail: '推送到远程后才会真正生效。',
+            detail: '推送远程后生效',
         });
     }, [activeFlowPath, draftSession, groupId, scheduleCron, schedulePeriod, scheduleTimezone, setDraftSession, showFeedback]);
 

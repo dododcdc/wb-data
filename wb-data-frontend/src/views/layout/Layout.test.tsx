@@ -195,7 +195,7 @@ describe('Layout', () => {
         vi.mocked(selectGroupContext).mockRejectedValueOnce(new Error('目标项目组已禁用'));
         renderOfflineLayout();
         fireEvent.change(screen.getByRole('combobox', { name: '项目组' }), { target: { value: '5' } });
-        await waitFor(() => expect(showErrorSpy).toHaveBeenCalledWith(expect.any(Error), '切换项目组失败', '未能切换项目组，请重试'));
+        await waitFor(() => expect(showErrorSpy).toHaveBeenCalledWith(expect.any(Error), '切换项目组失败'));
         expect(selectGroupContext).toHaveBeenCalledWith(5);
         expect(useAuthStore.getState().currentGroup?.id).toBe(4);
         expect(screen.getByRole<HTMLSelectElement>('combobox', { name: '项目组' }).disabled).toBe(false);
@@ -269,7 +269,7 @@ describe('Layout', () => {
             await waitFor(() => expect(showFeedbackSpy).toHaveBeenCalledWith({
                 tone: 'error',
                 title: '退出失败',
-                detail: '未能确认服务端注销，请重试。',
+                detail: '请稍后重试',
             }));
             expect(showFeedbackSpy).toHaveBeenCalledTimes(1);
             expect(logout).toHaveBeenCalledTimes(1);

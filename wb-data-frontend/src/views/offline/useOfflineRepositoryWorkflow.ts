@@ -256,8 +256,8 @@ export function useOfflineRepositoryWorkflow({
                     tone: 'error',
                     title: '工作区有未提交改动',
                     detail: dirtyDetails.changedFlows.length > 0
-                        ? `还有 ${dirtyDetails.changedFlows.length} 个已保存但未提交的任务，请提交仓库改动后再切换分支。`
-                        : '请提交仓库改动后再切换分支。',
+                        ? `${dirtyDetails.changedFlows.length} 个任务待提交，请先提交再切换分支`
+                        : '请先提交改动再切换分支',
                 });
                 return;
             }
@@ -329,7 +329,7 @@ export function useOfflineRepositoryWorkflow({
                 setPushDialogOpen(false);
                 setRebuildDialogOpen(true);
             } else {
-                showFeedback({ tone: 'error', title: result.message, detail: '' });
+                showFeedback({ tone: 'error', title: '推送失败', detail: result.message || '' });
             }
         } catch {
             showFeedback({ tone: 'error', title: '推送失败', detail: '' });
@@ -369,7 +369,7 @@ export function useOfflineRepositoryWorkflow({
                 await refreshRemoteStatus();
                 await refreshRepoStatus();
             } else {
-                showFeedback({ tone: 'error', title: result.message, detail: '' });
+                showFeedback({ tone: 'error', title: '推送失败', detail: result.message || '' });
             }
         } catch {
             showFeedback({ tone: 'error', title: '推送失败', detail: '' });

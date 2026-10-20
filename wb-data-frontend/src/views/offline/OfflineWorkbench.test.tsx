@@ -618,7 +618,7 @@ describe('OfflineWorkbench commit UI', () => {
         fireEvent.contextMenu(await screen.findByRole('button', { name: 'Example Flow' }));
         fireEvent.click(await screen.findByRole('button', { name: '复制任务名称' }));
         await waitFor(() => expect(feedbackSpy).toHaveBeenCalledWith({
-            tone: 'error', title: '复制任务名称失败', detail: '请检查浏览器剪贴板权限，并使用 HTTPS 或 localhost 访问。',
+            tone: 'error', title: '复制失败', detail: '请检查浏览器剪贴板权限',
         }));
         expect(feedbackSpy).not.toHaveBeenCalledWith(expect.objectContaining({ title: '任务名称已复制' }));
         expect(screen.queryByRole('button', { name: '复制任务名称' })).toBeNull();
@@ -1239,9 +1239,45 @@ describe('OfflineWorkbench commit UI', () => {
             expect(feedbackSpy).toHaveBeenCalledWith({
                 tone: 'info',
                 title: '节点数量已达上限',
-                detail: '离线任务最多支持 20 个节点，请精简任务设计。',
+                detail: '单任务最多支持 20 个节点',
             });
         });
+    });
+
+    it('blocks opening the commit dialog and shows concise feedback when a Transfer node is incomplete', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write'];
+        const baseDoc = makeFlowDocument();
+        vi.mocked(offlineApi.getOfflineFlowDocument).mockResolvedValue({
+            ...baseDoc,
+            stages: [{
+                ...baseDoc.stages[0],
+                nodes: [
+                    ...baseDoc.stages[0].nodes,
+                    {
+                        taskId: 'transfer_node_6',
+                        kind: 'TRANSFER',
+                        scriptPath: 'scripts/example/transfer_node_6.json',
+                        scriptContent: '{}',
+                    },
+                ],
+            }],
+        });
+        vi.mocked(offlineApi.getOfflineFlowCommitStatus).mockResolvedValue({ groupId: 1, flowPath: '_flows/example/flow.yaml', dirty: true });
+
+        renderOfflineWorkbench();
+        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        fireEvent.click(screen.getByRole('button', { name: '提交当前任务' }));
+
+        expect(feedbackSpy).toHaveBeenCalledWith({
+            tone: 'error',
+            title: 'Transfer 配置未完成',
+            detail: '请完善节点「transfer_node_6」的配置',
+        });
+        expect(screen.queryByRole('dialog', { name: '提交改动' })).toBeNull();
     });
 
     it('persists drafts with a dangling edge as valid intermediate state', { timeout: 15000 }, async () => {
