@@ -49,6 +49,7 @@ final class OfflineRepoPaths {
         if (directory.equals(flowsRoot) || !directory.startsWith(flowsRoot)) {
             throw new IllegalArgumentException("只能移动 _flows 目录下的任务或文件夹");
         }
+        OfflineRecentFlowService.assertNotReservedRootPath(repoPath, directory);
         return directory;
     }
 

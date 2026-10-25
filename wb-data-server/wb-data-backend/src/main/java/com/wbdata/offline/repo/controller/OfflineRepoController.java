@@ -60,7 +60,8 @@ public class OfflineRepoController {
     @Operation(summary = "获取项目组离线仓库目录树")
     @GetMapping("/repo/tree")
     public Result<OfflineRepoTreeResponse> getRepoTree(@RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context) {
-        return Result.success(offlineRepoTreeService.getRepoTree(context.groupId(), context.groupName()));
+        Long userId = context.user() != null ? context.user().id() : null;
+        return Result.success(offlineRepoTreeService.getRepoTree(context.groupId(), context.groupName(), userId));
     }
 
     @Operation(summary = "获取远程仓库关联状态")

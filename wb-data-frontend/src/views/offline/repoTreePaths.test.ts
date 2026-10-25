@@ -2,10 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import type { OfflineFlowDocument, OfflineRepoTreeNode } from '../../api/offline';
 import {
+    RECENT_FLOWS_DIR_PATH,
+    buildRepoTreeEntries,
     flattenRepoTreePaths,
     flowApiPathToTreePath,
+    getAncestorDirectoryTreePaths,
     indexNodesByTreePath,
+    isRecentFlowsTreePath,
     moveTreePath,
+    prependRecentFlowPath,
     toTreePath,
     treePathToFlowApiPath,
     treePathToFolderApiPath,
@@ -113,6 +118,54 @@ describe('flattenRepoTreePaths', () => {
         const index = indexNodesByTreePath(tree);
         expect(index.get('x/')?.kind).toBe('DIRECTORY');
         expect(index.get('x/task-a')?.kind).toBe('FLOW');
+    });
+
+    it('builds recent flow entries capped at 5 and maps them to canonical flow nodes', () => {
+        const tree = root([
+            directory('_flows/x', 'x', [
+                flow('_flows/x/task-1/flow.yaml', 'task-1'),
+                flow('_flows/x/task-2/flow.yaml', 'task-2'),
+                flow('_flows/x/task-3/flow.yaml', 'task-3'),
+                flow('_flows/x/task-4/flow.yaml', 'task-4'),
+                flow('_flows/x/task-5/flow.yaml', 'task-5'),
+                flow('_flows/x/task-6/flow.yaml', 'task-6'),
+            ]),
+        ]);
+        const entries = buildRepoTreeEntries(tree, {
+            recentFlowPaths: [
+                '_flows/x/task-3/flow.yaml',
+                '_flows/x/missing/flow.yaml',
+                '_flows/x/task-1/flow.yaml',
+                '_flows/x/task-2/flow.yaml',
+                '_flows/x/task-4/flow.yaml',
+                '_flows/x/task-5/flow.yaml',
+                '_flows/x/task-6/flow.yaml',
+            ],
+        });
+        expect(entries.paths.slice(0, 5)).toEqual([
+            RECENT_FLOWS_DIR_PATH,
+            '最近操作/task-3',
+            '最近操作/task-1',
+            '最近操作/task-2',
+            '最近操作/task-4',
+        ]);
+        expect(entries.nodeIndex.get('最近操作/task-3')?.path).toBe('_flows/x/task-3/flow.yaml');
+        expect(entries.nodeIndex.has(RECENT_FLOWS_DIR_PATH)).toBe(false);
+        expect(isRecentFlowsTreePath(RECENT_FLOWS_DIR_PATH)).toBe(true);
+        expect(isRecentFlowsTreePath('最近操作/task-3')).toBe(true);
+        expect(isRecentFlowsTreePath('x/task-3')).toBe(false);
+    });
+
+    it('computes ancestor directory paths and prepends recent flows in LRU order', () => {
+        expect(getAncestorDirectoryTreePaths('x/sub/leaf')).toEqual(['x/', 'x/sub/']);
+        expect(getAncestorDirectoryTreePaths('root-task')).toEqual([]);
+
+        const initial = ['_flows/a/flow.yaml', '_flows/b/flow.yaml'];
+        expect(prependRecentFlowPath(initial, '_flows/a/flow.yaml')).toBe(initial);
+        expect(prependRecentFlowPath(initial, '_flows/b/flow.yaml')).toEqual([
+            '_flows/b/flow.yaml',
+            '_flows/a/flow.yaml',
+        ]);
     });
 });
 

@@ -62,6 +62,7 @@ export interface OfflineRepoTreeNode {
 export interface OfflineRepoTreeResponse {
     groupId: number;
     root: OfflineRepoTreeNode;
+    recentFlowPaths?: string[];
 }
 
 export interface OfflineFlowContent {

@@ -3,8 +3,40 @@ import type { OfflineFlowDocument, OfflineRepoTreeNode } from '../../api/offline
 const FLOWS_PREFIX = '_flows/';
 const FLOW_FILE_SUFFIX = '/flow.yaml';
 
+export const RECENT_FLOWS_DIR_NAME = '最近操作';
+export const RECENT_FLOWS_DIR_PATH = `${RECENT_FLOWS_DIR_NAME}/`;
+export const MAX_RECENT_FLOWS = 5;
+
 function stripFlowsPrefix(path: string): string {
     return path.startsWith(FLOWS_PREFIX) ? path.slice(FLOWS_PREFIX.length) : path;
+}
+
+export function isRecentFlowsTreePath(treePath: string): boolean {
+    return treePath === RECENT_FLOWS_DIR_PATH || treePath.startsWith(RECENT_FLOWS_DIR_PATH);
+}
+
+export function getAncestorDirectoryTreePaths(treePath: string): string[] {
+    const segments = treePath.replace(/\/+$/, '').split('/').filter(Boolean);
+    const ancestors: string[] = [];
+    for (let index = 0; index < segments.length - 1; index += 1) {
+        ancestors.push(`${segments.slice(0, index + 1).join('/')}/`);
+    }
+    return ancestors;
+}
+
+export function prependRecentFlowPath(
+    recentFlowPaths: readonly string[] | undefined,
+    flowPath: string,
+): string[] {
+    const current = recentFlowPaths ?? [];
+    if (
+        current[0] === flowPath
+        && current.length <= MAX_RECENT_FLOWS
+        && current.indexOf(flowPath, 1) === -1
+    ) {
+        return current as string[];
+    }
+    return [flowPath, ...current.filter((item) => item !== flowPath)].slice(0, MAX_RECENT_FLOWS);
 }
 
 export function toTreePath(node: OfflineRepoTreeNode): string {
@@ -55,7 +87,10 @@ export function flattenRepoTreePaths(root: OfflineRepoTreeNode): string[] {
     return paths;
 }
 
-export function indexNodesByTreePath(root: OfflineRepoTreeNode): Map<string, OfflineRepoTreeNode> {
+export function indexNodesByTreePath(
+    root: OfflineRepoTreeNode,
+    recentFlowPaths?: readonly string[],
+): Map<string, OfflineRepoTreeNode> {
     const index = new Map<string, OfflineRepoTreeNode>();
     const walk = (node: OfflineRepoTreeNode) => {
         node.children.forEach((child) => {
@@ -64,7 +99,51 @@ export function indexNodesByTreePath(root: OfflineRepoTreeNode): Map<string, Off
         });
     };
     walk(root);
+    if (recentFlowPaths && recentFlowPaths.length > 0) {
+        recentFlowPaths.slice(0, MAX_RECENT_FLOWS).forEach((apiPath) => {
+            const node = index.get(flowApiPathToTreePath(apiPath));
+            if (node?.kind === 'FLOW') {
+                const recentTreePath = `${RECENT_FLOWS_DIR_PATH}${node.name}`;
+                if (!index.has(recentTreePath)) {
+                    index.set(recentTreePath, node);
+                }
+            }
+        });
+    }
     return index;
+}
+
+export function buildRepoTreeEntries(
+    root: OfflineRepoTreeNode,
+    options?: {
+        directoriesOnly?: boolean;
+        recentFlowPaths?: readonly string[];
+    },
+): { paths: string[]; nodeIndex: Map<string, OfflineRepoTreeNode> } {
+    const directoriesOnly = options?.directoriesOnly ?? false;
+    const allPaths = flattenRepoTreePaths(root);
+    if (directoriesOnly) {
+        return {
+            paths: allPaths.filter(isDirectoryTreePath),
+            nodeIndex: indexNodesByTreePath(root),
+        };
+    }
+    const nodeIndex = indexNodesByTreePath(root);
+    const recentItemPaths: string[] = [];
+    (options?.recentFlowPaths ?? []).slice(0, MAX_RECENT_FLOWS).forEach((apiPath) => {
+        const node = nodeIndex.get(flowApiPathToTreePath(apiPath));
+        if (node?.kind === 'FLOW') {
+            const recentTreePath = `${RECENT_FLOWS_DIR_PATH}${node.name}`;
+            if (!nodeIndex.has(recentTreePath)) {
+                nodeIndex.set(recentTreePath, node);
+                recentItemPaths.push(recentTreePath);
+            }
+        }
+    });
+    return {
+        paths: [RECENT_FLOWS_DIR_PATH, ...recentItemPaths, ...allPaths],
+        nodeIndex,
+    };
 }
 
 export function updateRepoTreeFlowStatus(root: OfflineRepoTreeNode, document: OfflineFlowDocument): OfflineRepoTreeNode {

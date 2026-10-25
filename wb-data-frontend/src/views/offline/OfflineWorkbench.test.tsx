@@ -776,7 +776,7 @@ describe('OfflineWorkbench commit UI', () => {
         });
         vi.mocked(offlineApi.saveOfflineFlowDocument).mockRejectedValue(error);
         renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
         fireEvent.click(screen.getByRole('button', { name: '模拟画布修改' }));
         fireEvent.click(screen.getByRole('button', { name: '依赖' }));
@@ -804,7 +804,7 @@ describe('OfflineWorkbench commit UI', () => {
     it('cancels dependency edits without making the Flow dirty', async () => {
         authState.permissions = ['offline.write'];
         renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
         fireEvent.click(screen.getByRole('button', { name: '依赖' }));
         const dialog = await screen.findByRole('dialog');
@@ -844,7 +844,7 @@ describe('OfflineWorkbench commit UI', () => {
         });
 
         renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: '参数' }));
@@ -876,7 +876,7 @@ describe('OfflineWorkbench commit UI', () => {
         authState.permissions = ['offline.write'];
 
         renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
 
         expect(screen.getByRole('button', { name: '提交当前任务' })).toBeTruthy();
@@ -889,7 +889,7 @@ describe('OfflineWorkbench commit UI', () => {
         authState.permissions = ['offline.write'];
 
         renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
 
         const dataTransfer = {
@@ -918,7 +918,7 @@ describe('OfflineWorkbench commit UI', () => {
         vi.mocked(offlineApi.getOfflineFlowDocument).mockResolvedValue(makeFlowDocumentWithTransferNode());
 
         renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
         flowCanvasRenderSpy.mockClear();
 
@@ -1092,7 +1092,7 @@ describe('OfflineWorkbench commit UI', () => {
         });
 
         renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
         fireEvent.click(screen.getByRole('button', { name: '模拟画布修改' }));
 
@@ -1117,7 +1117,7 @@ describe('OfflineWorkbench commit UI', () => {
         vi.mocked(offlineApi.commitOfflineCurrentFlow).mockResolvedValue({ success: true, message: 'ok' });
 
         renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: '提交当前任务' }));
@@ -1142,7 +1142,7 @@ describe('OfflineWorkbench commit UI', () => {
         renderOfflineWorkbench();
 
         // Select a flow first so the component is in a loaded state
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
 
         // Now click repo commit
@@ -1167,7 +1167,7 @@ describe('OfflineWorkbench commit UI', () => {
         });
 
         renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: '模拟连续新增和重命名' }));
@@ -1202,7 +1202,7 @@ describe('OfflineWorkbench commit UI', () => {
         });
 
         renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: '模拟新增后重命名新增节点' }));
@@ -1230,7 +1230,7 @@ describe('OfflineWorkbench commit UI', () => {
         vi.mocked(offlineApi.getOfflineFlowDocument).mockResolvedValue(makeFlowDocumentWithNodeCount(19));
 
         renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: '模拟连续新增超过上限' }));
@@ -1267,7 +1267,7 @@ describe('OfflineWorkbench commit UI', () => {
         vi.mocked(offlineApi.getOfflineFlowCommitStatus).mockResolvedValue({ groupId: 1, flowPath: '_flows/example/flow.yaml', dirty: true });
 
         renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: '提交当前任务' }));
@@ -1291,7 +1291,7 @@ describe('OfflineWorkbench commit UI', () => {
         });
 
         renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: '模拟悬空连线' }));
@@ -1327,7 +1327,7 @@ describe('OfflineWorkbench commit UI', () => {
         });
 
         renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
 
         fireEvent.click(screen.getByRole('button', { name: '调度' }));
@@ -1394,11 +1394,11 @@ describe('OfflineWorkbench commit UI', () => {
         });
 
         renderOfflineWorkbench();
-        fireEvent.click(await screen.findByRole('button', { name: 'Example Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         expect((await screen.findByTestId('flow-canvas')).textContent).toContain('_flows/example/flow.yaml');
 
         fireEvent.click(screen.getByRole('button', { name: '模拟画布修改' }));
-        fireEvent.click(await screen.findByRole('button', { name: 'Second Flow' }));
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Second Flow' }));
 
         // 自动保存模型下不再弹「未保存的更改」：切换前自动 flush，随后直接打开目标任务
         expect(screen.queryByRole('dialog', { name: '您有未保存的更改' })).toBeNull();
@@ -1410,6 +1410,9 @@ describe('OfflineWorkbench commit UI', () => {
             expect(offlineApi.getOfflineFlowDocument).toHaveBeenCalledWith(1, '_flows/second/flow.yaml');
         });
         expect((await screen.findByTestId('flow-canvas')).textContent).toContain('_flows/second/flow.yaml');
+        expect(screen.getByTestId('repo-tree-double').getAttribute('data-recent-flows')).toBe(
+            '_flows/second/flow.yaml,_flows/example/flow.yaml',
+        );
     });
 });
 

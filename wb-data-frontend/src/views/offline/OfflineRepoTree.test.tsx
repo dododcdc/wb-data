@@ -112,11 +112,28 @@ describe('OfflineRepoTree with the real Trees model', () => {
                 { ...node('FLOW', 'weekly'), scheduleState: 'DISABLED', schedulePeriod: 'WEEKLY' },
                 node('FLOW', 'plain'),
             ]),
+            recentFlowPaths: ['_flows/weekly/flow.yaml', '_flows/daily/flow.yaml'],
             renderBadge: renderScheduleBadge,
         });
-        const decorations = Object.fromEntries(model.getVisibleRows(0, model.getVisibleCount() - 1)
+        const visibleRows = model.getVisibleRows(0, model.getVisibleCount() - 1);
+        expect(visibleRows.map((row) => row.path)).toEqual([
+            '最近操作/',
+            '最近操作/weekly',
+            '最近操作/daily',
+            'daily',
+            'plain',
+            'weekly',
+        ]);
+        const decorations = Object.fromEntries(visibleRows
             .map((row) => [row.path, options.renderRowDecoration?.({ item: row, row })?.title ?? null]));
-        expect(decorations).toEqual({ daily: '天调度 · 已启用', weekly: '周调度 · 已停用', plain: null });
+        expect(decorations).toEqual({
+            '最近操作/': null,
+            '最近操作/weekly': '周调度 · 已停用',
+            '最近操作/daily': '天调度 · 已启用',
+            daily: '天调度 · 已启用',
+            weekly: '周调度 · 已停用',
+            plain: null,
+        });
         expect(model.getSelectedPaths()).toEqual([]);
         expect(view.props.onOpenFlow).not.toHaveBeenCalled();
     });
@@ -136,19 +153,50 @@ describe('OfflineRepoTree with the real Trees model', () => {
         expect(view.props.onOpenFlow).not.toHaveBeenCalled();
     });
 
-    it('opens a user-selected flow once, without repeating it during parent synchronization', () => {
-        const view = mount();
+    it('only selects on single click and opens a flow on double click across both recent and business nodes', () => {
+        const view = mount({ recentFlowPaths: ['_flows/x/sub/leaf/flow.yaml'] });
         act(() => model.getItem('x/task')!.select());
+        expect(view.props.onOpenFlow).not.toHaveBeenCalled();
+
+        fireEvent.doubleClick(screen.getByTestId('file-tree'));
         expect(view.props.onOpenFlow).toHaveBeenCalledTimes(1);
         expect(view.props.onOpenFlow).toHaveBeenCalledWith('_flows/x/task/flow.yaml');
-        view.rerender(<OfflineRepoTree {...view.props} root={{ ...root }} selectedTreePath="x/task" />);
-        act(() => model.getItem('x/task')!.select());
-        expect(view.props.onOpenFlow).toHaveBeenCalledTimes(1);
+
+        const shadow = screen.getByTestId('file-tree').attachShadow({ mode: 'open' });
+        const recentRow = document.createElement('button');
+        recentRow.dataset.type = 'item';
+        recentRow.dataset.itemPath = '最近操作/leaf';
+        shadow.append(recentRow);
+
+        fireEvent.doubleClick(recentRow, { composed: true });
+        expect(view.props.onOpenFlow).toHaveBeenCalledTimes(2);
+        expect(view.props.onOpenFlow).toHaveBeenLastCalledWith('_flows/x/sub/leaf/flow.yaml');
+        view.rerender(<OfflineRepoTree {...view.props} recentFlowPaths={['_flows/x/sub/leaf/flow.yaml']} selectedTreePath="x/sub/leaf" />);
+        expect(model.getSelectedPaths()).toEqual(['最近操作/leaf']);
+        expect(directory('x/').isExpanded()).toBe(false);
+    });
+
+    it('reveals a nested flow by expanding ancestor business folders and selecting its canonical path', () => {
+        const view = mount({
+            recentFlowPaths: ['_flows/x/sub/leaf/flow.yaml'],
+            selectedTreePath: 'x/sub/leaf',
+        });
+        expect(directory('最近操作/').isExpanded()).toBe(true);
+        expect(directory('x/').isExpanded()).toBe(false);
+        expect(directory('x/sub/').isExpanded()).toBe(false);
+
+        act(() => view.ref.current!.revealFlow('_flows/x/sub/leaf/flow.yaml'));
+        expect(directory('x/').isExpanded()).toBe(true);
+        expect(directory('x/sub/').isExpanded()).toBe(true);
+        expect(model.getSelectedPaths()).toEqual(['x/sub/leaf']);
+        expect(model.getVisibleRows(0, model.getVisibleCount()).map((row) => row.path)).toContain('x/sub/leaf');
     });
 
     it('preserves expanded descendants hidden under a collapsed parent on root updates', () => {
         const view = mount();
         act(() => {
+            directory('x/').expand();
+            directory('x/sub/').expand();
             directory('x/closed/').collapse();
             directory('x/').collapse();
         });
@@ -163,11 +211,19 @@ describe('OfflineRepoTree with the real Trees model', () => {
         expect(model.getVisibleRows(0, model.getVisibleCount()).map((row) => row.path)).toContain('x/sub/leaf');
     });
 
-    it('expands all directories again when the repository scope changes', () => {
+    it('expands only 最近操作/ by default and resets business directories to collapsed when scope changes', () => {
         const view = mount();
-        act(() => directory('x/').collapse());
+        expect(directory('最近操作/').isExpanded()).toBe(true);
+        expect(directory('x/').isExpanded()).toBe(false);
+        expect(directory('y/').isExpanded()).toBe(false);
+
+        act(() => {
+            directory('最近操作/').collapse();
+            directory('x/').expand();
+        });
         view.rerender(<OfflineRepoTree {...view.props} dataKey="4:feature" />);
-        expect(directory('x/').isExpanded()).toBe(true);
+        expect(directory('最近操作/').isExpanded()).toBe(true);
+        expect(directory('x/').isExpanded()).toBe(false);
     });
 
     it.each([null, ''])('shows no-match feedback and restores the tree when search is cleared with %s', (clearValue) => {
@@ -213,14 +269,18 @@ describe('OfflineRepoTree with the real Trees model', () => {
         expect(view.props.onOpenFlow).not.toHaveBeenCalled();
     });
 
-    it('checks current write permission and only accepts single-node drags', () => {
-        const view = mount();
+    it('checks current write permission, blocks dragging recent items, and only accepts single-node drags', () => {
+        const view = mount({ recentFlowPaths: ['_flows/x/task/flow.yaml'] });
         const drag = dragOptions();
         expect(drag.canDrag!(['x/task'])).toBe(true);
+        expect(drag.canDrag!(['最近操作/'])).toBe(false);
+        expect(drag.canDrag!(['最近操作/task'])).toBe(false);
         expect(drag.canDrag!([])).toBe(false);
         expect(drag.canDrag!(['x/task', 'y/task'])).toBe(false);
         expect(drag.canDrop!(drop([], null))).toBe(false);
         expect(drag.canDrop!(drop(['x/task', 'y/task'], null))).toBe(false);
+        expect(drag.canDrop!(drop(['x/task'], '最近操作/'))).toBe(false);
+        expect(drag.canDrop!(drop(['最近操作/task'], 'y/'))).toBe(false);
         view.rerender(<OfflineRepoTree {...view.props} canWrite={false} />);
         expect(drag.canDrag!(['x/task'])).toBe(false);
         expect(drag.canDrop!(drop(['x/task'], null))).toBe(false);

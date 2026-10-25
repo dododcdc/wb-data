@@ -37,7 +37,7 @@ import { OfflineWorkbenchMainPanel } from './OfflineWorkbenchMainPanel';
 import { preloadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
 import { useOfflineTreeMutations } from './useOfflineTreeMutations';
-import { indexNodesByTreePath, updateRepoTreeFlowStatus } from './repoTreePaths';
+import { indexNodesByTreePath, prependRecentFlowPath, updateRepoTreeFlowStatus } from './repoTreePaths';
 import { prefetchNodeEditorDataSources } from './useNodeEditorDataSources';
 import { useFlowExecutionAndSchedule } from './useFlowExecutionAndSchedule';
 import { useFlowEditingSession } from './useFlowEditingSession';
@@ -175,7 +175,10 @@ export default function OfflineWorkbench() {
         setRepoTree((current) => {
             if (!current || current.groupId !== groupId) return current;
             const root = updateRepoTreeFlowStatus(current.root, savedDocument);
-            return root === current.root ? current : { ...current, root };
+            const recentFlowPaths = prependRecentFlowPath(current.recentFlowPaths, savedDocument.path);
+            return root === current.root && recentFlowPaths === current.recentFlowPaths
+                ? current
+                : { ...current, root, recentFlowPaths };
         });
     }, [groupId, savedDocument]);
 
@@ -365,7 +368,7 @@ export default function OfflineWorkbench() {
     }, [flushDraftNow, isDirty, refreshWorkspace, requestBranchSwitch, resetActiveFlowAfterBranchSwitch]);
 
     const repoTreeNodeIndex = useMemo(
-        () => (repoTree ? indexNodesByTreePath(repoTree.root) : null),
+        () => (repoTree ? indexNodesByTreePath(repoTree.root, repoTree.recentFlowPaths) : null),
         [repoTree],
     );
     const resolveTreeNode = useCallback(

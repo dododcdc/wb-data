@@ -16,10 +16,11 @@ import com.wbdata.offline.dto.SaveOfflineFlowRequest;
 import com.wbdata.offline.service.OfflineFlowContentService;
 import com.wbdata.offline.service.OfflineFlowDependencyService;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
+import com.wbdata.offline.service.OfflineRecentFlowService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,13 +35,34 @@ import org.springframework.web.server.ResponseStatusException;
 @Tag(name = "离线开发", description = "任务内容读写")
 @RestController
 @RequestMapping({"/api/v1/offline/flows", "/api/v1/groups/{groupId}/offline/flows"})
-@RequiredArgsConstructor
 public class OfflineFlowController {
 
     private final OfflineFlowContentService offlineFlowContentService;
     private final OfflineFlowDocumentService offlineFlowDocumentService;
     private final OfflineFlowDependencyService offlineFlowDependencyService;
     private final AuthContextService authContextService;
+    private final OfflineRecentFlowService offlineRecentFlowService;
+
+    public OfflineFlowController(OfflineFlowContentService offlineFlowContentService,
+                                 OfflineFlowDocumentService offlineFlowDocumentService,
+                                 OfflineFlowDependencyService offlineFlowDependencyService,
+                                 AuthContextService authContextService) {
+        this(offlineFlowContentService, offlineFlowDocumentService, offlineFlowDependencyService, authContextService,
+                new OfflineRecentFlowService(null));
+    }
+
+    @Autowired
+    public OfflineFlowController(OfflineFlowContentService offlineFlowContentService,
+                                 OfflineFlowDocumentService offlineFlowDocumentService,
+                                 OfflineFlowDependencyService offlineFlowDependencyService,
+                                 AuthContextService authContextService,
+                                 OfflineRecentFlowService offlineRecentFlowService) {
+        this.offlineFlowContentService = offlineFlowContentService;
+        this.offlineFlowDocumentService = offlineFlowDocumentService;
+        this.offlineFlowDependencyService = offlineFlowDependencyService;
+        this.authContextService = authContextService;
+        this.offlineRecentFlowService = offlineRecentFlowService;
+    }
 
     @Operation(summary = "读取任务内容")
     @GetMapping("/content")
@@ -67,7 +89,15 @@ public class OfflineFlowController {
     @GetMapping("/document")
     public Result<OfflineFlowDocumentResponse> getFlowDocument(@RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
                                                                @RequestParam String path) {
-        return Result.success(offlineFlowDocumentService.getFlowDocument(context.groupId(), path));
+        OfflineFlowDocumentResponse response = offlineFlowDocumentService.getFlowDocument(context.groupId(), path);
+        if (context.user() != null) {
+            offlineRecentFlowService.recordRecentFlow(
+                    context.user().id(),
+                    context.groupId(),
+                    response != null && response.path() != null ? response.path() : path
+            );
+        }
+        return Result.success(response);
     }
 
     @Operation(summary = "保存结构化任务文档")
@@ -88,8 +118,19 @@ public class OfflineFlowController {
                 request.runtimeTimezone(),
                 request.dependencyConfig()
         );
-        return Result.success(offlineFlowDependencyService.saveDocument(normalizedRequest, authContextService.listAccessibleGroups(context.user()),
-                () -> offlineFlowDocumentService.saveFlowDocument(normalizedRequest)));
+        OfflineFlowDocumentResponse response = offlineFlowDependencyService.saveDocument(
+                normalizedRequest,
+                authContextService.listAccessibleGroups(context.user()),
+                () -> offlineFlowDocumentService.saveFlowDocument(normalizedRequest)
+        );
+        if (context.user() != null) {
+            offlineRecentFlowService.recordRecentFlow(
+                    context.user().id(),
+                    context.groupId(),
+                    response != null && response.path() != null ? response.path() : request.path()
+            );
+        }
+        return Result.success(response);
     }
 
     @Operation(summary = "删除任务（物理删除）")

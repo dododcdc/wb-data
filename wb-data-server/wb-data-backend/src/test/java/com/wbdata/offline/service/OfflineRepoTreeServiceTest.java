@@ -5,6 +5,8 @@ import com.wbdata.offline.repo.service.RepoLockManager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.wbdata.offline.config.OfflineProperties;
+import com.wbdata.offline.entity.WbOfflineRecentFlow;
+import com.wbdata.offline.repo.dto.CreateFolderRequest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -14,8 +16,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -427,5 +432,55 @@ class OfflineRepoTreeServiceTest {
         assertThat(broken.kind()).isEqualTo("FLOW");
         assertThat(broken.scheduleState()).isEqualTo("NONE");
         assertThat(broken.dependencyCount()).isZero();
+    }
+
+    @Test
+    void repoTreeFiltersRecentFlowPathsAgainstCurrentBranchFlowsAndSyncsFolderMutations() throws Exception {
+        List<WbOfflineRecentFlow> rows = new ArrayList<>();
+        OfflineRecentFlowService recentService = new OfflineRecentFlowService(
+                OfflineRecentFlowServiceTest.createInMemoryMapper(rows, new AtomicLong(1L)));
+        OfflineProperties properties = properties();
+        OfflineRepoTreeService treeService = new OfflineRepoTreeService(
+                properties, new RepoLockManager(), new OfflineKestraFlowFileService(properties), recentService);
+
+        Path repo = repo();
+        Files.createDirectories(repo.resolve("_flows/dir/task-a"));
+        Files.writeString(repo.resolve("_flows/dir/task-a/flow.yaml"), "id: task-a\nnamespace: g1-main\ntasks: []\n");
+        Files.createDirectories(repo.resolve("_flows/root-task"));
+        Files.writeString(repo.resolve("_flows/root-task/flow.yaml"), "id: root-task\nnamespace: g1-main\ntasks: []\n");
+
+        recentService.recordRecentFlow(7L, 1L, "_flows/dir/task-a/flow.yaml");
+        recentService.recordRecentFlow(7L, 1L, "_flows/missing-on-branch/flow.yaml");
+        recentService.recordRecentFlow(7L, 1L, "_flows/root-task/flow.yaml");
+
+        var initialTree = treeService.getRepoTree(1L, "root", 7L);
+        assertThat(initialTree.recentFlowPaths()).containsExactly(
+                "_flows/root-task/flow.yaml",
+                "_flows/dir/task-a/flow.yaml"
+        );
+
+        treeService.moveFolder(1L, "_flows/dir", "_flows/renamed-dir");
+        var movedTree = treeService.getRepoTree(1L, "root", 7L);
+        assertThat(movedTree.recentFlowPaths()).containsExactly(
+                "_flows/root-task/flow.yaml",
+                "_flows/renamed-dir/task-a/flow.yaml"
+        );
+
+        treeService.deleteFolder(1L, "_flows/renamed-dir");
+        var afterDeleteTree = treeService.getRepoTree(1L, "root", 7L);
+        assertThat(afterDeleteTree.recentFlowPaths()).containsExactly("_flows/root-task/flow.yaml");
+    }
+
+    @Test
+    void rejectsReservedRecentFlowsRootDirectoryName() throws Exception {
+        Path repo = repo();
+        Files.createDirectories(repo.resolve("_flows/x"));
+
+        assertThatThrownBy(() -> service().createFolder(new CreateFolderRequest(1L, "_flows/最近操作")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("最近操作");
+        assertThatThrownBy(() -> service().moveFolder(1L, "_flows/x", "_flows/最近操作"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("最近操作");
     }
 }

@@ -8,19 +8,27 @@ import {
     type CSSProperties,
 } from 'react';
 import { FileTree, useFileTree } from '@pierre/trees/react';
-import type { FileTree as FileTreeModel, FileTreeDirectoryHandle, FileTreeRowDecoration } from '@pierre/trees';
+import type {
+    FileTree as FileTreeModel,
+    FileTreeDirectoryHandle,
+    FileTreeRowDecoration,
+    FileTreeSortComparator,
+} from '@pierre/trees';
 
 import type { OfflineRepoTreeNode } from '../../api/offline';
 import {
-    flattenRepoTreePaths,
-    indexNodesByTreePath,
+    RECENT_FLOWS_DIR_PATH,
+    buildRepoTreeEntries,
+    flowApiPathToTreePath,
+    getAncestorDirectoryTreePaths,
     isDirectoryTreePath,
+    isRecentFlowsTreePath,
     moveTreePath,
-    treePathToFlowApiPath,
 } from './repoTreePaths';
 
 export interface OfflineRepoTreeHandle {
     expandAll: () => void;
+    revealFlow: (apiPath: string) => void;
     setSearch: (value: string | null) => void;
 }
 
@@ -34,6 +42,7 @@ interface OfflineRepoTreeCallbacks {
 
 interface OfflineRepoTreeProps extends OfflineRepoTreeCallbacks {
     root: OfflineRepoTreeNode;
+    recentFlowPaths?: readonly string[];
     dataKey: string | number | null;
     selectedTreePath: string | null;
     canWrite: boolean;
@@ -64,13 +73,31 @@ const ROW_STYLES = `
     [data-item-section="git"], [data-item-section="action"] { order: 2; }
 `;
 
-function resetTreePaths(model: FileTreeModel, paths: string[], expandAll = false) {
+const repoTreeSort: FileTreeSortComparator = (left, right) => {
+    if (left.path === RECENT_FLOWS_DIR_PATH) return -1;
+    if (right.path === RECENT_FLOWS_DIR_PATH) return 1;
+    if (left.path.startsWith(RECENT_FLOWS_DIR_PATH) && right.path.startsWith(RECENT_FLOWS_DIR_PATH)) {
+        return 0;
+    }
+    if (left.isDirectory !== right.isDirectory) {
+        return left.isDirectory ? -1 : 1;
+    }
+    return left.basename.localeCompare(right.basename, undefined, { sensitivity: 'base' });
+};
+
+function resetTreePaths(model: FileTreeModel, paths: string[], resetScope = false) {
     const search = model.isSearchOpen() ? model.getSearchValue() : null;
     model.setSearch(null);
     const directories = paths.filter(isDirectoryTreePath);
-    const expanded = new Set(directories.filter((path) => expandAll
-        || (model.getItem(path) as FileTreeDirectoryHandle | null)?.isExpanded()));
+    const expanded = new Set(directories.filter((path) => (
+        resetScope
+            ? path === RECENT_FLOWS_DIR_PATH
+            : (model.getItem(path) as FileTreeDirectoryHandle | null)?.isExpanded()
+    )));
     model.resetPaths(paths, { initialExpandedPaths: [...expanded] });
+    expanded.forEach((path) => {
+        (model.getItem(path) as FileTreeDirectoryHandle | null)?.expand();
+    });
     // Initial expansion also opens ancestors; restore explicitly collapsed parents afterward.
     directories.filter((path) => !expanded.has(path)).forEach((path) => {
         (model.getItem(path) as FileTreeDirectoryHandle | null)?.collapse();
@@ -81,22 +108,22 @@ function resetTreePaths(model: FileTreeModel, paths: string[], expandAll = false
 export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTreeProps>(
     function OfflineRepoTree(props, ref) {
         const {
-            root, dataKey, selectedTreePath, canWrite, className, iconSpriteSheet,
+            root, recentFlowPaths, dataKey, selectedTreePath, canWrite, className, iconSpriteSheet,
             directoriesOnly = false, readonly = false,
         } = props;
         const callbacksRef = useRef(props);
         callbacksRef.current = props;
         const movingRef = useRef(false);
         const syncingSelectionRef = useRef(false);
+        const preferredRecentTreePathRef = useRef<string | null>(null);
         const [noSearchMatches, setNoSearchMatches] = useState(false);
 
-        const paths = useMemo(() => {
-            const all = flattenRepoTreePaths(root);
-            return directoriesOnly ? all.filter(isDirectoryTreePath) : all;
-        }, [root, directoriesOnly]);
+        const { paths, nodeIndex } = useMemo(
+            () => buildRepoTreeEntries(root, { directoriesOnly, recentFlowPaths }),
+            [root, directoriesOnly, recentFlowPaths],
+        );
         const pathsRef = useRef(paths);
         pathsRef.current = paths;
-        const nodeIndex = useMemo(() => indexNodesByTreePath(root), [root]);
         const nodeIndexRef = useRef(nodeIndex);
         nodeIndexRef.current = nodeIndex;
         const canWriteRef = useRef(canWrite);
@@ -104,21 +131,24 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
 
         const { model } = useFileTree({
             paths: [],
-            sort: 'default',
+            sort: repoTreeSort,
             itemHeight: 30,
             flattenEmptyDirectories: false,
             icons: iconSpriteSheet ? { spriteSheet: iconSpriteSheet } : undefined,
             unsafeCSS: ROW_STYLES,
             fileTreeSearchMode: 'hide-non-matches',
             dragAndDrop: readonly ? false : {
-                canDrag: (dragged) => canWriteRef.current && !movingRef.current && dragged.length === 1,
+                canDrag: (dragged) => canWriteRef.current && !movingRef.current && dragged.length === 1
+                    && !isRecentFlowsTreePath(dragged[0]),
                 canDrop: (event) => canWriteRef.current && !movingRef.current
                     && event.draggedPaths.length === 1 && event.draggedPaths.every((dragged) => {
                         const targetDir = event.target.directoryPath;
+                        if (isRecentFlowsTreePath(dragged) || (targetDir !== null && isRecentFlowsTreePath(targetDir))) return false;
                         if (targetDir === dragged || (targetDir && isDirectoryTreePath(dragged) && targetDir.startsWith(dragged))) return false;
                         const next = moveTreePath(dragged, targetDir);
                         const basename = next.replace(/\/$/, '');
-                        return next !== dragged && !nodeIndexRef.current.has(basename)
+                        return next !== dragged && !isRecentFlowsTreePath(`${basename}/`)
+                            && !nodeIndexRef.current.has(basename)
                             && !nodeIndexRef.current.has(`${basename}/`);
                     }),
                 onDropComplete: async (event) => {
@@ -138,12 +168,13 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
             },
             onSelectionChange: (selected) => {
                 const first = selected[0];
-                if (syncingSelectionRef.current || movingRef.current || !first
-                    || first === callbacksRef.current.selectedTreePath || !nodeIndexRef.current.has(first)) return;
+                if (syncingSelectionRef.current || movingRef.current || !first) return;
+                preferredRecentTreePathRef.current = isRecentFlowsTreePath(first) && !isDirectoryTreePath(first)
+                    ? first
+                    : null;
+                if (first === callbacksRef.current.selectedTreePath || !nodeIndexRef.current.has(first)) return;
                 if (isDirectoryTreePath(first)) {
                     callbacksRef.current.onSelectDirectory?.(first);
-                } else {
-                    callbacksRef.current.onOpenFlow?.(treePathToFlowApiPath(first));
                 }
             },
             renderRowDecoration: ({ item }) => {
@@ -156,6 +187,7 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
                     triggerMode: 'right-click',
                     onOpen: (item, context) => {
                         context.close({ restoreFocus: false });
+                        if (!nodeIndexRef.current.has(item.path)) return;
                         callbacksRef.current.onContextMenu?.(item.path, {
                             x: context.anchorRect.x,
                             y: context.anchorRect.bottom,
@@ -168,6 +200,9 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
         const lastDataKeyRef = useRef<typeof dataKey>(undefined);
         useEffect(() => {
             const isSameScope = lastDataKeyRef.current === dataKey;
+            if (!isSameScope) {
+                preferredRecentTreePathRef.current = null;
+            }
             lastDataKeyRef.current = dataKey;
             syncingSelectionRef.current = true;
             resetTreePaths(model, paths, !isSameScope);
@@ -176,23 +211,49 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
         }, [model, paths, dataKey]);
 
         useEffect(() => {
+            const targetNode = selectedTreePath ? nodeIndex.get(selectedTreePath) : undefined;
+            const preferredRecent = preferredRecentTreePathRef.current;
+            const effectiveSelectedPath = (
+                selectedTreePath
+                && preferredRecent
+                && targetNode
+                && nodeIndex.get(preferredRecent)?.path === targetNode.path
+            )
+                ? preferredRecent
+                : selectedTreePath;
             syncingSelectionRef.current = true;
             model.getSelectedPaths().forEach((selected) => {
-                if (selected !== selectedTreePath) model.getItem(selected)?.deselect();
+                if (selected !== effectiveSelectedPath) model.getItem(selected)?.deselect();
             });
-            if (selectedTreePath) {
-                const item = model.getItem(selectedTreePath);
+            if (effectiveSelectedPath) {
+                const item = model.getItem(effectiveSelectedPath);
                 if (item && !item.isSelected()) item.select();
-                if (item) model.scrollToPath(selectedTreePath, { offset: 'nearest' });
+                if (item) model.scrollToPath(effectiveSelectedPath, { offset: 'nearest' });
             }
             syncingSelectionRef.current = false;
-        }, [model, selectedTreePath, paths]);
+        }, [model, nodeIndex, selectedTreePath, paths]);
 
         useImperativeHandle(ref, () => ({
             expandAll: () => {
                 paths.filter(isDirectoryTreePath).forEach((path) => {
                     (model.getItem(path) as FileTreeDirectoryHandle | null)?.expand();
                 });
+            },
+            revealFlow: (apiPath) => {
+                const targetTreePath = flowApiPathToTreePath(apiPath);
+                if (!nodeIndexRef.current.has(targetTreePath)) return;
+                preferredRecentTreePathRef.current = null;
+                syncingSelectionRef.current = true;
+                getAncestorDirectoryTreePaths(targetTreePath).forEach((ancestorPath) => {
+                    (model.getItem(ancestorPath) as FileTreeDirectoryHandle | null)?.expand();
+                });
+                model.getSelectedPaths().forEach((selected) => {
+                    if (selected !== targetTreePath) model.getItem(selected)?.deselect();
+                });
+                const item = model.getItem(targetTreePath);
+                if (item && !item.isSelected()) item.select();
+                if (item) model.scrollToPath(targetTreePath, { offset: 'nearest', focus: true });
+                syncingSelectionRef.current = false;
             },
             setSearch: (value) => {
                 syncingSelectionRef.current = true;
@@ -207,6 +268,23 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
             <div
                 className={className}
                 style={{ minHeight: 0, height: '100%' }}
+                onDoubleClick={(event) => {
+                    if (directoriesOnly || movingRef.current) return;
+                    const pathTargets = event.nativeEvent.composedPath();
+                    const itemElement = pathTargets.find((target): target is HTMLElement => (
+                        target instanceof HTMLElement && target.dataset.type === 'item'
+                    ));
+                    const isTestStub = !itemElement && pathTargets.some((target) => (
+                        target instanceof HTMLElement && target.dataset.testid === 'file-tree'
+                    ));
+                    if (!itemElement && !isTestStub) return;
+                    const itemPath = itemElement?.dataset.itemPath ?? model.getSelectedPaths()[0];
+                    if (!itemPath || isDirectoryTreePath(itemPath)) return;
+                    const node = nodeIndexRef.current.get(itemPath);
+                    if (node?.kind !== 'FLOW') return;
+                    preferredRecentTreePathRef.current = isRecentFlowsTreePath(itemPath) ? itemPath : null;
+                    callbacksRef.current.onOpenFlow?.(node.path);
+                }}
                 onMouseMove={(event) => {
                     // Mouseover does not cross the shadow boundary when moving between tree rows.
                     const label = event.nativeEvent.composedPath().find((target): target is HTMLElement => (

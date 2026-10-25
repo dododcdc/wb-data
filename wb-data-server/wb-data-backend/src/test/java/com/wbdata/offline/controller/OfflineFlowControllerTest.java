@@ -14,6 +14,7 @@ import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.service.OfflineFlowContentService;
 import com.wbdata.offline.service.OfflineFlowDependencyService;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
+import com.wbdata.offline.service.OfflineRecentFlowService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -75,8 +76,9 @@ class OfflineFlowControllerTest {
         OfflineFlowContentService contentService = mock(OfflineFlowContentService.class);
         OfflineFlowDocumentService documentService = mock(OfflineFlowDocumentService.class);
         AuthContextService authContextService = mock(AuthContextService.class);
+        OfflineRecentFlowService recentFlowService = mock(OfflineRecentFlowService.class);
         OfflineFlowController controller = new OfflineFlowController(
-                contentService, documentService, mock(OfflineFlowDependencyService.class), authContextService);
+                contentService, documentService, mock(OfflineFlowDependencyService.class), authContextService, recentFlowService);
         GroupAuthContext context = context(4L);
         String path = "_flows/example/flow.yaml";
 
@@ -85,6 +87,7 @@ class OfflineFlowControllerTest {
 
         verify(contentService).getFlowContent(4L, path);
         verify(documentService).getFlowDocument(4L, path);
+        verify(recentFlowService).recordRecentFlow(1L, 4L, path);
         verifyNoInteractions(authContextService);
     }
 

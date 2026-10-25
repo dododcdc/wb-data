@@ -5,7 +5,7 @@ import com.wbdata.offline.repo.service.RepoLockManager;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.dto.OfflineFlowContentResponse;
 import com.wbdata.offline.dto.SaveOfflineFlowRequest;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -19,12 +19,29 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
 @Service
-@RequiredArgsConstructor
 public class OfflineFlowContentService {
 
     private final OfflineProperties offlineProperties;
     private final RepoLockManager repoLockManager;
     private final OfflineKestraFlowFileService kestraFlowFileService;
+    private final OfflineRecentFlowService recentFlowService;
+
+    public OfflineFlowContentService(OfflineProperties offlineProperties,
+                                     RepoLockManager repoLockManager,
+                                     OfflineKestraFlowFileService kestraFlowFileService) {
+        this(offlineProperties, repoLockManager, kestraFlowFileService, new OfflineRecentFlowService(null));
+    }
+
+    @Autowired
+    public OfflineFlowContentService(OfflineProperties offlineProperties,
+                                     RepoLockManager repoLockManager,
+                                     OfflineKestraFlowFileService kestraFlowFileService,
+                                     OfflineRecentFlowService recentFlowService) {
+        this.offlineProperties = offlineProperties;
+        this.repoLockManager = repoLockManager;
+        this.kestraFlowFileService = kestraFlowFileService;
+        this.recentFlowService = recentFlowService;
+    }
 
     public OfflineFlowContentResponse getFlowContent(Long groupId, String path) {
         return repoLockManager.withLock(groupId, () -> getFlowContentUnlocked(groupId, path));
@@ -80,6 +97,7 @@ public class OfflineFlowContentService {
         if (!resolvedPath.startsWith(repoPath)) {
             throw new IllegalArgumentException("任务路径不合法");
         }
+        OfflineRecentFlowService.assertNotReservedRootPath(repoPath, resolvedPath);
         return resolvedPath;
     }
 
@@ -123,6 +141,7 @@ public class OfflineFlowContentService {
         } catch (IOException ex) {
             throw new IllegalStateException("删除任务失败", ex);
         }
+        recentFlowService.onFlowDeleted(groupId, path);
     }
 
     public void moveFlow(Long groupId, String path, String newPath) {
@@ -138,6 +157,7 @@ public class OfflineFlowContentService {
         } catch (IOException ex) {
             throw new IllegalStateException("移动任务失败", ex);
         }
+        recentFlowService.onFlowMoved(groupId, path, newPath);
     }
 
     private void deleteDirectory(Path dir) throws IOException {

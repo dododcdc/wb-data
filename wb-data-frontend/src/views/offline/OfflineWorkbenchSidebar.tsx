@@ -9,6 +9,7 @@ import {
     GitBranch,
     GitCommitHorizontal,
     LoaderCircle,
+    LocateFixed,
     Plus,
     RefreshCcw,
 } from 'lucide-react';
@@ -122,7 +123,7 @@ export function OfflineWorkbenchSidebar({
         [branch.branches, branch.label],
     );
     const treeNodeIndex = useMemo(
-        () => (tree.data ? indexNodesByTreePath(tree.data.root) : null),
+        () => (tree.data ? indexNodesByTreePath(tree.data.root, tree.data.recentFlowPaths) : null),
         [tree.data],
     );
 
@@ -156,13 +157,29 @@ export function OfflineWorkbenchSidebar({
     }, [branchMenuOpen, setBranchMenuOpen]);
 
     const busy = repository.loading || tree.loading || tree.flowLoading;
+    const canLocateActiveFlow = Boolean(
+        repository.available
+        && !busy
+        && !branch.switching
+        && tree.activeFlowPath
+        && treeNodeIndex?.has(flowApiPathToTreePath(tree.activeFlowPath)),
+    );
     const handleRootToggle = () => {
         if (treeVisible) {
             setTreeVisible(false);
             return;
         }
         setTreeVisible(true);
-        requestAnimationFrame(() => treeHandleRef.current?.expandAll());
+    };
+    const handleLocateActiveFlow = () => {
+        if (!tree.activeFlowPath) return;
+        const activePath = tree.activeFlowPath;
+        if (!treeVisible) {
+            setTreeVisible(true);
+            requestAnimationFrame(() => treeHandleRef.current?.revealFlow(activePath));
+            return;
+        }
+        treeHandleRef.current?.revealFlow(activePath);
     };
 
     return (
@@ -278,8 +295,8 @@ export function OfflineWorkbenchSidebar({
                     ) : null}
                 </div>
 
-                {creation.canWrite ? (
-                    <div className="offline-rail-toolbar-actions">
+                <div className="offline-rail-toolbar-actions">
+                    {creation.canWrite ? (
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <div className="offline-rail-toolbar-btn-wrapper">
@@ -306,7 +323,24 @@ export function OfflineWorkbenchSidebar({
                             </TooltipTrigger>
                             <TooltipContent className="tooltip-content" side="bottom">新建</TooltipContent>
                         </Tooltip>
+                    ) : null}
 
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <button
+                                type="button"
+                                className="offline-rail-toolbar-btn"
+                                aria-label="定位当前任务"
+                                onClick={handleLocateActiveFlow}
+                                disabled={!canLocateActiveFlow}
+                            >
+                                <LocateFixed size={14} />
+                            </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="tooltip-content" side="bottom">定位当前任务</TooltipContent>
+                    </Tooltip>
+
+                    {creation.canWrite ? (
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <button
@@ -321,45 +355,45 @@ export function OfflineWorkbenchSidebar({
                             </TooltipTrigger>
                             <TooltipContent className="tooltip-content" side="bottom">刷新</TooltipContent>
                         </Tooltip>
+                    ) : null}
 
-                        {isGroupAdmin ? (
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <button
-                                        type="button"
-                                        className="offline-rail-toolbar-btn"
-                                        aria-label="提交仓库改动"
-                                        onClick={repository.onOpenCommit}
-                                        disabled={!repository.canCommit || repository.committing || repository.loading || tree.loading}
-                                    >
-                                        <span className="relative flex">
-                                            <GitCommitHorizontal size={14} />
-                                            {repository.dirty && <span className="offline-toolbar-dot" />}
-                                        </span>
-                                    </button>
-                                </TooltipTrigger>
-                                <TooltipContent className="tooltip-content" side="bottom">提交仓库改动</TooltipContent>
-                            </Tooltip>
-                        ) : null}
+                    {creation.canWrite && isGroupAdmin ? (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="offline-rail-toolbar-btn"
+                                    aria-label="提交仓库改动"
+                                    onClick={repository.onOpenCommit}
+                                    disabled={!repository.canCommit || repository.committing || repository.loading || tree.loading}
+                                >
+                                    <span className="relative flex">
+                                        <GitCommitHorizontal size={14} />
+                                        {repository.dirty && <span className="offline-toolbar-dot" />}
+                                    </span>
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent className="tooltip-content" side="bottom">提交仓库改动</TooltipContent>
+                        </Tooltip>
+                    ) : null}
 
-                        {isGroupAdmin ? (
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <button
-                                        type="button"
-                                        className="offline-rail-toolbar-btn"
-                                        aria-label="推送"
-                                        onClick={repository.onOpenPush}
-                                        disabled={!repository.canPush || repository.pushLoading || repository.loading || tree.loading}
-                                    >
-                                        {repository.pushLoading ? <LoaderCircle size={14} className="offline-spin" /> : <GitPushIcon dirty={repository.ahead} />}
-                                    </button>
-                                </TooltipTrigger>
-                                <TooltipContent className="tooltip-content" side="bottom">推送</TooltipContent>
-                            </Tooltip>
-                        ) : null}
-                    </div>
-                ) : null}
+                    {creation.canWrite && isGroupAdmin ? (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="offline-rail-toolbar-btn"
+                                    aria-label="推送"
+                                    onClick={repository.onOpenPush}
+                                    disabled={!repository.canPush || repository.pushLoading || repository.loading || tree.loading}
+                                >
+                                    {repository.pushLoading ? <LoaderCircle size={14} className="offline-spin" /> : <GitPushIcon dirty={repository.ahead} />}
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent className="tooltip-content" side="bottom">推送</TooltipContent>
+                        </Tooltip>
+                    ) : null}
+                </div>
             </div>
 
             <section className="offline-rail-panel offline-rail-panel-grow">
@@ -401,6 +435,7 @@ export function OfflineWorkbenchSidebar({
                                 ref={treeHandleRef}
                                 className="offline-repo-tree"
                                 root={tree.data.root}
+                                recentFlowPaths={tree.data.recentFlowPaths}
                                 dataKey={`${tree.data.groupId}:${branch.label}`}
                                 selectedTreePath={tree.activeFlowPath ? flowApiPathToTreePath(tree.activeFlowPath) : null}
                                 canWrite={tree.canWrite && !busy && !branch.switching}

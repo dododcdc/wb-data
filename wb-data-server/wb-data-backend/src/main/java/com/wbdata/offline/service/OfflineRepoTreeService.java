@@ -6,7 +6,7 @@ import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.repo.dto.CreateFolderRequest;
 import com.wbdata.offline.repo.dto.OfflineRepoTreeNodeResponse;
 import com.wbdata.offline.repo.dto.OfflineRepoTreeResponse;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -15,33 +15,70 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
-@RequiredArgsConstructor
 public class OfflineRepoTreeService {
 
     private final OfflineProperties offlineProperties;
     private final RepoLockManager repoLockManager;
     private final OfflineKestraFlowFileService kestraFlowFileService;
+    private final OfflineRecentFlowService recentFlowService;
     private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
 
-    public OfflineRepoTreeResponse getRepoTree(Long groupId, String rootName) {
-        return repoLockManager.withLock(groupId, () -> getRepoTreeUnlocked(groupId, rootName));
+    public OfflineRepoTreeService(OfflineProperties offlineProperties,
+                                  RepoLockManager repoLockManager,
+                                  OfflineKestraFlowFileService kestraFlowFileService) {
+        this(offlineProperties, repoLockManager, kestraFlowFileService, new OfflineRecentFlowService(null));
     }
 
-    private OfflineRepoTreeResponse getRepoTreeUnlocked(Long groupId, String rootName) {
+    @Autowired
+    public OfflineRepoTreeService(OfflineProperties offlineProperties,
+                                  RepoLockManager repoLockManager,
+                                  OfflineKestraFlowFileService kestraFlowFileService,
+                                  OfflineRecentFlowService recentFlowService) {
+        this.offlineProperties = offlineProperties;
+        this.repoLockManager = repoLockManager;
+        this.kestraFlowFileService = kestraFlowFileService;
+        this.recentFlowService = recentFlowService;
+    }
+
+    public OfflineRepoTreeResponse getRepoTree(Long groupId, String rootName) {
+        return getRepoTree(groupId, rootName, null);
+    }
+
+    public OfflineRepoTreeResponse getRepoTree(Long groupId, String rootName, Long userId) {
+        return repoLockManager.withLock(groupId, () -> getRepoTreeUnlocked(groupId, rootName, userId));
+    }
+
+    private OfflineRepoTreeResponse getRepoTreeUnlocked(Long groupId, String rootName, Long userId) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
-        return new OfflineRepoTreeResponse(
-                groupId,
-                OfflineRepoTreeNodeResponse.directory(
-                        "group-" + groupId,
-                        "ROOT",
-                        rootName,
-                        "",
-                        Files.isDirectory(repoPath) ? buildRootChildren(repoPath) : List.of()
-                )
+        OfflineRepoTreeNodeResponse root = OfflineRepoTreeNodeResponse.directory(
+                "group-" + groupId,
+                "ROOT",
+                rootName,
+                "",
+                Files.isDirectory(repoPath) ? buildRootChildren(repoPath) : List.of()
         );
+        Set<String> existingFlowPaths = new HashSet<>();
+        collectFlowPaths(root, existingFlowPaths);
+        List<String> recentFlowPaths = recentFlowService.listRecentFlowPaths(userId, groupId).stream()
+                .filter(existingFlowPaths::contains)
+                .toList();
+        return new OfflineRepoTreeResponse(groupId, root, recentFlowPaths);
+    }
+
+    private void collectFlowPaths(OfflineRepoTreeNodeResponse node, Set<String> flowPaths) {
+        if ("FLOW".equals(node.kind()) && node.path() != null) {
+            flowPaths.add(node.path());
+        }
+        if (node.children() != null) {
+            for (OfflineRepoTreeNodeResponse child : node.children()) {
+                collectFlowPaths(child, flowPaths);
+            }
+        }
     }
 
     private List<OfflineRepoTreeNodeResponse> buildRootChildren(Path repoPath) {
@@ -177,6 +214,7 @@ public class OfflineRepoTreeService {
         if (!folderPath.startsWith(repoPath)) {
             throw new IllegalArgumentException("文件夹路径不合法");
         }
+        OfflineRecentFlowService.assertNotReservedRootPath(repoPath, folderPath);
         try {
             Files.createDirectories(folderPath);
             // Create .gitkeep inside the new folder so Git tracks it
@@ -222,6 +260,7 @@ public class OfflineRepoTreeService {
         } catch (IOException ex) {
             throw new IllegalStateException("删除文件夹失败", ex);
         }
+        recentFlowService.onFolderDeleted(groupId, path);
     }
 
     public void moveFolder(Long groupId, String path, String newPath) {
@@ -237,6 +276,7 @@ public class OfflineRepoTreeService {
         } catch (IOException ex) {
             throw new IllegalStateException("移动文件夹失败", ex);
         }
+        recentFlowService.onFolderMoved(groupId, path, newPath);
     }
 
     private Path resolveSafePath(Path repoPath, String path) {

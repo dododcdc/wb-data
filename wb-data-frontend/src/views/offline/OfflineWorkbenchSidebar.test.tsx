@@ -1,11 +1,13 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { OfflineRepoTreeResponse } from '../../api/offline';
 import { TooltipProvider } from '../../components/ui/tooltip';
 import { OfflineWorkbenchSidebar } from './OfflineWorkbenchSidebar';
 
 vi.mock('./OfflineRepoTree', () => import('./offlineRepoTreeDouble'));
+
+afterEach(cleanup);
 
 function createTree(flowNames: string[]): OfflineRepoTreeResponse {
     return {
@@ -134,5 +136,78 @@ describe('OfflineWorkbenchSidebar', () => {
         view.rerenderTree(data, true);
         expect(screen.getByRole('button', { name: 'existing' })).toBe(existing);
         expect(screen.queryByText('正在加载项目树')).toBeNull();
+    });
+
+    it('locates the active flow in the tree and disables the locate button when no flow is active', () => {
+        const data = {
+            ...createTree(['existing']),
+            recentFlowPaths: ['_flows/existing/flow.yaml'],
+        };
+        const view = renderSidebar(data);
+        const locateBtn = screen.getByRole('button', { name: '定位当前任务' }) as HTMLButtonElement;
+        expect(locateBtn.disabled).toBe(true);
+
+        view.rerender(
+            <OfflineWorkbenchSidebar
+                isGroupAdmin
+                branch={{
+                    label: 'feature/policy-review',
+                    canSwitch: true,
+                    menuOpen: false,
+                    tooltipOpen: false,
+                    loading: false,
+                    switching: false,
+                    branches: [{
+                        name: 'feature/policy-review',
+                        current: true,
+                        local: true,
+                        remote: false,
+                        remoteName: null,
+                        trackingBranch: null,
+                    }],
+                    dirtyState: null,
+                    onToggleMenu: vi.fn(),
+                    onMenuOpenChange: vi.fn(),
+                    onTooltipOpenChange: vi.fn(),
+                    onSwitch: vi.fn(),
+                }}
+                repository={{
+                    available: true,
+                    loading: false,
+                    committing: false,
+                    pushLoading: false,
+                    canCommit: false,
+                    canPush: false,
+                    dirty: false,
+                    ahead: false,
+                    onRefresh: vi.fn(),
+                    onOpenCommit: vi.fn(),
+                    onOpenPush: vi.fn(),
+                }}
+                creation={{
+                    canWrite: false,
+                    menuOpen: false,
+                    onMenuOpenChange: vi.fn(),
+                    onOpenNewFlow: vi.fn(),
+                    onOpenNewFolder: vi.fn(),
+                }}
+                tree={{
+                    data,
+                    loading: false,
+                    flowLoading: false,
+                    activeFlowPath: '_flows/existing/flow.yaml',
+                    canWrite: false,
+                    onOpenFlow: vi.fn(),
+                    onContextMenu: vi.fn(),
+                    onMoveNode: vi.fn(),
+                }}
+            />,
+        );
+
+        const activeLocateBtn = screen.getByRole('button', { name: '定位当前任务' }) as HTMLButtonElement;
+        expect(activeLocateBtn.disabled).toBe(false);
+        fireEvent.click(activeLocateBtn);
+        expect(screen.getByTestId('repo-tree-double').getAttribute('data-revealed-flow')).toBe('_flows/existing/flow.yaml');
+        expect(screen.getByTestId('repo-tree-double').getAttribute('data-recent-flows')).toBe('_flows/existing/flow.yaml');
     });
 });
