@@ -61,8 +61,8 @@ describe('Login Component', () => {
 
         renderLogin();
 
-        fireEvent.change(screen.getByPlaceholderText('用户名'), { target: { value: 'admin' } });
-        fireEvent.change(screen.getByPlaceholderText('密码'), { target: { value: 'password123' } });
+        fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'admin' } });
+        fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'password123' } });
         fireEvent.click(screen.getByRole('button', { name: '登录' }));
 
         await waitFor(() => {
@@ -84,8 +84,8 @@ describe('Login Component', () => {
 
         renderLogin([{ pathname: '/login', state: { from: { pathname: '/target-page' } } }]);
 
-        fireEvent.change(screen.getByPlaceholderText('用户名'), { target: { value: 'admin' } });
-        fireEvent.change(screen.getByPlaceholderText('密码'), { target: { value: 'password123' } });
+        fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'admin' } });
+        fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'password123' } });
         fireEvent.click(screen.getByRole('button', { name: '登录' }));
 
         expect((await screen.findByTestId('location-path')).textContent).toBe('/target-page');
@@ -96,8 +96,8 @@ describe('Login Component', () => {
 
         renderLogin();
 
-        fireEvent.change(screen.getByPlaceholderText('用户名'), { target: { value: 'admin' } });
-        fireEvent.change(screen.getByPlaceholderText('密码'), { target: { value: 'wrong-pass' } });
+        fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'admin' } });
+        fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'wrong-pass' } });
         fireEvent.click(screen.getByRole('button', { name: '登录' }));
 
         expect(await screen.findByText('用户名或密码错误')).toBeTruthy();
