@@ -887,6 +887,50 @@ describe('TransferNodeDialog', () => {
         expect(retry).toHaveBeenCalledOnce();
     });
 
+    it('suppresses cascading table and metadata errors when endpoint databases fail or are unavailable', () => {
+        const retryDatabases = vi.fn();
+        const retryTables = vi.fn();
+        const retryMetadata = vi.fn();
+        metadata = {
+            ...metadata,
+            source: {
+                databases: resource([], { error: '数据库加载失败', retry: retryDatabases }),
+                tables: pagedResource([], { error: '表加载失败', retry: retryTables }),
+                metadata: resource(null, { error: '字段元数据加载失败', retry: retryMetadata }),
+            },
+            target: {
+                databases: resource(['default']),
+                tables: pagedResource([], { error: '表加载失败' }),
+                metadata: resource(null, { error: '字段元数据加载失败' }),
+            },
+        };
+        render(
+            <TransferNodeDialog
+                groupId={1}
+                value={{
+                    ...validTransfer,
+                    target: { ...validTransfer.target, database: 'ods_crm' },
+                }}
+                onChange={vi.fn()}
+            />,
+        );
+
+        expect(screen.getByText('来源数据库加载失败')).toBeTruthy();
+        expect(screen.getByText('已保存的目标数据库不可用，请重新选择')).toBeTruthy();
+        expect(screen.getAllByLabelText('表')[0]).toHaveProperty('disabled', true);
+        expect(screen.getAllByLabelText('表')[1]).toHaveProperty('disabled', true);
+        expect(screen.queryByText('来源表加载失败')).toBeNull();
+        expect(screen.queryByText('目标表加载失败')).toBeNull();
+        expect(screen.queryByText('来源字段元数据加载失败')).toBeNull();
+        expect(screen.queryByText('目标字段元数据加载失败')).toBeNull();
+        expect(screen.getByText('完成来源和目标配置后生成字段映射')).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('button', { name: '重试来源数据库' }));
+        expect(retryDatabases).toHaveBeenCalledOnce();
+        expect(retryTables).toHaveBeenCalledOnce();
+        expect(retryMetadata).toHaveBeenCalledOnce();
+    });
+
     it('preserves the database and retries a failed table request', () => {
         const retry = vi.fn();
         metadata = {
@@ -956,9 +1000,8 @@ describe('TransferNodeDialog', () => {
 
         expect(await screen.findByText('1 个目标字段待映射')).toBeTruthy();
         expect(screen.queryByText('请选择来源字段或配置映射值')).toBeNull();
-
-        fireEvent.blur(screen.getByLabelText('amount 源字段'));
-        expect(screen.getByText('请选择来源字段')).toBeTruthy();
+        expect(screen.queryByText('请选择来源字段')).toBeNull();
+        expect(document.querySelector('[data-target-field="amount"]')?.classList.contains('is-invalid')).toBe(true);
         expect(onChange).not.toHaveBeenCalled();
     });
 

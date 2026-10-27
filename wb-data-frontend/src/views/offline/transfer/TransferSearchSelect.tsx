@@ -9,7 +9,7 @@ export interface TransferSearchSelectProps {
     ariaLabel: string;
     value: string;
     options: SearchAutocompleteOption[];
-    placeholder: string;
+    placeholder?: string;
     disabled?: boolean;
     loading?: boolean;
     loadingMore?: boolean;
@@ -27,7 +27,7 @@ export function TransferSearchSelect({
     ariaLabel,
     value,
     options,
-    placeholder,
+    placeholder = '',
     disabled,
     loading,
     loadingMore,

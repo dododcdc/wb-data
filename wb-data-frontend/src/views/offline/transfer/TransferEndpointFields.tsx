@@ -68,9 +68,15 @@ export function EndpointFields({
     const sideLabel = side === 'source' ? '来源' : '目标';
     const tableDisabled = !endpoint.dataSourceId
         || !endpoint.database
+        || databaseUnavailable
         || metadata.databases.loading
         || Boolean(metadata.databases.error)
         || metadata.tables.loading;
+    const showTableError = Boolean(
+        metadata.tables.error
+        && !metadata.databases.error
+        && !databaseUnavailable,
+    );
     const dataSourceOptions = useMemo(
         () => dataSources.map((dataSource) => ({
             value: String(dataSource.id),
@@ -106,7 +112,6 @@ export function EndpointFields({
                             ariaLabel="数据源"
                             value={endpoint.dataSourceId ? String(endpoint.dataSourceId) : ''}
                             options={dataSourceOptions}
-                            placeholder="选择数据源"
                             loading={dataSourceSearch.loading}
                             loadingMore={dataSourceSearch.loadingMore}
                             hasMore={dataSourceSearch.hasMore}
@@ -125,7 +130,6 @@ export function EndpointFields({
                             ariaLabel="数据库"
                             value={endpoint.database ?? ''}
                             options={databaseOptions}
-                            placeholder="选择数据库"
                             disabled={!endpoint.dataSourceId || metadata.databases.loading}
                             loading={metadata.databases.loading}
                             menuContainer={menuContainer}
@@ -133,18 +137,6 @@ export function EndpointFields({
                             onChange={onSelectDatabase}
                         />
                     </label>
-                    {metadata.databases.error && (
-                        <ResourceError
-                            message={`${sideLabel}${metadata.databases.error}`}
-                            retryLabel={`重试${sideLabel}数据库`}
-                            onRetry={metadata.databases.retry}
-                        />
-                    )}
-                    {databaseUnavailable && (
-                        <div className="transfer-node-inline-error">
-                            已保存的{sideLabel}数据库不可用，请重新选择
-                        </div>
-                    )}
                 </div>
                 <div className="transfer-node-control-group">
                     <label className="transfer-node-field">
@@ -153,7 +145,6 @@ export function EndpointFields({
                             ariaLabel="表"
                             value={endpoint.table}
                             options={tableOptions}
-                            placeholder="选择表"
                             disabled={tableDisabled}
                             loading={metadata.tables.loading}
                             loadingMore={metadata.tables.loadingMore}
@@ -165,14 +156,37 @@ export function EndpointFields({
                             onLoadMore={metadata.tables.loadMore}
                         />
                     </label>
-                    {metadata.tables.error && (
-                        <ResourceError
-                            message={`${sideLabel}${metadata.tables.error}`}
-                            retryLabel={`重试${sideLabel}表`}
-                            onRetry={metadata.tables.retry}
-                        />
-                    )}
                 </div>
+                {(metadata.databases.error || databaseUnavailable || showTableError) && (
+                    <div className="transfer-node-endpoint-feedback">
+                        {metadata.databases.error && (
+                            <ResourceError
+                                message={`${sideLabel}${metadata.databases.error}`}
+                                retryLabel={`重试${sideLabel}数据库`}
+                                onRetry={() => {
+                                    metadata.databases.retry();
+                                    if (metadata.tables.error) metadata.tables.retry();
+                                    if (metadata.metadata.error) metadata.metadata.retry();
+                                }}
+                            />
+                        )}
+                        {!metadata.databases.error && databaseUnavailable && (
+                            <div className="transfer-node-inline-error">
+                                已保存的{sideLabel}数据库不可用，请重新选择
+                            </div>
+                        )}
+                        {showTableError && (
+                            <ResourceError
+                                message={`${sideLabel}${metadata.tables.error}`}
+                                retryLabel={`重试${sideLabel}表`}
+                                onRetry={() => {
+                                    metadata.tables.retry();
+                                    if (metadata.metadata.error) metadata.metadata.retry();
+                                }}
+                            />
+                        )}
+                    </div>
+                )}
             </div>
             <div className={`transfer-node-secondary-fields transfer-node-secondary-fields--${side}`}>
                 {side === 'source' ? (

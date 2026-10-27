@@ -284,6 +284,24 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
         && reconciledConfig.target.database
         && reconciledConfig.target.table,
     );
+    const sourceEndpointHasError = Boolean(
+        source.databases.error || sourceDatabaseUnavailable || source.tables.error,
+    );
+    const targetEndpointHasError = Boolean(
+        target.databases.error || targetDatabaseUnavailable || target.tables.error,
+    );
+    const showSourceMetadataLoading = endpointsConfigured && !sourceEndpointHasError && source.metadata.loading;
+    const showTargetMetadataLoading = endpointsConfigured && !targetEndpointHasError && target.metadata.loading;
+    const showSourceMetadataError = Boolean(source.metadata.error && !sourceEndpointHasError);
+    const showTargetMetadataError = Boolean(target.metadata.error && !targetEndpointHasError);
+    const showEmptyMappingGuidance = !endpointsConfigured
+        || (
+            (sourceEndpointHasError || targetEndpointHasError)
+            && !showSourceMetadataLoading
+            && !showTargetMetadataLoading
+            && !showSourceMetadataError
+            && !showTargetMetadataError
+        );
     const metadataReady = Boolean(endpointsConfigured && sourceMetadata && targetMetadata);
     const targetHasFields = targetColumns.length > 0 || partitionColumns.length > 0;
     const metadataRefreshing = source.metadata.loading || target.metadata.loading;
@@ -387,22 +405,22 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
                     </p>
                 )}
                 {refreshMessage && <div className="transfer-node-refresh-message" role="status">{refreshMessage}</div>}
-                {!endpointsConfigured && (
+                {showEmptyMappingGuidance && (
                     <div className="transfer-node-status transfer-node-status--empty">
                         <strong>完成来源和目标配置后生成字段映射</strong>
                         <span>系统会按目标表字段自动匹配同名源字段。</span>
                     </div>
                 )}
-                {endpointsConfigured && source.metadata.loading && <div className="transfer-node-status">正在加载来源字段</div>}
-                {endpointsConfigured && target.metadata.loading && <div className="transfer-node-status">正在加载目标字段</div>}
-                {source.metadata.error && (
+                {showSourceMetadataLoading && <div className="transfer-node-status">正在加载来源字段</div>}
+                {showTargetMetadataLoading && <div className="transfer-node-status">正在加载目标字段</div>}
+                {showSourceMetadataError && (
                     <ResourceError
                         message={`来源${source.metadata.error}`}
                         retryLabel="重试来源字段"
                         onRetry={source.metadata.retry}
                     />
                 )}
-                {target.metadata.error && (
+                {showTargetMetadataError && (
                     <ResourceError
                         message={`目标${target.metadata.error}`}
                         retryLabel="重试目标字段"
@@ -431,7 +449,9 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
 
             {metadataReady && (targetMetadata?.partitioned || (reconciledConfig.partitions?.length ?? 0) > 0) && (
                 <section className="transfer-node-panel transfer-node-mappings-panel">
-                    <h3>分区映射</h3>
+                    <div className="transfer-node-panel-heading">
+                        <h3>分区映射</h3>
+                    </div>
                     <MappingRows
                         mappings={reconciledConfig.partitions}
                         sourceFields={sourceFields}

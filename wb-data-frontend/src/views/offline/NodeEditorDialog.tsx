@@ -191,8 +191,8 @@ export function NodeEditorDialog({
                 hideClose
                 fullScreen
             >
-                <div className="dialog-toolbar flex items-center justify-between gap-4 bg-[#fdfcfb] shadow-sm z-10">
-                    <div className="flex items-center gap-5">
+                <div className="dialog-toolbar flex items-center justify-between gap-4 bg-[var(--color-surface)] z-10">
+                    <div className="flex items-center gap-4">
                         {/* Identity Section */}
                         <div className="flex items-center gap-3">
                             <div className={cn(
@@ -201,7 +201,7 @@ export function NodeEditorDialog({
                             )}>
                                 {getOfflineNodeKindLabel(activeNode.kind)}
                             </div>
-                            <DialogTitle className="text-sm font-mono font-medium text-gray-600">
+                            <DialogTitle className="text-sm font-mono font-semibold text-[var(--color-text-primary)]">
                                 {activeNode.taskId}
                             </DialogTitle>
                             <DialogDescription className="sr-only">
@@ -209,42 +209,41 @@ export function NodeEditorDialog({
                             </DialogDescription>
                         </div>
 
-                        <div className="h-4 w-[1px] bg-gray-200" />
-
                         {/* Config Section */}
                         {isSqlNode && (
-                            <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-1.5 text-gray-500">
-                                    <Database size={14} strokeWidth={2.5} />
-                                    <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">数据源</span>
+                            <>
+                                <div className="h-4 w-[1px] bg-[var(--color-border)]" />
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-1.5 text-[var(--color-text-secondary)]">
+                                        <Database size={14} strokeWidth={2.2} />
+                                        <span className="text-xs font-semibold tracking-wide text-[var(--color-text-secondary)]">数据源</span>
+                                    </div>
+                                    <div className="min-w-[260px]">
+                                        <DataSourceSelect
+                                            options={dataSourceSelectOptions}
+                                            menuContainer={dialogEl}
+                                            value={dataSourceSelectValue}
+                                            selectedOption={selectedDataSourceOption}
+                                            onChange={(val, option) => {
+                                                const nextDataSourceId = val ? Number(val) : undefined;
+                                                setCurrentDataSourceId(nextDataSourceId);
+                                                onDraftChange?.(latestContentRef.current, nextDataSourceId, option?.type);
+                                            }}
+                                            onInputChange={handleSearchKeywordChange}
+                                            loading={dataSourcesLoading}
+                                            loadingMore={dataSourcesLoadingMore}
+                                            hasMore={dataSourcesHasMore}
+                                            onLoadMore={loadMoreDataSources}
+                                            placeholder=""
+                                        />
+                                    </div>
                                 </div>
-                                <div className="min-w-[260px]">
-                                    <DataSourceSelect
-                                        options={dataSourceSelectOptions}
-                                        menuContainer={dialogEl}
-                                        value={dataSourceSelectValue}
-                                        selectedOption={selectedDataSourceOption}
-                                        onChange={(val, option) => {
-                                            const nextDataSourceId = val ? Number(val) : undefined;
-                                            setCurrentDataSourceId(nextDataSourceId);
-                                            onDraftChange?.(latestContentRef.current, nextDataSourceId, option?.type);
-                                        }}
-                                        onInputChange={handleSearchKeywordChange}
-                                        loading={dataSourcesLoading}
-                                        loadingMore={dataSourcesLoadingMore}
-                                        hasMore={dataSourcesHasMore}
-                                        onLoadMore={loadMoreDataSources}
-                                        placeholder={activeNode.kind === 'HIVE_SQL'
-                                            ? '选择 Hive 数据源...'
-                                            : `选择 ${getOfflineNodeKindLabel(activeNode.kind)} 数据源...`}
-                                    />
-                                </div>
-                            </div>
+                            </>
                         )}
 
                         {supportsParameters && parameterDefinitions && parameterDefinitions.length > 0 && (
                             <>
-                                {isSqlNode && <div className="h-4 w-[1px] bg-gray-200" />}
+                                <div className="h-4 w-[1px] bg-[var(--color-border)]" />
                                 <div className="relative" ref={paramMenuRef}>
                                     <button
                                         type="button"

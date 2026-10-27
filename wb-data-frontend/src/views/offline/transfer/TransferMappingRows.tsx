@@ -48,19 +48,17 @@ function FieldDetails({ field, side }: { field: TransferSchemaField; side: 'sour
     const description = field.remarks || '无描述';
     return (
         <div className={`transfer-node-field-details transfer-node-field-details--${side}`}>
-            {side === 'target' && <strong>{field.name}</strong>}
-            <span className="transfer-node-field-type">{field.type || '未知类型'}</span>
-            <span className="transfer-node-field-flag-slot">
-                {field.primaryKey && <span className="transfer-node-field-flag">主键</span>}
-            </span>
-            <span className="transfer-node-field-flag-slot">
-                {field.partition && <span className="transfer-node-field-flag">分区</span>}
-            </span>
-            {side === 'target' && (
-                <span className="transfer-node-field-flag-slot">
-                    {field.nullable === false && <span className="transfer-node-field-flag">非空</span>}
+            {side === 'target' && <strong title={field.name}>{field.name}</strong>}
+            <div className="transfer-node-field-badges">
+                <span className="transfer-node-field-type" title={field.type || '未知类型'}>
+                    {field.type || '未知类型'}
                 </span>
-            )}
+                {field.primaryKey && <span className="transfer-node-field-flag is-primary">主键</span>}
+                {field.partition && <span className="transfer-node-field-flag is-partition">分区</span>}
+                {side === 'target' && field.nullable === false && (
+                    <span className="transfer-node-field-flag">非空</span>
+                )}
+            </div>
             <span className="transfer-node-field-description" title={description}>
                 {description}
             </span>
@@ -106,13 +104,11 @@ export function MappingRows({
             const staleTarget = !targetField;
             const error = staleTarget
                 ? `${targetLabel}已不存在`
-                : mapping.kind === 'source_field' && !value
-                    ? '请选择来源字段'
-                    : mapping.kind === 'source_field' && !sourceField
-                        ? `来源字段 ${value} 已不存在`
-                        : !value
-                            ? `请输入${mapping.kind === 'static_value' ? '固定值' : 'SQL 表达式'}`
-                            : null;
+                : mapping.kind === 'source_field' && value && !sourceField
+                    ? `来源字段 ${value} 已不存在`
+                    : mapping.kind !== 'source_field' && !value
+                        ? `请输入${mapping.kind === 'static_value' ? '固定值' : 'SQL 表达式'}`
+                        : null;
             const isTouched = Boolean(touchedFields[mapping.target]);
             const showInvalid = Boolean(
                 staleTarget
@@ -137,7 +133,7 @@ export function MappingRows({
                                 options={sourceOptions}
                                 value={value || undefined}
                                 selectedOption={selectedSourceOption}
-                                placeholder="选择来源字段"
+                                placeholder=""
                                 clearInputOnOpen
                                 menuContainer={menuContainer}
                                 onChange={(nextValue) => onChange(updateMapping(
@@ -197,7 +193,6 @@ export function MappingRows({
                     >
                         <SelectTrigger
                             aria-label={`${mapping.target} 映射类型`}
-                            aria-invalid={Boolean(staleTarget || (mapping.kind === 'source_field' && (!value || !sourceField)))}
                             className="transfer-node-mapping-kind-trigger"
                         >
                             <span data-slot="select-value" className="flex flex-1 text-left">
