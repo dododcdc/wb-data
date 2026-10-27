@@ -196,6 +196,9 @@ function getFieldPlaceholder(field: PluginFieldDescriptor, isEdit: boolean, read
         if (isEdit) {
             return '留空则保持当前密码';
         }
+        if (field.placeholder?.startsWith('请输入')) {
+            return undefined;
+        }
     }
 
     return field.placeholder;
@@ -817,7 +820,6 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                             onChange={handleTypeChange}
                                             disabled={isView || pluginQuery.isLoading || typeOptions.length === 0}
                                             options={typeOptions}
-                                            placeholder="选择数据库类型"
                                             menuContainer={dialogEl}
                                         />
                                         {typeof fieldErrors.type === 'string' ? <span className="form-input-error">{fieldErrors.type}</span> : null}
@@ -835,7 +837,7 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                     ) : null}
                                     <div className="form-input-group">
                                         <label htmlFor="ds-owner">负责人</label>
-                                        <input id="ds-owner" type="text" value={formData.owner} onChange={e => handleChange('owner', e.target.value)} placeholder="项目负责人姓名" disabled={isView} readOnly={isView} />
+                                        <input id="ds-owner" type="text" value={formData.owner} onChange={e => handleChange('owner', e.target.value)} disabled={isView} readOnly={isView} />
                                     </div>
                                     <div className="form-input-group">
                                         <label htmlFor="ds-description">备注描述</label>
@@ -843,7 +845,6 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                             id="ds-description"
                                             value={formData.description}
                                             onChange={e => handleChange('description', e.target.value)}
-                                            placeholder="简要描述业务用途..."
                                             rows={3}
                                             disabled={isView}
                                             readOnly={isView}
@@ -941,7 +942,6 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                                                         setPasswordDirty(false);
                                                                     }
                                                                 }}
-                                                                placeholder="请输入新密码"
                                                                 autoFocus
                                                             />
                                                         ) : (

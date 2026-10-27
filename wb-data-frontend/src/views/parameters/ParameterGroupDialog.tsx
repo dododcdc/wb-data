@@ -372,7 +372,6 @@ export default function ParameterGroupDialog({
                                     aria-label="参数组说明"
                                     value={form.description}
                                     rows={1}
-                                    placeholder="说明哪些任务适合引用这组参数"
                                     onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                                 />
                             </label>
@@ -542,7 +541,6 @@ export default function ParameterGroupDialog({
                                                 <input
                                                     aria-label={`参数说明 ${activeIndex + 1}`}
                                                     value={selectedDefinition.description}
-                                                    placeholder="说明参数用途"
                                                     onChange={(event) => patchDefinition(activeIndex, { description: event.target.value })}
                                                 />
                                             </label>

@@ -65,7 +65,6 @@ export function DataSourceFilters(props: DataSourceFiltersProps) {
                     value={selectedTypes[0]}
                     onChange={(value) => onTypeChange(value ? [value] : [])}
                     options={typeOptions}
-                    placeholder="选择类型"
                 />
             </div>
 

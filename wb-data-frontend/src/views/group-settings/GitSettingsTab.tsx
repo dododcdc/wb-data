@@ -233,7 +233,6 @@ export default function GitSettingsTab({ groupId, canEdit }: GitSettingsTabProps
                                     <Input
                                         value={username}
                                         onChange={e => setUsername(e.target.value)}
-                                        placeholder="GitHub / GitLab 用户名"
                                         className="w-full"
                                     />
                                 </div>
@@ -244,7 +243,7 @@ export default function GitSettingsTab({ groupId, canEdit }: GitSettingsTabProps
                                         type="password"
                                         value={token}
                                         onChange={e => setToken(e.target.value)}
-                                        placeholder={config?.tokenMasked ? `已保存（填新值可更新）` : '填入新的 Token'}
+                                        placeholder={config?.tokenMasked ? '已保存（填新值可更新）' : undefined}
                                         className="w-full"
                                     />
                                 </div>

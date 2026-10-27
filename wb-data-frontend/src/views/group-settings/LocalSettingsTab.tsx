@@ -256,7 +256,7 @@ export default function LocalSettingsTab({ groupId, canEdit }: LocalSettingsTabP
                             <Input
                                 value={newBranchName}
                                 onChange={(e) => setNewBranchName(e.target.value)}
-                                placeholder="输入新分支名，如 feature/new-flow"
+                                placeholder="如：feature/new-flow"
                             />
                         </div>
                         <div className="local-settings-field">

@@ -87,7 +87,7 @@ export function ExecutionTimeContextDialog({
                                 value={plannedTime}
                                 timezone={timezone ?? 'Asia/Shanghai'}
                                 disabled={pending}
-                                placeholder="选择或指定计划执行时间"
+                                placeholder=""
                                 onChange={onPlannedTimeChange}
                             />
                             <p className="mt-1.5 text-xs text-muted-foreground">

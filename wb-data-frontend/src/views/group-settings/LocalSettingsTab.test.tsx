@@ -160,7 +160,7 @@ describe('LocalSettingsTab - branch actions', () => {
         expect(screen.getByRole('heading', { name: '新建本地分支' })).toBeTruthy();
 
         // Input new branch name
-        const input = screen.getByPlaceholderText('输入新分支名，如 feature/new-flow');
+        const input = screen.getByPlaceholderText('如：feature/new-flow');
         fireEvent.change(input, { target: { value: 'feature/awesome' } });
 
         // Confirm

@@ -230,7 +230,7 @@ function CreateDialog({
                             >
                                 <div className="offline-combobox-wrapper">
                                     <ComboboxInput
-                                        placeholder="搜索时区..."
+                                        placeholder=""
                                         disabled={action.pending}
                                     />
                                     <ComboboxTrigger />
@@ -312,7 +312,6 @@ function RenameDialog({ kind, action }: { kind: '任务' | '文件夹'; action: 
                     <Input
                         value={action.name}
                         onChange={(event) => action.onNameChange(event.target.value)}
-                        placeholder="输入新名称"
                         autoFocus
                         onKeyDown={(event) => {
                             if (event.key === 'Enter' && action.name.trim()) action.onSubmit();

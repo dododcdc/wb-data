@@ -163,7 +163,7 @@ export default function AddMemberDialog(props: AddMemberDialogProps) {
                                     options={userOptions}
                                     values={selectedUsers.map((user) => String(user.id))}
                                     selectedOptions={selectedUserOptions}
-                                    placeholder="搜索用户名"
+                                    placeholder=""
                                     disabled={submitting}
                                     menuContainer={dialogEl}
                                     loading={loading}

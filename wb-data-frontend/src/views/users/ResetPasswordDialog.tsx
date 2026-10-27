@@ -121,7 +121,6 @@ export default function ResetPasswordDialog(props: ResetPasswordDialogProps) {
                                     id="reset-user-new-password"
                                     type={newPasswordVisible ? 'text' : 'password'}
                                     value={newPassword}
-                                    placeholder="请输入新密码"
                                     onChange={(event) => handleFieldChange('newPassword', event.target.value)}
                                 />
                                 <button
@@ -145,7 +144,6 @@ export default function ResetPasswordDialog(props: ResetPasswordDialogProps) {
                                     id="reset-user-confirm-password"
                                     type={confirmPasswordVisible ? 'text' : 'password'}
                                     value={confirmPassword}
-                                    placeholder="请再次输入新密码"
                                     onChange={(event) => handleFieldChange('confirmPassword', event.target.value)}
                                 />
                                 <button

@@ -288,7 +288,7 @@ export default function ParameterPreviewDialog({
                                         <span>计划时间 <b>*</b></span>
                                         <DateTimePicker
                                             ariaLabel="计划时间"
-                                            placeholder="选择计划时间"
+                                            placeholder=""
                                             value={plannedTime}
                                             timezone={runtimeTimezone || null}
                                             onChange={setPlannedTime}
@@ -300,7 +300,7 @@ export default function ParameterPreviewDialog({
                                         <span>执行开始时间 <b>*</b></span>
                                         <DateTimePicker
                                             ariaLabel="执行开始时间"
-                                            placeholder="选择执行开始时间"
+                                            placeholder=""
                                             value={executionStartTime}
                                             timezone={runtimeTimezone || null}
                                             onChange={setExecutionStartTime}
@@ -312,7 +312,7 @@ export default function ParameterPreviewDialog({
                                     <SimpleSelect
                                         ariaLabel="任务运行时区"
                                         value={runtimeTimezone}
-                                        placeholder="选择任务运行时区"
+                                        placeholder=""
                                         className="parameter-select"
                                         options={timezoneOptions}
                                         onChange={setRuntimeTimezone}

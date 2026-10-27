@@ -305,7 +305,6 @@ export default function UserForm(props: UserFormProps) {
                                     id="user-form-username"
                                     type="text"
                                     value={formData.username}
-                                    placeholder="请输入用户名"
                                     readOnly={isEdit}
                                     className={isEdit ? 'user-form-readonly' : ''}
                                     onChange={(event) => handleChange('username', event.target.value)}
@@ -322,7 +321,6 @@ export default function UserForm(props: UserFormProps) {
                                     id="user-form-display-name"
                                     type="text"
                                     value={formData.displayName}
-                                    placeholder="请输入展示名"
                                     onChange={(event) => handleChange('displayName', event.target.value)}
                                 />
                                 {typeof fieldErrors.displayName === 'string' ? <span className="form-input-error">{fieldErrors.displayName}</span> : null}
@@ -338,7 +336,6 @@ export default function UserForm(props: UserFormProps) {
                                             id="user-form-password"
                                             type={passwordVisible ? 'text' : 'password'}
                                             value={formData.password}
-                                            placeholder="请输入初始密码"
                                             onChange={(event) => handleChange('password', event.target.value)}
                                         />
                                         <button

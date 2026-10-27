@@ -403,7 +403,6 @@ export default function OperationsCenter() {
                                     setFlowFilter(event.target.value);
                                     setCurrentPage(1);
                                 }}
-                                placeholder="输入任务名称"
                             />
                         </div>
                     </label>

@@ -146,7 +146,6 @@ export default function GroupForm(props: GroupFormProps) {
                                     id="group-form-name"
                                     type="text"
                                     value={formData.name}
-                                    placeholder="请输入项目组名称"
                                     onChange={(event) => handleChange('name', event.target.value)}
                                 />
                                 {typeof fieldErrors.name === 'string' ? <span className="form-input-error">{fieldErrors.name}</span> : null}
@@ -160,7 +159,6 @@ export default function GroupForm(props: GroupFormProps) {
                                     id="group-form-description"
                                     rows={3}
                                     value={formData.description}
-                                    placeholder="请输入描述（可选）"
                                     onChange={(event) => handleChange('description', event.target.value)}
                                 />
                                 {typeof fieldErrors.description === 'string' ? <span className="form-input-error">{fieldErrors.description}</span> : null}
