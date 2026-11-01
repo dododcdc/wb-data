@@ -92,58 +92,67 @@ function OpenScheduleDialog({
         action();
     };
 
+    const isQuietReady = !loading && hasTarget && !loadError && !hasUpstream && dependents?.length === 0 && !periodMismatch && !blocked;
+    const hasLockNotice = Boolean(hasUpstream || (dependents && dependents.length > 0));
+    const hasAlert = Boolean(!hasTarget || loadError || periodMismatch || blocked);
+
     const dependencyNotice = (
         <section
             aria-label="调度依赖检查"
             aria-busy={loading}
-            className="min-w-0 space-y-2 text-sm leading-relaxed text-muted-foreground [overflow-wrap:anywhere]"
-            style={{ minHeight: 48 }}
+            className={[
+                'offline-schedule-dependency-notice',
+                isQuietReady ? 'is-ready' : '',
+                hasLockNotice ? 'is-locked' : '',
+                hasAlert ? 'is-alert' : '',
+            ].filter(Boolean).join(' ')}
         >
             {loading ? (
-                <div aria-hidden="true" className="space-y-2 py-1">
-                    <div className="h-3 w-3/4 rounded bg-muted" />
-                    <div className="h-3 w-1/2 rounded bg-muted" />
+                <div aria-hidden="true" className="offline-schedule-dependency-skeleton">
+                    <div className="offline-schedule-skeleton-line is-wide" />
+                    <div className="offline-schedule-skeleton-line is-narrow" />
                 </div>
             ) : null}
-            {!hasTarget ? <p>无法确认当前任务，暂不能修改调度频率。请关闭后重新打开。</p> : null}
+            {!hasTarget ? <p className="offline-schedule-dependency-alert-text">无法确认当前任务，暂不能修改调度频率。请关闭后重新打开。</p> : null}
             {loadError ? (
-                <div className="space-y-2">
-                    <p role="alert">下游依赖读取失败：{loadError}。暂不能修改频率，仍可调整同频率的计划时间。</p>
-                    <Button type="button" variant="outline" onClick={retry}>重试</Button>
+                <div className="offline-schedule-dependency-action-row">
+                    <p role="alert" className="offline-schedule-dependency-alert-text">下游依赖读取失败：{loadError}。暂不能修改频率，仍可调整同频率的计划时间。</p>
+                    <Button type="button" variant="outline" size="sm" onClick={retry}>重试</Button>
                 </div>
             ) : null}
-            {hasUpstream ? <p>本任务存在前置依赖。修改调度频率前，请先解除本任务的前置依赖；仍可调整同频率的计划时间。</p> : null}
+            {hasUpstream ? <p className="offline-schedule-dependency-text">本任务存在前置依赖。修改调度频率前，请先解除本任务的前置依赖；仍可调整同频率的计划时间。</p> : null}
             {dependents && dependents.length > 0 ? (
-                <div className="space-y-2">
-                    <p>以下下游任务依赖本任务，请先在下游任务中解除依赖，再修改调度频率。仍可调整同频率的计划时间。</p>
-                    <details open={dependents.length <= 3}>
-                        <summary className="cursor-pointer rounded-sm text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+                <div className="offline-schedule-dependents-block">
+                    <p className="offline-schedule-dependency-text">以下下游任务依赖本任务，请先在下游任务中解除依赖，再修改调度频率。仍可调整同频率的计划时间。</p>
+                    <details open={dependents.length <= 3} className="offline-schedule-dependents-details">
+                        <summary className="offline-schedule-dependents-summary">
                             下游任务（{dependents.length}）
                         </summary>
                         <ul
                             aria-label="下游任务"
                             tabIndex={0}
-                            className="mt-2 space-y-2 overflow-y-auto overscroll-contain rounded-sm focus-visible:outline-2 focus-visible:outline-ring"
+                            className="offline-schedule-dependents-list"
                             style={{ maxHeight: 128 }}
                         >
                             {dependents.map((item) => (
-                                <li key={JSON.stringify([item.groupId, item.flowId, item.path])}>
-                                    <span className="text-foreground">{item.groupName || `项目组 ${item.groupId}`} / {item.flowId}</span>
-                                    <span className="block text-xs">{item.path}</span>
+                                <li key={JSON.stringify([item.groupId, item.flowId, item.path])} className="offline-schedule-dependent-item">
+                                    <span className="offline-schedule-dependent-name">{item.groupName || `项目组 ${item.groupId}`} / {item.flowId}</span>
+                                    <span className="offline-schedule-dependent-path">{item.path}</span>
                                 </li>
                             ))}
                         </ul>
                     </details>
                 </div>
             ) : null}
-            {dependents?.length === 0 && !hasUpstream ? <p>未发现下游依赖，可调整调度频率和计划时间。</p> : null}
+            {dependents?.length === 0 && !hasUpstream ? <p className="offline-schedule-dependency-ready-text">未发现下游依赖，可调整调度频率和计划时间。</p> : null}
             {periodMismatch ? (
-                <div className="space-y-2">
-                    <p role="alert">当前草稿频率与受保护频率「{PERIOD_LABELS[protectedPeriod]}」不同，暂不能暂存或切换自动调度。其他编辑已保留；请先恢复频率，或解除依赖后重新打开。</p>
+                <div className="offline-schedule-dependency-action-row">
+                    <p role="alert" className="offline-schedule-dependency-alert-text">当前草稿频率与受保护频率「{PERIOD_LABELS[protectedPeriod]}」不同，暂不能暂存或切换自动调度。其他编辑已保留；请先恢复频率，或解除依赖后重新打开。</p>
                     {protectedPeriod !== 'CUSTOM' ? (
                         <Button
                             type="button"
                             variant="outline"
+                            size="sm"
                             disabled={props.saving}
                             onClick={() => {
                                 props.onPeriodChange(protectedPeriod, parsePeriodPartsFromCron(props.cron) ?? DEFAULT_PERIOD_PARTS);
@@ -154,7 +163,7 @@ function OpenScheduleDialog({
                         </Button>
                     ) : null}
                 </div>
-            ) : blocked ? <p role="alert">当前暂不能修改调度频率，仍可调整同频率的计划时间。其他编辑已保留。</p> : null}
+            ) : blocked ? <p role="alert" className="offline-schedule-dependency-alert-text">当前暂不能修改调度频率，仍可调整同频率的计划时间。其他编辑已保留。</p> : null}
         </section>
     );
 

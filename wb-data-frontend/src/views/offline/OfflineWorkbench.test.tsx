@@ -1440,19 +1440,20 @@ describe('OfflineWorkbench branch menu motion', () => {
         expect(css).not.toContain('.offline-branch-menu-header');
         expect(css).not.toContain('.offline-branch-current-mark');
         expect(menuBlock).toContain('width: max-content');
-        expect(menuBlock).toContain('min-width: 160px');
-        expect(menuBlock).toContain('max-width: 260px');
+        expect(menuBlock).toContain('min-width: 176px');
+        expect(menuBlock).toContain('max-width: 268px');
         expect(surfaceBlock).not.toContain('min-height');
         expect(surfaceBlock).toContain('padding: 6px');
-        expect(rowBlock).toContain('min-height: 34px');
+        expect(rowBlock).toContain('min-height: 32px');
         expect(rowBlock).toContain('justify-content: flex-start');
     });
 
-    it('keeps the branch switcher as a compact toolbar control', () => {
+    it('keeps the branch switcher as a compact neutral toolbar control', () => {
         const css = readFileSync(join(process.cwd(), 'src/views/offline/OfflineWorkbench.css'), 'utf8');
         const toolbarBlock = cssBlock(css, '.offline-rail-toolbar');
         const switcherBlock = cssBlock(css, '.offline-branch-switcher');
         const selectorBlock = cssBlock(css, '.offline-branch-selector');
+        const readonlyBlock = cssBlock(css, '.offline-branch-selector-readonly');
 
         expect(css).not.toContain('.offline-branch-strip');
         expect(css).not.toContain('.offline-branch-strip-label');
@@ -1460,9 +1461,12 @@ describe('OfflineWorkbench branch menu motion', () => {
         expect(switcherBlock).toContain('display: flex');
         expect(switcherBlock).toContain('flex: 1 1 auto');
         expect(switcherBlock).not.toContain('display: none');
-        expect(selectorBlock).toContain('height: 30px');
-        expect(selectorBlock).toContain('border-radius: 999px');
-        expect(selectorBlock).toContain('var(--color-success)');
+        expect(selectorBlock).toContain('height: 28px');
+        expect(selectorBlock).toContain('border-radius: 7px');
+        expect(selectorBlock).toContain('var(--font-sans)');
+        expect(selectorBlock).not.toContain('var(--color-success)');
+        expect(readonlyBlock).toContain('border-color: transparent');
+        expect(readonlyBlock).toContain('background: transparent');
     });
 
     it('does not move the branch selector on hover', () => {

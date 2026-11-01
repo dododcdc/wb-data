@@ -170,31 +170,33 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                 </DialogHeader>
 
                 <div className="offline-schedule-body" ref={setPopupContainer}>
-                    <fieldset className="offline-schedule-period-group" disabled={saving || periodChangeDisabled}>
-                        <legend className="offline-schedule-field-label">调度频率</legend>
-                        <div className="offline-schedule-period-options">
-                            {PERIOD_OPTIONS.map((option) => (
-                                <label key={option.value} className="offline-schedule-period-option">
-                                    <input
-                                        type="radio"
-                                        name={periodId}
-                                        value={option.value}
-                                        checked={!legacyCustom && period === option.value}
-                                        onChange={() => onPeriodChange(option.value)}
-                                        className="sr-only"
-                                    />
-                                    <span>{option.label}</span>
-                                </label>
-                            ))}
-                        </div>
-                        {legacyCustom ? (
-                            <p className="offline-schedule-legacy-note">
-                                当前调度为非标准 Cron 表达式（{cron}），选择调度频率并暂存后将覆盖为标准调度。
-                            </p>
-                        ) : null}
-                    </fieldset>
+                    <div className="offline-schedule-period-section">
+                        <fieldset className="offline-schedule-period-group" disabled={saving || periodChangeDisabled}>
+                            <legend className="offline-schedule-field-label">调度频率</legend>
+                            <div className="offline-schedule-period-options">
+                                {PERIOD_OPTIONS.map((option) => (
+                                    <label key={option.value} className="offline-schedule-period-option">
+                                        <input
+                                            type="radio"
+                                            name={periodId}
+                                            value={option.value}
+                                            checked={!legacyCustom && period === option.value}
+                                            onChange={() => onPeriodChange(option.value)}
+                                            className="sr-only"
+                                        />
+                                        <span>{option.label}</span>
+                                    </label>
+                                ))}
+                            </div>
+                            {legacyCustom ? (
+                                <p className="offline-schedule-legacy-note">
+                                    当前调度为非标准 Cron 表达式（{cron}），选择调度频率并暂存后将覆盖为标准调度。
+                                </p>
+                            ) : null}
+                        </fieldset>
 
-                    {dependencyNotice}
+                        {dependencyNotice}
+                    </div>
 
                     <div className="offline-schedule-time-group">
                         <span className="offline-schedule-field-label">计划时间</span>

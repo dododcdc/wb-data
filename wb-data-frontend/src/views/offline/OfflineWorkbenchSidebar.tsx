@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle,
     ArrowUpRight,
+    Check,
+    ChevronDown,
     ChevronRight,
     FileCode2,
     FolderOpen,
@@ -197,9 +199,13 @@ export function OfflineWorkbenchSidebar({
                                     onClick={branch.onToggleMenu}
                                     disabled={repository.loading || tree.loading || branch.switching}
                                 >
-                                    <GitBranch size={14} />
+                                    {branch.switching ? (
+                                        <LoaderCircle size={13} className="offline-branch-selector-icon offline-spin" aria-hidden="true" />
+                                    ) : (
+                                        <GitBranch size={13} className="offline-branch-selector-icon" aria-hidden="true" />
+                                    )}
                                     <span className="offline-branch-selector-value">{branch.label}</span>
-                                    <ChevronRight size={12} className={`offline-branch-badge-caret ${branch.menuOpen ? 'is-open' : ''}`} />
+                                    <ChevronDown size={12} className={`offline-branch-badge-caret ${branch.menuOpen ? 'is-open' : ''}`} aria-hidden="true" />
                                 </button>
                             </TooltipTrigger>
                             <TooltipContent className="tooltip-content" side="bottom">当前分支：{branch.label}</TooltipContent>
@@ -208,7 +214,7 @@ export function OfflineWorkbenchSidebar({
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <span className="offline-branch-selector offline-branch-selector-readonly">
-                                    <GitBranch size={14} />
+                                    <GitBranch size={13} className="offline-branch-selector-icon" aria-hidden="true" />
                                     <span className="offline-branch-selector-value">{branch.label}</span>
                                 </span>
                             </TooltipTrigger>
@@ -266,7 +272,9 @@ export function OfflineWorkbenchSidebar({
                                         <div className="offline-branch-list" aria-label="可切换分支">
                                             {currentBranch ? (
                                                 <div className="offline-branch-row is-current" title={currentBranch.name}>
-                                                    <div><strong>{currentBranch.name}</strong></div>
+                                                    <GitBranch size={13} className="offline-branch-row-icon" aria-hidden="true" />
+                                                    <span className="offline-branch-row-name">{currentBranch.name}</span>
+                                                    <Check size={13} className="offline-branch-row-check" aria-hidden="true" />
                                                 </div>
                                             ) : null}
                                             {switchableBranches.map((item) => (
@@ -279,7 +287,8 @@ export function OfflineWorkbenchSidebar({
                                                     onClick={() => branch.onSwitch(item.name)}
                                                     disabled={branch.switching}
                                                 >
-                                                    <div><strong>{item.name}</strong></div>
+                                                    <GitBranch size={13} className="offline-branch-row-icon" aria-hidden="true" />
+                                                    <span className="offline-branch-row-name">{item.name}</span>
                                                 </button>
                                             ))}
                                             {switchableBranches.length === 0 ? (

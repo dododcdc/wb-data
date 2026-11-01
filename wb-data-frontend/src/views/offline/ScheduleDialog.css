@@ -1,5 +1,5 @@
 .offline-schedule-dialog-standard {
-    max-width: 640px;
+    max-width: 580px;
     max-height: calc(100dvh - 48px);
     display: flex;
     flex-direction: column;
@@ -11,18 +11,27 @@
 }
 
 .offline-schedule-body {
-    padding: 24px;
+    padding: 20px 24px 24px;
     min-height: 0;
     overflow-y: auto;
+    overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 20px;
 }
 
 .offline-schedule-field-label {
     color: var(--color-text-primary);
     font-size: 0.875rem;
     font-weight: 500;
+    line-height: 1.4;
+}
+
+.offline-schedule-period-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
 }
 
 .offline-schedule-period-group {
@@ -43,7 +52,8 @@
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 4px;
-    padding: 4px;
+    padding: 3px;
+    border: 1px solid var(--color-border-subtle, var(--color-border));
     border-radius: 8px;
     background: var(--color-bg-secondary);
 }
@@ -52,21 +62,24 @@
     position: relative;
     min-width: 0;
     cursor: pointer;
+    user-select: none;
 }
 
 .offline-schedule-period-option > span {
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 36px;
+    min-height: 34px;
     border: 1px solid transparent;
     border-radius: 6px;
     color: var(--color-text-secondary);
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
     white-space: nowrap;
+    transition: background-color 0.14s ease, color 0.14s ease, border-color 0.14s ease;
 }
 
-.offline-schedule-period-option:hover > span {
+.offline-schedule-period-group:not(:disabled) .offline-schedule-period-option:hover > span {
     color: var(--color-text-primary);
     background: var(--color-bg-hover);
 }
@@ -80,20 +93,170 @@
 
 .offline-schedule-period-option input:focus-visible + span,
 .offline-schedule-preview-expand:focus-visible,
-.offline-schedule-dialog-standard .offline-switch:focus-visible {
+.offline-schedule-dialog-standard .offline-switch:focus-visible,
+.offline-schedule-dependents-summary:focus-visible,
+.offline-schedule-dependents-list:focus-visible {
     outline: 2px solid var(--color-brand);
     outline-offset: 2px;
 }
 
 .offline-schedule-period-group:disabled .offline-schedule-period-option {
-    cursor: default;
-    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.offline-schedule-period-group:disabled .offline-schedule-period-option input:not(:checked) + span {
+    opacity: 0.45;
+}
+
+.offline-schedule-period-group:disabled .offline-schedule-period-option input:checked + span {
+    opacity: 0.88;
+    background: var(--color-bg-primary);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+}
+
+/* Dependency notice under period selector */
+.offline-schedule-dependency-notice {
+    margin-left: 96px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.offline-schedule-dependency-notice p {
+    margin: 0;
+}
+
+.offline-schedule-dependency-notice.is-locked {
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--color-border-subtle, var(--color-border));
+    background: var(--color-bg-secondary);
+}
+
+.offline-schedule-dependency-notice.is-alert {
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--color-warning, #d4a017) 35%, var(--color-border));
+    background: color-mix(in srgb, var(--color-warning, #d4a017) 7%, var(--color-bg-secondary));
+}
+
+.offline-schedule-dependency-ready-text {
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.5;
+}
+
+.offline-schedule-dependency-text {
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.55;
+}
+
+.offline-schedule-dependency-alert-text {
+    color: color-mix(in srgb, var(--color-warning, #d4a017) 75%, var(--color-text-primary));
+    font-size: 0.75rem;
+    line-height: 1.55;
+}
+
+.offline-schedule-dependency-action-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.offline-schedule-dependency-action-row button {
+    flex-shrink: 0;
+}
+
+.offline-schedule-dependency-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 2px 0;
+}
+
+.offline-schedule-skeleton-line {
+    height: 10px;
+    border-radius: 4px;
+    background: var(--color-bg-secondary);
+}
+
+.offline-schedule-skeleton-line.is-wide {
+    width: 68%;
+}
+
+.offline-schedule-skeleton-line.is-narrow {
+    width: 44%;
+}
+
+.offline-schedule-dependents-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.offline-schedule-dependents-details {
+    border-top: 1px solid var(--color-border-subtle, var(--color-border));
+    padding-top: 8px;
+}
+
+.offline-schedule-dependents-summary {
+    cursor: pointer;
+    border-radius: 4px;
+    color: var(--color-text-primary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.4;
+    user-select: none;
+}
+
+.offline-schedule-dependents-list {
+    margin: 6px 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.offline-schedule-dependent-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 0;
+}
+
+.offline-schedule-dependent-item + .offline-schedule-dependent-item {
+    border-top: 1px solid var(--color-border-subtle, var(--color-border));
+}
+
+.offline-schedule-dependent-name {
+    color: var(--color-text-primary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.offline-schedule-dependent-path {
+    display: block;
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1.4;
 }
 
 .offline-schedule-time-group {
     display: grid;
     grid-template-columns: 80px minmax(0, 1fr);
-    gap: 8px 16px;
+    gap: 6px 16px;
     align-items: center;
 }
 
@@ -102,80 +265,122 @@
     margin: 0;
     color: var(--color-text-secondary);
     font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
     line-height: 1.5;
     overflow-wrap: anywhere;
 }
 
 .offline-schedule-legacy-note {
     margin: 8px 0 0 96px;
-    color: var(--color-text-secondary);
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid color-mix(in srgb, var(--color-warning, #d4a017) 35%, var(--color-border));
+    background: color-mix(in srgb, var(--color-warning, #d4a017) 8%, var(--color-bg-secondary));
+    color: color-mix(in srgb, var(--color-warning, #d4a017) 78%, var(--color-text-primary));
     font-size: 0.75rem;
     line-height: 1.5;
     overflow-wrap: anywhere;
 }
 
 .offline-schedule-toggle-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: 80px minmax(0, 1fr);
+    gap: 8px 16px;
     align-items: center;
-    justify-content: space-between;
     min-height: 32px;
 }
 
 .offline-schedule-dialog-standard .offline-switch {
     margin: 0;
+    justify-self: start;
 }
 
 .offline-schedule-preview {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 12px;
-    padding-top: 20px;
-    border-top: 1px solid var(--color-border);
+    align-items: center;
+    gap: 8px 12px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--color-border-subtle, var(--color-border));
+    background: var(--color-bg-secondary);
 }
 
 .offline-schedule-preview-heading {
-    grid-column: 1 / -1;
+    grid-column: 1;
+    grid-row: 1;
     margin: 0;
-    color: var(--color-text-secondary);
+    color: var(--color-text-primary);
     font-size: 0.8125rem;
-    font-weight: 500;
+    font-weight: 600;
+    line-height: 1.4;
 }
 
 .offline-schedule-preview-list {
+    grid-column: 1 / -1;
+    grid-row: 2;
     margin: 0;
-    padding: 0;
+    padding: 2px 0 0;
     list-style: none;
+    counter-reset: schedule-preview-step;
     display: flex;
     flex-direction: column;
-    gap: 8px;
 }
 
 .offline-schedule-preview-item {
+    counter-increment: schedule-preview-step;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     color: var(--color-text-secondary);
     font-size: 0.8125rem;
-    line-height: 1.5;
+    line-height: 1.45;
+}
+
+.offline-schedule-preview-item + .offline-schedule-preview-item {
+    border-top: 1px solid var(--color-border-subtle, var(--color-border));
+}
+
+.offline-schedule-preview-item:first-child {
+    color: var(--color-text-primary);
+    font-weight: 500;
+}
+
+.offline-schedule-preview-item::before {
+    content: counter(schedule-preview-step, decimal-leading-zero);
+    color: var(--color-text-muted, var(--color-text-secondary));
+    font-size: 0.6875rem;
+    font-weight: 500;
+    opacity: 0.72;
 }
 
 .offline-schedule-preview-expand {
-    align-self: end;
-    min-height: 32px;
-    padding: 4px 0 4px 8px;
-    border: 0;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    min-height: 28px;
+    padding: 2px 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
     background: transparent;
     color: var(--color-text-secondary);
     font-size: 0.75rem;
+    font-weight: 500;
     cursor: pointer;
+    transition: color 0.14s ease, background-color 0.14s ease;
 }
 
 .offline-schedule-preview-expand:hover {
     color: var(--color-text-primary);
-    text-decoration: underline;
+    background: var(--color-bg-hover);
 }
 
 .offline-schedule-preview-error {
     grid-column: 1 / -1;
+    grid-row: 2;
     margin: 0;
     color: var(--color-error);
     font-size: 0.8125rem;
@@ -183,17 +388,21 @@
 
 .offline-schedule-dialog-standard .offline-schedule-footer {
     display: flex;
-    flex-direction: column;
-    gap: 12px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
 }
 
 .offline-schedule-publish-note {
+    min-width: 0;
+    flex: 1;
     display: flex;
     flex-direction: column;
     gap: 4px;
     color: var(--color-text-secondary);
     font-size: 0.75rem;
-    line-height: 1.5;
+    line-height: 1.45;
 }
 
 .offline-schedule-publish-note p {
@@ -213,92 +422,22 @@
 }
 
 .offline-schedule-actions {
+    flex-shrink: 0;
     display: flex;
     justify-content: flex-end;
-    gap: 12px;
-}
-
-.footer-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.footer-right {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.test-note {
-    color: var(--color-text-muted);
-    font-size: 0.82rem;
-}
-
-
-
-/* Segmented Cron Input Styles */
-.offline-segmented-cron {
-    display: flex;
     gap: 10px;
-    align-items: flex-start;
 }
 
-.offline-segmented-cron-unit {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-}
-
-.offline-segmented-cron-input {
-    width: 44px;
-    height: 40px;
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    text-align: center;
-    font-family: var(--font-mono);
-    font-size: 1.15rem;
-    color: #fff;
-    transition: all 0.2s;
-    outline: none;
-}
-
-.offline-segmented-cron-input::placeholder {
-    color: rgba(255, 255, 255, 0.45);
-    font-size: 1.4rem;
-}
-
-.offline-segmented-cron-input:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-}
-
-.offline-segmented-cron-label {
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-    font-weight: 500;
-}
-
-.opacity-50 {
-    opacity: 0.5;
-}
-
-.pointer-events-none {
-    pointer-events: none;
-}
-
-/* Switch toggle */
+/* Shared switch toggle (used by ScheduleDialog, DependencyDialog, OfflineTreeActionDialogs) */
 .offline-switch {
     position: relative;
     width: 40px;
     height: 22px;
     border-radius: 11px;
-    border: none;
-    background: #d4d4d4;
+    border: 1px solid rgba(20, 20, 19, 0.08);
+    background: var(--color-border, #d6d1c7);
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background-color 0.18s ease, border-color 0.18s ease;
     padding: 0;
     flex-shrink: 0;
     margin-right: 24px;
@@ -306,25 +445,26 @@
 }
 
 .offline-switch[aria-checked="true"] {
-    background: #22c55e;
+    background: var(--color-success, #5db872);
+    border-color: transparent;
 }
 
 .offline-switch:disabled {
     opacity: 0.5;
-    cursor: default;
+    cursor: not-allowed;
 }
 
 .offline-switch-thumb {
     position: absolute;
-    top: 2px;
-    left: 2px;
+    top: 1px;
+    left: 1px;
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    background: white;
-    transition: transform 0.2s;
+    background: #ffffff;
+    transition: transform 0.18s ease;
     display: block;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    box-shadow: 0 1px 2px rgba(20, 20, 19, 0.2);
 }
 
 .offline-switch[aria-checked="true"] .offline-switch-thumb {
@@ -373,10 +513,11 @@
     margin-left: 8px;
 }
 
-
 .offline-schedule-period-select {
-    width: 96px;
+    width: 100px;
     max-width: 100%;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
 }
 
 .offline-schedule-period-fields {
@@ -388,8 +529,8 @@
 
 @media (max-width: 560px) {
     .offline-schedule-body {
-        padding: 20px 16px;
-        gap: 20px;
+        padding: 16px;
+        gap: 16px;
     }
 
     .offline-schedule-dialog-standard .dialog-header,
@@ -405,12 +546,13 @@
     }
 
     .offline-schedule-period-options,
-    .offline-schedule-legacy-note {
+    .offline-schedule-legacy-note,
+    .offline-schedule-dependency-notice {
         margin-left: 0;
     }
 
     .offline-schedule-period-options {
-        gap: 0;
+        gap: 2px;
     }
 
     .offline-schedule-time-group {
@@ -428,5 +570,20 @@
 
     .offline-schedule-period-select {
         width: 100%;
+    }
+
+    .offline-schedule-toggle-row {
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .offline-schedule-dialog-standard .offline-schedule-footer {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .offline-schedule-dependency-action-row {
+        flex-direction: column;
     }
 }

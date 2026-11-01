@@ -4,6 +4,7 @@ import {
     CircleAlert,
     GitCommitHorizontal,
     GitPullRequest,
+    Globe,
     History,
     LoaderCircle,
     Play,
@@ -14,6 +15,7 @@ import type { ReactNode } from 'react';
 import type { FlowParameterBinding } from '../../api/offline';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { isExecuteButtonDisabled } from './executionToolbarState';
+import { getTimezoneOffset } from './ScheduleUtils';
 
 interface OfflineCanvasToolbarProps {
     activeFlowPath: string | null;
@@ -88,6 +90,14 @@ export function OfflineCanvasToolbar({
 }: OfflineCanvasToolbarProps) {
     const active = activeFlowPath !== null;
     const editDisabled = !active || !canWrite;
+    const hasDraftStatus = draftSaveState === 'saving'
+        || draftSaveState === 'error'
+        || dirty
+        || Boolean(draftSaveState === 'saved' && draftSavedAt);
+    const timezoneOffset = timezone ? getTimezoneOffset(timezone) : '';
+    const timezoneTooltip = timezone
+        ? `任务运行时区：${timezone}${timezoneOffset && timezoneOffset !== timezone ? ` (${timezoneOffset})` : ''}`
+        : '';
 
     return (
         <header className="offline-canvas-toolbar">
@@ -148,25 +158,30 @@ export function OfflineCanvasToolbar({
                 <History size={16} />
             </ToolbarButton>
 
-            <DraftSaveIndicator
-                state={draftSaveState}
-                savedAt={draftSavedAt}
-                error={draftSaveError}
-                dirty={dirty}
-            />
-
-            {timezone ? (
+            {(hasDraftStatus || timezone) ? (
                 <div className="offline-canvas-toolbar-meta">
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <span className="offline-canvas-timezone-badge">
-                                {timezone}
-                            </span>
-                        </TooltipTrigger>
-                        <TooltipContent className="tooltip-content" side="bottom">
-                            运行时区: {timezone}
-                        </TooltipContent>
-                    </Tooltip>
+                    <DraftSaveIndicator
+                        state={draftSaveState}
+                        savedAt={draftSavedAt}
+                        error={draftSaveError}
+                        dirty={dirty}
+                    />
+                    {hasDraftStatus && timezone ? (
+                        <span className="offline-canvas-meta-sep" aria-hidden="true" />
+                    ) : null}
+                    {timezone ? (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <span className="offline-canvas-timezone-badge">
+                                    <Globe size={13} className="offline-canvas-timezone-icon" aria-hidden="true" />
+                                    <span className="offline-canvas-timezone-text">{timezone}</span>
+                                </span>
+                            </TooltipTrigger>
+                            <TooltipContent className="tooltip-content" side="bottom" align="end" collisionPadding={12}>
+                                {timezoneTooltip}
+                            </TooltipContent>
+                        </Tooltip>
+                    ) : null}
                 </div>
             ) : null}
         </header>
@@ -184,7 +199,7 @@ function DraftSaveIndicator({ state, savedAt, error, dirty }: DraftSaveIndicator
     if (state === 'saving') {
         return (
             <span className="offline-canvas-save-indicator is-pending" role="status">
-                <LoaderCircle size={14} className="offline-spin" />
+                <LoaderCircle size={13} className="offline-spin" aria-hidden="true" />
                 <span>保存中</span>
             </span>
         );
@@ -194,7 +209,7 @@ function DraftSaveIndicator({ state, savedAt, error, dirty }: DraftSaveIndicator
             <Tooltip>
                 <TooltipTrigger asChild>
                     <span className="offline-canvas-save-indicator is-error" role="status">
-                        <CircleAlert size={14} />
+                        <CircleAlert size={13} aria-hidden="true" />
                         <span>保存失败</span>
                     </span>
                 </TooltipTrigger>
@@ -217,7 +232,7 @@ function DraftSaveIndicator({ state, savedAt, error, dirty }: DraftSaveIndicator
         const mm = String(time.getMinutes()).padStart(2, '0');
         return (
             <span className="offline-canvas-save-indicator is-saved" role="status">
-                <Check size={14} />
+                <Check size={13} aria-hidden="true" />
                 <span>已保存 {hh}:{mm}</span>
             </span>
         );

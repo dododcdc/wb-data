@@ -210,4 +210,71 @@ describe('OfflineWorkbenchSidebar', () => {
         expect(screen.getByTestId('repo-tree-double').getAttribute('data-revealed-flow')).toBe('_flows/existing/flow.yaml');
         expect(screen.getByTestId('repo-tree-double').getAttribute('data-recent-flows')).toBe('_flows/existing/flow.yaml');
     });
+
+    it('highlights only the current branch with a check icon and shows switching spinner on trigger', () => {
+        const data = createTree(['existing']);
+        const view = render(
+            <OfflineWorkbenchSidebar
+                isGroupAdmin
+                branch={{
+                    label: 'main',
+                    canSwitch: true,
+                    menuOpen: true,
+                    tooltipOpen: false,
+                    loading: false,
+                    switching: true,
+                    branches: [
+                        { name: 'main', current: true, local: true, remote: true, remoteName: 'origin/main', trackingBranch: 'origin/main' },
+                        { name: 'develop', current: false, local: true, remote: true, remoteName: 'origin/develop', trackingBranch: 'origin/develop' },
+                    ],
+                    dirtyState: null,
+                    onToggleMenu: vi.fn(),
+                    onMenuOpenChange: vi.fn(),
+                    onTooltipOpenChange: vi.fn(),
+                    onSwitch: vi.fn(),
+                }}
+                repository={{
+                    available: true,
+                    loading: false,
+                    committing: false,
+                    pushLoading: false,
+                    canCommit: false,
+                    canPush: false,
+                    dirty: false,
+                    ahead: false,
+                    onRefresh: vi.fn(),
+                    onOpenCommit: vi.fn(),
+                    onOpenPush: vi.fn(),
+                }}
+                creation={{
+                    canWrite: true,
+                    menuOpen: false,
+                    onMenuOpenChange: vi.fn(),
+                    onOpenNewFlow: vi.fn(),
+                    onOpenNewFolder: vi.fn(),
+                }}
+                tree={{
+                    data,
+                    loading: false,
+                    flowLoading: false,
+                    activeFlowPath: null,
+                    canWrite: true,
+                    onOpenFlow: vi.fn(),
+                    onContextMenu: vi.fn(),
+                    onMoveNode: vi.fn(),
+                }}
+            />,
+            { wrapper: TooltipProvider },
+        );
+
+        const trigger = screen.getByRole('button', { name: '切换分支，当前 main' });
+        expect(trigger.querySelector('.offline-spin')).not.toBeNull();
+
+        const currentRow = view.container.querySelector('.offline-branch-row.is-current');
+        expect(currentRow?.textContent).toBe('main');
+        expect(currentRow?.querySelector('.offline-branch-row-check')).not.toBeNull();
+
+        const switchRow = screen.getByRole('button', { name: '切换到 develop' });
+        expect(switchRow.querySelector('.offline-branch-row-check')).toBeNull();
+    });
 });
