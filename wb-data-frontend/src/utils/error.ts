@@ -10,11 +10,14 @@ export function getErrorMessage(error: unknown, fallback: string): string {
         if (error.response?.status === 401) return '登录已过期，请重新登录';
         if (error.response?.status === 403) return '无权限执行此操作';
         if (error.response?.status === 429) return '请求过于频繁，请稍后再试';
+        if (error.response?.status && error.response.status >= 500) {
+            return fallback || '服务端异常，请稍后重试';
+        }
         if (!error.response) return '网络连接失败，请检查网络';
     }
     if (typeof error === 'object' && error !== null) {
         const message = (error as { message?: string }).message;
-        if (message) return message;
+        if (message && !message.startsWith('Request failed with status code')) return message;
     }
     return fallback;
 }

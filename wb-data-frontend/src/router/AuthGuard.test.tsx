@@ -140,6 +140,21 @@ describe('AuthGuard', () => {
         expect(useAuthStore.getState().token).toBe('token');
     });
 
+    it('renders structured error card on 500 failure and clears auth on clicking 重新登录', async () => {
+        const serverError = new AxiosError('Request failed with status code 500');
+        serverError.response = { status: 500 } as AxiosError['response'];
+        vi.mocked(getAuthContext).mockRejectedValueOnce(serverError);
+        renderGuard();
+
+        expect(await screen.findByText('服务暂时不可用')).toBeTruthy();
+        expect(screen.getByText('500')).toBeTruthy();
+        expect(screen.getByText('未能获取用户权限上下文，请确认后端服务已正常启动。')).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('button', { name: '重新登录' }));
+        await screen.findByText('login');
+        expect(useAuthStore.getState().token).toBeNull();
+    });
+
     it('redirects to /login and preserves current location in state when unauthenticated', () => {
         useAuthStore.getState().clearAuth();
         let stateLocation: unknown;
