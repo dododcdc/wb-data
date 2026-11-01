@@ -483,8 +483,15 @@ export default function Layout() {
                                 <div className="user-menu-header">
                                     <span className="user-avatar-lg">{userInfo?.displayName?.charAt(0).toUpperCase() || '?'}</span>
                                     <div className="user-menu-info">
-                                        <span className="user-menu-name">{userInfo?.displayName || userInfo?.username}</span>
-                                        <span className="user-menu-role">{systemAdmin ? '系统管理员' : currentGroup?.role === 'GROUP_ADMIN' ? '组管理员' : '开发者'}</span>
+                                        <div className="user-menu-name-row">
+                                            <span className="user-menu-name">{userInfo?.displayName || userInfo?.username || '未知用户'}</span>
+                                            <span className={`user-menu-role-badge ${systemAdmin ? 'is-admin' : 'is-user'}`}>
+                                                {systemAdmin ? '系统管理员' : currentGroup?.role === 'GROUP_ADMIN' ? '组管理员' : '开发者'}
+                                            </span>
+                                        </div>
+                                        {userInfo?.username ? (
+                                            <span className="user-menu-username">@{userInfo.username}</span>
+                                        ) : null}
                                     </div>
                                 </div>
                                 <div className="user-menu-divider" />

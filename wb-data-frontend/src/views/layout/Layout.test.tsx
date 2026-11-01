@@ -207,6 +207,19 @@ describe('Layout', () => {
             return screen.getByRole<HTMLButtonElement>('menuitem', { name: '退出登录' });
         }
 
+        it('displays user display name, role badge and username handle in user menu header', () => {
+            useAuthStore.setState({
+                userInfo: { id: 2, username: 'sys_admin', displayName: '系统管理员', systemRole: 'SYSTEM_ADMIN' },
+                systemAdmin: true,
+            });
+            renderOfflineLayout();
+            openAccountMenu();
+
+            expect(screen.getByText('@sys_admin')).toBeTruthy();
+            const badge = screen.getByText('系统管理员', { selector: '.user-menu-role-badge' });
+            expect(badge.className).toContain('is-admin');
+        });
+
         it('preserves auth while pending and prevents duplicate requests even after reopening the menu', async () => {
             let resolveLogout!: () => void;
             const pending = new Promise<void>((resolve) => { resolveLogout = resolve; });
