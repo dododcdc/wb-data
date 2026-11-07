@@ -3,6 +3,7 @@ package com.wbdata.offline.repo.service;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
 
 import com.wbdata.offline.config.OfflineProperties;
+import com.wbdata.offline.repo.dto.BranchItemResponse;
 import com.wbdata.offline.exception.DirtyWorkingTreeException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -46,6 +47,9 @@ class GitCommandServiceBranchTest {
             assertThat(branch.remote()).isTrue();
             assertThat(branch.remoteName()).isEqualTo("origin/feature/remote-only");
         });
+        assertThat(branches)
+                .extracting(BranchItemResponse::name)
+                .containsExactlyInAnyOrder("main", "feature/remote-only");
     }
 
     @Test
@@ -272,6 +276,7 @@ class GitCommandServiceBranchTest {
         git(repo, "commit", "-m", "init");
         git(repo, "remote", "add", "origin", remote.toString());
         git(repo, "push", "-u", "origin", "HEAD");
+        git(remote, "symbolic-ref", "HEAD", "refs/heads/main");
     }
 
     private static void createRemoteOnlyBranch(Path remote, String branch) throws Exception {

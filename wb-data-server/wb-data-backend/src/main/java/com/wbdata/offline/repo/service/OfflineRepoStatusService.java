@@ -134,21 +134,17 @@ public class OfflineRepoStatusService {
     }
 
     private boolean readHasUpstream(Path repoPath) {
-        try {
-            String upstream = runGitCommand(repoPath, "rev-parse", "--abbrev-ref", "@{upstream}");
-            return upstream != null && !upstream.isBlank();
-        } catch (GitCommandException ex) {
-            if (isMissingUpstream(ex.output())) {
-                return false;
-            }
-            throw ex;
+        String branch = runGitCommand(repoPath, "branch", "--show-current");
+        if (branch.isBlank()) {
+            return false;
         }
-    }
-
-    private boolean isMissingUpstream(String output) {
-        return output.contains("no upstream configured")
-                || output.contains("no such branch")
-                || output.contains("ambiguous argument '@{upstream}'");
+        String upstream = runGitCommand(
+                repoPath,
+                "for-each-ref",
+                "--format=%(upstream:short)",
+                "refs/heads/" + branch
+        );
+        return !upstream.isBlank();
     }
 
     private String readBranchFromStatus(String status) {

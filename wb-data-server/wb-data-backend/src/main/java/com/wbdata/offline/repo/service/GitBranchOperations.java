@@ -42,7 +42,7 @@ class GitBranchOperations extends GitRepositoryOperations {
         return runGit(repoPath, "for-each-ref", "--format=%(refname:short)", "--sort=refname", "refs/remotes/origin")
                 .lines()
                 .map(String::trim)
-                .filter(remoteName -> !remoteName.isBlank() && !"origin/HEAD".equals(remoteName))
+                .filter(remoteName -> !remoteName.isBlank() && !"origin/HEAD".equals(remoteName) && !"origin".equals(remoteName))
                 .map(this::stripOrigin)
                 .toList();
     }
@@ -67,7 +67,7 @@ class GitBranchOperations extends GitRepositoryOperations {
 
         String remoteOutput = runGit(repoPath, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin");
         for (String remoteName : remoteOutput.lines().map(String::trim).filter(line -> !line.isBlank()).toList()) {
-            if ("origin/HEAD".equals(remoteName)) {
+            if ("origin/HEAD".equals(remoteName) || "origin".equals(remoteName)) {
                 continue;
             }
             String name = stripOrigin(remoteName);
