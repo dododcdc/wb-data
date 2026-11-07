@@ -53,6 +53,8 @@ logs/
 
 # Agent and local state
 .agents/
+.impeccable/
+.qoder/
 memory/
 output/
 .impeccable.md
