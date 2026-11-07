@@ -238,159 +238,6 @@
     /* Handled by .dt-scroll now */
 }
 
-.gs-table {
-    width: 100%;
-    min-width: 640px;
-    border-collapse: collapse;
-}
-
-.gs-table th {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background: var(--color-bg-primary);
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--color-border);
-    color: var(--color-text-secondary);
-    font-size: 0.8125rem;
-    font-weight: 600;
-    text-align: left;
-}
-
-.gs-table td {
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--color-border-subtle);
-    color: var(--color-text-primary);
-    font-size: 0.9rem;
-    vertical-align: middle;
-}
-
-.gs-table tbody tr:hover {
-    background: var(--color-accent-glow);
-}
-
-.gs-name-main {
-    color: var(--color-text-primary);
-    font-size: 0.96rem;
-}
-
-.gs-time-cell {
-    color: var(--color-text-secondary);
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-}
-
-.gs-role-pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 26px;
-    padding: 0 10px;
-    border: 1px solid transparent;
-    border-radius: 999px;
-    font-size: 0.74rem;
-    font-weight: 700;
-    white-space: nowrap;
-}
-
-.gs-role-pill.is-admin {
-    background: color-mix(in srgb, var(--color-error) 10%, white);
-    border-color: color-mix(in srgb, var(--color-error) 22%, transparent);
-    color: var(--color-error);
-}
-
-.gs-role-pill.is-developer {
-    background: color-mix(in srgb, var(--color-bg-tertiary) 90%, white);
-    border-color: rgba(120, 110, 90, 0.16);
-    color: var(--color-text-secondary);
-}
-
-.gs-actions-column {
-    width: 120px;
-    text-align: center;
-}
-
-.gs-actions {
-    display: flex;
-    justify-content: center;
-    gap: 8px;
-}
-
-.gs-refresh-overlay {
-    /* Moved to data-table-shell.css */
-}
-
-.gs-refresh-pill {
-    /* Moved to data-table-shell.css */
-}
-
-.gs-refresh-dot {
-    /* Moved to data-table-shell.css */
-}
-
-.gs-pagination {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-    margin-top: 14px;
-    padding: 14px 0 0;
-    border-top: 1px solid var(--color-border);
-}
-
-.gs-page-info {
-    display: inline-flex;
-    align-items: center;
-    min-height: 32px;
-    padding: 0 12px;
-    border-radius: 999px;
-    background: var(--color-bg-secondary);
-    color: var(--color-text-secondary);
-    font-size: var(--text-sm);
-    font-weight: 600;
-    white-space: nowrap;
-}
-
-.gs-pagination-controls {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.gs-page-size-group {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.gs-pagination-label,
-.gs-page-status {
-    color: var(--color-text-muted);
-    font-size: 0.82rem;
-    font-weight: 600;
-    white-space: nowrap;
-}
-
-.gs-page-size-select {
-    width: 84px;
-}
-
-.gs-page-size-select .simple-select-trigger {
-    height: 34px;
-    border-radius: 10px;
-    font-size: 0.82rem;
-    padding: 0 10px;
-}
-
-.gs-page-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-}
-
-
 
 .gs-dialog-content {
     display: flex;
@@ -522,10 +369,6 @@
     .gs-members-body {
         padding: 0 14px 14px;
     }
-
-    .gs-table-scroll {
-        max-height: clamp(240px, calc(100vh - 340px), 480px);
-    }
 }
 
 @media (max-width: 720px) {
@@ -553,55 +396,12 @@
         max-width: none;
     }
 
-    .gs-table {
-        min-width: 560px;
-    }
-
-    .gs-table-scroll {
-        max-height: none;
-    }
-
-    .gs-pagination {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 12px;
-        margin-top: 12px;
-        padding-top: 12px;
-    }
-
-    .gs-page-info {
-        align-self: flex-start;
-    }
-
-    .gs-pagination-controls {
-        justify-content: space-between;
-    }
-
     .gs-confirm-actions {
         flex-direction: column-reverse;
     }
 }
 
 @media (max-width: 560px) {
-    .gs-pagination-controls {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .gs-page-size-group,
-    .gs-page-status,
-    .gs-page-actions {
-        width: 100%;
-    }
-
-    .gs-page-size-group {
-        justify-content: space-between;
-    }
-
-    .gs-page-actions {
-        justify-content: flex-end;
-    }
-
     .gs-dialog-header {
         padding: 14px 16px;
     }

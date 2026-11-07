@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getOfflineDependents, type OfflineDependentItem } from '../../api/offline';
 import { Button } from '../../components/ui/button';
+import { ListShell } from '../../components/ui/list/ListShell';
 import {
     Dialog,
     DialogContent,
@@ -10,6 +11,7 @@ import {
     DialogTitle,
 } from '../../components/ui/dialog';
 import { getErrorMessage } from '../../utils/error';
+import './DependencyDialog.css';
 
 export interface DeleteFlowDependencyDialogProps {
     groupId: number;
@@ -94,19 +96,21 @@ function DeleteFlowDependencyCheck({
                         ) : dependents && dependents.length > 0 ? (
                             <>
                                 <p>以下 {dependents.length} 个下游任务依赖本任务。请先在下游任务中解除依赖，再删除本任务。</p>
-                                <ul
-                                    aria-label="下游任务"
-                                    tabIndex={0}
-                                    className="space-y-2 overflow-y-auto overscroll-contain rounded-sm focus-visible:outline-2 focus-visible:outline-ring"
-                                    style={{ maxHeight: 192 }}
-                                >
-                                    {dependents.map((item) => (
-                                        <li key={JSON.stringify([item.groupId, item.flowId, item.path])}>
-                                            <span className="text-foreground">{item.groupName || `项目组 ${item.groupId}`} / {item.flowId}</span>
-                                            <span className="block text-xs">{item.path}</span>
-                                        </li>
-                                    ))}
-                                </ul>
+                                <ListShell state="ready" className="offline-dependency-list-shell">
+                                    <ul
+                                        aria-label="下游任务"
+                                        tabIndex={0}
+                                        className="space-y-2 overflow-y-auto overscroll-contain rounded-sm focus-visible:outline-2 focus-visible:outline-ring"
+                                        style={{ maxHeight: 192 }}
+                                    >
+                                        {dependents.map((item) => (
+                                            <li key={JSON.stringify([item.groupId, item.flowId, item.path])}>
+                                                <span className="text-foreground">{item.groupName || `项目组 ${item.groupId}`} / {item.flowId}</span>
+                                                <span className="block text-xs">{item.path}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </ListShell>
                                 <Button type="button" variant="outline" disabled={pending} onClick={retry}>重新检查</Button>
                             </>
                         ) : <p>未发现下游依赖。删除时服务器仍会复核依赖关系。</p>}

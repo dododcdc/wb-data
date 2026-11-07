@@ -47,6 +47,23 @@
     white-space: nowrap;
 }
 
+.operations-instance-list-shell {
+    overflow: visible;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.operations-instance-list-shell .wb-list-scroll {
+    max-height: none;
+    overflow: visible;
+}
+
+.operations-instance-list-shell .wb-list-state {
+    min-height: 96px;
+    padding: 20px 12px;
+}
+
 .operations-instance-upstream-button {
     display: inline-flex;
     align-items: center;

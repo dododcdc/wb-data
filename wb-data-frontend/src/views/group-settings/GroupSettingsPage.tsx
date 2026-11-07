@@ -1,16 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-    ChevronLeft,
-    ChevronRight,
-    ChevronsLeft,
-    ChevronsRight,
-    Search,
-    UserPlus,
-} from 'lucide-react';
+import { Search, UserPlus } from 'lucide-react';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
-import { SimpleSelect } from '../../components/SimpleSelect';
+import { ListPagination } from '../../components/ui/list/ListPagination';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import { useAuthStore } from '../../utils/auth';
 import {
@@ -32,7 +25,6 @@ import KestraSyncSettingsTab from './KestraSyncSettingsTab';
 import {
     DEFAULT_PAGE_SIZE,
     getRoleLabel,
-    PAGE_SIZE_OPTIONS,
 } from './config';
 import './GroupSettings.css';
 import { Button } from '../../components/ui/button';
@@ -67,9 +59,11 @@ export default function GroupSettingsPage() {
         data: records,
         total,
         isFetching: memberFetching,
+        isLoading: memberLoading,
         error: memberError,
         pagination,
         search,
+        refresh: refreshMembers,
     } = useDataTable<MemberRecord, { groupId: number }>({
         queryKey: ['group-settings-members', groupId],
         fetchFn: getMemberPage,
@@ -173,12 +167,7 @@ export default function GroupSettingsPage() {
     };
 
     const errorMessage = memberError instanceof Error ? memberError.message : String(memberError || '');
-    const { page, pageSize, setPage, setPageSize, totalPages } = pagination;
-
-    const prevDisabled = page === 1 || memberFetching;
-    const nextDisabled = page >= totalPages || memberFetching;
-    const pageCount = records.length;
-    const pageSizeOptions = PAGE_SIZE_OPTIONS.map((value) => ({ label: `${value} 条`, value: String(value) }));
+    const { page, pageSize, setPage, setPageSize } = pagination;
 
     return (
         <div className="gs-page">
@@ -269,88 +258,32 @@ export default function GroupSettingsPage() {
                         <div className="gs-members-body">
                             <MemberTable
                                 data={records}
-                                isRefreshing={isRefreshing}
                                 errorMessage={errorMessage}
+                                hasActiveFilter={Boolean(search.keyword)}
+                                hasFooter={total > 0}
+                                isLoading={memberLoading}
+                                isRefreshing={isRefreshing}
                                 canManage={canManage}
                                 currentUserId={userInfo?.id ?? null}
+                                onAddMember={() => setIsAddMemberOpen(true)}
+                                onClearFilters={() => search.setKeyword('')}
+                                onRetry={() => void refreshMembers()}
                                 onChangeRole={(member) => setChangeRoleMember(member)}
                                 onRemove={handleRemove}
                             />
 
-                            {total > 0 ? (
-                                <div className="gs-pagination">
-                                    <div className="gs-page-info">本页 {pageCount} 条，共 {total} 条</div>
-
-                                    <div className="gs-pagination-controls" aria-label="成员分页导航">
-                                        <div className="gs-page-size-group">
-                                            <span className="gs-pagination-label">每页</span>
-                                            <div className="gs-page-size-select">
-                                                <SimpleSelect
-                                                    id="gs-page-size"
-                                                    value={String(pageSize)}
-                                                    options={pageSizeOptions}
-                                                    disabled={memberFetching}
-                                                    menuPlacement="up"
-                                                    onChange={(value) => {
-                                                        const parsed = Number(value);
-                                                        if (Number.isFinite(parsed) && parsed !== pageSize) {
-                                                            setPageSize(parsed);
-                                                            setPage(1);
-                                                        }
-                                                    }}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="gs-page-status">
-                                            第 {page} / {totalPages} 页
-                                        </div>
-
-                                        <div className="gs-page-actions">
-                                            <Button
-                                                variant="outline" size="icon"
-                                                type="button"
-                                                aria-label="第一页"
-                                                aria-disabled={prevDisabled}
-                                                disabled={prevDisabled}
-                                                onClick={() => setPage(1)}
-                                            >
-                                                <ChevronsLeft size={16} />
-                                            </Button>
-                                            <Button
-                                                variant="outline" size="icon"
-                                                type="button"
-                                                aria-label="上一页"
-                                                aria-disabled={prevDisabled}
-                                                disabled={prevDisabled}
-                                                onClick={() => setPage(Math.max(1, page - 1))}
-                                            >
-                                                <ChevronLeft size={16} />
-                                            </Button>
-                                            <Button
-                                                variant="outline" size="icon"
-                                                type="button"
-                                                aria-label="下一页"
-                                                aria-disabled={nextDisabled}
-                                                disabled={nextDisabled}
-                                                onClick={() => setPage(Math.min(totalPages, page + 1))}
-                                            >
-                                                <ChevronRight size={16} />
-                                            </Button>
-                                            <Button
-                                                variant="outline" size="icon"
-                                                type="button"
-                                                aria-label="最后一页"
-                                                aria-disabled={nextDisabled}
-                                                disabled={nextDisabled}
-                                                onClick={() => setPage(totalPages)}
-                                            >
-                                                <ChevronsRight size={16} />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : null}
+                            <ListPagination
+                                currentPage={page}
+                                isFetching={memberFetching}
+                                onPageChange={setPage}
+                                onPageSizeChange={(nextPageSize) => {
+                                    setPageSize(nextPageSize);
+                                    setPage(1);
+                                }}
+                                pageSize={pageSize}
+                                total={total}
+                                ariaLabel="成员分页导航"
+                            />
                         </div>
                     </div>
                 )}

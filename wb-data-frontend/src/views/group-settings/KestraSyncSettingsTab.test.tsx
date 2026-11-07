@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import KestraSyncSettingsTab from './KestraSyncSettingsTab';
+import { TooltipProvider } from '../../components/ui/tooltip';
 
 const {
   getGitConfig,
@@ -48,11 +49,11 @@ afterEach(() => {
 function renderWithQuery(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={qc}>
+    <TooltipProvider><QueryClientProvider client={qc}>
       <MemoryRouter>
         {ui}
       </MemoryRouter>
-    </QueryClientProvider>
+    </QueryClientProvider></TooltipProvider>
   );
 }
 
@@ -96,7 +97,8 @@ describe('KestraSyncSettingsTab', () => {
     expect(screen.queryByText('上次同步：未执行')).toBeNull();
     expect(screen.getByRole('button', { name: '同步一次 main' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '移出同步 main' })).toBeNull();
-    expect(screen.getByRole('button', { name: '移出同步 feature/policy-review' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'feature/policy-review的更多操作' }));
+    expect(screen.getByRole('menuitem', { name: '移出同步 feature/policy-review' })).toBeTruthy();
   });
 
   it('does not expose sync bookkeeping statuses in the branch list', async () => {
@@ -207,7 +209,8 @@ describe('KestraSyncSettingsTab', () => {
     fireEvent.click(await screen.findByRole('button', { name: '同步一次 main' }));
     await waitFor(() => expect(triggerGitSyncConfig).toHaveBeenCalledWith(1, 7));
 
-    fireEvent.click(screen.getByRole('button', { name: '移出同步 feature/policy-review' }));
+    fireEvent.click(screen.getByRole('button', { name: 'feature/policy-review的更多操作' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '移出同步 feature/policy-review' }));
     await waitFor(() => expect(deleteGitSyncConfig).toHaveBeenCalledWith(1, 8));
   });
 

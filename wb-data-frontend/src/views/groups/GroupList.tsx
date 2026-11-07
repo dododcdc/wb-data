@@ -1,15 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-    ChevronLeft,
-    ChevronRight,
-    ChevronsLeft,
-    ChevronsRight,
-    Search,
-    FolderPlus,
-} from 'lucide-react';
+import { Search, FolderPlus } from 'lucide-react';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
-import { SimpleSelect } from '../../components/SimpleSelect';
+import { ListPagination } from '../../components/ui/list/ListPagination';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import { refreshAuthContext } from '../../hooks/useAuthContext';
 import {
@@ -20,10 +13,7 @@ import {
 } from '../../api/group';
 import GroupForm from './GroupForm';
 import { GroupTable } from './GroupTable';
-import {
-    DEFAULT_PAGE_SIZE,
-    PAGE_SIZE_OPTIONS,
-} from './config';
+import { DEFAULT_PAGE_SIZE } from './config';
 import './GroupList.css';
 import { Button } from '../../components/ui/button';
 import { useDataTable } from '../../hooks/useDataTable';
@@ -41,9 +31,11 @@ export default function GroupList() {
         data: records,
         total,
         isFetching,
+        isLoading,
         error,
         pagination,
         search,
+        refresh,
     } = useDataTable<GroupDetail>({
         queryKey: ['groups'],
         fetchFn: getGroupPage,
@@ -111,12 +103,12 @@ export default function GroupList() {
     };
 
     const errorMessage = error instanceof Error ? error.message : String(error || '');
-    const { page, pageSize, setPage, setPageSize, totalPages } = pagination;
+    const { page, pageSize, setPage, setPageSize } = pagination;
 
-    const prevDisabled = page === 1 || isFetching;
-    const nextDisabled = page >= totalPages || isFetching;
-    const pageCount = records.length;
-    const pageSizeOptions = PAGE_SIZE_OPTIONS.map((value) => ({ label: `${value} 条`, value: String(value) }));
+    const handleCreate = () => {
+        setEditingGroup(null);
+        setIsFormOpen(true);
+    };
 
     const handleFormSuccess = async () => {
         setIsFormOpen(false);
@@ -157,9 +149,7 @@ export default function GroupList() {
                 <div className="group-toolbar-actions">
                     <Button
                         variant="default"
-                        onClick={() => {
-                            setIsFormOpen(true);
-                        }}
+                        onClick={handleCreate}
                         type="button"
                     >
                         <FolderPlus size={16} />
@@ -172,87 +162,31 @@ export default function GroupList() {
                 <GroupTable
                     data={records}
                     errorMessage={errorMessage}
+                    hasActiveFilter={Boolean(search.keyword)}
+                    hasFooter={total > 0}
+                    isLoading={isLoading}
                     isRefreshing={isRefreshing}
+                    onClearFilters={() => search.setKeyword('')}
+                    onCreate={handleCreate}
                     onEdit={handleEdit}
+                    onRetry={() => void refresh()}
                     onDisable={handleDisable}
                     onEnable={handleEnable}
                     pendingId={pendingId}
                 />
 
-                {total > 0 ? (
-                    <div className="group-pagination group-pagination-admin">
-                        <div className="group-page-info">本页 {pageCount} 条，共 {total} 条</div>
-
-                        <div className="group-pagination-controls" aria-label="项目组分页导航">
-                            <div className="group-page-size-group">
-                                <span className="group-pagination-label">每页</span>
-                                <div className="group-page-size-select">
-                                    <SimpleSelect
-                                        id="group-page-size"
-                                        value={String(pageSize)}
-                                        options={pageSizeOptions}
-                                        disabled={isFetching}
-                                        menuPlacement="up"
-                                        onChange={(value) => {
-                                            const parsed = Number(value);
-                                            if (Number.isFinite(parsed) && parsed !== pageSize) {
-                                                setPageSize(parsed);
-                                                setPage(1);
-                                            }
-                                        }}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="group-page-status">
-                                第 {page} / {totalPages} 页
-                            </div>
-
-                            <div className="group-page-actions">
-                                <Button
-                                    variant="outline" size="icon"
-                                    type="button"
-                                    aria-label="第一页"
-                                    aria-disabled={prevDisabled}
-                                    disabled={prevDisabled}
-                                    onClick={() => setPage(1)}
-                                >
-                                    <ChevronsLeft size={16} />
-                                </Button>
-                                <Button
-                                    variant="outline" size="icon"
-                                    type="button"
-                                    aria-label="上一页"
-                                    aria-disabled={prevDisabled}
-                                    disabled={prevDisabled}
-                                    onClick={() => setPage(Math.max(1, page - 1))}
-                                >
-                                    <ChevronLeft size={16} />
-                                </Button>
-                                <Button
-                                    variant="outline" size="icon"
-                                    type="button"
-                                    aria-label="下一页"
-                                    aria-disabled={nextDisabled}
-                                    disabled={nextDisabled}
-                                    onClick={() => setPage(Math.min(totalPages, page + 1))}
-                                >
-                                    <ChevronRight size={16} />
-                                </Button>
-                                <Button
-                                    variant="outline" size="icon"
-                                    type="button"
-                                    aria-label="最后一页"
-                                    aria-disabled={nextDisabled}
-                                    disabled={nextDisabled}
-                                    onClick={() => setPage(totalPages)}
-                                >
-                                    <ChevronsRight size={16} />
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                ) : null}
+                <ListPagination
+                    currentPage={page}
+                    isFetching={isFetching}
+                    onPageChange={setPage}
+                    onPageSizeChange={(nextPageSize) => {
+                        setPageSize(nextPageSize);
+                        setPage(1);
+                    }}
+                    pageSize={pageSize}
+                    total={total}
+                    ariaLabel="项目组分页导航"
+                />
             </section>
 
             <GroupForm

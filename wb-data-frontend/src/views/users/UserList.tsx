@@ -1,17 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-    ChevronLeft,
-    ChevronRight,
-    ChevronsLeft,
-    ChevronsRight,
-    Search,
-    UserPlus,
-} from 'lucide-react';
+import { Search, UserPlus } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
-import { SimpleSelect } from '../../components/SimpleSelect';
+import { ListPagination } from '../../components/ui/list/ListPagination';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import {
     changeUserStatus,
@@ -25,7 +18,6 @@ import { UserTable } from './UserTable';
 import {
     buildUserPageQueryKey,
     DEFAULT_PAGE_SIZE,
-    PAGE_SIZE_OPTIONS,
     parsePageParam,
     parsePageSizeParam,
 } from './config';
@@ -206,12 +198,11 @@ export default function UserList() {
 
     const queryError = pageQuery.error as { message?: string } | null;
     const errorMessage = queryError?.message ?? '';
-    const prevDisabled = currentPage === 1 || pageQuery.isFetching;
-    const nextDisabled = currentPage >= totalPages || pageQuery.isFetching;
-    const pageStart = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-    const pageEnd = total === 0 ? 0 : Math.min(currentPage * pageSize, total);
-    const pageCount = total === 0 ? 0 : pageEnd - pageStart + 1;
-    const pageSizeOptions = PAGE_SIZE_OPTIONS.map((value) => ({ label: `${value} 条`, value: String(value) }));
+
+    const handleCreate = () => {
+        setEditingUser(null);
+        setIsFormOpen(true);
+    };
 
     const handleFormSuccess = (details: UserFormSuccessDetails) => {
         setIsFormOpen(false);
@@ -263,10 +254,7 @@ export default function UserList() {
                 <div className="user-toolbar-actions">
                     <Button
                         variant="default"
-                        onClick={() => {
-                            setEditingUser(null);
-                            setIsFormOpen(true);
-                        }}
+                        onClick={handleCreate}
                         type="button"
                     >
                         <UserPlus size={16} />
@@ -279,89 +267,35 @@ export default function UserList() {
                 <UserTable
                     data={records}
                     errorMessage={errorMessage}
+                    hasActiveFilter={Boolean(keyword)}
+                    hasFooter={total > 0}
+                    isLoading={pageQuery.isLoading && !pageData}
                     isRefreshing={isRefreshing}
+                    onClearFilters={() => patchSearchParams((params) => {
+                        params.delete('keyword');
+                        params.delete('page');
+                    })}
+                    onCreate={handleCreate}
                     onEdit={(user) => {
                         setEditingUser(user);
                         setIsFormOpen(true);
                     }}
+                    onRetry={() => void pageQuery.refetch()}
                     onToggleStatus={handleToggleStatus}
                     onResetPassword={(user) => setResetPasswordUser(user)}
                     statusPendingId={pendingStatusId}
                 />
 
-                {total > 0 ? (
-                    <div className={`user-pagination user-pagination-admin ${suppressPaginationHover ? 'hover-locked' : ''}`}>
-                        <div className="user-page-info">本页 {pageCount} 条，共 {total} 条</div>
-
-                        <div className="user-pagination-controls" aria-label="用户分页导航">
-                            <div className="user-page-size-group">
-                                <span className="user-pagination-label">每页</span>
-                                <div className="user-page-size-select">
-                                    <SimpleSelect
-                                        id="user-page-size"
-                                        value={String(pageSize)}
-                                        options={pageSizeOptions}
-                                        disabled={pageQuery.isFetching}
-                                        menuPlacement="up"
-                                        onChange={(value) => {
-                                            const parsed = Number(value);
-                                            if (Number.isFinite(parsed) && parsed !== pageSize) {
-                                                handlePageSizeChange(parsed);
-                                            }
-                                        }}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="user-page-status">
-                                第 {currentPage} / {totalPages} 页
-                            </div>
-
-                            <div className="user-page-actions">
-                                <Button
-                                    variant="outline" size="icon"
-                                    type="button"
-                                    aria-label="第一页"
-                                    aria-disabled={prevDisabled}
-                                    disabled={prevDisabled}
-                                    onClick={() => handlePageChange(1)}
-                                >
-                                    <ChevronsLeft size={16} />
-                                </Button>
-                                <Button
-                                    variant="outline" size="icon"
-                                    type="button"
-                                    aria-label="上一页"
-                                    aria-disabled={prevDisabled}
-                                    disabled={prevDisabled}
-                                    onClick={() => handlePageChange(currentPage - 1)}
-                                >
-                                    <ChevronLeft size={16} />
-                                </Button>
-                                <Button
-                                    variant="outline" size="icon"
-                                    type="button"
-                                    aria-label="下一页"
-                                    aria-disabled={nextDisabled}
-                                    disabled={nextDisabled}
-                                    onClick={() => handlePageChange(currentPage + 1)}
-                                >
-                                    <ChevronRight size={16} />
-                                </Button>
-                                <Button
-                                    variant="outline" size="icon"
-                                    type="button"
-                                    aria-label="最后一页"
-                                    aria-disabled={nextDisabled}
-                                    disabled={nextDisabled}
-                                    onClick={() => handlePageChange(totalPages)}
-                                >
-                                    <ChevronsRight size={16} />
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                ) : null}
+                <ListPagination
+                    currentPage={currentPage}
+                    className={suppressPaginationHover ? 'hover-locked' : ''}
+                    isFetching={pageQuery.isFetching}
+                    onPageChange={handlePageChange}
+                    onPageSizeChange={handlePageSizeChange}
+                    pageSize={pageSize}
+                    total={total}
+                    ariaLabel="用户分页导航"
+                />
             </section>
 
             <UserForm

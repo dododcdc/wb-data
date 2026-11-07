@@ -23,6 +23,7 @@ import {
 } from '../../components/ui/dialog';
 import { getErrorMessage } from '../../utils/error';
 import { TIMEZONES } from '../offline/ScheduleUtils';
+import { ParameterPreviewGrid } from './ParameterPreviewGrid';
 
 interface ParameterPreviewDialogProps {
     open: boolean;
@@ -53,12 +54,6 @@ function timeRequirementsOf(definitions: ParameterDefinition[] | undefined) {
             && definition.timeBasis === 'EXECUTION_START_TIME'
         )),
     };
-}
-
-function renderValue(value: unknown) {
-    if (value == null) return 'null';
-    if (typeof value === 'string') return value;
-    return JSON.stringify(value);
 }
 
 function formatParameterRule(def?: ParameterDefinition, previewVal?: ParameterPreviewValue): string {
@@ -354,57 +349,18 @@ export default function ParameterPreviewDialog({
                         </div>
 
                         <div className="parameter-preview-table-wrap">
-                            <table className="parameter-preview-table">
-                                <thead>
-                                    <tr>
-                                        <th style={{ width: '32%' }}>参数名</th>
-                                        <th style={{ width: '38%' }}>取值规则</th>
-                                        <th style={{ width: '30%' }}>示例推演值</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {detailLoading && parameterItems.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={3} className="parameter-preview-loading-cell">
-                                                <LoaderCircle size={20} className="animate-spin text-muted-foreground" />
-                                                <span>正在推演参数值…</span>
-                                            </td>
-                                        </tr>
-                                    ) : filteredItems.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={3} className="parameter-preview-empty-row">
-                                                {keyword.trim() ? '未找到匹配的参数' : '该参数组暂无参数定义'}
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        filteredItems.map((item) => (
-                                            <tr key={item.key}>
-                                                <td>
-                                                    <div className="parameter-preview-key-cell">
-                                                        <code className="parameter-preview-key">{item.key}</code>
-                                                        {item.description ? (
-                                                            <span className="parameter-preview-desc">{item.description}</span>
-                                                        ) : null}
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <div className="parameter-preview-rule-cell">
-                                                        <span className={`parameter-preview-source-badge is-${item.valueSource.toLowerCase()}`}>
-                                                            {item.valueSource === 'CONSTANT' ? '固定值' : '运行时日期'}
-                                                        </span>
-                                                        <span className="parameter-preview-rule-text">{item.ruleText}</span>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <code className="parameter-preview-value">
-                                                        {item.value === undefined ? '待计算' : renderValue(item.value)}
-                                                    </code>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
+                            {detailLoading && parameterItems.length === 0 ? (
+                                <div className="parameter-preview-loading-cell">
+                                    <LoaderCircle size={20} className="animate-spin text-muted-foreground" />
+                                    <span>正在推演参数值…</span>
+                                </div>
+                            ) : filteredItems.length === 0 ? (
+                                <div className="parameter-preview-empty-row">
+                                    {keyword.trim() ? '未找到匹配的参数' : '该参数组暂无参数定义'}
+                                </div>
+                            ) : (
+                                <ParameterPreviewGrid items={filteredItems} />
+                            )}
                         </div>
                     </div>
 

@@ -13,6 +13,7 @@ import {
     updateParameterGroup,
 } from '../../api/parameterGroups';
 import { useAuthStore } from '../../utils/auth';
+import { TooltipProvider } from '../../components/ui/tooltip';
 import ParameterGroupPage from './ParameterGroupPage';
 
 vi.mock('../../api/parameterGroups', () => ({
@@ -161,11 +162,11 @@ describe('ParameterGroupPage', () => {
         });
 
         render(
-            <QueryClientProvider client={queryClient}>
+            <TooltipProvider><QueryClientProvider client={queryClient}>
                 <MemoryRouter>
                     <ParameterGroupPage />
                 </MemoryRouter>
-            </QueryClientProvider>,
+            </QueryClientProvider></TooltipProvider>,
         );
 
         expect(await screen.findByText('日常公共参数')).toBeTruthy();
@@ -185,11 +186,11 @@ describe('ParameterGroupPage', () => {
             defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
         });
         render(
-            <QueryClientProvider client={queryClient}>
+            <TooltipProvider><QueryClientProvider client={queryClient}>
                 <MemoryRouter>
                     <ParameterGroupPage />
                 </MemoryRouter>
-            </QueryClientProvider>,
+            </QueryClientProvider></TooltipProvider>,
         );
 
         fireEvent.click(await screen.findByRole('button', { name: '新建参数组' }));
@@ -224,11 +225,11 @@ describe('ParameterGroupPage', () => {
             defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
         });
         render(
-            <QueryClientProvider client={queryClient}>
+            <TooltipProvider><QueryClientProvider client={queryClient}>
                 <MemoryRouter>
                     <ParameterGroupPage />
                 </MemoryRouter>
-            </QueryClientProvider>,
+            </QueryClientProvider></TooltipProvider>,
         );
 
         fireEvent.click(await screen.findByRole('button', { name: '新建参数组' }));
@@ -255,11 +256,11 @@ describe('ParameterGroupPage', () => {
             defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
         });
         render(
-            <QueryClientProvider client={queryClient}>
+            <TooltipProvider><QueryClientProvider client={queryClient}>
                 <MemoryRouter>
                     <ParameterGroupPage />
                 </MemoryRouter>
-            </QueryClientProvider>,
+            </QueryClientProvider></TooltipProvider>,
         );
 
         fireEvent.click(await screen.findByRole('button', { name: '编辑日常公共参数' }));
@@ -278,11 +279,11 @@ describe('ParameterGroupPage', () => {
             defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
         });
         render(
-            <QueryClientProvider client={queryClient}>
+            <TooltipProvider><QueryClientProvider client={queryClient}>
                 <MemoryRouter>
                     <ParameterGroupPage />
                 </MemoryRouter>
-            </QueryClientProvider>,
+            </QueryClientProvider></TooltipProvider>,
         );
 
         fireEvent.click(await screen.findByRole('button', { name: '编辑日常公共参数' }));
@@ -315,11 +316,11 @@ describe('ParameterGroupPage', () => {
             defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
         });
         render(
-            <QueryClientProvider client={queryClient}>
+            <TooltipProvider><QueryClientProvider client={queryClient}>
                 <MemoryRouter>
                     <ParameterGroupPage />
                 </MemoryRouter>
-            </QueryClientProvider>,
+            </QueryClientProvider></TooltipProvider>,
         );
 
         fireEvent.click(await screen.findByRole('button', { name: '编辑日常公共参数' }));
@@ -353,11 +354,11 @@ describe('ParameterGroupPage', () => {
             defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
         });
         render(
-            <QueryClientProvider client={queryClient}>
+            <TooltipProvider><QueryClientProvider client={queryClient}>
                 <MemoryRouter>
                     <ParameterGroupPage />
                 </MemoryRouter>
-            </QueryClientProvider>,
+            </QueryClientProvider></TooltipProvider>,
         );
 
         fireEvent.click(await screen.findByRole('button', { name: '编辑日常公共参数' }));
@@ -381,11 +382,11 @@ describe('ParameterGroupPage', () => {
             defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
         });
         render(
-            <QueryClientProvider client={queryClient}>
+            <TooltipProvider><QueryClientProvider client={queryClient}>
                 <MemoryRouter>
                     <ParameterGroupPage />
                 </MemoryRouter>
-            </QueryClientProvider>,
+            </QueryClientProvider></TooltipProvider>,
         );
 
         fireEvent.click(await screen.findByRole('button', { name: '预览日常公共参数' }));
@@ -427,11 +428,11 @@ describe('ParameterGroupPage', () => {
             defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
         });
         render(
-            <QueryClientProvider client={queryClient}>
+            <TooltipProvider><QueryClientProvider client={queryClient}>
                 <MemoryRouter>
                     <ParameterGroupPage />
                 </MemoryRouter>
-            </QueryClientProvider>,
+            </QueryClientProvider></TooltipProvider>,
         );
 
         fireEvent.click(await screen.findByRole('button', { name: '预览日常公共参数' }));
@@ -466,11 +467,11 @@ describe('ParameterGroupPage', () => {
             defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
         });
         render(
-            <QueryClientProvider client={queryClient}>
+            <TooltipProvider><QueryClientProvider client={queryClient}>
                 <MemoryRouter>
                     <ParameterGroupPage />
                 </MemoryRouter>
-            </QueryClientProvider>,
+            </QueryClientProvider></TooltipProvider>,
         );
 
         fireEvent.click(await screen.findByRole('button', { name: '预览日常公共参数' }));
@@ -487,14 +488,15 @@ describe('ParameterGroupPage', () => {
             defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
         });
         render(
-            <QueryClientProvider client={queryClient}>
+            <TooltipProvider><QueryClientProvider client={queryClient}>
                 <MemoryRouter>
                     <ParameterGroupPage />
                 </MemoryRouter>
-            </QueryClientProvider>,
+            </QueryClientProvider></TooltipProvider>,
         );
 
-        fireEvent.click(await screen.findByRole('button', { name: '归档日常公共参数' }));
+        fireEvent.click(await screen.findByRole('button', { name: '日常公共参数的更多操作' }));
+        fireEvent.click(await screen.findByRole('menuitem', { name: '归档日常公共参数' }));
 
         expect(await screen.findByText('当前没有任务绑定该参数组。')).toBeTruthy();
 
@@ -512,14 +514,15 @@ describe('ParameterGroupPage', () => {
             defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
         });
         render(
-            <QueryClientProvider client={queryClient}>
+            <TooltipProvider><QueryClientProvider client={queryClient}>
                 <MemoryRouter>
                     <ParameterGroupPage />
                 </MemoryRouter>
-            </QueryClientProvider>,
+            </QueryClientProvider></TooltipProvider>,
         );
 
-        fireEvent.click(await screen.findByRole('button', { name: '归档日常公共参数' }));
+        fireEvent.click(await screen.findByRole('button', { name: '日常公共参数的更多操作' }));
+        fireEvent.click(await screen.findByRole('menuitem', { name: '归档日常公共参数' }));
 
         expect(await screen.findByText(/当前有/)).toBeTruthy();
         expect(screen.getByText('132')).toBeTruthy();

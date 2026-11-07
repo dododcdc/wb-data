@@ -5,6 +5,8 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
+import { DataList, type DataListColumn } from '../../components/ui/list/DataList';
+import { RowActions, type RowActionItem } from '../../components/ui/list/RowActions';
 import {
     Dialog,
     DialogContent,
@@ -25,6 +27,89 @@ import './LocalSettings.css';
 interface LocalSettingsTabProps {
     groupId: number;
     canEdit: boolean;
+}
+
+interface LocalBranchRow {
+    name: string;
+    trackingBranch?: string | null;
+}
+
+function LocalBranchTable({
+    branches,
+    activeBranch,
+    canEdit,
+    isLoading,
+    onCreate,
+    onDelete,
+}: {
+    branches: LocalBranchRow[];
+    activeBranch: string;
+    canEdit: boolean;
+    isLoading: boolean;
+    onCreate: () => void;
+    onDelete: (branch: string) => void;
+}) {
+    const columns: DataListColumn<LocalBranchRow>[] = [
+        {
+            key: 'branch',
+            header: '分支',
+            primary: true,
+            width: '48%',
+            cell: (branch) => (
+                <div className="local-settings-branch-meta">
+                    <GitBranch size={16} className="local-settings-branch-icon shrink-0" />
+                    <span className="local-settings-branch-name" title={branch.name}>{branch.name}</span>
+                    {branch.name === activeBranch ? <span className="local-settings-active-badge">当前分支</span> : null}
+                </div>
+            ),
+        },
+        {
+            key: 'tracking',
+            header: '远程跟踪',
+            mono: true,
+            width: '32%',
+            cell: (branch) => branch.trackingBranch ? `→ 已关联远程: ${branch.trackingBranch}` : '—',
+        },
+    ];
+
+    if (canEdit) {
+        columns.push({
+            key: 'actions',
+            header: '操作',
+            align: 'right',
+            width: 110,
+            cell: (branch) => {
+                if (branch.name === activeBranch || branch.name === 'main') {
+                    return <span className="wb-list-action-note">受保护</span>;
+                }
+                const actions: RowActionItem[] = [
+                    {
+                        key: 'delete',
+                        label: `删除 ${branch.name}`,
+                        icon: Trash2,
+                        tone: 'danger',
+                        onClick: () => onDelete(branch.name),
+                    },
+                ];
+                return <RowActions items={actions} maxVisible={0} menuLabel={`${branch.name}的更多操作`} />;
+            },
+        });
+    }
+
+    return (
+        <DataList
+            rows={branches}
+            columns={columns}
+            rowKey={(branch) => branch.name}
+            ariaLabel="本地分支列表"
+            minWidth="620px"
+            className="wb-local-branch-grid wb-list-compact"
+            state={isLoading ? 'loading' : branches.length === 0 ? 'empty' : 'ready'}
+            emptyTitle="暂无本地分支"
+            emptyDescription="新建一个本地开发分支。"
+            emptyAction={canEdit ? <Button type="button" size="sm" onClick={onCreate}>新建分支</Button> : undefined}
+        />
+    );
 }
 
 export default function LocalSettingsTab({ groupId, canEdit }: LocalSettingsTabProps) {
@@ -203,44 +288,14 @@ export default function LocalSettingsTab({ groupId, canEdit }: LocalSettingsTabP
                         )}
                     </div>
 
-                    <div className="local-settings-branch-list">
-                        {branches.map((b) => (
-                            <div 
-                                key={b.name} 
-                                className={`local-settings-branch-item ${b.name === activeBranch ? 'is-active' : ''}`}
-                            >
-                                <div className="local-settings-branch-meta">
-                                    <GitBranch size={16} className="local-settings-branch-icon shrink-0" />
-                                    <span 
-                                        className="local-settings-branch-name" 
-                                        title={b.name}
-                                    >
-                                        {b.name}
-                                    </span>
-                                    {b.name === activeBranch && (
-                                        <span className="local-settings-active-badge">当前分支</span>
-                                    )}
-                                    {b.trackingBranch && (
-                                        <span className="local-settings-tracking-text">
-                                            → 已关联远程: {b.trackingBranch}
-                                        </span>
-                                    )}
-                                </div>
-                                {canEdit && b.name !== activeBranch && b.name !== 'main' && (
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        title="删除"
-                                        className="local-settings-delete-btn text-destructive hover:bg-destructive/10"
-                                        onClick={() => setPendingDeleteBranch(b.name)}
-                                        type="button"
-                                    >
-                                        <Trash2 size={14} />
-                                    </Button>
-                                )}
-                            </div>
-                        ))}
-                    </div>
+                    <LocalBranchTable
+                        branches={branches}
+                        activeBranch={activeBranch}
+                        canEdit={canEdit}
+                        isLoading={statusLoading || branchesLoading}
+                        onCreate={() => setIsCreateOpen(true)}
+                        onDelete={setPendingDeleteBranch}
+                    />
                 </div>
             </div>
 

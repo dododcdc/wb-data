@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
 import LocalSettingsTab from './LocalSettingsTab';
+import { TooltipProvider } from '../../components/ui/tooltip';
 
 // Mock offline APIs
 const {
@@ -55,11 +56,11 @@ afterEach(() => {
 function renderWithQuery(ui: React.ReactElement) {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     return render(
-        <QueryClientProvider client={qc}>
+        <TooltipProvider><QueryClientProvider client={qc}>
             <MemoryRouter>
                 {ui}
             </MemoryRouter>
-        </QueryClientProvider>
+        </QueryClientProvider></TooltipProvider>
     );
 }
 
@@ -138,9 +139,10 @@ describe('LocalSettingsTab - permission controls', () => {
         expect(screen.getByRole('button', { name: /新建分支/ })).toBeTruthy();
         expect(screen.getByRole('button', { name: /合并分支/ })).toBeTruthy();
 
-        // Delete buttons are present (for non-active and non-main branches, i.e., 'dev' and 'feature/test')
-        const deleteBtns = screen.getAllByTitle('删除');
-        expect(deleteBtns.length).toBe(2);
+        expect(screen.getByRole('button', { name: 'dev的更多操作' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'feature/test的更多操作' })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'main的更多操作' })).toBeNull();
+        expect(screen.getByText('受保护')).toBeTruthy();
     });
 });
 
@@ -238,9 +240,8 @@ describe('LocalSettingsTab - branch actions', () => {
 
         renderWithQuery(<LocalSettingsTab groupId={1} canEdit={true} />);
 
-        // Get delete button for 'dev'
-        const deleteBtns = await screen.findAllByTitle('删除');
-        fireEvent.click(deleteBtns[0]); // 'dev' delete button
+        fireEvent.click(await screen.findByRole('button', { name: 'dev的更多操作' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: '删除 dev' }));
 
         const dialog = await screen.findByRole('dialog');
         expect(screen.getByText('确认删除分支')).toBeTruthy();

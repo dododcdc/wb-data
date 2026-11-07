@@ -1,20 +1,26 @@
-import { Cable, Database, Edit3, FileText, Power, Trash2 } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
+import { Cable, Database, Edit3, Power, Trash2 } from 'lucide-react';
 import { DataSource } from '../../api/datasource';
 import { formatConnection, formatTimestamp, getStatusLabel } from './config';
 import { Button } from '../../components/ui/button';
-import { DataTableShell } from '../../components/ui/data-table-shell';
+import { DataList, type DataListColumn } from '../../components/ui/list/DataList';
+import { RowActions, type RowActionItem } from '../../components/ui/list/RowActions';
+import { StatusPill } from '../../components/ui/list/StatusPill';
 
 interface DataSourceTableProps {
     data: DataSource[];
     canWrite: boolean;
     isRefreshing: boolean;
     errorMessage: string;
+    hasActiveFilter: boolean;
+    hasFooter: boolean;
     onView: (id: number) => void;
     onTest: (dataSource: DataSource) => void;
     onEdit: (id: number) => void;
     onDelete: (dataSource: DataSource) => void;
     onToggleStatus: (dataSource: DataSource) => void;
+    onCreate: () => void;
+    onClearFilters: () => void;
+    onRetry: () => void;
     deletePendingId: number | null;
     statusPendingId: number | null;
     testPendingId: number | null;
@@ -26,141 +32,146 @@ export function DataSourceTable(props: DataSourceTableProps) {
         canWrite,
         isRefreshing,
         errorMessage,
+        hasActiveFilter,
+        hasFooter,
         onView,
         onTest,
         onEdit,
         onDelete,
         onToggleStatus,
+        onCreate,
+        onClearFilters,
+        onRetry,
         deletePendingId,
         statusPendingId,
         testPendingId,
     } = props;
 
+    const getActions = (item: DataSource): RowActionItem[] => {
+        const actions: RowActionItem[] = [
+            {
+                key: 'test',
+                label: '测试连接',
+                icon: Cable,
+                pending: testPendingId === item.id,
+                onClick: () => onTest(item),
+            },
+        ];
+        if (canWrite) {
+            actions.push(
+                {
+                    key: 'edit',
+                    label: '编辑数据源',
+                    icon: Edit3,
+                    onClick: () => onEdit(item.id),
+                },
+                {
+                    key: 'status',
+                    label: item.status === 'ENABLED' ? '停用数据源' : '启用数据源',
+                    icon: Power,
+                    pending: statusPendingId === item.id,
+                    onClick: () => onToggleStatus(item),
+                },
+                {
+                    key: 'delete',
+                    label: '删除数据源',
+                    icon: Trash2,
+                    tone: 'danger',
+                    pending: deletePendingId === item.id,
+                    onClick: () => onDelete(item),
+                },
+            );
+        }
+        return actions;
+    };
+
+    const columns: DataListColumn<DataSource>[] = [
+        {
+            key: 'name',
+            header: '数据源',
+            primary: true,
+            width: '34%',
+            cell: (item) => {
+                const connection = formatConnection(item.host, item.port, item.databaseName);
+                return (
+                    <div className="wb-list-cell-stack">
+                        <button
+                            type="button"
+                            className="wb-list-primary-action"
+                            title={item.name}
+                            aria-label={`查看数据源 ${item.name}`}
+                            onClick={() => onView(item.id)}
+                        >
+                            {item.name}
+                        </button>
+                        <span className="wb-list-secondary" title={connection}>{connection}</span>
+                    </div>
+                );
+            },
+        },
+        {
+            key: 'type',
+            header: '类型',
+            width: 100,
+            cell: (item) => <span className={`type-badge ${item.type.toLowerCase()}`}>{item.type}</span>,
+        },
+        {
+            key: 'status',
+            header: '状态',
+            width: 110,
+            cell: (item) => (
+                <StatusPill tone={item.status === 'ENABLED' ? 'success' : 'neutral'}>
+                    {getStatusLabel(item.status)}
+                </StatusPill>
+            ),
+        },
+        {
+            key: 'owner',
+            header: '负责人',
+            width: 120,
+            cell: (item) => item.owner || '--',
+        },
+        {
+            key: 'updatedAt',
+            header: '更新时间',
+            mono: true,
+            width: 190,
+            cell: (item) => formatTimestamp(item.updatedAt),
+        },
+        {
+            key: 'actions',
+            header: '操作',
+            align: 'right',
+            width: 120,
+            cell: (item) => <RowActions items={getActions(item)} menuLabel={`${item.name}的更多操作`} />,
+        },
+    ];
+
+    const state = errorMessage && data.length === 0
+        ? 'error'
+        : data.length === 0
+            ? hasActiveFilter ? 'filtered-empty' : 'empty'
+            : 'ready';
+
     return (
-        <DataTableShell
-            dataLength={data.length}
+        <DataList
+            rows={data}
+            columns={columns}
+            rowKey={(item) => item.id}
+            ariaLabel="数据源列表"
+            minWidth="960px"
+            state={state}
             isRefreshing={isRefreshing}
             errorMessage={errorMessage}
-            emptyIcon={<Database size={36} />}
-            emptyTitle="还没有匹配的数据源"
-            emptyDescription="试着清空筛选条件，或者新建一个数据源作为第一条目录记录。"
-        >
-            <table className="datasource-table">
-                <thead>
-                    <tr>
-                        <th>数据源</th>
-                        <th>类型</th>
-                        <th>连接信息</th>
-                        <th>状态</th>
-                        <th className="datasource-owner-column">负责人</th>
-                        <th className="datasource-updated-column">更新时间</th>
-                        <th className="datasource-actions-column">操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {data.map((item) => (
-                        <tr key={item.id}>
-                            <td>
-                                <strong className="datasource-name-main">{item.name}</strong>
-                            </td>
-                            <td>
-                                <span className={`type-badge ${item.type.toLowerCase()}`}>{item.type}</span>
-                            </td>
-                            <td className="datasource-connection">{formatConnection(item.host, item.port, item.databaseName)}</td>
-                            <td className="datasource-status-cell">
-                                <span className={`datasource-status-pill ${item.status === 'ENABLED' ? 'enabled' : 'disabled'}`}>
-                                    <span className="datasource-status-dot" />
-                                    {getStatusLabel(item.status)}
-                                </span>
-                            </td>
-                            <td className="datasource-owner datasource-owner-column">{item.owner || '--'}</td>
-                            <td className="datasource-updated-at datasource-updated-column">{formatTimestamp(item.updatedAt)}</td>
-                            <td className="datasource-actions-column">
-                                <div className="datasource-actions">
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <Button
-                                                variant="outline"
-                                                size="icon"
-                                                onClick={() => onView(item.id)}
-                                                aria-label="详情"
-                                                type="button"
-                                            >
-                                                <FileText size={16} />
-                                            </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">详情</TooltipContent>
-                                    </Tooltip>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <Button
-                                                variant="outline"
-                                                size="icon"
-                                                disabled={testPendingId === item.id}
-                                                onClick={() => onTest(item)}
-                                                aria-label="测试连接"
-                                                type="button"
-                                            >
-                                                <Cable size={16} />
-                                            </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">测试连接</TooltipContent>
-                                    </Tooltip>
-                                    {canWrite && (
-                                        <>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        onClick={() => onEdit(item.id)}
-                                                        aria-label="编辑数据源"
-                                                        type="button"
-                                                    >
-                                                        <Edit3 size={16} />
-                                                    </Button>
-                                                </TooltipTrigger>
-                                                <TooltipContent className="tooltip-content" side="bottom">编辑数据源</TooltipContent>
-                                            </Tooltip>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        disabled={statusPendingId === item.id}
-                                                        onClick={() => onToggleStatus(item)}
-                                                        aria-label={item.status === 'ENABLED' ? '停用数据源' : '启用数据源'}
-                                                        type="button"
-                                                    >
-                                                        <Power size={16} />
-                                                    </Button>
-                                                </TooltipTrigger>
-                                                <TooltipContent className="tooltip-content" side="bottom">
-                                                    {item.status === 'ENABLED' ? '停用' : '启用'}
-                                                </TooltipContent>
-                                            </Tooltip>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <button
-                                                        className="datasource-icon-btn danger"
-                                                        disabled={deletePendingId === item.id}
-                                                        onClick={() => onDelete(item)}
-                                                        aria-label="删除数据源"
-                                                        type="button"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </TooltipTrigger>
-                                                <TooltipContent className="tooltip-content" side="bottom">删除数据源</TooltipContent>
-                                            </Tooltip>
-                                        </>
-                                    )}
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </DataTableShell>
+            hasFooter={hasFooter}
+            emptyIcon={<Database size={32} />}
+            emptyTitle="还没有数据源"
+            emptyDescription="新建一个数据源，作为第一条目录记录。"
+            emptyAction={canWrite ? <Button type="button" size="sm" onClick={onCreate}>新建数据源</Button> : undefined}
+            filteredEmptyTitle="没有匹配的数据源"
+            filteredEmptyDescription="当前搜索条件没有结果，清空后查看全部数据源。"
+            filteredEmptyAction={<Button type="button" size="sm" variant="outline" onClick={onClearFilters}>清空筛选</Button>}
+            errorAction={<Button type="button" size="sm" variant="outline" onClick={onRetry}>重试</Button>}
+        />
     );
 }

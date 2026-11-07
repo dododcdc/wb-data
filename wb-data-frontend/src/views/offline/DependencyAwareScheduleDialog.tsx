@@ -6,9 +6,11 @@ import {
     type OfflineSchedulePeriod,
 } from '../../api/offline';
 import { Button } from '../../components/ui/button';
+import { ListShell } from '../../components/ui/list/ListShell';
 import { getErrorMessage } from '../../utils/error';
 import { ScheduleDialog } from './ScheduleDialog';
 import { DEFAULT_PERIOD_PARTS, parsePeriodPartsFromCron } from './ScheduleUtils';
+import './DependencyDialog.css';
 
 export type DependencyAwareScheduleDialogProps = ComponentProps<typeof ScheduleDialog> & {
     groupId: number | null;
@@ -128,19 +130,21 @@ function OpenScheduleDialog({
                         <summary className="offline-schedule-dependents-summary">
                             下游任务（{dependents.length}）
                         </summary>
-                        <ul
-                            aria-label="下游任务"
-                            tabIndex={0}
-                            className="offline-schedule-dependents-list"
-                            style={{ maxHeight: 128 }}
-                        >
-                            {dependents.map((item) => (
-                                <li key={JSON.stringify([item.groupId, item.flowId, item.path])} className="offline-schedule-dependent-item">
-                                    <span className="offline-schedule-dependent-name">{item.groupName || `项目组 ${item.groupId}`} / {item.flowId}</span>
-                                    <span className="offline-schedule-dependent-path">{item.path}</span>
-                                </li>
-                            ))}
-                        </ul>
+                        <ListShell state="ready" className="offline-dependency-list-shell">
+                            <ul
+                                aria-label="下游任务"
+                                tabIndex={0}
+                                className="offline-schedule-dependents-list"
+                                style={{ maxHeight: 128 }}
+                            >
+                                {dependents.map((item) => (
+                                    <li key={JSON.stringify([item.groupId, item.flowId, item.path])} className="offline-schedule-dependent-item">
+                                        <span className="offline-schedule-dependent-name">{item.groupName || `项目组 ${item.groupId}`} / {item.flowId}</span>
+                                        <span className="offline-schedule-dependent-path">{item.path}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </ListShell>
                     </details>
                 </div>
             ) : null}

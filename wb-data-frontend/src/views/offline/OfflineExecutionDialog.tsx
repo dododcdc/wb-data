@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Copy, History, LoaderCircle, RefreshCcw, TerminalSquare, X } from 'lucide-react';
+import { Copy, History, LoaderCircle, RefreshCcw, ScrollText, TerminalSquare, X } from 'lucide-react';
 
 import type {
     OfflineExecutionDetail,
     OfflineExecutionListItem,
 } from '../../api/offline';
 import { Button } from '../../components/ui/button';
+import { ListShell } from '../../components/ui/list/ListShell';
+import { DataList, type DataListColumn } from '../../components/ui/list/DataList';
+import { RowActions, type RowActionItem } from '../../components/ui/list/RowActions';
+import { StatusPill } from '../../components/ui/list/StatusPill';
 import {
     Dialog,
     DialogContent,
@@ -17,7 +21,6 @@ import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import {
     getExecutionPresentation,
     getExecutionStatusLabel,
-    getTaskStatusIcon,
     isRunningStatus,
     isStoppable,
     isUserTaskId,
@@ -65,6 +68,221 @@ interface OfflineExecutionDialogProps {
     onSelectExecution: (executionId: string) => void;
     onStopAll: () => void;
     onRequestedByFilterChange: (requestedBy: number | null) => void;
+}
+
+interface OfflineExecutionListProps {
+    executions: OfflineExecutionListItem[];
+    listBusy: boolean;
+    activeExecutionId: string | null;
+    onSelectExecution: (executionId: string) => void;
+}
+
+export function OfflineExecutionList({
+    executions,
+    listBusy,
+    activeExecutionId,
+    onSelectExecution,
+}: OfflineExecutionListProps) {
+    return (
+        <ListShell
+            state={listBusy && executions.length === 0 ? 'loading' : 'ready'}
+            isRefreshing={listBusy && executions.length > 0}
+            className="offline-execution-list-shell"
+        >
+            {listBusy && executions.length === 0 ? (
+                <div className="offline-execution-skeleton" role="status">
+                    <span className="sr-only">正在加载执行记录</span>
+                    {Array.from({ length: 4 }).map((_, index) => (
+                        <div className="offline-execution-skeleton-row" key={index} aria-hidden="true">
+                            <span className="skeleton-line offline-execution-skeleton-dot" />
+                            <span className="skeleton-line offline-execution-skeleton-title" />
+                        </div>
+                    ))}
+                </div>
+            ) : executions.map((item) => {
+                const presentation = getExecutionPresentation(item.status);
+                return (
+                    <button
+                        key={item.executionId}
+                        type="button"
+                        className={`offline-execution-row is-${presentation.dotTone}${item.executionId === activeExecutionId ? ' is-active' : ''}`}
+                        aria-pressed={item.executionId === activeExecutionId}
+                        onClick={() => onSelectExecution(item.executionId)}
+                    >
+                        <div className="offline-execution-row-main">
+                            <div className="offline-execution-row-title">
+                                <span className={`offline-execution-dot is-${presentation.dotTone}`} aria-hidden="true" />
+                                <strong>{item.displayName || `ID: ${item.executionId.slice(-8)}`}</strong>
+                            </div>
+                            <div className="offline-execution-row-meta">
+                                <span className={`offline-execution-row-status is-${presentation.dotTone}`}>
+                                    {getExecutionStatusLabel(item.status)}
+                                </span>
+                                <span className="offline-execution-row-meta-item">
+                                    {formatDateTime(item.startDate)}
+                                </span>
+                            </div>
+                        </div>
+                    </button>
+                );
+            })}
+        </ListShell>
+    );
+}
+
+interface OfflineExecutionParametersProps {
+    parameters: OfflineExecutionDetail['parameters'];
+}
+
+export function OfflineExecutionParameters({ parameters }: OfflineExecutionParametersProps) {
+    const columns: DataListColumn<OfflineExecutionDetail['parameters'][number]>[] = [
+        {
+            key: 'key',
+            header: '参数',
+            primary: true,
+            mono: true,
+            width: '30%',
+            cell: (param) => <span className="offline-param-key">:{param.key}</span>,
+        },
+        {
+            key: 'value',
+            header: '值',
+            truncate: true,
+            width: '45%',
+            cell: (param) => {
+                const value = param.value === null ? '—' : param.value === '' ? '""' : param.value;
+                return <span className="offline-param-val" title={param.value ?? '""'}>{value}</span>;
+            },
+        },
+        {
+            key: 'source',
+            header: '来源',
+            width: '25%',
+            cell: (param) => (
+                <StatusPill
+                    tone={param.source === 'MANUAL_OVERRIDE' ? 'warning' : param.source === 'SYSTEM_TIME' ? 'info' : 'neutral'}
+                    dot={false}
+                >
+                    {param.source === 'MANUAL_OVERRIDE' ? '手动覆盖' : param.source === 'SYSTEM_TIME' ? '时间' : '固定值'}
+                </StatusPill>
+            ),
+        },
+    ];
+
+    return (
+        <DataList
+            rows={parameters}
+            columns={columns}
+            rowKey={(param) => param.key}
+            ariaLabel="执行参数快照"
+            minWidth="420px"
+            className="wb-offline-params-grid wb-list-compact"
+        />
+    );
+}
+
+interface OfflineExecutionTaskTableProps {
+    tasks: OfflineExecutionDetail['taskRuns'];
+    onOpenLogs: (taskId: string) => void;
+}
+
+export function OfflineExecutionTaskTable({ tasks, onOpenLogs }: OfflineExecutionTaskTableProps) {
+    const columns: DataListColumn<OfflineExecutionDetail['taskRuns'][number]>[] = [
+        {
+            key: 'node',
+            header: '节点',
+            primary: true,
+            width: '22%',
+            cell: (task) => (
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <strong>{task.taskId}</strong>
+                    </TooltipTrigger>
+                    <TooltipContent>{task.taskId}</TooltipContent>
+                </Tooltip>
+            ),
+        },
+        {
+            key: 'start',
+            header: '开始时间',
+            mono: true,
+            width: 110,
+            cell: (task) => task.startDate ? formatDateTime(task.startDate).split(' ')[1] : '—',
+        },
+        {
+            key: 'end',
+            header: '结束时间',
+            mono: true,
+            width: 110,
+            cell: (task) => task.endDate ? formatDateTime(task.endDate).split(' ')[1] : '—',
+        },
+        {
+            key: 'duration',
+            header: '耗时',
+            mono: true,
+            align: 'right',
+            width: 90,
+            cell: (task) => {
+                const running = isRunningStatus(task.status);
+                const duration = task.startDate && task.endDate
+                    ? new Date(task.endDate).getTime() - new Date(task.startDate).getTime()
+                    : task.startDate && running
+                        ? Date.now() - new Date(task.startDate).getTime()
+                        : null;
+                return formatDuration(duration);
+            },
+        },
+        {
+            key: 'progress',
+            header: '进度',
+            width: 100,
+            cell: (task) => (
+                <div className="task-progress-mini">
+                    {task.status === 'SUCCESS'
+                        ? <span className="progress-value is-done">100%</span>
+                        : isRunningStatus(task.status)
+                            ? <div className="progress-bar-tiny"><div className="progress-bar-inner is-running" /></div>
+                            : <span className="progress-value">0%</span>}
+                </div>
+            ),
+        },
+        {
+            key: 'status',
+            header: '状态',
+            width: 110,
+            cell: (task) => {
+                const tone = getExecutionPresentation(task.status).dotTone;
+                return (
+                    <StatusPill tone={tone === 'success' ? 'success' : tone === 'failed' ? 'danger' : tone === 'running' ? 'info' : 'neutral'}>
+                        {getExecutionStatusLabel(task.status)}
+                    </StatusPill>
+                );
+            },
+        },
+        {
+            key: 'actions',
+            header: '操作',
+            align: 'right',
+            width: 70,
+            cell: (task) => {
+                const actions: RowActionItem[] = [
+                    { key: 'logs', label: '日志', icon: ScrollText, onClick: () => onOpenLogs(task.taskId) },
+                ];
+                return <RowActions items={actions} maxVisible={1} />;
+            },
+        },
+    ];
+
+    return (
+        <DataList
+            rows={tasks}
+            columns={columns}
+            rowKey={(task) => task.taskId}
+            ariaLabel="节点执行表"
+            minWidth="920px"
+            className="wb-offline-task-grid wb-list-compact"
+        />
+    );
 }
 
 export function OfflineExecutionDialog({
@@ -157,54 +375,25 @@ export function OfflineExecutionDialog({
                 </div>
 
                 {!loading && !listBusy && executions.length === 0 ? (
-                    <div className="offline-execution-empty-state">
-                        <History size={44} strokeWidth={1.2} aria-hidden="true" />
-                        <strong>还没有执行记录</strong>
-                        <p>点击画布工具栏的「执行」运行当前任务</p>
-                    </div>
+                    <ListShell
+                        state="empty"
+                        className="offline-execution-empty-shell"
+                        emptyIcon={<History size={36} strokeWidth={1.2} aria-hidden="true" />}
+                        emptyTitle="还没有执行记录"
+                        emptyDescription="点击画布工具栏的「执行」运行当前任务"
+                    />
                 ) : (
                 <div className="offline-execution-layout">
                     <section className="offline-execution-list">
-                        {listBusy ? (
-                            <div className="offline-execution-skeleton" role="status">
-                                <span className="sr-only">正在加载执行记录</span>
-                                {Array.from({ length: 4 }).map((_, index) => (
-                                    <div className="offline-execution-skeleton-row" key={index} aria-hidden="true">
-                                        <span className="skeleton-line offline-execution-skeleton-dot" />
-                                        <span className="skeleton-line offline-execution-skeleton-title" />
-                                    </div>
-                                ))}
-                            </div>
-                        ) : loading ? (
-                            <div className="offline-list-placeholder" aria-hidden="true" />
-                        ) : (
-                            executions.map((item) => {
-                                const presentation = getExecutionPresentation(item.status);
-                                return (
-                                    <button
-                                        key={item.executionId}
-                                        type="button"
-                                        className={`offline-execution-row is-${presentation.dotTone}${item.executionId === activeExecutionId ? ' is-active' : ''}`}
-                                        onClick={() => {
-                                            setLogTaskId(null);
-                                            onSelectExecution(item.executionId);
-                                        }}
-                                    >
-                                        <div className="offline-execution-row-main">
-                                            <div className="offline-execution-row-title">
-                                                <span className={`offline-execution-dot is-${presentation.dotTone}`} aria-hidden="true" />
-                                                <strong>{item.displayName || `ID: ${item.executionId.slice(-8)}`}</strong>
-                                            </div>
-                                            <div className="offline-execution-row-meta">
-                                                <span className="offline-execution-row-meta-item">
-                                                    {formatDateTime(item.startDate)}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </button>
-                                );
-                            })
-                        )}
+                        <OfflineExecutionList
+                            executions={executions}
+                            listBusy={listBusy}
+                            activeExecutionId={activeExecutionId}
+                            onSelectExecution={(executionId) => {
+                                setLogTaskId(null);
+                                onSelectExecution(executionId);
+                            }}
+                        />
                     </section>
 
                     <section className="offline-execution-detail">
@@ -263,23 +452,7 @@ export function OfflineExecutionDialog({
                                             <span>执行参数</span>
                                             <em>{detail.parameters.length} 个参数</em>
                                         </div>
-                                        <div className="offline-detail-params-list">
-                                            {detail.parameters.map((param) => (
-                                                <div key={param.key} className="offline-detail-param-item">
-                                                    <span className="offline-param-key">:{param.key}</span>
-                                                    <span className="offline-param-val" title={param.value ?? '""'}>
-                                                        {param.value === null ? '—' : param.value === '' ? '""' : param.value}
-                                                    </span>
-                                                    <span className={`offline-param-source is-${param.source.toLowerCase()}`}>
-                                                        {param.source === 'MANUAL_OVERRIDE'
-                                                            ? '手动覆盖'
-                                                            : param.source === 'SYSTEM_TIME'
-                                                                ? '时间'
-                                                                : '固定值'}
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
+                                        <OfflineExecutionParameters parameters={detail.parameters} />
                                     </div>
                                 )}
 
@@ -289,83 +462,7 @@ export function OfflineExecutionDialog({
                                             <span>节点执行详情</span>
                                             <em>{visibleTaskRuns.length} 个节点</em>
                                         </div>
-                                        <div className="offline-detail-tasks-list">
-                                            <div className="offline-tasks-list-thead">
-                                                <div className="col-node">节点</div>
-                                                <div className="col-time">开始时间</div>
-                                                <div className="col-time">结束时间</div>
-                                                <div className="col-duration">耗时</div>
-                                                <div className="col-progress">进度</div>
-                                                <div className="col-status">状态</div>
-                                                <div className="col-actions"></div>
-                                            </div>
-                                            <div className="offline-tasks-list-tbody">
-                                                {visibleTaskRuns.map((task) => {
-                                                    const StatusIcon = getTaskStatusIcon(task.status);
-                                                    const isRunning = isRunningStatus(task.status);
-                                                    const duration = task.startDate && task.endDate
-                                                        ? new Date(task.endDate).getTime() - new Date(task.startDate).getTime()
-                                                        : task.startDate && isRunning
-                                                            ? Date.now() - new Date(task.startDate).getTime()
-                                                            : null;
-
-                                                    return (
-                                                        <div key={task.taskId} className="offline-tasks-list-row">
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <div className="col-node">
-                                                                        <strong>{task.taskId}</strong>
-                                                                    </div>
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>{task.taskId}</TooltipContent>
-                                                            </Tooltip>
-                                                            <div className="col-time">
-                                                                {task.startDate ? formatDateTime(task.startDate).split(' ')[1] : '—'}
-                                                            </div>
-                                                            <div className="col-time">
-                                                                {task.endDate ? formatDateTime(task.endDate).split(' ')[1] : '—'}
-                                                            </div>
-                                                            <div className="col-duration">
-                                                                {formatDuration(duration)}
-                                                            </div>
-                                                            <div className="col-progress">
-                                                                <div className="task-progress-mini">
-                                                                    {task.status === 'SUCCESS' ? (
-                                                                        <span className="progress-value is-done">100%</span>
-                                                                    ) : isRunning ? (
-                                                                        <div className="progress-bar-tiny">
-                                                                            <div className="progress-bar-inner is-running" />
-                                                                        </div>
-                                                                    ) : (
-                                                                        <span className="progress-value">0%</span>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                            <div className="col-status">
-                                                                <div className={`offline-status-badge is-${task.status.toLowerCase()}`}>
-                                                                    <StatusIcon
-                                                                        size={12}
-                                                                        className={`offline-task-icon${isRunning ? ' is-animated' : ''}`}
-                                                                    />
-                                                                    <span>{getExecutionStatusLabel(task.status)}</span>
-                                                                </div>
-                                                            </div>
-                                                            <div className="col-actions">
-                                                                <Button
-                                                                    type="button"
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    style={{ height: '24px', padding: '0 8px', fontSize: '0.72rem' }}
-                                                                    onClick={() => setLogTaskId(task.taskId)}
-                                                                >
-                                                                    日志
-                                                                </Button>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
+                                        <OfflineExecutionTaskTable tasks={visibleTaskRuns} onOpenLogs={setLogTaskId} />
                                     </div>
                                 )}
                             </div>

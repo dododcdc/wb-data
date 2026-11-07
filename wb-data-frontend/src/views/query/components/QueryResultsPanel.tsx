@@ -11,6 +11,7 @@ import { buildQueryFeedback } from '../feedbackUtils';
 import type { SavedQueryResult, ExportState } from '../types';
 import type { QueryExportTask } from '../../../api/query';
 import type { QueryResult } from '../../../api/query';
+import { QueryResultGrid } from './QueryResultGrid';
 export interface QueryResultsPanelProps {
     resultCollapsed: boolean;
     toggleResultPanel: () => void;
@@ -369,31 +370,7 @@ export function QueryResultsPanel({
                                     <span>当前仅展示前 {displayedResult.rowLimit} 行结果。大表查询建议显式添加 <code>LIMIT</code>。</span>
                                 </div>
                             ) : null}
-                            <table className="results-table">
-                                <thead>
-                                    <tr>
-                                        {displayedResult?.columns.map(col => (
-                                            <th key={col.name}>
-                                                <div className="th-content">
-                                                    <span className="th-name">{col.name}</span>
-                                                    <span className="th-type">{col.type}</span>
-                                                </div>
-                                            </th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {displayedResult?.rows.map((row, idx) => (
-                                        <tr key={idx}>
-                                            {displayedResult.columns.map(col => (
-                                                <td key={col.name} title={String(row[col.name] ?? '')}>
-                                                    {String(row[col.name] ?? '')}
-                                                </td>
-                                            ))}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                            <QueryResultGrid result={displayedResult!} />
                         </>
                     ) : !(activeResultTab === 'current' && queryResultLoadingVisible) ? (
                         <div className={`result-feedback-card is-${queryFeedback.state}`.trim()}>

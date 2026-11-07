@@ -1,16 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-    ChevronLeft,
-    ChevronRight,
-    ChevronsLeft,
-    ChevronsRight,
-    ExternalLink,
-    RefreshCw,
-    RotateCcw,
-    Search,
-} from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { RefreshCw, Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { getOfflineRepoStatus } from '../../api/offline';
 import {
     listOperationsExecutions,
@@ -20,12 +11,14 @@ import {
 } from '../../api/operations';
 import { SimpleSelect } from '../../components/SimpleSelect';
 import { Button } from '../../components/ui/button';
+import { ListPagination } from '../../components/ui/list/ListPagination';
+import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
-import { formatBrowserDateTime, formatLocalDateTime, parseLocalDateTime } from '../../lib/dateTime';
+import { formatLocalDateTime, parseLocalDateTime } from '../../lib/dateTime';
 import { useAuthStore } from '../../utils/auth';
-import { getExecutionStatusLabel } from '../../components/execution/executionPresentation';
 import './OperationsCenter.css';
 import { OperationsRerunDialog } from './OperationsRerunDialog';
+import { OperationsTable } from './OperationsTable';
 import { OperationsTimeFilter } from './OperationsTimeFilter';
 
 const ALL_BRANCHES = '__all_branches__';
@@ -45,22 +38,6 @@ const STATUS_OPTIONS = [
     { value: 'CANCELLED', label: '已取消' },
     { value: 'KILLED', label: '已停止' },
 ];
-
-function formatDuration(durationMs: number | null) {
-    if (durationMs == null) return '—';
-    const seconds = Math.max(0, Math.round(durationMs / 1000));
-    if (seconds < 60) return `${seconds}s`;
-    const minutes = Math.floor(seconds / 60);
-    const rest = seconds % 60;
-    return `${minutes}m ${rest}s`;
-}
-
-function statusClassName(status: string) {
-    if (status === 'SUCCESS') return 'operations-status operations-status--success';
-    if (status === 'FAILED' || status === 'CANCELLED' || status === 'KILLED') return 'operations-status operations-status--failed';
-    if (status === 'RUNNING' || status === 'RETRYING') return 'operations-status operations-status--running';
-    return 'operations-status operations-status--neutral';
-}
 
 function normalizeDateTimeInput(value: string) {
     return parseLocalDateTime(value)?.toISOString() ?? null;
@@ -94,149 +71,6 @@ function rememberPageSize(pageSize: number) {
     } catch {
         // Ignore storage failures; pagination should still work for this session.
     }
-}
-
-function DetailLink({ row }: { row: OperationsExecutionListItem }) {
-    return (
-        <Link
-            className="operations-icon-action"
-            to={`/operations/instances?execution=${encodeURIComponent(row.id)}`}
-            aria-label={`查看 ${row.flowId} 详情`}
-            title="查看详情"
-        >
-            <ExternalLink size={15} />
-        </Link>
-    );
-}
-
-function OperationsPagination({
-    total,
-    currentPage,
-    pageSize,
-    totalPages,
-    isFetching,
-    pageCount,
-    onPageChange,
-    onPageSizeChange,
-}: {
-    total: number;
-    currentPage: number;
-    pageSize: number;
-    totalPages: number;
-    isFetching: boolean;
-    pageCount: number;
-    onPageChange: (page: number) => void;
-    onPageSizeChange: (pageSize: number) => void;
-}) {
-    if (total === 0) return null;
-
-    const effectiveTotalPages = Math.max(1, totalPages);
-    const prevDisabled = currentPage <= 1 || isFetching;
-    const nextDisabled = currentPage >= effectiveTotalPages || isFetching;
-    const pageSizeOptions = PAGE_SIZE_OPTIONS.map((value) => ({
-        label: `${value} 条`,
-        value: String(value),
-    }));
-
-    const goToPage = (page: number) => {
-        if (page < 1 || page > effectiveTotalPages || page === currentPage || isFetching) return;
-        onPageChange(page);
-    };
-
-    return (
-        <div className="operations-pagination">
-            <div className="operations-page-info">本页 {pageCount} 条，共 {total} 条</div>
-
-            <div className="operations-pagination-controls" aria-label="运行记录分页导航">
-                <div className="operations-page-size-group">
-                    <span className="operations-pagination-label">每页</span>
-                    <div className="operations-page-size-select">
-                        <SimpleSelect
-                            id="operations-page-size"
-                            value={String(pageSize)}
-                            options={pageSizeOptions}
-                            disabled={isFetching}
-                            menuPlacement="up"
-                            onChange={(value) => {
-                                const parsed = Number(value);
-                                if (Number.isFinite(parsed) && parsed !== pageSize) {
-                                    onPageSizeChange(parsed);
-                                }
-                            }}
-                        />
-                    </div>
-                </div>
-
-                <div className="operations-page-status">
-                    第 {currentPage} / {effectiveTotalPages} 页
-                </div>
-
-                <div className="operations-page-actions">
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        aria-label="第一页"
-                        aria-disabled={prevDisabled}
-                        disabled={prevDisabled}
-                        onClick={() => goToPage(1)}
-                    >
-                        <ChevronsLeft size={16} />
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        aria-label="上一页"
-                        aria-disabled={prevDisabled}
-                        disabled={prevDisabled}
-                        onClick={() => goToPage(currentPage - 1)}
-                    >
-                        <ChevronLeft size={16} />
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        aria-label="下一页"
-                        aria-disabled={nextDisabled}
-                        disabled={nextDisabled}
-                        onClick={() => goToPage(currentPage + 1)}
-                    >
-                        <ChevronRight size={16} />
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        aria-label="最后一页"
-                        aria-disabled={nextDisabled}
-                        disabled={nextDisabled}
-                        onClick={() => goToPage(effectiveTotalPages)}
-                    >
-                        <ChevronsRight size={16} />
-                    </Button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function LoadingRows() {
-    return (
-        <div className="operations-loading" role="status" aria-label="正在加载运行记录">
-            <span className="sr-only">正在加载运行记录</span>
-            {Array.from({ length: 5 }).map((_, index) => (
-                <div className="operations-loading-row" key={index} aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                    <span />
-                    <span />
-                </div>
-            ))}
-        </div>
-    );
 }
 
 export default function OperationsCenter() {
@@ -339,11 +173,10 @@ export default function OperationsCenter() {
 
     const rows = executionsQuery.data?.executions ?? [];
     const total = executionsQuery.data?.total ?? rows.length;
-    const totalPages = executionsQuery.data?.totalPages ?? Math.max(1, Math.ceil(total / pageSize) || 1);
     const displayPage = executionsQuery.data?.page ?? currentPage;
     const branchReady = groupId != null && branchInitializedGroupId === groupId;
     const isInitialLoading = repoStatusQuery.isLoading || !branchReady || executionsQuery.isLoading;
-    const isRefreshing = executionsQuery.isFetching && rows.length > 0;
+    const isRefreshing = useDelayedBusy(executionsQuery.isFetching && rows.length > 0, { delayMs: 140, minVisibleMs: 320 });
 
     const handleResetFilters = () => {
         const now = new Date(Date.now());
@@ -452,106 +285,30 @@ export default function OperationsCenter() {
                     </div>
                 </section>
 
-                {isInitialLoading ? (
-                    <LoadingRows />
-                ) : executionsQuery.isError ? (
-                    <div className="operations-error" role="alert">运行记录加载失败</div>
-                ) : rows.length === 0 ? (
-                    <div className="operations-empty">暂无运行记录。</div>
-                ) : (
-                    <>
-                    <section className="operations-table" aria-label="运行记录">
-                        <table>
-                            <colgroup>
-                                <col className="operations-col-task" />
-                                <col className="operations-col-branch" />
-                                <col className="operations-col-status" />
-                                <col className="operations-col-time" />
-                                <col className="operations-col-time" />
-                                <col className="operations-col-time" />
-                                <col className="operations-col-duration" />
-                                <col className="operations-col-actions" />
-                            </colgroup>
-                            <thead>
-                                <tr>
-                                    <th>任务</th>
-                                    <th>分支</th>
-                                    <th>状态</th>
-                                    <th>计划执行时间</th>
-                                    <th>开始时间</th>
-                                    <th>结束时间</th>
-                                    <th>耗时</th>
-                                    <th>操作</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {rows.map((row) => (
-                                    <tr
-                                        key={row.id}
-                                        className="operations-row"
-                                        tabIndex={0}
-                                        aria-label={`查看 ${row.flowId} 执行详情`}
-                                        onClick={() => openExecutionDetail(row.id)}
-                                        onKeyDown={(event) => {
-                                            if (event.key !== 'Enter' && event.key !== ' ') return;
-                                            event.preventDefault();
-                                            openExecutionDetail(row.id);
-                                        }}
-                                    >
-                                        <td>
-                                            <span className="operations-flow-cell">
-                                                <span className="operations-flow" title={row.flowId}>{row.flowId}</span>
-                                                {row.rerun && <span className="operations-rerun-badge">重跑</span>}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <span className="operations-branch" title={row.branch}>{row.branch}</span>
-                                        </td>
-                                        <td>
-                                            <span className={statusClassName(row.status)}>{getExecutionStatusLabel(row.status)}</span>
-                                        </td>
-                                        <td className="operations-time">{formatBrowserDateTime(row.plannedAt)}</td>
-                                        <td className="operations-time">{formatBrowserDateTime(row.startDate)}</td>
-                                        <td className="operations-time">{formatBrowserDateTime(row.endDate)}</td>
-                                        <td className="operations-time">{formatDuration(row.durationMs)}</td>
-                                        <td>
-                                            <div
-                                                className="operations-actions"
-                                                onClick={(event) => event.stopPropagation()}
-                                                onKeyDown={(event) => event.stopPropagation()}
-                                            >
-                                                <DetailLink row={row} />
-                                                {row.rerunnable && canRerun ? (
-                                                    <button
-                                                        type="button"
-                                                        className="operations-icon-action"
-                                                        aria-label={`重跑 ${row.flowId}`}
-                                                        title={`重跑 ${row.flowId}`}
-                                                        disabled={pendingRerunId === row.id}
-                                                        onClick={() => setRerunTarget(row)}
-                                                    >
-                                                        <RotateCcw size={14} />
-                                                    </button>
-                                                ) : null}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </section>
-                    <OperationsPagination
-                        total={total}
-                        currentPage={displayPage}
-                        pageSize={pageSize}
-                        totalPages={totalPages}
-                        isFetching={executionsQuery.isFetching}
-                        pageCount={rows.length}
-                        onPageChange={setCurrentPage}
-                        onPageSizeChange={handlePageSizeChange}
-                    />
-                    </>
-                )}
+                <OperationsTable
+                    rows={rows}
+                    canRerun={canRerun}
+                    errorMessage={executionsQuery.error instanceof Error ? executionsQuery.error.message : ''}
+                    hasFooter={total > 0}
+                    isLoading={isInitialLoading}
+                    isRefreshing={isRefreshing}
+                    pendingRerunId={pendingRerunId}
+                    onOpenDetail={openExecutionDetail}
+                    onRerun={setRerunTarget}
+                    onResetFilters={handleResetFilters}
+                    onRetry={() => void executionsQuery.refetch()}
+                />
+                <ListPagination
+                    total={total}
+                    currentPage={displayPage}
+                    pageSize={pageSize}
+                    isFetching={executionsQuery.isFetching}
+                    onPageChange={setCurrentPage}
+                    onPageSizeChange={handlePageSizeChange}
+                    pageSizeOptions={PAGE_SIZE_OPTIONS}
+                    selectId="operations-page-size"
+                    ariaLabel="运行记录分页导航"
+                />
             </div>
             <OperationsRerunDialog
                 open={rerunTarget != null}

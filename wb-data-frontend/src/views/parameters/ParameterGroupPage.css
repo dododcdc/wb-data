@@ -32,23 +32,6 @@
     margin-left: auto;
 }
 
-.parameter-pagination select {
-    min-height: 38px;
-    padding: 0 30px 0 10px;
-    border: 1px solid var(--color-border);
-    border-radius: 9px;
-    outline: 0;
-    background: var(--color-bg-primary);
-    color: var(--color-text-secondary);
-    font: inherit;
-    font-size: 0.84rem;
-}
-
-.parameter-pagination select:focus {
-    border-color: var(--color-focus);
-    box-shadow: 0 0 0 3px var(--color-focus-glow);
-}
-
 .parameter-page-error {
     margin: -7px 0 0;
     color: var(--color-error);
@@ -86,190 +69,10 @@
     font: inherit;
 }
 
-.parameter-table-shell {
-    min-height: 240px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--admin-list-radius, 12px);
-    background: var(--admin-list-board-bg);
-    overflow: hidden;
-}
-
-.parameter-first-empty {
-    display: grid;
-    min-height: 200px;
-    place-items: center;
-    align-content: center;
-    gap: 6px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--admin-list-radius, 12px);
-    background: var(--admin-list-board-bg);
-    color: var(--color-text-muted);
-    text-align: center;
-    padding: 28px 20px;
-}
-
-.parameter-first-empty > svg {
-    width: 26px;
-    height: 26px;
-    margin-bottom: 4px;
-    color: var(--color-accent);
-}
-
-.parameter-first-empty h2,
-.parameter-first-empty p {
-    margin: 0;
-}
-
-.parameter-first-empty h2 {
-    color: var(--color-text-primary);
-    font-size: 1rem;
-    font-weight: 650;
-}
-
-.parameter-first-empty p {
-    max-width: 380px;
-    font-size: 0.84rem;
-}
-
-.parameter-first-empty > button {
-    margin-top: 10px;
-}
-
 .parameter-status-select {
     width: 132px;
     height: 36px;
     background: var(--admin-list-board-bg);
-}
-
-.parameter-table {
-    width: 100%;
-    min-width: 820px;
-    border-collapse: collapse;
-}
-
-.parameter-table th {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--color-border);
-    background: var(--admin-list-header-bg, var(--color-bg-secondary));
-    color: var(--color-text-muted);
-    font-size: var(--admin-list-th-size, 0.8125rem);
-    font-weight: 600;
-    text-align: left;
-}
-
-.parameter-table td {
-    height: var(--admin-list-row-height, 46px);
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--color-border-subtle);
-    color: var(--color-text-secondary);
-    font-size: var(--admin-list-td-size, 0.875rem);
-    vertical-align: middle;
-}
-
-.parameter-table td:not(.parameter-actions) {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.parameter-table tbody tr:last-child td {
-    border-bottom: none;
-}
-
-.parameter-table tbody tr:hover {
-    background: var(--color-bg-hover);
-}
-
-.parameter-name-cell {
-    display: grid;
-    gap: 2px;
-}
-
-.parameter-name-cell strong {
-    color: var(--color-text-primary);
-    font-size: 0.875rem;
-    font-weight: 500;
-}
-
-.parameter-name-cell span {
-    max-width: 420px;
-    overflow: hidden;
-    color: var(--color-text-muted);
-    font-size: 0.79rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.parameter-version,
-.parameter-status {
-    display: inline-flex;
-    align-items: center;
-    min-height: 22px;
-    padding: 0 8px;
-    border-radius: 999px;
-    font-size: 0.6875rem;
-    font-weight: 500;
-}
-
-.parameter-version {
-    background: var(--color-bg-tertiary);
-    color: var(--color-text-secondary);
-}
-
-.parameter-status.is-active {
-    background: rgba(36, 135, 83, 0.1);
-    color: var(--color-success);
-}
-
-.parameter-status.is-archived {
-    background: var(--color-bg-tertiary);
-    color: var(--color-text-muted);
-}
-
-.parameter-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 4px;
-    white-space: nowrap;
-}
-
-.parameter-pagination {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 12px;
-    min-height: 44px;
-    margin-top: 0;
-    padding: 8px 14px;
-    border: 1px solid var(--color-border);
-    border-top: none;
-    border-radius: 0 0 var(--admin-list-radius, 12px) var(--admin-list-radius, 12px);
-    background: color-mix(in srgb, var(--admin-list-board-bg) 88%, var(--color-bg-secondary));
-    color: var(--color-text-muted);
-    font-size: 0.8125rem;
-}
-
-.parameter-pagination > span:first-child {
-    margin-right: auto;
-    color: var(--color-text-muted);
-    font-weight: 500;
-}
-
-.parameter-pagination label,
-.parameter-pagination > div {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.parameter-pagination select {
-    min-height: 30px;
-    padding-left: 8px;
 }
 
 @media (max-width: 720px) {
@@ -292,11 +95,6 @@
 
     .parameter-status-select {
         width: 100%;
-    }
-
-    .parameter-pagination {
-        flex-wrap: wrap;
-        justify-content: space-between;
     }
 }
 
@@ -878,29 +676,31 @@
     overscroll-behavior: contain;
 }
 
-.parameter-preview-table {
-    width: 100%;
-    border-collapse: collapse;
-    text-align: left;
+.wb-parameter-preview-grid {
+    overflow: visible;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.wb-parameter-preview-grid .wb-list-scroll {
+    max-height: none;
+    overflow: visible;
+}
+
+.wb-parameter-preview-grid .wb-list-table {
     font-size: 0.82rem;
 }
 
-.parameter-preview-table th {
-    position: sticky;
-    top: 0;
-    background: var(--color-bg-secondary);
-    padding: 8px 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--color-text-muted);
-    border-bottom: 1px solid var(--color-border);
+.wb-parameter-preview-grid .wb-list-table th {
     z-index: 1;
+    padding: 8px 12px;
+    background: var(--color-bg-secondary);
+    font-size: 0.75rem;
 }
 
-.parameter-preview-table td {
+.wb-parameter-preview-grid .wb-list-table td {
     padding: 8px 12px;
-    border-bottom: 1px solid var(--color-border-subtle);
-    vertical-align: middle;
 }
 
 .parameter-preview-key-cell {
@@ -1016,10 +816,6 @@
 
     .parameter-preview-count {
         align-self: flex-end;
-    }
-
-    .parameter-preview-table {
-        min-width: 620px;
     }
 
     .parameter-preview-footer {

@@ -1,4 +1,4 @@
-import { parsePageSizeParam as parseSharedPageSizeParam } from '../../utils/pagination';
+import { PAGE_SIZE_OPTIONS as SHARED_PAGE_SIZE_OPTIONS, parsePageSizeParam as parseSharedPageSizeParam } from '../../utils/pagination';
 
 export const STATUS_FILTER_OPTIONS = [
     { label: '全部状态', value: '' },
@@ -6,7 +6,7 @@ export const STATUS_FILTER_OPTIONS = [
     { label: '已停用', value: 'DISABLED' },
 ];
 
-export const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
+export const PAGE_SIZE_OPTIONS = SHARED_PAGE_SIZE_OPTIONS;
 export const DEFAULT_PAGE_SIZE = 10;
 
 export { parsePageParam, formatTimestamp } from '../../utils/pagination';

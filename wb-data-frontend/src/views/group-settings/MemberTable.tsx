@@ -1,113 +1,135 @@
 import { Users, UserCog, Trash2 } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import type { MemberRecord } from '../../api/groupSettings';
 import { formatTimestamp, getRoleLabel } from './config';
 import { Button } from '../../components/ui/button';
-import { DataTableShell } from '../../components/ui/data-table-shell';
+import { DataList, type DataListColumn } from '../../components/ui/list/DataList';
+import { RowActions, type RowActionItem } from '../../components/ui/list/RowActions';
+import { StatusPill } from '../../components/ui/list/StatusPill';
 
 interface MemberTableProps {
     data: MemberRecord[];
+    isLoading: boolean;
     isRefreshing: boolean;
     errorMessage: string;
+    hasActiveFilter: boolean;
+    hasFooter: boolean;
     canManage: boolean;
     currentUserId: number | null;
     onChangeRole: (member: MemberRecord) => void;
     onRemove: (member: MemberRecord) => void;
+    onAddMember: () => void;
+    onClearFilters: () => void;
+    onRetry: () => void;
 }
 
 export default function MemberTable(props: MemberTableProps) {
     const {
         data,
+        isLoading,
         isRefreshing,
         errorMessage,
+        hasActiveFilter,
+        hasFooter,
         canManage,
         currentUserId,
         onChangeRole,
         onRemove,
+        onAddMember,
+        onClearFilters,
+        onRetry,
     } = props;
 
+    const getActions = (member: MemberRecord): RowActionItem[] => [
+        {
+            key: 'change-role',
+            label: '修改角色',
+            icon: UserCog,
+            onClick: () => onChangeRole(member),
+        },
+        {
+            key: 'remove',
+            label: '移除成员',
+            icon: Trash2,
+            tone: 'danger',
+            onClick: () => onRemove(member),
+        },
+    ];
+
+    const columns: DataListColumn<MemberRecord>[] = [
+        {
+            key: 'identity',
+            header: '成员',
+            primary: true,
+            width: '36%',
+            cell: (member) => {
+                const isSelf = currentUserId === member.userId;
+                return (
+                    <div className="wb-list-cell-stack">
+                        <span title={member.username}>
+                            {member.username}
+                            {isSelf ? <span className="wb-list-self-marker">我</span> : null}
+                        </span>
+                        <span className="wb-list-secondary wb-list-secondary-text" title={member.displayName || undefined}>
+                            {member.displayName || '--'}
+                        </span>
+                    </div>
+                );
+            },
+        },
+        {
+            key: 'role',
+            header: '项目组角色',
+            width: 140,
+            cell: (member) => <StatusPill tone="neutral" dot={false}>{getRoleLabel(member.role)}</StatusPill>,
+        },
+        {
+            key: 'createdAt',
+            header: '加入时间',
+            mono: true,
+            width: 190,
+            cell: (member) => formatTimestamp(member.createdAt),
+        },
+    ];
+
+    if (canManage) {
+        columns.push({
+            key: 'actions',
+            header: '操作',
+            align: 'right',
+            width: 120,
+            cell: (member) => currentUserId === member.userId
+                ? <span className="wb-list-action-note">当前账号</span>
+                : <RowActions items={getActions(member)} maxVisible={1} menuLabel={`${member.username}的更多操作`} />,
+        });
+    }
+
+    const state = isLoading && data.length === 0
+        ? 'loading'
+        : errorMessage && data.length === 0
+            ? 'error'
+            : data.length === 0
+                ? hasActiveFilter ? 'filtered-empty' : 'empty'
+                : 'ready';
+
     return (
-        <DataTableShell
-            dataLength={data.length}
+        <DataList
+            rows={data}
+            columns={columns}
+            rowKey={(member) => member.id}
+            ariaLabel="项目组成员列表"
+            minWidth="760px"
+            state={state}
             isRefreshing={isRefreshing}
             errorMessage={errorMessage}
-            emptyIcon={<Users size={36} />}
+            hasFooter={hasFooter}
+            emptyIcon={<Users size={32} />}
             emptyTitle="暂无成员"
-            emptyDescription="当前项目组还没有成员，请添加成员。"
-        >
-            <table className="gs-table">
-                <thead>
-                    <tr>
-                        <th>用户名</th>
-                        <th>展示名</th>
-                        <th>项目组角色</th>
-                        <th>加入时间</th>
-                        {canManage ? <th className="gs-actions-column">操作</th> : null}
-                    </tr>
-                </thead>
-                <tbody>
-                    {data.map((member) => {
-                        const isSelf = currentUserId === member.userId;
-                        const showActions = canManage && !isSelf;
-                        const rolePillClass = member.role === 'GROUP_ADMIN' ? 'is-admin' : 'is-developer';
-
-                        return (
-                            <tr key={member.id}>
-                                <td>
-                                    <span className="gs-name-main">{member.username}</span>
-                                </td>
-                                <td>{member.displayName}</td>
-                                <td>
-                                    <span className={`gs-role-pill ${rolePillClass}`}>
-                                        {getRoleLabel(member.role)}
-                                    </span>
-                                </td>
-                                <td className="gs-time-cell">{formatTimestamp(member.createdAt)}</td>
-                                {canManage ? (
-                                    <td className="gs-actions-column">
-                                        <div className="gs-actions">
-                                                {showActions ? (
-                                                    <>
-                                                        <Tooltip>
-                                                            <TooltipTrigger asChild>
-                                                                <Button
-                                                                    variant="outline" size="icon"
-                                                                    type="button"
-                                                                    aria-label="修改角色"
-                                                                    onClick={() => onChangeRole(member)}
-                                                                >
-                                                                    <UserCog size={16} />
-                                                                </Button>
-                                                            </TooltipTrigger>
-                                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                                修改角色
-                                                            </TooltipContent>
-                                                        </Tooltip>
-                                                        <Tooltip>
-                                                            <TooltipTrigger asChild>
-                                                                <Button
-                                                                    variant="outline" size="icon"
-                                                                    type="button"
-                                                                    aria-label="移除成员"
-                                                                    onClick={() => onRemove(member)}
-                                                                >
-                                                                    <Trash2 size={16} />
-                                                                </Button>
-                                                            </TooltipTrigger>
-                                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                                移除
-                                                            </TooltipContent>
-                                                        </Tooltip>
-                                                    </>
-                                                ) : null}
-                                            </div>
-                                    </td>
-                                ) : null}
-                            </tr>
-                        );
-                    })}
-                </tbody>
-            </table>
-        </DataTableShell>
+            emptyDescription={canManage ? '当前项目组还没有成员，请添加成员。' : '当前项目组还没有成员。'}
+            emptyAction={canManage ? <Button type="button" size="sm" onClick={onAddMember}>添加成员</Button> : undefined}
+            filteredEmptyTitle="没有匹配的成员"
+            filteredEmptyDescription="当前搜索条件没有结果，清空后查看全部成员。"
+            filteredEmptyAction={<Button type="button" size="sm" variant="outline" onClick={onClearFilters}>清空筛选</Button>}
+            errorAction={<Button type="button" size="sm" variant="outline" onClick={onRetry}>重试</Button>}
+        />
     );
 }

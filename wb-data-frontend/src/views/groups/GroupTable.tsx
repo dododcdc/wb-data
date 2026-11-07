@@ -1,123 +1,145 @@
 import { FolderKanban, Pencil, Ban, CheckCircle } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { GroupDetail } from '../../api/group';
 import { formatTimestamp } from './config';
 import { Button } from '../../components/ui/button';
-import { DataTableShell } from '../../components/ui/data-table-shell';
+import { DataList, type DataListColumn } from '../../components/ui/list/DataList';
+import { RowActions, type RowActionItem } from '../../components/ui/list/RowActions';
+import { StatusPill } from '../../components/ui/list/StatusPill';
 
 interface GroupTableProps {
     data: GroupDetail[];
+    isLoading: boolean;
     isRefreshing: boolean;
     errorMessage: string;
+    hasActiveFilter: boolean;
+    hasFooter: boolean;
     onEdit: (group: GroupDetail) => void;
     onDisable: (group: GroupDetail) => void;
     onEnable: (group: GroupDetail) => void;
+    onCreate: () => void;
+    onClearFilters: () => void;
+    onRetry: () => void;
     pendingId: number | null;
 }
 
 export function GroupTable(props: GroupTableProps) {
     const {
         data,
+        isLoading,
         isRefreshing,
         errorMessage,
+        hasActiveFilter,
+        hasFooter,
         onEdit,
         onDisable,
         onEnable,
+        onCreate,
+        onClearFilters,
+        onRetry,
         pendingId,
     } = props;
 
+    const getActions = (item: GroupDetail): RowActionItem[] => [
+        {
+            key: 'edit',
+            label: '编辑项目组',
+            icon: Pencil,
+            onClick: () => onEdit(item),
+        },
+        item.status === 'active'
+            ? {
+                key: 'disable',
+                label: '禁用项目组',
+                icon: Ban,
+                tone: 'danger',
+                pending: pendingId === item.id,
+                onClick: () => onDisable(item),
+            }
+            : {
+                key: 'enable',
+                label: '启用项目组',
+                icon: CheckCircle,
+                pending: pendingId === item.id,
+                onClick: () => onEnable(item),
+            },
+    ];
+
+    const columns: DataListColumn<GroupDetail>[] = [
+        {
+            key: 'identity',
+            header: '项目组',
+            primary: true,
+            width: '40%',
+            cell: (item) => (
+                <div className="wb-list-cell-stack">
+                    <span title={item.name}>{item.name}</span>
+                    <span className="wb-list-secondary wb-list-secondary-text" title={item.description || undefined}>
+                        {item.description || '--'}
+                    </span>
+                </div>
+            ),
+        },
+        {
+            key: 'status',
+            header: '状态',
+            width: 110,
+            cell: (item) => (
+                <StatusPill tone={item.status === 'active' ? 'success' : 'neutral'}>
+                    {item.status === 'active' ? '正常' : '已禁用'}
+                </StatusPill>
+            ),
+        },
+        {
+            key: 'memberCount',
+            header: '成员数',
+            align: 'right',
+            mono: true,
+            width: 100,
+            cell: (item) => item.memberCount,
+        },
+        {
+            key: 'createdAt',
+            header: '创建时间',
+            mono: true,
+            width: 190,
+            cell: (item) => formatTimestamp(item.createdAt),
+        },
+        {
+            key: 'actions',
+            header: '操作',
+            align: 'right',
+            width: 80,
+            cell: (item) => <RowActions items={getActions(item)} maxVisible={1} menuLabel={`${item.name}的更多操作`} />,
+        },
+    ];
+
+    const state = isLoading && data.length === 0
+        ? 'loading'
+        : errorMessage && data.length === 0
+            ? 'error'
+            : data.length === 0
+                ? hasActiveFilter ? 'filtered-empty' : 'empty'
+                : 'ready';
+
     return (
-        <DataTableShell
-            dataLength={data.length}
+        <DataList
+            rows={data}
+            columns={columns}
+            rowKey={(item) => item.id}
+            ariaLabel="项目组列表"
+            minWidth="860px"
+            state={state}
             isRefreshing={isRefreshing}
             errorMessage={errorMessage}
-            emptyIcon={<FolderKanban size={36} />}
-            emptyTitle="还没有匹配的项目组"
-            emptyDescription="试着清空筛选条件，或者新建一个项目组。"
-        >
-            <table className="group-table">
-                <thead>
-                    <tr>
-                        <th>项目组名称</th>
-                        <th>描述</th>
-                        <th>状态</th>
-                        <th>成员数</th>
-                        <th>创建时间</th>
-                        <th className="group-actions-column">操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {data.map((item) => (
-                        <tr key={item.id}>
-                            <td>
-                                <strong className="group-name-main">{item.name}</strong>
-                            </td>
-                            <td>{item.description || '--'}</td>
-                            <td>
-                                <span className={`group-status-badge status-${item.status}`}>
-                                    {item.status === 'active' ? '正常' : '已禁用'}
-                                </span>
-                            </td>
-                            <td>{item.memberCount}</td>
-                            <td className="group-time-cell">{formatTimestamp(item.createdAt)}</td>
-                            <td className="group-actions-column">
-                                <div className="group-actions">
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <Button
-                                                variant="outline" size="icon"
-                                                onClick={() => onEdit(item)}
-                                                aria-label="编辑项目组"
-                                                type="button"
-                                            >
-                                                <Pencil size={16} />
-                                            </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="tooltip-content" side="bottom">
-                                            编辑
-                                        </TooltipContent>
-                                    </Tooltip>
-                                    {item.status === 'active' ? (
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button
-                                                    variant="outline" size="icon"
-                                                    disabled={pendingId === item.id}
-                                                    onClick={() => onDisable(item)}
-                                                    aria-label="禁用项目组"
-                                                    type="button"
-                                                >
-                                                    <Ban size={16} />
-                                                </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                禁用
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    ) : (
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button
-                                                    variant="outline" size="icon"
-                                                    disabled={pendingId === item.id}
-                                                    onClick={() => onEnable(item)}
-                                                    aria-label="启用项目组"
-                                                    type="button"
-                                                >
-                                                    <CheckCircle size={16} />
-                                                </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="tooltip-content" side="bottom">
-                                                启用
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    )}
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </DataTableShell>
+            hasFooter={hasFooter}
+            emptyIcon={<FolderKanban size={32} />}
+            emptyTitle="还没有项目组"
+            emptyDescription="新建一个项目组，开始管理成员和数据研发资源。"
+            emptyAction={<Button type="button" size="sm" onClick={onCreate}>新建项目组</Button>}
+            filteredEmptyTitle="没有匹配的项目组"
+            filteredEmptyDescription="当前搜索条件没有结果，清空后查看全部项目组。"
+            filteredEmptyAction={<Button type="button" size="sm" variant="outline" onClick={onClearFilters}>清空筛选</Button>}
+            errorAction={<Button type="button" size="sm" variant="outline" onClick={onRetry}>重试</Button>}
+        />
     );
 }

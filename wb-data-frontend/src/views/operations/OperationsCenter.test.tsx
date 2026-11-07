@@ -7,6 +7,7 @@ import { getOfflineRepoStatus } from '../../api/offline';
 import { getOperationsExecution, listOperationsExecutions, rerunOperationsExecution } from '../../api/operations';
 import { formatLocalDateTime } from '../../lib/dateTime';
 import { useAuthStore } from '../../utils/auth';
+import { TooltipProvider } from '../../components/ui/tooltip';
 import OperationsCenter from './OperationsCenter';
 import * as SimpleSelectModule from '../../components/SimpleSelect';
 
@@ -178,14 +179,14 @@ describe('OperationsCenter', () => {
             defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
         });
         render(
-            <QueryClientProvider client={queryClient}>
+            <TooltipProvider><QueryClientProvider client={queryClient}>
                 <MemoryRouter>
                     <Routes>
                         <Route path="/" element={<OperationsCenter />} />
                         <Route path="/operations/instances" element={<div>execution detail route</div>} />
                     </Routes>
                 </MemoryRouter>
-            </QueryClientProvider>
+            </QueryClientProvider></TooltipProvider>
         );
     }
 
@@ -198,7 +199,8 @@ describe('OperationsCenter', () => {
         expect(screen.getAllByText('feature/policy-review').length).toBeGreaterThan(0);
         expect(screen.getAllByText('失败').length).toBeGreaterThan(0);
         expect(within(screen.getByLabelText('运行记录筛选')).getByRole('button', { name: '刷新运行记录' })).toBeTruthy();
-        expect(screen.getAllByRole('columnheader')).toHaveLength(8);
+        expect(screen.getAllByRole('columnheader')).toHaveLength(7);
+        expect(screen.queryByRole('columnheader', { name: '结束时间' })).toBeNull();
         expect(screen.getByRole('columnheader', { name: '计划执行时间' })).toBeTruthy();
         expect(screen.queryByRole('columnheader', { name: '触发时间' })).toBeNull();
         expect(screen.getByRole('button', { name: '重跑 daily_policy' })).toBeTruthy();
@@ -213,9 +215,9 @@ describe('OperationsCenter', () => {
         renderPage();
 
         const row = await screen.findByRole('row', { name: '查看 daily_policy 执行详情' });
-        const detailLink = within(row).getByRole('link', { name: '查看 daily_policy 详情' });
+        const detailButton = within(row).getByRole('button', { name: '查看 daily_policy 详情' });
 
-        expect(detailLink.getAttribute('title')).toBe('查看详情');
+        expect(detailButton).toBeTruthy();
         expect(within(row).queryByText('查看详情')).toBeNull();
 
         fireEvent.click(row);

@@ -2,29 +2,16 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const styles = readFileSync(resolve(process.cwd(), 'src/views/operations/OperationsCenter.css'), 'utf8');
-
-function readColumnWidth(className: string): number {
-    const match = styles.match(new RegExp(`\\.${className}\\s*\\{[^}]*width:\\s*([\\d.]+)%`, 's'));
-    return Number(match?.[1]);
-}
+const table = readFileSync(resolve(process.cwd(), 'src/views/operations/OperationsTable.tsx'), 'utf8');
+const listStyles = readFileSync(resolve(process.cwd(), 'src/components/ui/list/list.css'), 'utf8');
 
 describe('OperationsCenter table layout', () => {
-    it('reserves non-overlapping width for second-precision timestamps', () => {
-        const minWidth = Number(styles.match(/\.operations-table table\s*\{[^}]*min-width:\s*(\d+)px/s)?.[1]);
-        const timeWidth = readColumnWidth('operations-col-time');
-        const totalWidth =
-            readColumnWidth('operations-col-task')
-            + readColumnWidth('operations-col-branch')
-            + readColumnWidth('operations-col-status')
-            + timeWidth * 3
-            + readColumnWidth('operations-col-duration')
-            + readColumnWidth('operations-col-actions');
-
-        expect(minWidth).toBeGreaterThanOrEqual(1360);
-        expect(timeWidth).toBeGreaterThanOrEqual(13);
-        expect(totalWidth).toBe(100);
-        expect(readColumnWidth('operations-col-actions')).toBeLessThanOrEqual(9);
-        expect(styles).not.toContain('operations-col-failure');
+    it('uses the compact shared list and hides end time by default', () => {
+        expect(table).toContain('className="wb-list-compact"');
+        expect(table).toContain('minWidth="1120px"');
+        expect(table).not.toContain('结束时间');
+        expect(table).not.toContain('row.endDate');
+        expect(listStyles).toContain('.wb-list-compact .wb-list-table td');
+        expect(listStyles).toMatch(/\.wb-list-compact \.wb-list-table td\s*\{[^}]*height:\s*40px/s);
     });
 });

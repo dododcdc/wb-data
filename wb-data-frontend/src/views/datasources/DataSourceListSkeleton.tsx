@@ -27,9 +27,6 @@ export default function DataSourceListSkeleton() {
                                 <div className="datasource-skeleton-block datasource-skeleton-chip" />
                             </div>
                             <div className="datasource-skeleton-cell">
-                                <div className="datasource-skeleton-block datasource-skeleton-line medium" />
-                            </div>
-                            <div className="datasource-skeleton-cell">
                                 <div className="datasource-skeleton-block datasource-skeleton-pill" />
                             </div>
                             <div className="datasource-skeleton-cell">

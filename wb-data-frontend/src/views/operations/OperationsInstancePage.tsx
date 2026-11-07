@@ -36,6 +36,7 @@ import {
     isUserTaskId,
 } from '../../components/execution/executionPresentation';
 import LogViewer, { type LogViewerItem } from '../../components/execution/LogViewer';
+import { ListShell } from '../../components/ui/list/ListShell';
 import {
     getInstanceStateLabel,
     getInstanceStateTone,
@@ -496,35 +497,39 @@ export default function OperationsInstancePage() {
 
                         <section className="operations-execution-workspace">
                             <aside className="operations-execution-tasks" aria-label="节点列表">
-                                <div className="operations-execution-task-list">
-                                    {visibleTaskRuns.length === 0 ? (
-                                        <div className="operations-execution-empty-inline">暂无节点。</div>
-                                    ) : visibleTaskRuns.map((task) => {
-                                        const tone = getExecutionPresentation(task.status).dotTone;
-                                        const Icon = getTaskStatusIcon(task.status);
-                                        return (
-                                            <button
-                                                key={task.taskId}
-                                                type="button"
-                                                className={`operations-execution-task${selectedTaskId === task.taskId ? ' is-active' : ''}`}
-                                                onClick={() => setSelectedTaskId(task.taskId)}
-                                                aria-label={`查看 ${task.taskId} 日志`}
-                                            >
-                                                <span className="operations-execution-task__main">
-                                                    <span className="operations-execution-task__name" title={task.taskId}>{task.taskId}</span>
-                                                    <span className={`operations-execution-status operations-execution-status--${tone}`}>
-                                                        <Icon size={14} className={isRunningStatus(task.status) ? 'operations-execution-spin' : undefined} />
-                                                        {getExecutionStatusLabel(task.status)}
+                                <ListShell
+                                    state={visibleTaskRuns.length === 0 ? 'empty' : 'ready'}
+                                    className="operations-instance-list-shell"
+                                    emptyTitle="暂无节点"
+                                >
+                                    <div className="operations-execution-task-list">
+                                        {visibleTaskRuns.map((task) => {
+                                            const tone = getExecutionPresentation(task.status).dotTone;
+                                            const Icon = getTaskStatusIcon(task.status);
+                                            return (
+                                                <button
+                                                    key={task.taskId}
+                                                    type="button"
+                                                    className={`operations-execution-task${selectedTaskId === task.taskId ? ' is-active' : ''}`}
+                                                    onClick={() => setSelectedTaskId(task.taskId)}
+                                                    aria-label={`查看 ${task.taskId} 日志`}
+                                                >
+                                                    <span className="operations-execution-task__main">
+                                                        <span className="operations-execution-task__name" title={task.taskId}>{task.taskId}</span>
+                                                        <span className={`operations-execution-status operations-execution-status--${tone}`}>
+                                                            <Icon size={14} className={isRunningStatus(task.status) ? 'operations-execution-spin' : undefined} />
+                                                            {getExecutionStatusLabel(task.status)}
+                                                        </span>
                                                     </span>
-                                                </span>
-                                                <span className="operations-execution-task__meta">
-                                                    <span>{formatBrowserDateTime(task.startDate)}</span>
-                                                    <span>{formatDuration(task.durationMs)}</span>
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
+                                                    <span className="operations-execution-task__meta">
+                                                        <span>{formatBrowserDateTime(task.startDate)}</span>
+                                                        <span>{formatDuration(task.durationMs)}</span>
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </ListShell>
                             </aside>
 
                             <section className="operations-execution-logs" aria-label="执行日志">
@@ -617,34 +622,38 @@ export default function OperationsInstancePage() {
                             </button>
                         </header>
                         <div className="operations-instance-drawer-body">
-                            {diagnosis.upstreams.length === 0 ? (
-                                <div className="operations-execution-empty-inline">本任务没有配置上游依赖。</div>
-                            ) : diagnosis.upstreams.map((upstream) => {
-                                const displayName = upstream.groupName
-                                    ? `${upstream.groupName} / ${upstream.flowId}`
-                                    : upstream.flowId;
-                                return (
-                                    <button
-                                        key={`${upstream.groupId}-${upstream.flowId}`}
-                                        type="button"
-                                        className="operations-instance-upstream-row"
-                                        disabled={!upstream.accessible}
-                                        title={upstream.accessible ? `查看 ${displayName} 实例详情` : '无该项目组权限'}
-                                        onClick={() => drillToUpstream(upstream)}
-                                    >
-                                        <span className="operations-instance-upstream-main">
-                                            <span className="operations-instance-upstream-name" title={displayName}>
-                                                {!upstream.accessible && <Lock size={13} aria-label="无权限" />}
-                                                {displayName}
+                            <ListShell
+                                state={diagnosis.upstreams.length === 0 ? 'empty' : 'ready'}
+                                className="operations-instance-list-shell"
+                                emptyTitle="本任务没有配置上游依赖"
+                            >
+                                {diagnosis.upstreams.map((upstream) => {
+                                    const displayName = upstream.groupName
+                                        ? `${upstream.groupName} / ${upstream.flowId}`
+                                        : upstream.flowId;
+                                    return (
+                                        <button
+                                            key={`${upstream.groupId}-${upstream.flowId}`}
+                                            type="button"
+                                            className="operations-instance-upstream-row"
+                                            disabled={!upstream.accessible}
+                                            title={upstream.accessible ? `查看 ${displayName} 实例详情` : '无该项目组权限'}
+                                            onClick={() => drillToUpstream(upstream)}
+                                        >
+                                            <span className="operations-instance-upstream-main">
+                                                <span className="operations-instance-upstream-name" title={displayName}>
+                                                    {!upstream.accessible && <Lock size={13} aria-label="无权限" />}
+                                                    {displayName}
+                                                </span>
+                                                <span className="operations-instance-upstream-meta">
+                                                    {upstream.satisfied ? '已满足闸门' : '未满足闸门'}
+                                                </span>
                                             </span>
-                                            <span className="operations-instance-upstream-meta">
-                                                {upstream.satisfied ? '已满足闸门' : '未满足闸门'}
-                                            </span>
-                                        </span>
-                                        <StatusPill state={upstream.state} />
-                                    </button>
-                                );
-                            })}
+                                            <StatusPill state={upstream.state} />
+                                        </button>
+                                    );
+                                })}
+                            </ListShell>
                         </div>
                     </aside>
                 </div>

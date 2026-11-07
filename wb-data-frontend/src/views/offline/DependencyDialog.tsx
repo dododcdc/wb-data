@@ -11,6 +11,7 @@ import {
     type OfflineSchedulePeriod,
 } from '../../api/offline';
 import { Button } from '../../components/ui/button';
+import { ListShell } from '../../components/ui/list/ListShell';
 import {
     Dialog,
     DialogContent,
@@ -213,9 +214,12 @@ function DependencyDialogSession({ groupId, document, onClose, onStage, canWrite
                             <h3 id={`${id}-selected`} className="offline-schedule-field-label">前置任务</h3>
                             <span className="offline-dependency-count" aria-live="polite">{settings.dependencies.length} / {MAX_DEPENDENCIES}</span>
                         </div>
-                        {settings.dependencies.length === 0 ? (
-                            <p className="offline-dependency-empty">暂无前置任务</p>
-                        ) : (
+                        <ListShell
+                            state={settings.dependencies.length === 0 ? 'empty' : 'ready'}
+                            className="offline-dependency-list-shell"
+                            emptyTitle="暂无前置任务"
+                            emptyDescription="从下方候选任务中添加。"
+                        >
                             <ul className="offline-dependency-list offline-dependency-selected" aria-label="已选前置任务" tabIndex={0}>
                                 {selectedItems.map(({ ref, candidate, reason }, index) => (
                                     <li key={refKey(ref)} className="offline-dependency-row">
@@ -239,7 +243,7 @@ function DependencyDialogSession({ groupId, document, onClose, onStage, canWrite
                                     </li>
                                 ))}
                             </ul>
-                        )}
+                        </ListShell>
                     </section>
 
                     <section aria-labelledby={`${id}-search-label`} aria-busy={load.status === 'loading'} className="offline-dependency-search-section">
@@ -266,46 +270,54 @@ function DependencyDialogSession({ groupId, document, onClose, onStage, canWrite
                                 aria-controls={`${id}-candidates`}
                             />
                         </div>
-                        {load.status === 'loading' ? (
-                            <div aria-hidden="true" className="offline-dependency-skeleton">
-                                <div className="h-3 w-3/4 rounded bg-muted" />
-                                <div className="h-3 w-1/2 rounded bg-muted" />
-                            </div>
-                        ) : load.status === 'error' ? (
-                            <div className="offline-dependency-load-error">
-                                <p role="alert">候选任务加载失败，暂时无法暂存配置。</p>
-                                <Button type="button" variant="outline" size="sm" onClick={() => {
-                                    setLoad({ status: 'loading' });
-                                    setAttempt((current) => current + 1);
-                                }}>重试</Button>
-                            </div>
-                        ) : candidates.length === 0 ? (
-                            <p className="offline-dependency-empty" role="status">{query ? '没有匹配的任务' : '暂无可依赖的任务'}</p>
-                        ) : (
-                            <ul id={`${id}-candidates`} className="offline-dependency-list offline-dependency-candidates" aria-label="候选任务" tabIndex={0}>
-                                {candidates.map((candidate) => {
-                                    const selected = selectedKeys.has(refKey(candidate));
-                                    const reason = unavailableReason(candidate, groupId, document)
-                                        ?? (!selected && atLimit ? '已达到 20 个前置任务上限' : null);
-                                    return (
-                                        <li key={refKey(candidate)} className="offline-dependency-row">
-                                            <div className="offline-dependency-row-content">
-                                                <TaskSummary candidate={candidate} />
-                                                {reason ? <p className="offline-dependency-hint">{reason}</p> : null}
-                                            </div>
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="sm"
-                                                disabled={!canWrite || selected || reason != null}
-                                                aria-label={`${selected ? '已添加' : '添加'} ${groupLabel(candidate)} / ${candidate.flowId}`}
-                                                onClick={() => add(candidate)}
-                                            >{selected ? '已添加' : '添加'}</Button>
-                                        </li>
-                                    );
-                                })}
-                            </ul>
-                        )}
+                        <ListShell
+                            state={load.status === 'loading'
+                                ? 'loading'
+                                : load.status === 'error'
+                                    ? 'error'
+                                    : candidates.length === 0
+                                        ? query ? 'filtered-empty' : 'empty'
+                                        : 'ready'}
+                            className="offline-dependency-list-shell"
+                            errorMessage={load.status === 'error' ? '候选任务加载失败，暂时无法暂存配置。' : undefined}
+                            errorAction={<Button type="button" variant="outline" size="sm" onClick={() => {
+                                setLoad({ status: 'loading' });
+                                setAttempt((current) => current + 1);
+                            }}>重试</Button>}
+                            emptyTitle="暂无可依赖的任务"
+                            filteredEmptyTitle="没有匹配的任务"
+                        >
+                            {load.status === 'loading' ? (
+                                <div aria-hidden="true" className="offline-dependency-skeleton">
+                                    <div className="h-3 w-3/4 rounded bg-muted" />
+                                    <div className="h-3 w-1/2 rounded bg-muted" />
+                                </div>
+                            ) : (
+                                <ul id={`${id}-candidates`} className="offline-dependency-list offline-dependency-candidates" aria-label="候选任务" tabIndex={0}>
+                                    {candidates.map((candidate) => {
+                                        const selected = selectedKeys.has(refKey(candidate));
+                                        const reason = unavailableReason(candidate, groupId, document)
+                                            ?? (!selected && atLimit ? '已达到 20 个前置任务上限' : null);
+                                        return (
+                                            <li key={refKey(candidate)} className="offline-dependency-row">
+                                                <div className="offline-dependency-row-content">
+                                                    <TaskSummary candidate={candidate} />
+                                                    {reason ? <p className="offline-dependency-hint">{reason}</p> : null}
+                                                </div>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    disabled={!canWrite || selected || reason != null}
+                                                    aria-label={`${selected ? '已添加' : '添加'} ${groupLabel(candidate)} / ${candidate.flowId}`}
+                                                    onClick={() => add(candidate)}
+                                                >{selected ? '已添加' : '添加'}</Button>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            )}
+                        </ListShell>
                     </section>
 
                     <div className="offline-dependency-policies">
@@ -332,9 +344,11 @@ function DependencyDialogSession({ groupId, document, onClose, onStage, canWrite
                         {crossGroupLocked ? (
                             <div id={`${id}-cross-note`} className="offline-dependency-downstream">
                                 <p>已有跨项目组下游依赖，请先解除以下依赖，再关闭开关：</p>
-                                <ul aria-label="跨项目组下游任务">
-                                    {crossGroupDependents.map((dependent) => <li key={refKey(dependent)}>{groupLabel(dependent)} / {dependent.flowId}</li>)}
-                                </ul>
+                                <ListShell state="ready" className="offline-dependency-list-shell">
+                                    <ul aria-label="跨项目组下游任务">
+                                        {crossGroupDependents.map((dependent) => <li key={refKey(dependent)}>{groupLabel(dependent)} / {dependent.flowId}</li>)}
+                                    </ul>
+                                </ListShell>
                             </div>
                         ) : null}
                     </div>

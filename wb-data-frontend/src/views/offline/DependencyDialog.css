@@ -55,6 +55,23 @@
     margin: 2px 0 0;
 }
 
+.offline-dependency-list-shell {
+    overflow: visible;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.offline-dependency-list-shell .wb-list-scroll {
+    max-height: none;
+    overflow: visible;
+}
+
+.offline-dependency-list-shell .wb-list-state {
+    min-height: 96px;
+    padding: 20px 12px;
+}
+
 .offline-dependency-list {
     margin: 0;
     padding: 0;
@@ -112,14 +129,6 @@
     overflow-wrap: anywhere;
 }
 
-.offline-dependency-empty {
-    margin: 0;
-    padding: 12px 4px;
-    color: var(--color-text-secondary);
-    font-size: 0.8125rem;
-    line-height: 1.6;
-}
-
 .offline-dependency-search-section {
     display: flex;
     flex-direction: column;
@@ -172,15 +181,6 @@
     padding: 14px 4px;
 }
 
-.offline-dependency-load-error {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 8px 0;
-}
-
-.offline-dependency-load-error p,
 .offline-dependency-invalid {
     margin: 2px 0 0;
     color: var(--color-error);

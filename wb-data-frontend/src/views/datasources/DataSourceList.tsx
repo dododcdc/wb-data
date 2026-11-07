@@ -17,7 +17,7 @@ import { useAuthStore } from '../../utils/auth';
 import DataSourceForm from './DataSourceForm';
 import DataSourceListSkeleton from './DataSourceListSkeleton';
 import { buildDataSourcePageQueryKey, DEFAULT_PAGE_SIZE, parsePageParam, parsePageSizeParam } from './config';
-import { DataSourcePagination } from './DataSourcePagination';
+import { ListPagination } from '../../components/ui/list/ListPagination';
 import { DataSourceTable } from './DataSourceTable';
 import './DataSourceList.css';
 import { Button } from '../../components/ui/button';
@@ -343,23 +343,32 @@ export default function DataSourceList() {
                     canWrite={canWrite}
                     deletePendingId={pendingDeleteId}
                     errorMessage={errorMessage}
+                    hasActiveFilter={Boolean(keyword)}
+                    hasFooter={total > 0}
                     isRefreshing={isRefreshing}
+                    onClearFilters={() => patchSearchParams((params) => {
+                        params.delete('keyword');
+                        params.delete('page');
+                    })}
+                    onCreate={handleCreate}
                     onDelete={handleDelete}
                     onEdit={handleEdit}
+                    onRetry={() => void pageQuery.refetch()}
                     onTest={handleTestConnection}
                     onToggleStatus={handleToggleStatus}
                     onView={handleView}
                     statusPendingId={pendingStatusId}
                     testPendingId={pendingTestId}
                 />
-                <DataSourcePagination
+                <ListPagination
                     currentPage={currentPage}
-                    hoverLocked={suppressPaginationHover}
+                    className={suppressPaginationHover ? 'hover-locked' : ''}
                     isFetching={pageQuery.isFetching}
                     onPageChange={handlePageChange}
                     onPageSizeChange={handlePageSizeChange}
                     pageSize={pageSize}
                     total={total}
+                    ariaLabel="数据源分页导航"
                 />
             </section>
 
