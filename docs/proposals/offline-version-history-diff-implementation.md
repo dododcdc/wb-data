@@ -1,6 +1,6 @@
 # 实施：离线任务版本历史与多维度比对
 
-> 状态：实施讨论稿（2026-11-07），未立项
+> 状态：S0 技术验证已完成（2026-11-07），S1 待实施
 > 范围：离线任务的开发版本、提交版本、线上版本历史，以及任意两个版本的只读比对
 > 关联方案：保留部署状态徽标方案的 P1；本文取代其 P2/P3
 > 引擎约束：Kestra 固定为 1.3.7，本方案不附带升级
@@ -205,13 +205,29 @@ Git 远程操作与数据库无法做成原子事务，因此需要一个按 `(g
 
 另外，`GitSyncFlowSourceBuilder.boundedIdentifier` 对短分支名只做 slug，`feature/a` 与 `feature-a` 可能映射到同一个同步 Flow/namespace。G0 必须检测同项目组内的标识碰撞；存在碰撞的相关分支一律保持 UNKNOWN，不参与当前线上判定，并提示先治理同步配置，标识映射迁移不在本方案顺带实施。
 
-实施时优先将首尾 SHA 作为 Kestra execution 的显式 outputs/labels，由后端对账服务读取；若 1.3.7 的现有任务输出不能直接满足，需要先做一个最小同步 Flow 验证输出与互斥方式，再修改正式 Flow，禁止未经验证直接写复杂 YAML。
+S0 已确定并实现最小任务 `io.wbdata.kestra.core.GitRemoteRevision`：复用 JGit `lsRemote` 读取 `refs/heads/<branch>`，输出 `sha`，支持现有 HTTP 用户名/令牌凭据。正式同步 Flow 按以下契约组合：
+
+```text
+concurrency.limit = 1
+concurrency.behavior = QUEUE
+
+resolve_start (GitRemoteRevision)
+  → sync_flows (SyncFlows)
+  → sync_files (SyncNamespaceFiles)
+  → resolve_end (GitRemoteRevision)
+
+Flow outputs.start_sha = outputs.resolve_start.sha
+Flow outputs.end_sha   = outputs.resolve_end.sha
+```
+
+Kestra 1.3.7 的 execution API 已在根对象返回 `outputs` 映射；后端只需扩展 `KestraExecutionSnapshot/KestraPayloadParser` 读取该映射，不需要解析日志或读取任务容器文件。
 
 ### 4.5 同步执行对账
 
 新增 `GitSyncExecutionReconciliationService`：
 
 - 回填手动触发和推送触发的 execution 终态，不能只保存创建时的 `RUNNING/CREATED`。
+- 扩展 `KestraExecutionSnapshot/KestraPayloadParser` 读取根对象 `outputs`；FAILED 时 outputs 可能为 null，不能以“没有 end_sha”推断具体失败位置，必须结合任务终态。
 - 处理定时触发的同步执行；一次成功执行可确认多个待生效推送所共同指向的分支状态。
 - 按执行读取首尾 SHA 与终态，满足 §4.4 后更新分支 `last_deployed_sha`。
 - 对连续推送采用保守判定：不能确认中间版本曾生效时，只更新最终可确认版本，中间版本保留为历史线上版本，不补写“曾经当前”。
@@ -565,7 +581,7 @@ SQL 与 Shell 额外展示 `${xxx}` 引用参数的新增、删除，数据来�
 
 每一步独立可验收，按顺序执行；不把全部改动压进一个提交。
 
-### S0：真实部署证据技术验证
+### S0：真实部署证据技术验证（已完成，证据见 §13）
 
 **内容**
 
@@ -576,12 +592,15 @@ SQL 与 Shell 额外展示 `${xxx}` 引用参数的新增、删除，数据来�
 
 **完成条件**：能按 §4.4 得出 CONFIRMED 或 UNKNOWN，没有第三种“猜一个 SHA”的路径；同分支同步互斥已实测。
 
+**交付物**：`GitRemoteRevision` 任务、JGit 依赖、2 个本地仓库单测、隔离 Kestra 验证镜像与 execution 证据；未修改正式同步 Flow，未重启现有 Kestra。
+
 ### S1：推送记录、同步终态与当前线上
 
 **内容**
 
 - 新增发布记录表和分支部署字段。
 - 改造 push/rebuild、事件、pushed_by 上下文传递。
+- 在 `GitSyncFlowSourceBuilder` 接入 `concurrency + QUEUE`、首尾 `GitRemoteRevision` 和 Flow outputs，并扩展 execution outputs 解析。
 - 实现同步执行对账、`last_deployed_sha` 和存量基线。
 - 部署状态徽标接入“当前线上 / 未生效 / 状态未知”。
 
@@ -761,7 +780,45 @@ WB_DATA_PASSWORD=<admin-密码> scripts/dev/smoke-verify.sh --quick
 
 ---
 
-## 13. 完成定义
+## 13. S0 技术验证记录（2026-11-07）
+
+### 13.1 环境隔离
+
+- 现有实例：`wb-data/kestra:v1.3.7-sql-template`，未重启、未替换镜像、未修改正式 Flow。
+- 验证实例：独立镜像 `wb-data/kestra:s0-version-history-probe` 与独立容器 `wb-data-s0-kestra`，使用本地 H2/文件存储。
+- 验证仓库：仅使用临时本地 bare 仓库，不向 GitHub 或其他远程服务推送测试数据。
+- 初始并发/输出实验使用 namespace `wb-s0-version-history`；实际部署写入隔离 namespace `wb-s0-deployed`。
+
+### 13.2 能力与失败边界
+
+| 验证项 | execution / 证据 | 结果 |
+|--------|------------------|------|
+| 同 Flow 并发限制 | `suV5IoJfwFXbLBMvjJH7H` RUNNING 时，`64uEuYVQZhMlncVHLjaxGo` 为 QUEUED；前者结束后后者才 RUNNING | `limit=1 + QUEUE` 生效 |
+| Shell 输出注意事项 | 上述两个实验 Flow 最终 FAILED | 1.3.7 Shell `Commands` 无 `stdOut`，不能采用该输出契约；不是并发失败 |
+| Flow outputs 返回 | `3BN0lISrD1B17e9nS05sJM` | 文件型任务输出经 Flow outputs 渲染成功，execution 根对象存在 `outputs` |
+| 自定义 SHA 输出 | `1hh6ueZN6dy9v2c0Q0H0t6` | `GitRemoteRevision` 两次输出 c1 `8c6acef38c4672d006deb2ed019ffbc07742370b` |
+| 实际同步链路 | `CvNVxa0BiVNmvd7gQa3iY` | resolve_start → sync_flows → sync_files → resolve_end 全部 SUCCESS，首尾均为 c1 |
+| targetNamespace | 查询 `wb-s0-deployed/s0_business?source=true` | Git 中 `source-namespace` 被改为 `wb-s0-deployed`，证实 source 校验必须先规范化 namespace |
+| 分支不存在 | `1U8d7AdP2ilKvsnY2xWfGS` | resolve_start FAILED，后续同步任务未执行，Flow outputs 为 null |
+| 受控连续推送 | A=`3AgRo06mIYy37S4KOXPQaE`，B=`6ladMe11FtTRzJjxxqXpGL` | A 读取 c1 后等待，远端推进到 c3，B 为 QUEUED；A 最终 start=c1/end=c3，B 最终 start=end=c3 |
+| 部分失败 | `7IW9jHscQRwCAFrQv5Sdt0` | sync_flows SUCCESS、sync_files FAILED，无 Flow outputs；实际 Flow 已变为 c4，故旧 CONFIRMED 必须转 UNKNOWN |
+| 失败恢复 | `6aDNyX4wuPbMwYY1GP2Xt3` | 恢复后全部 SUCCESS，start=end=c4 `ecf5e73922108ab7dffa2a4ff15c9692ac5f79f5` |
+
+受控连续推送的实际 c3 为 `6e254b4e44ea919683b14cdbaa87e99ae7b3c2a3`；A/B 的 execution 终态虽然都是 SUCCESS，但只有 B 的首尾 SHA 一致，证明不能仅凭 execution SUCCESS 判定部署证据。
+
+### 13.3 静态确认：分支标识碰撞
+
+`GitSyncFlowSourceBuilder.boundedIdentifier` 对未超长的 `feature/a` 与 `feature-a` 都生成相同 slug，因此相同 group 下会共享同步 Flow ID 和目标 namespace。S1 必须先检测该碰撞并使相关分支保持 UNKNOWN；本方案不顺带改变现有 namespace 映射。
+
+### 13.4 验证命令与范围
+
+- `GitRemoteRevisionTest`：2/2 通过，覆盖读取本地分支 HEAD 和拒绝不存在分支。
+- `mvn -q -pl wb-data-kestra-plugin -am test`：通过。
+- `mvn -q clean install`（`wb-data-server` 全模块）：通过。
+- 私有 HTTP 仓库凭据路径在 S1 接入真实项目组时验证；S0 使用本地仓库验证 JGit 读取与 Kestra 输出契约。
+- 旧对账结果的条件更新属于 S1 数据库实现，S0 已通过同 Flow QUEUE 证明执行不会并行，但尚未实现数据库对账服务。
+
+## 14. 完成定义
 
 V1 只有同时满足以下条件才算完成：
 
