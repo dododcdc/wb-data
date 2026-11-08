@@ -1,6 +1,6 @@
 # 实施：离线任务版本历史与多维度比对
 
-> 状态：S3 只读快照与原始文件 diff 已完成（2026-11-08），S4 待实施
+> 状态：S4 业务语义 diff 已完成（2026-11-08），S5 待实施
 > 范围：离线任务的开发版本、提交版本、线上版本历史，以及任意两个版本的只读比对
 > 关联方案：保留部署状态徽标方案的 P1；本文取代其 P2/P3
 > 引擎约束：Kestra 固定为 1.3.7，本方案不附带升级
@@ -633,7 +633,7 @@ SQL 与 Shell 额外展示 `${xxx}` 引用参数的新增、删除，数据来�
 
 **验收**：旧 commit 的已删除脚本可读；不切换工作树；越权路径和任意 revision 被拒绝；开发版不会读到 flush 前旧内容。
 
-### S4：业务维度 diff 与 V1 节点清单
+### S4：业务维度 diff 与 V1 节点清单（已完成，证据见 §13.9）
 
 **内容**
 
@@ -862,6 +862,14 @@ WB_DATA_PASSWORD=<admin-密码> scripts/dev/smoke-verify.sh --quick
 - `WB_DATA_BACKEND_BASE_URL=http://127.0.0.1:8081 WB_DATA_PASSWORD=admin123 scripts/dev/smoke-verify.sh --quick` 全部通过。
 - `mvn -q clean install`（后端全模块）通过；前端 lint、91 个测试文件 714 个用例和生产构建通过。
 - 节点、调度、依赖、参数等业务语义 diff 不在 S3 范围，统一由 S4 实现；S3 以原始文件 diff 作为完整兜底。
+
+### 13.9 S4 业务语义 diff 验证（2026-11-08）
+
+- `flowVersionDiff.test.ts` 覆盖稳定 taskId 配对、节点/边新增删除修改、配置与上游原因、调度字段、依赖集合与策略、参数组版本、定义及影响节点；布局变化不计入业务差异。
+- `OfflineVersionCompareDialog.test.tsx` 验证原始文件左右内容；`OfflineNodeDiffDialog.test.tsx` 验证 Transfer 源端、目标端、写入模式和字段映射结构化展示，不使用整段 JSON diff 作为主视图。
+- 真实浏览器（ego-browser）已验证概览计数、调度 4 个字段、依赖新增、原始文件 Tab；节点无实际变化时清单保持为空，参数影响节点可点击打开详情。
+- 前端 lint、93 个测试文件 718 个用例和生产构建通过；后端未新增 S4 代码，沿用 S3 快照与全模块验证结果。
+- S4 使用前端纯函数统一汇总计数与各 Tab 展示，SQL/Shell 使用 Monaco，Transfer 按端点和映射结构比较，参数链接到受影响节点详情。
 
 ## 14. 完成定义
 

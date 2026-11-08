@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { getOfflineFlowSnapshot, getOfflineFlowSnapshotFile } from '../../api/offline';
@@ -19,7 +19,7 @@ describe('OfflineVersionCompareDialog', () => {
     it('loads both revisions and renders raw file differences', async () => {
         vi.mocked(getOfflineFlowSnapshot).mockImplementation((_groupId, _path, rev) => Promise.resolve({
             revision: rev,
-            document: {} as never,
+            document: { stages: [], edges: [], layout: {} } as never,
             files: [{ path: 'scripts/example.sql', sha256: rev === 'old' ? 'old' : 'new', size: 8, content: null }],
             nodeMetadata: {},
         }));
@@ -41,6 +41,7 @@ describe('OfflineVersionCompareDialog', () => {
             />,
         );
 
+        fireEvent.click(await screen.findByRole('button', { name: '原始文件' }));
         expect(await screen.findByText('scripts/example.sql')).toBeTruthy();
         expect((await screen.findByTestId('diff-editor')).textContent).toBe('select 1;|select 2;');
         expect(screen.getByTestId('diff-editor').getAttribute('data-language')).toBe('sql');

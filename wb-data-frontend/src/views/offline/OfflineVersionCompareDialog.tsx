@@ -8,6 +8,9 @@ import {
     type OfflineFlowVersionSnapshot,
 } from '../../api/offline';
 import { Button } from '../../components/ui/button';
+import { OfflineNodeDiffDialog } from './OfflineNodeDiffDialog';
+import { OfflineSemanticDiff, type SemanticTab } from './OfflineSemanticDiff';
+import type { NodeVersionDiff } from './flowVersionDiff';
 import {
     Dialog,
     DialogContent,
@@ -39,6 +42,8 @@ interface ComparedFile {
 export function OfflineVersionCompareDialog({ groupId, path, base, target, open, onOpenChange }: OfflineVersionCompareDialogProps) {
     const [baseSnapshot, setBaseSnapshot] = useState<OfflineFlowVersionSnapshot | null>(null);
     const [targetSnapshot, setTargetSnapshot] = useState<OfflineFlowVersionSnapshot | null>(null);
+    const [activeTab, setActiveTab] = useState<SemanticTab | 'raw'>('overview');
+    const [selectedNode, setSelectedNode] = useState<NodeVersionDiff | null>(null);
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
     const [original, setOriginal] = useState('');
     const [modified, setModified] = useState('');
@@ -52,6 +57,8 @@ export function OfflineVersionCompareDialog({ groupId, path, base, target, open,
         let cancelled = false;
         setLoading(true);
         setError(null);
+        setActiveTab('overview');
+        setSelectedNode(null);
         setBaseSnapshot(null);
         setTargetSnapshot(null);
         void Promise.all([
@@ -121,64 +128,88 @@ export function OfflineVersionCompareDialog({ groupId, path, base, target, open,
     }, [base.revision, baseSnapshot, groupId, path, selectedPath, target.revision, targetSnapshot]);
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent fullScreen className="offline-version-compare-dialog">
-                <DialogHeader>
-                    <DialogTitle>原始文件对比</DialogTitle>
-                    <DialogDescription>{base.label} → {target.label}</DialogDescription>
-                </DialogHeader>
-                <div className="offline-version-compare-toolbar">
-                    <label>
-                        <input type="checkbox" checked={showAll} onChange={(event) => setShowAll(event.target.checked)} />
-                        显示全部文件
-                    </label>
-                </div>
-                {error ? (
-                    <div className="offline-version-compare-error" role="alert">
-                        <CircleAlert size={16} />{error}
-                        <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>关闭</Button>
-                    </div>
-                ) : null}
-                <div className="offline-version-compare-body">
-                    <aside className="offline-version-file-list">
-                        {loading ? <div className="offline-version-file-skeleton" aria-hidden="true" /> : null}
-                        {!loading && !error && files.length === 0 ? <p>没有文件差异</p> : null}
-                        {files.map((file) => (
-                            <button
-                                type="button"
-                                key={file.path}
-                                className={file.path === selectedPath ? 'is-active' : ''}
-                                onClick={() => setSelectedPath(file.path)}
-                            >
-                                <span>{file.path}</span>
-                                <small>{labelFor(file.kind)}</small>
-                            </button>
-                        ))}
-                    </aside>
-                    <section className="offline-version-diff-editor">
-                        {selectedPath && !fileLoading ? (
-                            <DiffEditor
-                                key={`${base.revision}:${target.revision}:${selectedPath}`}
-                                original={original}
-                                modified={modified}
-                                language={languageFor(selectedPath)}
-                                originalModelPath={`${base.revision}/${selectedPath}`}
-                                modifiedModelPath={`${target.revision}/${selectedPath}`}
-                                options={{
-                                    readOnly: true,
-                                    originalEditable: false,
-                                    renderSideBySide: true,
-                                    wordWrap: 'on',
-                                    scrollBeyondLastLine: false,
-                                }}
-                            />
-                        ) : (
-                            <div className="offline-version-editor-skeleton" aria-hidden="true" />
-                        )}
-                    </section>
-                </div>
-            </DialogContent>
-        </Dialog>
+        <>
+            <Dialog open={open} onOpenChange={onOpenChange}>
+                <DialogContent fullScreen className="offline-version-compare-dialog">
+                    <DialogHeader>
+                        <DialogTitle>版本对比</DialogTitle>
+                        <DialogDescription>{base.label} → {target.label}</DialogDescription>
+                    </DialogHeader>
+                    {error ? (
+                        <div className="offline-version-compare-error" role="alert">
+                            <CircleAlert size={16} />{error}
+                            <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>关闭</Button>
+                        </div>
+                    ) : null}
+                    {baseSnapshot && targetSnapshot ? (
+                        <OfflineSemanticDiff
+                            baseSnapshot={baseSnapshot}
+                            targetSnapshot={targetSnapshot}
+                            activeTab={activeTab === 'raw' ? 'overview' : activeTab}
+                            onTabChange={setActiveTab}
+                            onOpenNode={setSelectedNode}
+                            rawActive={activeTab === 'raw'}
+                            onOpenRaw={() => setActiveTab('raw')}
+                        />
+                    ) : null}
+                    {activeTab === 'raw' ? (
+                        <>
+                            <div className="offline-version-compare-toolbar">
+                                <label>
+                                    <input type="checkbox" checked={showAll} onChange={(event) => setShowAll(event.target.checked)} />
+                                    显示全部文件
+                                </label>
+                            </div>
+                            <div className="offline-version-compare-body">
+                                <aside className="offline-version-file-list">
+                                    {loading ? <div className="offline-version-file-skeleton" aria-hidden="true" /> : null}
+                                    {!loading && !error && files.length === 0 ? <p>没有文件差异</p> : null}
+                                    {files.map((file) => (
+                                        <button
+                                            type="button"
+                                            key={file.path}
+                                            className={file.path === selectedPath ? 'is-active' : ''}
+                                            onClick={() => setSelectedPath(file.path)}
+                                        >
+                                            <span>{file.path}</span>
+                                            <small>{labelFor(file.kind)}</small>
+                                        </button>
+                                    ))}
+                                </aside>
+                                <section className="offline-version-diff-editor">
+                                    {selectedPath && !fileLoading ? (
+                                        <DiffEditor
+                                            key={`${base.revision}:${target.revision}:${selectedPath}`}
+                                            original={original}
+                                            modified={modified}
+                                            language={languageFor(selectedPath)}
+                                            originalModelPath={`${base.revision}/${selectedPath}`}
+                                            modifiedModelPath={`${target.revision}/${selectedPath}`}
+                                            options={{
+                                                readOnly: true,
+                                                originalEditable: false,
+                                                renderSideBySide: true,
+                                                wordWrap: 'on',
+                                                scrollBeyondLastLine: false,
+                                            }}
+                                        />
+                                    ) : (
+                                        <div className="offline-version-editor-skeleton" aria-hidden="true" />
+                                    )}
+                                </section>
+                            </div>
+                        </>
+                    ) : null}
+                </DialogContent>
+            </Dialog>
+            {selectedNode && baseSnapshot && targetSnapshot ? (
+                <OfflineNodeDiffDialog
+                    node={selectedNode}
+                    open={selectedNode !== null}
+                    onOpenChange={() => setSelectedNode(null)}
+                />
+            ) : null}
+        </>
     );
 }
 
