@@ -33,6 +33,7 @@ import { OfflineTreeActionDialogs } from './OfflineTreeActionDialogs';
 import { OfflineExecutionDialog } from './OfflineExecutionDialog';
 import { ExecutionTimeContextDialog } from './ExecutionTimeContextDialog';
 import { OfflineRepositoryDialogs } from './OfflineRepositoryDialogs';
+import { OfflineVersionHistoryDrawer } from './OfflineVersionHistoryDrawer';
 import { OfflineWorkbenchMainPanel } from './OfflineWorkbenchMainPanel';
 import { preloadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
@@ -83,6 +84,7 @@ export default function OfflineWorkbench() {
     }, []);
     const [flowCommitDialogOpen, setFlowCommitDialogOpen] = useState(false);
     const [repoCommitDialogOpen, setRepoCommitDialogOpen] = useState(false);
+    const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
     const [commitMessage, setCommitMessage] = useState('');
     const [committing, setCommitting] = useState(false);
     const [parameterDialogOpen, setParameterDialogOpen] = useState(false);
@@ -704,6 +706,7 @@ export default function OfflineWorkbench() {
                         onOpenParameterDialog={() => setParameterDialogOpen(true)}
                         onExecute={() => void handleExecute()}
                         onOpenExecutionDialog={openExecutionDialog}
+                        onOpenVersions={() => setVersionHistoryOpen(true)}
                         onDiscardStaleDraft={handleDiscardStaleDraft}
                         onRestoreStaleDraft={handleRestoreStaleDraft}
                         onNodesChange={updateCanvasNodes}
@@ -811,6 +814,15 @@ export default function OfflineWorkbench() {
                     binding={flowDocument.parameterBinding}
                     onOpenChange={setParameterDialogOpen}
                     onStage={handleStageParameterBinding}
+                />
+            ) : null}
+
+            {groupId && activeFlowPath ? (
+                <OfflineVersionHistoryDrawer
+                    groupId={groupId}
+                    path={activeFlowPath}
+                    open={versionHistoryOpen}
+                    onOpenChange={setVersionHistoryOpen}
                 />
             ) : null}
 

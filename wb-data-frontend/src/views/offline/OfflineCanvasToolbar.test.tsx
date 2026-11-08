@@ -30,6 +30,7 @@ function renderToolbar(overrides: Partial<Parameters<typeof OfflineCanvasToolbar
         onOpenParameters: vi.fn(),
         onExecute: vi.fn(),
         onOpenExecutions: vi.fn(),
+        onOpenVersions: vi.fn(),
         ...overrides,
     };
 
@@ -76,6 +77,7 @@ describe('OfflineCanvasToolbar status and timezone metadata', () => {
             draftSaveState: 'idle',
             dirty: false,
             timezone: null,
+            branch: null,
         });
 
         expect(view.container.querySelector('.offline-canvas-toolbar-meta')).toBeNull();

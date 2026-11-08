@@ -10,6 +10,7 @@ import com.wbdata.common.Result;
 import com.wbdata.offline.dto.DeleteOfflineFlowRequest;
 import com.wbdata.offline.dto.OfflineFlowDocumentResponse;
 import com.wbdata.offline.dto.OfflineFlowContentResponse;
+import com.wbdata.offline.dto.OfflineFlowVersionHistoryResponse;
 import com.wbdata.offline.dto.MoveOfflineFlowRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowRequest;
@@ -17,6 +18,7 @@ import com.wbdata.offline.service.OfflineFlowContentService;
 import com.wbdata.offline.service.OfflineFlowDependencyService;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
 import com.wbdata.offline.service.OfflineRecentFlowService;
+import com.wbdata.offline.repo.service.OfflineFlowVersionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -42,6 +44,7 @@ public class OfflineFlowController {
     private final OfflineFlowDependencyService offlineFlowDependencyService;
     private final AuthContextService authContextService;
     private final OfflineRecentFlowService offlineRecentFlowService;
+    private OfflineFlowVersionService offlineFlowVersionService;
 
     public OfflineFlowController(OfflineFlowContentService offlineFlowContentService,
                                  OfflineFlowDocumentService offlineFlowDocumentService,
@@ -62,6 +65,22 @@ public class OfflineFlowController {
         this.offlineFlowDependencyService = offlineFlowDependencyService;
         this.authContextService = authContextService;
         this.offlineRecentFlowService = offlineRecentFlowService;
+    }
+
+    @Autowired
+    public void setOfflineFlowVersionService(OfflineFlowVersionService offlineFlowVersionService) {
+        this.offlineFlowVersionService = offlineFlowVersionService;
+    }
+
+    @Operation(summary = "读取任务版本历史")
+    @GetMapping("/versions")
+    public Result<OfflineFlowVersionHistoryResponse> getVersions(
+            @RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
+            @RequestParam String path,
+            @RequestParam(defaultValue = "false") boolean onlineOnly,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return Result.success(offlineFlowVersionService.getVersions(context.groupId(), path, onlineOnly, page, size));
     }
 
     @Operation(summary = "读取任务内容")

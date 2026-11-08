@@ -34,6 +34,7 @@ interface OfflineWorkbenchMainPanelProps {
     onOpenParameterDialog: () => void;
     onExecute: () => void;
     onOpenExecutionDialog: () => void;
+    onOpenVersions: () => void;
     onDiscardStaleDraft: () => void;
     onRestoreStaleDraft: () => void;
     onNodesChange: Parameters<typeof FlowCanvas>[0]['onNodesChange'];
@@ -74,6 +75,7 @@ export function OfflineWorkbenchMainPanel({
     onOpenParameterDialog,
     onExecute,
     onOpenExecutionDialog,
+    onOpenVersions,
     onDiscardStaleDraft,
     onRestoreStaleDraft,
     onNodesChange,
@@ -121,6 +123,7 @@ export function OfflineWorkbenchMainPanel({
                 onOpenParameters={onOpenParameterDialog}
                 onExecute={onExecute}
                 onOpenExecutions={onOpenExecutionDialog}
+                onOpenVersions={onOpenVersions}
             />
 
             <section className="offline-canvas-stage">

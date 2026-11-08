@@ -31,6 +31,33 @@ export interface OfflineFlowCommitStatus {
     dirty: boolean;
 }
 
+export interface OfflineFlowPublicationItem {
+    publishRecordId: number;
+    onlineVersion: number;
+    afterSha: string;
+    pushedAt: string | null;
+    status: string;
+    currentOnline: boolean;
+}
+
+export interface OfflineFlowVersionItem {
+    revision: string;
+    kind: 'DEVELOPMENT' | 'COMMIT';
+    message: string | null;
+    authorName: string | null;
+    committedAt: string | null;
+    dirty: boolean;
+    publications: OfflineFlowPublicationItem[];
+}
+
+export interface OfflineFlowVersionHistoryResponse {
+    branch: string;
+    items: OfflineFlowVersionItem[];
+    total: number;
+    page: number;
+    size: number;
+}
+
 export interface OfflineRepoStatus {
     groupId: number;
     repoPath: string;
@@ -481,6 +508,22 @@ export const getOfflineFlowDocument = (groupId: number, path: string) => {
         path,
     });
     return request.get<unknown, OfflineFlowDocument>(`${offlinePath(groupId, '/flows/document')}?${params.toString()}`);
+};
+
+export const getOfflineFlowVersions = (
+    groupId: number,
+    path: string,
+    options: { onlineOnly?: boolean; page?: number; size?: number } = {},
+) => {
+    const params = new URLSearchParams({
+        path,
+        onlineOnly: String(options.onlineOnly ?? false),
+        page: String(options.page ?? 1),
+        size: String(options.size ?? 50),
+    });
+    return request.get<unknown, OfflineFlowVersionHistoryResponse>(
+        `${offlinePath(groupId, '/flows/versions')}?${params.toString()}`,
+    );
 };
 
 export const saveOfflineFlowContent = (payload: SaveOfflineFlowRequest) => {

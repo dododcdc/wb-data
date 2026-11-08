@@ -6,6 +6,7 @@ import {
     GitPullRequest,
     Globe,
     History,
+    ListOrdered,
     LoaderCircle,
     Play,
     Settings2,
@@ -41,6 +42,7 @@ interface OfflineCanvasToolbarProps {
     onOpenParameters: () => void;
     onExecute: () => void;
     onOpenExecutions: () => void;
+    onOpenVersions: () => void;
 }
 
 interface ToolbarButtonProps {
@@ -92,6 +94,7 @@ export function OfflineCanvasToolbar({
     onOpenParameters,
     onExecute,
     onOpenExecutions,
+    onOpenVersions,
 }: OfflineCanvasToolbarProps) {
     const active = activeFlowPath !== null;
     const editDisabled = !active || !canWrite;
@@ -157,6 +160,10 @@ export function OfflineCanvasToolbar({
                 onClick={onExecute}
             >
                 <Play size={16} />
+            </ToolbarButton>
+
+            <ToolbarButton label="版本" disabled={!active} onClick={onOpenVersions}>
+                <ListOrdered size={16} />
             </ToolbarButton>
 
             <ToolbarButton label="执行结果" disabled={!active} onClick={onOpenExecutions}>

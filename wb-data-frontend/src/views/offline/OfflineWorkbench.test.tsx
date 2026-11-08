@@ -761,13 +761,14 @@ describe('OfflineWorkbench commit UI', () => {
                 onOpenParameters={vi.fn()}
                 onExecute={vi.fn()}
                 onOpenExecutions={vi.fn()}
+                onOpenVersions={vi.fn()}
             />,
         );
 
         const indicator = screen.getByRole('status');
         expect(indicator.textContent).toContain(text);
         const actions = screen.getAllByRole('button');
-        expect(actions).toHaveLength(6);
+        expect(actions).toHaveLength(7);
         for (const action of actions) {
             expect(action.compareDocumentPosition(indicator) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
         }
