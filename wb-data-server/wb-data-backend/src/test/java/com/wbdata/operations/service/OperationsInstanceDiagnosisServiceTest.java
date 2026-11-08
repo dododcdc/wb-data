@@ -432,7 +432,7 @@ class OperationsInstanceDiagnosisServiceTest {
         private static GitSyncConfigResponse syncConfig(String branch, String namespace) {
             return new GitSyncConfigResponse(
                     1L, 4L, branch, namespace, "sync-flows-" + namespace, true,
-                    LocalDateTime.parse("2026-06-07T00:00:00"), null, null);
+                    LocalDateTime.parse("2026-06-07T00:00:00"), null, null, null, null, null);
         }
     }
 }

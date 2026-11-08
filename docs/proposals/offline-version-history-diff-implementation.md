@@ -1,6 +1,6 @@
 # 实施：离线任务版本历史与多维度比对
 
-> 状态：S1-A 同步证据链路已完成（2026-11-08），S1-B 待实施
+> 状态：S1-B 推送记录与部署对账已完成（2026-11-08），S2 待实施
 > 范围：离线任务的开发版本、提交版本、线上版本历史，以及任意两个版本的只读比对
 > 关联方案：保留部署状态徽标方案的 P1；本文取代其 P2/P3
 > 引擎约束：Kestra 固定为 1.3.7，本方案不附带升级
@@ -601,7 +601,7 @@ SQL 与 Shell 额外展示 `${xxx}` 引用参数的新增、删除，数据来�
 - 用实际构建器 YAML 在隔离 Kestra 中验证普通同步、连续推送和部分失败。
 - 使用进程环境变量中的真实凭据只读验证私有 GitHub 分支 HEAD，不将令牌写入文件或容器。
 
-### S1-B：推送记录、同步对账与当前线上（待实施）
+### S1-B：推送记录、同步对账与当前线上（已完成，证据见 §13.6）
 
 **内容**
 
@@ -832,6 +832,17 @@ WB_DATA_PASSWORD=<admin-密码> scripts/dev/smoke-verify.sh --quick
 - 私有 HTTP 仓库：使用进程环境变量中的凭据调用同一 `GitRemoteRevision.resolveBranchSha`，只读得到 `dododcdc/wb-data-4` main HEAD `dba3ed8a27a0f5c8d249256c8da2d17c3697cce3`；未把真实令牌写入 YAML、容器或日志。
 - `GitSyncFlowSourceBuilderTest`、`KestraHttpClientTest` 及全部受影响执行/运维服务测试通过；`mvn -q clean install`（`wb-data-server` 全模块）通过。
 - 验证仅使用隔离容器 `wb-data-s1a-kestra` 和本地临时仓库；未修改正式同步 Flow，未推送私有仓库。
+
+### 13.6 S1-B 推送记录与部署对账验证（2026-11-08）
+
+- `GitCommandServiceTest` 覆盖首次推送、rebase 后 before/after SHA、事件与记录 ID；`OfflinePublishRecordServiceTest` 覆盖操作者、同步意图、基线和终态映射。
+- `GitSyncExecutionReconciliationServiceTest` 覆盖首尾 SHA 一致、namespace 规范化 source、输出不一致、已开始失败、较旧证据、标识碰撞和缺失 execution 宽限后 UNKNOWN。
+- Flyway V22 已在独立 8081 后端实际执行，新增发布记录表与部署证据字段；存量启用分支写入 2 条 `BASELINE + UNKNOWN`，未伪造当前线上。
+- `WB_DATA_BACKEND_BASE_URL=http://127.0.0.1:8081 WB_DATA_PASSWORD=admin123 scripts/dev/smoke-verify.sh --quick` 全部通过。
+- 状态 API 返回 `lastDeployedSha/lastDeployedAt/deploymentEvidence`；当前 Kestra 中旧 execution 已缺失，经 2 分钟宽限后 `main` 与 `feature/policy-review` 均为 UNKNOWN，而非永久 CREATED。
+- 真实浏览器（ego-browser）已打开独立 5174 页面、登录并进入任务画布，确认工具栏徽标实际渲染；UNKNOWN 状态同时通过 API 与前端纯函数用例验证。
+- `mvn -q clean install`（后端全模块）通过；前端 lint、89 个测试文件 712 个用例和生产构建通过。
+- S1-B 未把旧 execution 的 SUCCESS 当作当前线上；真实 CONFIRMED 仍需新同步执行满足首尾 SHA 与 source 校验，与 S0/S1-A 的隔离证据链一致。
 
 ## 14. 完成定义
 

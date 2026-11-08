@@ -1,5 +1,7 @@
 package com.wbdata.offline.repo.service;
 
+import com.wbdata.git.entity.WbOfflinePublishRecord;
+import com.wbdata.git.service.OfflinePublishRecordService;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
 
 import com.wbdata.offline.config.OfflineProperties;
@@ -28,7 +30,7 @@ class GitCommandServiceTest {
         properties.setRepoBaseDir(tempDir.toString());
         properties.setRepoDirPrefix("wb-data-");
         OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
-        GitCommandService service = new GitCommandService(properties, Mockito.mock(OfflineGitRemotePort.class), flowDocumentService, new RepoLockManager());
+        GitCommandService service = new GitCommandService(properties, Mockito.mock(OfflineGitRemotePort.class), flowDocumentService, publishRecordService(), new RepoLockManager());
 
         Path repo = properties.resolveRepoPath(1L);
         initRepo(repo);
@@ -55,7 +57,7 @@ class GitCommandServiceTest {
         properties.setRepoBaseDir(tempDir.toString());
         properties.setRepoDirPrefix("wb-data-");
         OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
-        GitCommandService service = new GitCommandService(properties, Mockito.mock(OfflineGitRemotePort.class), flowDocumentService, new RepoLockManager());
+        GitCommandService service = new GitCommandService(properties, Mockito.mock(OfflineGitRemotePort.class), flowDocumentService, publishRecordService(), new RepoLockManager());
 
         Path repo = properties.resolveRepoPath(1L);
         initRepo(repo);
@@ -84,7 +86,7 @@ class GitCommandServiceTest {
         OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
         OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
         when(gitRemotePort.repositoryExists(1L, "wb-data-1")).thenReturn(true);
-        GitCommandService service = new GitCommandService(properties, gitRemotePort, flowDocumentService, new RepoLockManager());
+        GitCommandService service = new GitCommandService(properties, gitRemotePort, flowDocumentService, publishRecordService(), new RepoLockManager());
 
         Path repo = properties.resolveRepoPath(1L);
         Path remote = tempDir.resolve("remote.git");
@@ -101,7 +103,7 @@ class GitCommandServiceTest {
         git(repo, "add", "-A");
         git(repo, "commit", "-m", "feature change");
 
-        service.push(1L);
+        service.push(1L, 9L);
 
         assertThat(git(repo, "ls-remote", "--heads", "origin", "feature/pipeline"))
                 .contains("refs/heads/feature/pipeline");
@@ -115,7 +117,7 @@ class GitCommandServiceTest {
         OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
         OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
         when(gitRemotePort.repositoryExists(1L, "wb-data-1")).thenReturn(true);
-        GitCommandService service = new GitCommandService(properties, gitRemotePort, flowDocumentService, new RepoLockManager());
+        GitCommandService service = new GitCommandService(properties, gitRemotePort, flowDocumentService, publishRecordService(), new RepoLockManager());
         List<Object> events = new ArrayList<>();
         service.setApplicationEventPublisher(events::add);
 
@@ -134,12 +136,15 @@ class GitCommandServiceTest {
         git(repo, "add", "-A");
         git(repo, "commit", "-m", "feature change");
 
-        service.push(1L);
+        service.push(1L, 9L);
 
         assertThat(events).hasSize(1);
         GitRepoPushedEvent event = (GitRepoPushedEvent) events.get(0);
+        assertThat(event.publishRecordId()).isEqualTo(99L);
         assertThat(event.groupId()).isEqualTo(1L);
         assertThat(event.branch()).isEqualTo("feature/policy-review");
+        assertThat(event.beforeSha()).isNull();
+        assertThat(event.afterSha()).isEqualTo(git(repo, "rev-parse", "HEAD"));
     }
 
     @Test
@@ -150,7 +155,7 @@ class GitCommandServiceTest {
         OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
         OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
         when(gitRemotePort.repositoryExists(1L, "wb-data-1")).thenReturn(true);
-        GitCommandService service = new GitCommandService(properties, gitRemotePort, flowDocumentService, new RepoLockManager());
+        GitCommandService service = new GitCommandService(properties, gitRemotePort, flowDocumentService, publishRecordService(), new RepoLockManager());
 
         Path repo = properties.resolveRepoPath(1L);
         Path oldRemote = tempDir.resolve("old-remote.git");
@@ -166,12 +171,61 @@ class GitCommandServiceTest {
         git(repo, "commit", "-m", "init");
         git(repo, "remote", "add", "origin", oldRemote.toUri().toString());
 
-        service.push(1L);
+        service.push(1L, 9L);
 
         assertThat(git(repo, "remote", "get-url", "origin")).isEqualTo(newRemote.toUri().toString());
         assertThat(git(repo, "ls-remote", "--heads", newRemote.toUri().toString(), "main"))
                 .contains("refs/heads/main");
         assertThat(git(repo, "ls-remote", "--heads", oldRemote.toUri().toString(), "main")).isBlank();
+    }
+
+    @Test
+    void push_rebasesBeforeRecordingRevisionRange() throws Exception {
+        OfflineProperties properties = new OfflineProperties();
+        properties.setRepoBaseDir(tempDir.toString());
+        properties.setRepoDirPrefix("wb-data-");
+        OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
+        OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
+        OfflinePublishRecordService publishRecordService = publishRecordService();
+        when(gitRemotePort.repositoryExists(1L, "wb-data-1")).thenReturn(true);
+        GitCommandService service = new GitCommandService(
+                properties, gitRemotePort, flowDocumentService, publishRecordService, new RepoLockManager());
+
+        Path repo = properties.resolveRepoPath(1L);
+        Path remote = tempDir.resolve("remote.git");
+        Path otherClone = tempDir.resolve("other-clone");
+        git(tempDir, "init", "--bare", remote.toString());
+        when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
+        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
+        initRepo(repo);
+        write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "init");
+        git(repo, "remote", "add", "origin", remote.toUri().toString());
+        git(repo, "push", "-u", "origin", "HEAD");
+
+        git(tempDir, "clone", "--branch", "main", remote.toUri().toString(), otherClone.toString());
+        git(otherClone, "config", "user.name", "WB Test");
+        git(otherClone, "config", "user.email", "wb@example.com");
+        write(otherClone, "remote.txt", "remote\n");
+        git(otherClone, "add", "-A");
+        git(otherClone, "commit", "-m", "remote change");
+        git(otherClone, "push");
+        String expectedBefore = git(otherClone, "rev-parse", "HEAD");
+
+        assertThat(git(repo, "ls-remote", "--heads", "origin", "refs/heads/main"))
+                .startsWith(expectedBefore);
+
+        write(repo, "local.txt", "local\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "local change");
+
+        service.push(1L, 9L);
+
+        String expectedAfter = git(repo, "rev-parse", "HEAD");
+        Mockito.verify(publishRecordService).recordPush(
+                Mockito.eq(1L), Mockito.eq(9L), Mockito.eq("main"),
+                Mockito.eq(expectedBefore), Mockito.eq(expectedAfter));
     }
 
     @Test
@@ -182,7 +236,7 @@ class GitCommandServiceTest {
         OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
         OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
         when(gitRemotePort.repositoryExists(1L, "wb-data-1")).thenReturn(true);
-        GitCommandService service = new GitCommandService(properties, gitRemotePort, flowDocumentService, new RepoLockManager());
+        GitCommandService service = new GitCommandService(properties, gitRemotePort, flowDocumentService, publishRecordService(), new RepoLockManager());
 
         Path repo = properties.resolveRepoPath(1L);
         Path remote = tempDir.resolve("remote.git");
@@ -215,13 +269,27 @@ class GitCommandServiceTest {
         git(repo, "add", "-A");
         git(repo, "commit", "-m", "local change");
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> service.push(1L));
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> service.push(1L, 9L));
 
         assertThat(ex.getReason()).contains("推送失败");
         assertThat(Files.exists(repo.resolve(".git/rebase-merge"))).isFalse();
         assertThat(Files.exists(repo.resolve(".git/rebase-apply"))).isFalse();
         assertThat(git(repo, "branch", "--show-current")).isEqualTo("feature/conflict");
         assertThat(git(repo, "status", "--porcelain")).isBlank();
+    }
+
+    private static OfflinePublishRecordService publishRecordService() {
+        OfflinePublishRecordService service = Mockito.mock(OfflinePublishRecordService.class);
+        when(service.recordPush(
+                Mockito.anyLong(), Mockito.nullable(Long.class), Mockito.anyString(), Mockito.any(), Mockito.anyString()))
+                .thenAnswer(invocation -> {
+                    WbOfflinePublishRecord record = new WbOfflinePublishRecord();
+                    record.setId(99L);
+                    record.setBeforeSha(invocation.getArgument(3));
+                    record.setAfterSha(invocation.getArgument(4));
+                    return record;
+                });
+        return service;
     }
 
     private static void initRepo(Path repo) throws Exception {

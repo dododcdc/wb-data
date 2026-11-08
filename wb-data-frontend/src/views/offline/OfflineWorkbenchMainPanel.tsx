@@ -9,6 +9,8 @@ import { OfflineNodePalette } from './OfflineNodePalette';
 
 interface OfflineWorkbenchMainPanelProps {
     activeFlowPath: string | null;
+    groupId: number | null;
+    branch: string | null;
     flowDocument: OfflineFlowDocument | null;
     canWrite: boolean;
     canConfigureParameters: boolean;
@@ -47,6 +49,8 @@ interface OfflineWorkbenchMainPanelProps {
 
 export function OfflineWorkbenchMainPanel({
     activeFlowPath,
+    groupId,
+    branch,
     flowDocument,
     canWrite,
     canConfigureParameters,
@@ -96,6 +100,8 @@ export function OfflineWorkbenchMainPanel({
         <main className="offline-main-panel h-full animate-enter animate-enter-delay-1">
             <OfflineCanvasToolbar
                 activeFlowPath={activeFlowPath}
+                groupId={groupId}
+                branch={branch}
                 canWrite={canWrite}
                 canConfigureParameters={canConfigureParameters}
                 parameterBindingStatus={flowDocument.parameterBinding?.status}

@@ -851,6 +851,9 @@ class OperationsExecutionServiceTest {
                 true,
                 LocalDateTime.parse("2026-06-07T00:00:00"),
                 null,
+                null,
+                null,
+                null,
                 null
         );
     }

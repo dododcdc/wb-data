@@ -15,10 +15,13 @@ import type { ReactNode } from 'react';
 import type { FlowParameterBinding } from '../../api/offline';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { isExecuteButtonDisabled } from './executionToolbarState';
+import { OfflineDeploymentBadge } from './OfflineDeploymentBadge';
 import { getTimezoneOffset } from './ScheduleUtils';
 
 interface OfflineCanvasToolbarProps {
     activeFlowPath: string | null;
+    groupId: number | null;
+    branch: string | null;
     canWrite: boolean;
     canConfigureParameters: boolean;
     parameterBindingStatus?: FlowParameterBinding['status'] | null;
@@ -68,6 +71,8 @@ function ToolbarButton({ label, disabled, onClick, children }: ToolbarButtonProp
 
 export function OfflineCanvasToolbar({
     activeFlowPath,
+    groupId,
+    branch,
     canWrite,
     canConfigureParameters,
     parameterBindingStatus,
@@ -158,8 +163,9 @@ export function OfflineCanvasToolbar({
                 <History size={16} />
             </ToolbarButton>
 
-            {(hasDraftStatus || timezone) ? (
+            {(hasDraftStatus || timezone || branch) ? (
                 <div className="offline-canvas-toolbar-meta">
+                    <OfflineDeploymentBadge groupId={groupId} branch={branch} />
                     <DraftSaveIndicator
                         state={draftSaveState}
                         savedAt={draftSavedAt}

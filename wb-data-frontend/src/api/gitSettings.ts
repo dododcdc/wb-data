@@ -26,6 +26,9 @@ export interface GitSyncConfig {
     lastSyncAt: string | null;
     lastSyncStatus: string | null;
     lastSyncMessage: string | null;
+    lastDeployedSha: string | null;
+    lastDeployedAt: string | null;
+    deploymentEvidence: 'UNCONFIRMED' | 'CONFIRMED' | 'UNKNOWN';
 }
 
 export interface GitSyncConfigList {

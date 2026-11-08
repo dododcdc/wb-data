@@ -169,6 +169,10 @@ vi.mock('../../hooks/useOperationFeedback', () => ({
     }),
 }));
 
+vi.mock('../../api/gitSettings', () => ({
+    getGitSyncConfigs: vi.fn(() => Promise.resolve({ configs: [], availableBranches: [], syncCron: '*/5 * * * *' })),
+}));
+
 vi.mock('../../api/datasource', () => ({
     getDataSourceById: vi.fn(() => Promise.reject(new Error('not found'))),
     getDataSourcePage: vi.fn(() => Promise.resolve({ records: [], total: 0, size: 200, current: 1, pages: 0 })),
@@ -737,6 +741,8 @@ describe('OfflineWorkbench commit UI', () => {
         render(
             <OfflineCanvasToolbar
                 activeFlowPath="_flows/example/flow.yaml"
+                groupId={1}
+                branch="main"
                 canWrite
                 canConfigureParameters
                 timezone="Asia/Shanghai"

@@ -9,6 +9,8 @@ afterEach(cleanup);
 function renderToolbar(overrides: Partial<Parameters<typeof OfflineCanvasToolbar>[0]> = {}) {
     const props: Parameters<typeof OfflineCanvasToolbar>[0] = {
         activeFlowPath: '_flows/example/flow.yaml',
+        groupId: 1,
+        branch: 'main',
         canWrite: true,
         canConfigureParameters: true,
         parameterBindingStatus: null,

@@ -679,6 +679,8 @@ export default function OfflineWorkbench() {
                 <ResizablePanel id="main" order={2} defaultSize={80}>
                     <OfflineWorkbenchMainPanel
                         activeFlowPath={activeFlowPath}
+                        groupId={groupId}
+                        branch={repoStatus?.branch ?? null}
                         flowDocument={flowDocument}
                         canWrite={canWrite}
                         canConfigureParameters={canConfigureParameters}

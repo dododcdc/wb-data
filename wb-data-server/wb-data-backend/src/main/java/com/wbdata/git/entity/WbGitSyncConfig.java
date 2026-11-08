@@ -28,6 +28,14 @@ public class WbGitSyncConfig {
 
     private String lastSyncMessage;
 
+    private String lastDeployedSha;
+
+    private LocalDateTime lastDeployedAt;
+
+    private String deploymentEvidence;
+
+    private LocalDateTime lastEvidenceAt;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

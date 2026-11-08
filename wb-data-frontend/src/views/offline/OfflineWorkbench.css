@@ -382,6 +382,38 @@ button.offline-tree-row {
     flex-shrink: 0;
 }
 
+.offline-deployment-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 200px;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.offline-deployment-badge > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.offline-deployment-badge svg {
+    flex-shrink: 0;
+}
+
+.offline-deployment-badge.is-confirmed {
+    color: var(--color-success);
+}
+
+.offline-deployment-badge.is-pending {
+    color: var(--color-text-secondary);
+}
+
+.offline-deployment-badge.is-unknown {
+    color: var(--color-warning);
+}
+
 .offline-canvas-save-indicator {
     display: inline-flex;
     align-items: center;

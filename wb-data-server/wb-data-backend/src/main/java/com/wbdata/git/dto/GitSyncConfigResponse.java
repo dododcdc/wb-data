@@ -11,6 +11,9 @@ public record GitSyncConfigResponse(
         boolean enabled,
         LocalDateTime lastSyncAt,
         String lastSyncStatus,
-        String lastSyncMessage
+        String lastSyncMessage,
+        String lastDeployedSha,
+        LocalDateTime lastDeployedAt,
+        String deploymentEvidence
 ) {
 }

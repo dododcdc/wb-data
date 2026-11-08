@@ -32,6 +32,7 @@ public class GitSyncConfigService {
     private static final String SYSTEM_NAMESPACE = GitSyncFlowSourceBuilder.SYSTEM_NAMESPACE;
 
     private final WbGitSyncConfigMapper syncConfigMapper;
+    private final OfflinePublishRecordService publishRecordService;
     private final GitConfigService gitConfigService;
     private final GitCommandService gitCommandService;
     private final KestraClient kestraClient;
@@ -135,6 +136,10 @@ public class GitSyncConfigService {
     }
 
     public TriggerGitSyncResponse trigger(Long groupId, Long id) {
+        return triggerInternal(groupId, id, null);
+    }
+
+    private TriggerGitSyncResponse triggerInternal(Long groupId, Long id, Long publishRecordId) {
         WbGitSyncConfig config = requireConfig(groupId, id);
         if (!Boolean.TRUE.equals(config.getEnabled())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "同步配置已停用");
@@ -148,27 +153,29 @@ public class GitSyncConfigService {
         config.setLastSyncStatus(execution.status());
         config.setLastSyncMessage(execution.id());
         syncConfigMapper.updateById(config);
+        publishRecordService.markSyncExecution(publishRecordId, execution.id(), execution.status());
         return new TriggerGitSyncResponse(config.getId(), execution.id(), execution.status(), now);
     }
 
-    public void triggerBranchAfterPush(Long groupId, String branch) {
+    public void triggerBranchAfterPush(Long publishRecordId, Long groupId, String branch) {
         WbGitSyncConfig config = syncConfigMapper.selectOne(groupBranchQuery(groupId, normalizeBranch(branch)));
         if (config == null || !Boolean.TRUE.equals(config.getEnabled())) {
             return;
         }
         try {
-            trigger(groupId, config.getId());
+            triggerInternal(groupId, config.getId(), publishRecordId);
         } catch (RuntimeException ex) {
             config.setLastSyncAt(LocalDateTime.now());
             config.setLastSyncStatus("FAILED_TO_TRIGGER");
             config.setLastSyncMessage(ex.getMessage());
             syncConfigMapper.updateById(config);
+            publishRecordService.markSyncTriggerFailed(publishRecordId, ex.getMessage());
         }
     }
 
     @EventListener
     public void handleRepoPushed(GitRepoPushedEvent event) {
-        triggerBranchAfterPush(event.groupId(), event.branch());
+        triggerBranchAfterPush(event.publishRecordId(), event.groupId(), event.branch());
     }
 
     private void upsertSyncFlow(WbGitSyncConfig config, WbGitConfig gitConfig) {
@@ -209,7 +216,10 @@ public class GitSyncConfigService {
                 Boolean.TRUE.equals(config.getEnabled()),
                 config.getLastSyncAt(),
                 config.getLastSyncStatus(),
-                config.getLastSyncMessage()
+                config.getLastSyncMessage(),
+                config.getLastDeployedSha(),
+                config.getLastDeployedAt(),
+                config.getDeploymentEvidence()
         );
     }
 

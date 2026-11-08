@@ -1,5 +1,7 @@
 package com.wbdata.offline.repo.service;
 
+import com.wbdata.git.entity.WbOfflinePublishRecord;
+import com.wbdata.git.service.OfflinePublishRecordService;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
 
 import com.wbdata.offline.config.OfflineProperties;
@@ -25,6 +27,7 @@ public class GitCommandService extends GitRepositoryOperations {
 
     private final OfflineGitRemotePort gitRemotePort;
     private final OfflineFlowDocumentService offlineFlowDocumentService;
+    private final OfflinePublishRecordService publishRecordService;
     private final RepoLockManager repoLockManager;
     private final GitBranchOperations branchOperations;
     private final GitWorkingTreeStatus workingTreeStatus;
@@ -36,10 +39,12 @@ public class GitCommandService extends GitRepositoryOperations {
     public GitCommandService(OfflineProperties offlineProperties,
                              OfflineGitRemotePort gitRemotePort,
                              OfflineFlowDocumentService offlineFlowDocumentService,
+                             OfflinePublishRecordService publishRecordService,
                              RepoLockManager repoLockManager) {
         super(offlineProperties);
         this.gitRemotePort = gitRemotePort;
         this.offlineFlowDocumentService = offlineFlowDocumentService;
+        this.publishRecordService = publishRecordService;
         this.repoLockManager = repoLockManager;
         this.branchOperations = new GitBranchOperations(offlineProperties);
         this.workingTreeStatus = new GitWorkingTreeStatus();
@@ -47,6 +52,30 @@ public class GitCommandService extends GitRepositoryOperations {
 
     public BranchListResponse listBranches(Long groupId) {
         return repoLockManager.withLock(groupId, () -> branchOperations.listBranches(groupId));
+    }
+
+    public List<String> listFlowFilesAtRevision(Long groupId, String revision) {
+        validateRevision(revision);
+        return repoLockManager.withLock(groupId, () -> runGit(repoPath(groupId),
+                        "ls-tree", "-r", "--name-only", revision, "--", ".wb-data/kestra-flows")
+                .lines()
+                .filter(path -> !path.isBlank())
+                .toList());
+    }
+
+    public String readFlowFileAtRevision(Long groupId, String revision, String path) {
+        validateRevision(revision);
+        if (path == null || !path.startsWith(".wb-data/kestra-flows/") || path.contains("..")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务文件路径不合法");
+        }
+        return repoLockManager.withLock(groupId,
+                () -> runGit(repoPath(groupId), "show", revision + ":" + path));
+    }
+
+    private void validateRevision(String revision) {
+        if (revision == null || !revision.matches("[0-9a-fA-F]{40,64}")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Git 提交 SHA 不合法");
+        }
     }
 
     public List<String> listRemoteBranchNames(Long groupId) {
@@ -159,11 +188,11 @@ public class GitCommandService extends GitRepositoryOperations {
      * - 自动检测是否需要创建远程仓库
      * - 执行 git push
      */
-    public PushResult push(Long groupId) {
-        return repoLockManager.withLock(groupId, () -> pushUnlocked(groupId));
+    public PushResult push(Long groupId, Long pushedBy) {
+        return repoLockManager.withLock(groupId, () -> pushUnlocked(groupId, pushedBy));
     }
 
-    private PushResult pushUnlocked(Long groupId) {
+    private PushResult pushUnlocked(Long groupId, Long pushedBy) {
         Path repoPath = repoPath(groupId);
         ensureRepoExists(repoPath);
 
@@ -188,13 +217,14 @@ public class GitCommandService extends GitRepositoryOperations {
             }
         }
 
-        // git push
+        String branch = getCurrentBranch(repoPath);
+        String beforeSha = readOriginBranchSha(repoPath, branch);
         try {
             runGit(repoPath, "push", "-u", "origin", "HEAD");
         } catch (GitException ex) {
-            // push 失败，尝试先 pull 再 push
             try {
                 runGit(repoPath, "pull", "--rebase");
+                beforeSha = readOriginBranchSha(repoPath, branch);
                 runGit(repoPath, "push", "-u", "origin", "HEAD");
             } catch (GitException pullEx) {
                 abortRebase(repoPath);
@@ -204,18 +234,18 @@ public class GitCommandService extends GitRepositoryOperations {
         }
 
         String displayUrl = gitRemotePort.buildDisplayUrl(groupId, repoName);
-        publishPushedEvent(groupId, repoPath);
+        publishPushedEvent(groupId, pushedBy, repoPath, beforeSha);
         return new PushResult(true, "推送成功", displayUrl, remoteCreated, false);
     }
 
     /**
      * 重建远程仓库（远程仓库已被删除）并推送
      */
-    public PushResult rebuild(Long groupId) {
-        return repoLockManager.withLock(groupId, () -> rebuildUnlocked(groupId));
+    public PushResult rebuild(Long groupId, Long pushedBy) {
+        return repoLockManager.withLock(groupId, () -> rebuildUnlocked(groupId, pushedBy));
     }
 
-    private PushResult rebuildUnlocked(Long groupId) {
+    private PushResult rebuildUnlocked(Long groupId, Long pushedBy) {
         Path repoPath = repoPath(groupId);
         ensureRepoExists(repoPath);
 
@@ -236,7 +266,7 @@ public class GitCommandService extends GitRepositoryOperations {
         runGit(repoPath, "push", "-u", "origin", "HEAD");
 
         String displayUrl = gitRemotePort.buildDisplayUrl(groupId, repoName);
-        publishPushedEvent(groupId, repoPath);
+        publishPushedEvent(groupId, pushedBy, repoPath, null);
         return new PushResult(true, "推送成功", displayUrl, true, false);
     }
 
@@ -245,8 +275,45 @@ public class GitCommandService extends GitRepositoryOperations {
         this.applicationEventPublisher = applicationEventPublisher == null ? event -> {} : applicationEventPublisher;
     }
 
-    private void publishPushedEvent(Long groupId, Path repoPath) {
-        applicationEventPublisher.publishEvent(new GitRepoPushedEvent(groupId, getCurrentBranch(repoPath)));
+    public String readRemoteBranchSha(Long groupId, String branch) {
+        return repoLockManager.withLock(groupId,
+                () -> readOriginBranchSha(repoPath(groupId), branch));
+    }
+
+    private String readOriginBranchSha(Path repoPath, String branch) {
+        if (branch == null || branch.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前分支不能为空");
+        }
+        try {
+            String output = runGit(repoPath, "ls-remote", "--heads", "origin", "refs/heads/" + branch);
+            if (output.isBlank()) {
+                return null;
+            }
+            return output.lines().findFirst()
+                    .map(line -> line.split("\\s+")[0])
+                    .orElse(null);
+        } catch (GitException ex) {
+            return null;
+        }
+    }
+
+    private void publishPushedEvent(Long groupId, Long pushedBy, Path repoPath, String beforeSha) {
+        String branch = getCurrentBranch(repoPath);
+        String afterSha = runGit(repoPath, "rev-parse", "HEAD");
+        String remoteAfterSha = readOriginBranchSha(repoPath, branch);
+        if (!afterSha.equals(remoteAfterSha)) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "推送后远端分支校验失败，发布记录未写入");
+        }
+        WbOfflinePublishRecord record;
+        try {
+            record = publishRecordService.recordPush(groupId, pushedBy, branch, beforeSha, afterSha);
+        } catch (RuntimeException ex) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "推送已成功，但发布记录写入失败，请稍后通过版本历史对账", ex);
+        }
+        applicationEventPublisher.publishEvent(
+                new GitRepoPushedEvent(record.getId(), groupId, branch, beforeSha, afterSha));
     }
 
     /** 获取当前 remote URL（不含 token） */

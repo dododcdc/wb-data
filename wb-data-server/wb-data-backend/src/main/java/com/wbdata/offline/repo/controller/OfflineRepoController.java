@@ -161,7 +161,7 @@ public class OfflineRepoController {
             @RequireGroupAuth(Permission.GROUP_SETTINGS) GroupAuthContext context,
             @Valid @RequestBody PushRequest request
     ) {
-        GitCommandService.PushResult result = gitCommandService.push(context.groupId());
+        GitCommandService.PushResult result = gitCommandService.push(context.groupId(), context.user().id());
         return Result.success(new PushResponse(result.success(), result.message(), result.remoteUrl(), result.remoteCreated(), result.remoteDeleted()));
     }
 
@@ -170,7 +170,7 @@ public class OfflineRepoController {
     public Result<PushResponse> rebuild(
             @RequireGroupAuth(Permission.GROUP_SETTINGS) GroupAuthContext context
     ) {
-        GitCommandService.PushResult result = gitCommandService.rebuild(context.groupId());
+        GitCommandService.PushResult result = gitCommandService.rebuild(context.groupId(), context.user().id());
         return Result.success(new PushResponse(result.success(), result.message(), result.remoteUrl(), result.remoteCreated(), result.remoteDeleted()));
     }
 

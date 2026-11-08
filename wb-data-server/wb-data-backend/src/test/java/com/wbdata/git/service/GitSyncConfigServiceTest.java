@@ -181,7 +181,8 @@ class GitSyncConfigServiceTest {
         OfflineKestraProperties kestraProperties = new OfflineKestraProperties();
         GitSyncProperties syncProperties = new GitSyncProperties();
         syncProperties.setSyncCron("*/5 * * * *");
-        return new GitSyncConfigService(mapper, gitConfigService, gitCommandService, kestraClient, kestraProperties, syncProperties);
+        return new GitSyncConfigService(mapper, Mockito.mock(OfflinePublishRecordService.class),
+                gitConfigService, gitCommandService, kestraClient, kestraProperties, syncProperties);
     }
 
     private WbGitConfig gitConfig(Long id) {
