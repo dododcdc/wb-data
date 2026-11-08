@@ -4,6 +4,8 @@ import com.wbdata.offline.parameter.service.ExecutionParameterSnapshotRegistry;
 import com.wbdata.offline.parameter.service.FlowParameterBindingAssembler;
 import com.wbdata.offline.parameter.service.FlowParameterSnapshotStore;
 import com.wbdata.offline.repo.service.RepoLockManager;
+import com.wbdata.offline.repo.service.SnapshotFileAccess;
+import com.wbdata.offline.repo.service.WorkingTreeSnapshotFileAccess;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -64,6 +66,7 @@ public class OfflineFlowDocumentService {
     private final ExecutionParameterSnapshotRegistry executionParameterSnapshotRegistry;
     private final FlowParameterCompiler parameterCompiler = new FlowParameterCompiler();
     private final OfflineFlowYamlSupport yamlSupport;
+    private final SqlNamedParameterScanner namedParameterScanner = new SqlNamedParameterScanner();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public OfflineFlowDocumentService(OfflineProperties offlineProperties,
@@ -98,6 +101,55 @@ public class OfflineFlowDocumentService {
         } catch (IOException ex) {
             throw new IllegalStateException("读取任务文档失败", ex);
         }
+    }
+
+    public OfflineFlowDocumentResponse getFlowDocumentSnapshot(Long groupId, String path, SnapshotFileAccess fileAccess) {
+        return repoLockManager.withLock(groupId, () -> {
+            try {
+                return readSnapshot(groupId, path, fileAccess).response();
+            } catch (IOException ex) {
+                throw new IllegalStateException("读取任务快照失败", ex);
+            }
+        });
+    }
+
+    public List<String> resolveManagedFilesAtRevision(Long groupId, String path, SnapshotFileAccess fileAccess) {
+        return repoLockManager.withLock(groupId, () -> {
+            try {
+                DocumentSnapshot snapshot = readSnapshot(groupId, path, fileAccess);
+                Path repoPath = offlineProperties.resolveRepoPath(groupId);
+                LinkedHashSet<String> files = new LinkedHashSet<>();
+                files.add(path);
+                Path layoutFile = resolveLayoutFile(repoPath, path);
+                String layoutRelative = repoPath.relativize(layoutFile).toString().replace('\\', '/');
+                if (fileAccess.exists(repoPath, layoutRelative)) {
+                    files.add(layoutRelative);
+                }
+                Path kestraFlowFile = kestraFlowFileService.resolveFlowFile(repoPath, path);
+                String kestraRelative = repoPath.relativize(kestraFlowFile).toString().replace('\\', '/');
+                if (fileAccess.exists(repoPath, kestraRelative)) {
+                    files.add(kestraRelative);
+                }
+                for (Path taskFile : snapshot.managedNodeFiles()) {
+                    files.add(repoPath.relativize(taskFile).toString().replace('\\', '/'));
+                }
+                return List.copyOf(files);
+            } catch (IOException ex) {
+                throw new IllegalStateException("解析历史任务关联文件失败", ex);
+            }
+        });
+    }
+
+    public Map<String, List<String>> extractReferencedParameters(OfflineFlowDocumentResponse document) {
+        Map<String, List<String>> result = new LinkedHashMap<>();
+        for (OfflineFlowStageResponse stage : document.stages()) {
+            for (OfflineFlowNodeResponse node : stage.nodes()) {
+                if (node.scriptContent() != null) {
+                    result.put(node.taskId(), List.copyOf(namedParameterScanner.scan(node.scriptContent()).parameters()));
+                }
+            }
+        }
+        return result;
     }
 
     /** Persistence callback; API callers must enter OfflineFlowDependencyService.saveDocument first. */
@@ -386,13 +438,17 @@ public class OfflineFlowDocumentService {
     }
 
     private DocumentSnapshot readSnapshot(Long groupId, String path) throws IOException {
-        var flow = offlineFlowContentService.getFlowContent(groupId, path);
+        return readSnapshot(groupId, path, new WorkingTreeSnapshotFileAccess());
+    }
+
+    private DocumentSnapshot readSnapshot(Long groupId, String path, SnapshotFileAccess fileAccess) throws IOException {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
+        String flowContent = fileAccess.readString(repoPath, path);
 
         // Parse both stage-based and graph-based representations
-        OfflineFlowYamlSupport.FlowDocument document = yamlSupport.parseDocument(flow.content());
-        OfflineFlowYamlSupport.FlowGraph graph = yamlSupport.parseGraph(flow.content());
-        OfflineFlowYamlSupport.ScheduleData scheduleData = yamlSupport.readSchedule(flow.content());
+        OfflineFlowYamlSupport.FlowDocument document = yamlSupport.parseDocument(flowContent);
+        OfflineFlowYamlSupport.FlowGraph graph = yamlSupport.parseGraph(flowContent);
+        OfflineFlowYamlSupport.ScheduleData scheduleData = yamlSupport.readSchedule(flowContent);
         OfflineFlowSchedule schedule = scheduleData == null
                 ? null
                 : new OfflineFlowSchedule(
@@ -408,13 +464,13 @@ public class OfflineFlowDocumentService {
         Set<String> seenTaskIds = new LinkedHashSet<>();
         List<String> stageKeys = new ArrayList<>();
         List<String> taskOrder = new ArrayList<>();
-        long updatedAt = flow.fileUpdatedAt();
+        long updatedAt = fileAccess.lastModified(repoPath, path);
         StringBuilder signature = new StringBuilder()
                 .append(path)
                 .append('\n')
-                .append(flow.content());
+                .append(flowContent);
 
-        Optional<FlowParameterSnapshotStore.SnapshotFile> parameterFile = parameterSnapshotStore.read(repoPath, path);
+        Optional<FlowParameterSnapshotStore.SnapshotFile> parameterFile = parameterSnapshotStore.read(repoPath, path, fileAccess);
         FlowParameterBindingResponse parameterBinding = null;
         if (parameterFile.isPresent()) {
             FlowParameterSnapshotStore.SnapshotFile file = parameterFile.get();
@@ -439,10 +495,10 @@ public class OfflineFlowDocumentService {
                     TransferConfig transfer = null;
                     if (node.transferConfigPath() != null) {
                         Path transferFile = resolveRepoFile(repoPath, node.transferConfigPath());
-                        if (Files.isRegularFile(transferFile)) {
-                            transfer = transferConfigFileService.read(repoPath, node.transferConfigPath());
-                            updatedAt = Math.max(updatedAt, Files.getLastModifiedTime(transferFile).toMillis());
-                            String transferContent = Files.readString(transferFile, StandardCharsets.UTF_8);
+                        if (fileAccess.exists(repoPath, node.transferConfigPath())) {
+                            String transferContent = fileAccess.readString(repoPath, node.transferConfigPath());
+                            transfer = transferConfigFileService.readContent(node.transferConfigPath(), transferContent);
+                            updatedAt = Math.max(updatedAt, fileAccess.lastModified(repoPath, node.transferConfigPath()));
                             signature.append('\n')
                                     .append(node.taskId())
                                     .append('\n')
@@ -463,12 +519,12 @@ public class OfflineFlowDocumentService {
                     ));
                 } else {
                     Path scriptFile = resolveRepoFile(repoPath, node.scriptPath());
-                    if (!Files.isRegularFile(scriptFile)) {
+                    if (!fileAccess.exists(repoPath, node.scriptPath())) {
                         throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                                 "脚本文件不存在: " + node.scriptPath());
                     }
-                    String scriptContent = Files.readString(scriptFile, StandardCharsets.UTF_8);
-                    updatedAt = Math.max(updatedAt, Files.getLastModifiedTime(scriptFile).toMillis());
+                    String scriptContent = fileAccess.readString(repoPath, node.scriptPath());
+                    updatedAt = Math.max(updatedAt, fileAccess.lastModified(repoPath, node.scriptPath()));
                     signature.append('\n')
                             .append(node.taskId())
                             .append('\n')
@@ -496,9 +552,9 @@ public class OfflineFlowDocumentService {
                 .toList();
 
         // Read layout.json if it exists
-        Map<String, NodePosition> layout = readLayout(groupId, path);
+        Map<String, NodePosition> layout = readLayout(groupId, path, fileAccess);
 
-        String runtimeTimezone = yamlSupport.readLabel(flow.content(), "wbdataRuntimeTimezone");
+        String runtimeTimezone = yamlSupport.readLabel(flowContent, "wbdataRuntimeTimezone");
         if ((runtimeTimezone == null || runtimeTimezone.isBlank())
                 && schedule != null && schedule.timezone() != null && !schedule.timezone().isBlank()) {
             runtimeTimezone = schedule.timezone();
@@ -524,7 +580,7 @@ public class OfflineFlowDocumentService {
                         schedule,
                         parameterBinding,
                         runtimeTimezone,
-                        yamlSupport.readDependencyConfig(flow.content())
+                        yamlSupport.readDependencyConfig(flowContent)
                 ),
                 taskFiles,
                 managedNodeFiles,
@@ -533,15 +589,16 @@ public class OfflineFlowDocumentService {
         );
     }
 
-    private Map<String, NodePosition> readLayout(Long groupId, String path) {
+    private Map<String, NodePosition> readLayout(Long groupId, String path, SnapshotFileAccess fileAccess) {
         try {
             Path repoPath = offlineProperties.resolveRepoPath(groupId);
             Path layoutFile = resolveLayoutFile(repoPath, path);
-            if (!Files.isRegularFile(layoutFile)) {
+            String relativePath = repoPath.relativize(layoutFile).toString().replace('\\', '/');
+            if (!fileAccess.exists(repoPath, relativePath)) {
                 return Collections.emptyMap();
             }
-            String json = Files.readString(layoutFile, StandardCharsets.UTF_8);
-            return objectMapper.readValue(json, new TypeReference<>() {});
+            String content = fileAccess.readString(repoPath, relativePath);
+            return objectMapper.readValue(content, new TypeReference<>() {});
         } catch (IOException ex) {
             return Collections.emptyMap();
         }

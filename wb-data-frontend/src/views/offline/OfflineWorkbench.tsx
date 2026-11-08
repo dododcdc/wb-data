@@ -34,6 +34,7 @@ import { OfflineExecutionDialog } from './OfflineExecutionDialog';
 import { ExecutionTimeContextDialog } from './ExecutionTimeContextDialog';
 import { OfflineRepositoryDialogs } from './OfflineRepositoryDialogs';
 import { OfflineVersionHistoryDrawer } from './OfflineVersionHistoryDrawer';
+import { OfflineVersionCompareDialog, type VersionSelection } from './OfflineVersionCompareDialog';
 import { OfflineWorkbenchMainPanel } from './OfflineWorkbenchMainPanel';
 import { preloadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
@@ -85,6 +86,7 @@ export default function OfflineWorkbench() {
     const [flowCommitDialogOpen, setFlowCommitDialogOpen] = useState(false);
     const [repoCommitDialogOpen, setRepoCommitDialogOpen] = useState(false);
     const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+    const [versionCompare, setVersionCompare] = useState<{ base: VersionSelection; target: VersionSelection; open: boolean } | null>(null);
     const [commitMessage, setCommitMessage] = useState('');
     const [committing, setCommitting] = useState(false);
     const [parameterDialogOpen, setParameterDialogOpen] = useState(false);
@@ -368,6 +370,15 @@ export default function OfflineWorkbench() {
             });
         })();
     }, [flushDraftNow, isDirty, refreshWorkspace, requestBranchSwitch, resetActiveFlowAfterBranchSwitch]);
+
+    const handleCompareVersions = useCallback(async (base: VersionSelection, target: VersionSelection) => {
+        if (base.revision === 'WORKTREE' || target.revision === 'WORKTREE') {
+            const saved = await flushDraftNow();
+            if (!saved) return;
+        }
+        setVersionHistoryOpen(false);
+        setVersionCompare({ base, target, open: true });
+    }, [flushDraftNow]);
 
     const repoTreeNodeIndex = useMemo(
         () => (repoTree ? indexNodesByTreePath(repoTree.root, repoTree.recentFlowPaths) : null),
@@ -823,6 +834,18 @@ export default function OfflineWorkbench() {
                     path={activeFlowPath}
                     open={versionHistoryOpen}
                     onOpenChange={setVersionHistoryOpen}
+                    onCompare={(base, target) => void handleCompareVersions(base, target)}
+                />
+            ) : null}
+
+            {groupId && activeFlowPath && versionCompare ? (
+                <OfflineVersionCompareDialog
+                    groupId={groupId}
+                    path={activeFlowPath}
+                    base={versionCompare.base}
+                    target={versionCompare.target}
+                    open={versionCompare.open}
+                    onOpenChange={(open) => setVersionCompare((current) => current ? { ...current, open } : null)}
                 />
             ) : null}
 

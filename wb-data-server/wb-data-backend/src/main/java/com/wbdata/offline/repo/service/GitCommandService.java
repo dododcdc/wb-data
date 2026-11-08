@@ -64,12 +64,21 @@ public class GitCommandService extends GitRepositoryOperations {
     }
 
     public String readFlowFileAtRevision(Long groupId, String revision, String path) {
-        validateRevision(revision);
-        if (path == null || !path.startsWith(".wb-data/kestra-flows/") || path.contains("..")) {
+        if (path == null || !path.startsWith(".wb-data/kestra-flows/")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务文件路径不合法");
         }
+        return readFileAtRevision(groupId, revision, path);
+    }
+
+    public String readFileAtRevision(Long groupId, String revision, String path) {
+        validateRevision(revision);
+        Path normalized = path == null ? Path.of("") : Path.of(path).normalize();
+        if (normalized.isAbsolute() || normalized.toString().contains("..") || normalized.toString().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "仓库文件路径不合法");
+        }
+        String relativePath = normalized.toString().replace('\\', '/');
         return repoLockManager.withLock(groupId,
-                () -> runGit(repoPath(groupId), "show", revision + ":" + path));
+                () -> runGit(repoPath(groupId), "show", revision + ":" + relativePath));
     }
 
     private void validateRevision(String revision) {

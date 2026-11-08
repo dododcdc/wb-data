@@ -1,0 +1,124 @@
+.offline-version-compare-dialog {
+    width: min(1100px, 96vw);
+    max-width: none;
+    height: 90dvh;
+    margin: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.offline-version-compare-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    padding-bottom: 10px;
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+}
+
+.offline-version-compare-toolbar label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+}
+
+.offline-version-compare-toolbar input {
+    accent-color: var(--color-accent);
+}
+
+.offline-version-compare-body {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    flex: 1;
+    min-height: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.offline-version-file-list {
+    min-height: 0;
+    overflow-y: auto;
+    border-right: 1px solid var(--color-border);
+    background: var(--color-surface-secondary);
+}
+
+.offline-version-file-list button {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 10px;
+    border: 0;
+    border-bottom: 1px solid var(--color-border);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.offline-version-file-list button:hover,
+.offline-version-file-list button.is-active {
+    background: var(--color-surface-primary);
+    color: var(--color-text-primary);
+}
+
+.offline-version-file-list button span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.offline-version-file-list button small {
+    color: var(--color-text-muted);
+}
+
+.offline-version-file-list p {
+    padding: 16px;
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+    text-align: center;
+}
+
+.offline-version-diff-editor {
+    min-width: 0;
+    min-height: 0;
+}
+
+.offline-version-editor-skeleton,
+.offline-version-file-skeleton {
+    height: 100%;
+    background: var(--color-surface-secondary);
+    animation: offline-version-compare-pulse 1.4s ease-in-out infinite;
+}
+
+.offline-version-file-skeleton {
+    height: 80px;
+    margin: 12px;
+    border-radius: 8px;
+}
+
+.offline-version-compare-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0 12px;
+    color: var(--color-error);
+    font-size: 0.8125rem;
+}
+
+.offline-version-compare-error button {
+    margin-left: auto;
+}
+
+@keyframes offline-version-compare-pulse {
+    50% { opacity: 0.45; }
+}
+
+@media (max-width: 800px) {
+    .offline-version-compare-body {
+        grid-template-columns: 200px minmax(0, 1fr);
+    }
+}

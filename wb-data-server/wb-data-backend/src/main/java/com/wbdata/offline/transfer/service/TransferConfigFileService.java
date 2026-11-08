@@ -56,6 +56,10 @@ public class TransferConfigFileService {
         }
 
         String content = Files.readString(file, StandardCharsets.UTF_8);
+        return readContent(configPath, content);
+    }
+
+    public TransferConfig readContent(String configPath, String content) throws IOException {
         JsonNode root = objectMapper.readTree(content);
         if (!root.has("schemaVersion")) {
             return objectMapper.treeToValue(root, TransferConfig.class);

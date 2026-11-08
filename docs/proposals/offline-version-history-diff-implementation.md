@@ -1,6 +1,6 @@
 # 实施：离线任务版本历史与多维度比对
 
-> 状态：S2 版本历史已完成（2026-11-08），S3 待实施
+> 状态：S3 只读快照与原始文件 diff 已完成（2026-11-08），S4 待实施
 > 范围：离线任务的开发版本、提交版本、线上版本历史，以及任意两个版本的只读比对
 > 关联方案：保留部署状态徽标方案的 P1；本文取代其 P2/P3
 > 引擎约束：Kestra 固定为 1.3.7，本方案不附带升级
@@ -622,7 +622,7 @@ SQL 与 Shell 额外展示 `${xxx}` 引用参数的新增、删除，数据来�
 
 **验收**：2 次包含任务的推送显示 2 个线上版本；其他任务的推送不新增版本；基线不伪造当前线上。
 
-### S3：只读快照与原始文件 diff
+### S3：只读快照与原始文件 diff（已完成，证据见 §13.8）
 
 **内容**
 
@@ -852,6 +852,16 @@ WB_DATA_PASSWORD=<admin-密码> scripts/dev/smoke-verify.sh --quick
 - `WB_DATA_BACKEND_BASE_URL=http://127.0.0.1:8081 WB_DATA_PASSWORD=admin123 scripts/dev/smoke-verify.sh --quick` 全部通过。
 - `mvn -q clean install`（后端全模块）通过；前端 lint、90 个测试文件 713 个用例和生产构建通过。
 - 查看快照、查看原始文件及任意两版本对比不在 S2 范围，统一由 S3 接入，不在抽屉中放置未完成动作。
+
+### 13.8 S3 只读快照与原始文件 diff 验证（2026-11-08）
+
+- `OfflineFlowSnapshotServiceTest` 使用两次真实保存与提交验证：旧版两个节点、新版删除节点并修改脚本，历史文件不混用当前工作区，参数 `currentVersion/status` 被清理，越权路径和任意 revision 被拒绝。
+- 真实 API 对 `2589eab` 与 `f76333c` 均完整返回 Hive SQL、ClickHouse、Transfer 节点及 `.parameters.json`、脚本、Transfer 配置和布局；`snapshot/file` 能读取对应 SQL 原文。
+- 历史抽屉支持开发版本、任意两个提交和线上版本选择；含 WORKTREE 时先 `flushDraftNow` 成功再打开对比，保存失败不展示旧快照。
+- 真实浏览器（ego-browser）已选择两个提交并打开 Monaco 原始文件对比，确认文件并集、左右内容、SQL/YAML 高亮、滚动与弹窗布局正常。
+- `WB_DATA_BACKEND_BASE_URL=http://127.0.0.1:8081 WB_DATA_PASSWORD=admin123 scripts/dev/smoke-verify.sh --quick` 全部通过。
+- `mvn -q clean install`（后端全模块）通过；前端 lint、91 个测试文件 714 个用例和生产构建通过。
+- 节点、调度、依赖、参数等业务语义 diff 不在 S3 范围，统一由 S4 实现；S3 以原始文件 diff 作为完整兜底。
 
 ## 14. 完成定义
 

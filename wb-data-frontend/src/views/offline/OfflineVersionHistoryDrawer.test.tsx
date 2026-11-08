@@ -71,7 +71,7 @@ describe('OfflineVersionHistoryDrawer', () => {
         vi.mocked(getOfflineFlowVersions).mockImplementation((_groupId, _path, options) =>
             Promise.resolve(response(options?.onlineOnly ?? false)));
 
-        render(<OfflineVersionHistoryDrawer groupId={4} path="_flows/example/flow.yaml" open onOpenChange={vi.fn()} />);
+        render(<OfflineVersionHistoryDrawer groupId={4} path="_flows/example/flow.yaml" open onOpenChange={vi.fn()} onCompare={vi.fn()} />);
 
         expect(await screen.findByText('开发版本（工作区）')).toBeTruthy();
         expect(screen.getByText('第二次提交')).toBeTruthy();

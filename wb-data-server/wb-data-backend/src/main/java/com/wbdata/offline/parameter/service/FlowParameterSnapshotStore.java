@@ -1,5 +1,8 @@
 package com.wbdata.offline.parameter.service;
 
+import com.wbdata.offline.repo.service.SnapshotFileAccess;
+import com.wbdata.offline.repo.service.WorkingTreeSnapshotFileAccess;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.offline.parameter.dto.FlowParameterSnapshot;
@@ -23,11 +26,16 @@ public class FlowParameterSnapshotStore {
     private final ObjectMapper objectMapper;
 
     public Optional<SnapshotFile> read(Path repoPath, String flowPath) throws IOException {
+        return read(repoPath, flowPath, new WorkingTreeSnapshotFileAccess());
+    }
+
+    public Optional<SnapshotFile> read(Path repoPath, String flowPath, SnapshotFileAccess fileAccess) throws IOException {
         Path path = resolve(repoPath, flowPath);
-        if (!Files.isRegularFile(path)) {
+        String relativePath = repoPath.relativize(path).toString().replace('\\', '/');
+        if (!fileAccess.exists(repoPath, relativePath)) {
             return Optional.empty();
         }
-        String content = Files.readString(path, StandardCharsets.UTF_8);
+        String content = fileAccess.readString(repoPath, relativePath);
         FlowParameterSnapshot snapshot;
         try {
             snapshot = FlowParameterSnapshotCodec.read(objectMapper, content);
@@ -48,7 +56,7 @@ public class FlowParameterSnapshotStore {
                 snapshot,
                 path,
                 content,
-                Files.getLastModifiedTime(path).toMillis()
+                fileAccess.lastModified(repoPath, relativePath)
         ));
     }
 

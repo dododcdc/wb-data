@@ -11,6 +11,8 @@ import com.wbdata.offline.dto.DeleteOfflineFlowRequest;
 import com.wbdata.offline.dto.OfflineFlowDocumentResponse;
 import com.wbdata.offline.dto.OfflineFlowContentResponse;
 import com.wbdata.offline.dto.OfflineFlowVersionHistoryResponse;
+import com.wbdata.offline.dto.OfflineFlowVersionSnapshotResponse;
+import com.wbdata.offline.dto.OfflineFlowFileSnapshot;
 import com.wbdata.offline.dto.MoveOfflineFlowRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowRequest;
@@ -19,6 +21,7 @@ import com.wbdata.offline.service.OfflineFlowDependencyService;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
 import com.wbdata.offline.service.OfflineRecentFlowService;
 import com.wbdata.offline.repo.service.OfflineFlowVersionService;
+import com.wbdata.offline.repo.service.OfflineFlowSnapshotService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -45,6 +48,7 @@ public class OfflineFlowController {
     private final AuthContextService authContextService;
     private final OfflineRecentFlowService offlineRecentFlowService;
     private OfflineFlowVersionService offlineFlowVersionService;
+    private OfflineFlowSnapshotService offlineFlowSnapshotService;
 
     public OfflineFlowController(OfflineFlowContentService offlineFlowContentService,
                                  OfflineFlowDocumentService offlineFlowDocumentService,
@@ -72,6 +76,11 @@ public class OfflineFlowController {
         this.offlineFlowVersionService = offlineFlowVersionService;
     }
 
+    @Autowired
+    public void setOfflineFlowSnapshotService(OfflineFlowSnapshotService offlineFlowSnapshotService) {
+        this.offlineFlowSnapshotService = offlineFlowSnapshotService;
+    }
+
     @Operation(summary = "读取任务版本历史")
     @GetMapping("/versions")
     public Result<OfflineFlowVersionHistoryResponse> getVersions(
@@ -81,6 +90,25 @@ public class OfflineFlowController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
         return Result.success(offlineFlowVersionService.getVersions(context.groupId(), path, onlineOnly, page, size));
+    }
+
+    @Operation(summary = "读取任务版本快照")
+    @GetMapping("/snapshot")
+    public Result<OfflineFlowVersionSnapshotResponse> getSnapshot(
+            @RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
+            @RequestParam String path,
+            @RequestParam String rev) {
+        return Result.success(offlineFlowSnapshotService.getSnapshot(context.groupId(), path, rev));
+    }
+
+    @Operation(summary = "读取任务版本中的原始文件")
+    @GetMapping("/snapshot/file")
+    public Result<OfflineFlowFileSnapshot> getSnapshotFile(
+            @RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
+            @RequestParam String path,
+            @RequestParam String rev,
+            @RequestParam String filePath) {
+        return Result.success(offlineFlowSnapshotService.getFile(context.groupId(), path, rev, filePath));
     }
 
     @Operation(summary = "读取任务内容")

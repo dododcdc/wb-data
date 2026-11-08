@@ -58,6 +58,20 @@ export interface OfflineFlowVersionHistoryResponse {
     size: number;
 }
 
+export interface OfflineFlowFileSnapshot {
+    path: string;
+    sha256: string;
+    size: number;
+    content: string | null;
+}
+
+export interface OfflineFlowVersionSnapshot {
+    revision: string;
+    document: OfflineFlowDocument;
+    files: OfflineFlowFileSnapshot[];
+    nodeMetadata: Record<string, { referencedParameters: string[] }>;
+}
+
 export interface OfflineRepoStatus {
     groupId: number;
     repoPath: string;
@@ -523,6 +537,20 @@ export const getOfflineFlowVersions = (
     });
     return request.get<unknown, OfflineFlowVersionHistoryResponse>(
         `${offlinePath(groupId, '/flows/versions')}?${params.toString()}`,
+    );
+};
+
+export const getOfflineFlowSnapshot = (groupId: number, path: string, rev: string) => {
+    const params = new URLSearchParams({ path, rev });
+    return request.get<unknown, OfflineFlowVersionSnapshot>(
+        `${offlinePath(groupId, '/flows/snapshot')}?${params.toString()}`,
+    );
+};
+
+export const getOfflineFlowSnapshotFile = (groupId: number, path: string, rev: string, filePath: string) => {
+    const params = new URLSearchParams({ path, rev, filePath });
+    return request.get<unknown, OfflineFlowFileSnapshot>(
+        `${offlinePath(groupId, '/flows/snapshot/file')}?${params.toString()}`,
     );
 };
 
