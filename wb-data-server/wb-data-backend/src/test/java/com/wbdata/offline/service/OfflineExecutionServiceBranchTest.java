@@ -127,7 +127,8 @@ class OfflineExecutionServiceBranchTest {
                         "wbdataBranch", "main",
                         ExecutionParameterSnapshotRegistry.LABEL_KEY, "snapshot-1",
                         "wbdataParameterOverrideKeys", "name"
-                )
+                ),
+                Map.of()
         ));
 
         var detail = service.getExecution(1L, "exec-parameter");
@@ -547,7 +548,8 @@ class OfflineExecutionServiceBranchTest {
                 null,
                 List.of(),
                 Map.of(),
-                labels
+                labels,
+                Map.of()
         );
     }
 }

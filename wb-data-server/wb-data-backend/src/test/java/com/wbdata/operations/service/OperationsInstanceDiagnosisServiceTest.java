@@ -367,6 +367,7 @@ class OperationsInstanceDiagnosisServiceTest {
                 null,
                 taskRuns,
                 inputs,
+                Map.of(),
                 Map.of()
         );
     }

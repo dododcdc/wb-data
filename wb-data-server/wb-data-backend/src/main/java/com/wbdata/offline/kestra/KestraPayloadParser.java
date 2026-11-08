@@ -65,7 +65,8 @@ final class KestraPayloadParser {
                 readInstant(state.path("endDate"), root.path("endDate")),
                 taskRuns,
                 readStringMap(root.path("inputs")),
-                readLabels(root.path("labels"))
+                readLabels(root.path("labels")),
+                readStringMap(root.path("outputs"))
         );
     }
 

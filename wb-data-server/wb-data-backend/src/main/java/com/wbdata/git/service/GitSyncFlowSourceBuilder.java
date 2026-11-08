@@ -38,6 +38,9 @@ public final class GitSyncFlowSourceBuilder {
                 id: %s
                 namespace: system
                 description: "Auto-sync wb-data group %s branch %s"
+                concurrency:
+                  limit: 1
+                  behavior: QUEUE
                 inputs:
                   - id: git_username
                     type: STRING
@@ -51,6 +54,12 @@ public final class GitSyncFlowSourceBuilder {
                     cron: "%s"
                     disabled: %s
                 tasks:
+                  - id: resolve_start
+                    type: io.wbdata.kestra.core.GitRemoteRevision
+                    url: "%s"
+                    branch: %s
+                    username: "{{ inputs.git_username }}"
+                    password: "{{ inputs.git_token }}"
                   - id: sync_flows
                     type: io.kestra.plugin.git.SyncFlows
                     url: "%s"
@@ -69,6 +78,19 @@ public final class GitSyncFlowSourceBuilder {
                     namespace: %s
                     gitDirectory: .
                     delete: true
+                  - id: resolve_end
+                    type: io.wbdata.kestra.core.GitRemoteRevision
+                    url: "%s"
+                    branch: %s
+                    username: "{{ inputs.git_username }}"
+                    password: "{{ inputs.git_token }}"
+                outputs:
+                  - id: start_sha
+                    type: STRING
+                    value: "{{ outputs.resolve_start.sha }}"
+                  - id: end_sha
+                    type: STRING
+                    value: "{{ outputs.resolve_end.sha }}"
                 """.formatted(
                 syncFlowId,
                 groupId,
@@ -79,10 +101,14 @@ public final class GitSyncFlowSourceBuilder {
                 disabled,
                 yamlDoubleQuoted(repositoryUrl),
                 branch,
+                yamlDoubleQuoted(repositoryUrl),
+                branch,
                 namespace,
                 yamlDoubleQuoted(repositoryUrl),
                 branch,
-                namespace
+                namespace,
+                yamlDoubleQuoted(repositoryUrl),
+                branch
         );
     }
 

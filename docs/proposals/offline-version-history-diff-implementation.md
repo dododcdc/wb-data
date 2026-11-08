@@ -1,6 +1,6 @@
 # 实施：离线任务版本历史与多维度比对
 
-> 状态：S0 技术验证已完成（2026-11-07），S1 待实施
+> 状态：S1-A 同步证据链路已完成（2026-11-08），S1-B 待实施
 > 范围：离线任务的开发版本、提交版本、线上版本历史，以及任意两个版本的只读比对
 > 关联方案：保留部署状态徽标方案的 P1；本文取代其 P2/P3
 > 引擎约束：Kestra 固定为 1.3.7，本方案不附带升级
@@ -594,13 +594,19 @@ SQL 与 Shell 额外展示 `${xxx}` 引用参数的新增、删除，数据来�
 
 **交付物**：`GitRemoteRevision` 任务、JGit 依赖、2 个本地仓库单测、隔离 Kestra 验证镜像与 execution 证据；未修改正式同步 Flow，未重启现有 Kestra。
 
-### S1：推送记录、同步终态与当前线上
+### S1-A：同步证据链路（已完成，证据见 §13.5）
+
+- 在 `GitSyncFlowSourceBuilder` 接入 `concurrency + QUEUE`、首尾 `GitRemoteRevision` 和 Flow outputs。
+- 扩展 `KestraExecutionSnapshot/KestraPayloadParser` 读取 execution 根对象 outputs，并更新受影响的构造调用与测试。
+- 用实际构建器 YAML 在隔离 Kestra 中验证普通同步、连续推送和部分失败。
+- 使用进程环境变量中的真实凭据只读验证私有 GitHub 分支 HEAD，不将令牌写入文件或容器。
+
+### S1-B：推送记录、同步对账与当前线上（待实施）
 
 **内容**
 
 - 新增发布记录表和分支部署字段。
 - 改造 push/rebuild、事件、pushed_by 上下文传递。
-- 在 `GitSyncFlowSourceBuilder` 接入 `concurrency + QUEUE`、首尾 `GitRemoteRevision` 和 Flow outputs，并扩展 execution outputs 解析。
 - 实现同步执行对账、`last_deployed_sha` 和存量基线。
 - 部署状态徽标接入“当前线上 / 未生效 / 状态未知”。
 
@@ -817,6 +823,15 @@ WB_DATA_PASSWORD=<admin-密码> scripts/dev/smoke-verify.sh --quick
 - `mvn -q clean install`（`wb-data-server` 全模块）：通过。
 - 私有 HTTP 仓库凭据路径在 S1 接入真实项目组时验证；S0 使用本地仓库验证 JGit 读取与 Kestra 输出契约。
 - 旧对账结果的条件更新属于 S1 数据库实现，S0 已通过同 Flow QUEUE 证明执行不会并行，但尚未实现数据库对账服务。
+
+### 13.5 S1-A 同步证据链路验证（2026-11-08）
+
+- 实际 `GitSyncFlowSourceBuilder` 产物经 Kestra `/flows/validate` 校验通过；普通同步 execution `5APRCnC4ImYlF3fe9FB7AC` 全部任务 SUCCESS，start=end=c1 `8c4ae07f7c9b1ccbdbcab6a9389abbfc09a002f7`。
+- 受控连续推送：A=`6XtKDUBPhQRtQQ1YF32Sx7` 最终 start=c1/end=c2 `badfcbd262b1c3addfbff5e0147dcf11fd588349`，B=`6zw3QDVOkvJr1yWyj3kIpk` 先进入 QUEUED，最终 start=end=c2。
+- 部分失败：`5XgSlVIJYkV7ksjBX8Z4Fe` 的 sync_flows SUCCESS、sync_files FAILED，Flow outputs 为 null，实际 Flow 已部署 c3 `47c5a384fde9bef4c4f35085ad44b16a4df550db`，再次证明 FAILED 后不能沿用旧当前线上。
+- 私有 HTTP 仓库：使用进程环境变量中的凭据调用同一 `GitRemoteRevision.resolveBranchSha`，只读得到 `dododcdc/wb-data-4` main HEAD `dba3ed8a27a0f5c8d249256c8da2d17c3697cce3`；未把真实令牌写入 YAML、容器或日志。
+- `GitSyncFlowSourceBuilderTest`、`KestraHttpClientTest` 及全部受影响执行/运维服务测试通过；`mvn -q clean install`（`wb-data-server` 全模块）通过。
+- 验证仅使用隔离容器 `wb-data-s1a-kestra` 和本地临时仓库；未修改正式同步 Flow，未推送私有仓库。
 
 ## 14. 完成定义
 

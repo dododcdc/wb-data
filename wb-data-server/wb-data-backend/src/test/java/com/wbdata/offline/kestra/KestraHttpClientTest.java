@@ -38,7 +38,8 @@ class KestraHttpClientTest {
                           "namespace": "demo",
                           "flowId": "daily",
                           "state": {"current": "CREATED"},
-                          "inputs": {"name": "李雷", "note": "a&b=1"}
+                          "inputs": {"name": "李雷", "note": "a&b=1"},
+                          "outputs": {"start_sha": "abc123", "end_sha": "abc123"}
                         }
                         """));
         KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
@@ -64,6 +65,7 @@ class KestraHttpClientTest {
                 .contains("a&b=1")
                 .endsWith("--" + boundary + "--\r\n");
         assertThat(execution.inputs()).containsEntry("name", "李雷");
+        assertThat(execution.outputs()).containsEntry("start_sha", "abc123");
     }
 
     @Test

@@ -353,7 +353,8 @@ class OperationsExecutionServiceTest {
                 Map.of(
                         "date", "2026-06-07",
                         ExecutionTimeContext.PLANNED_TIME_INPUT, "2026-06-06T23:30:00Z"),
-                Map.of("env", "prod")
+                Map.of("env", "prod"),
+                Map.of()
         );
         when(kestraClient.getExecution("exec-main")).thenReturn(execution);
 
@@ -393,7 +394,8 @@ class OperationsExecutionServiceTest {
                 Map.of("name", "小明"),
                 Map.of(
                         ExecutionParameterSnapshotRegistry.LABEL_KEY, "snapshot-1",
-                        "wbdataParameterOverrideKeys", "__none__")
+                        "wbdataParameterOverrideKeys", "__none__"),
+                Map.of()
         );
         FlowParameterSnapshot snapshot = new FlowParameterSnapshot(2, "Asia/Shanghai", "daily", 3, List.of(
                 new FlowParameterDefinitionSnapshot(
@@ -510,7 +512,8 @@ class OperationsExecutionServiceTest {
                 Map.of("name", "李雷"),
                 Map.of(
                         ExecutionParameterSnapshotRegistry.LABEL_KEY, "snapshot-1",
-                        "wbdataParameterOverrideKeys", "name")
+                        "wbdataParameterOverrideKeys", "name"),
+                Map.of()
         );
         FlowParameterSnapshot snapshot = new FlowParameterSnapshot(2, "Asia/Shanghai", "daily", 3, List.of(
                 new FlowParameterDefinitionSnapshot(
@@ -640,7 +643,8 @@ class OperationsExecutionServiceTest {
                 Map.of("name", "李雷"),
                 Map.of(
                         ExecutionParameterSnapshotRegistry.LABEL_KEY, "snapshot-1",
-                        "wbdataParameterOverrideKeys", "name"));
+                        "wbdataParameterOverrideKeys", "name"),
+                Map.of());
         FlowParameterSnapshot snapshot = new FlowParameterSnapshot(2, "Asia/Shanghai", "daily", 3, List.of(
                 new FlowParameterDefinitionSnapshot(
                         "name", "CONSTANT", "小明", null, 0, null, 0, null),
@@ -691,7 +695,8 @@ class OperationsExecutionServiceTest {
                 Instant.parse("2026-06-07T00:00:02Z"),
                 Instant.parse("2026-06-07T00:01:00Z"),
                 List.of(), Map.of("name", "小明"),
-                Map.of(ExecutionParameterSnapshotRegistry.LABEL_KEY, "snapshot-old"));
+                Map.of(ExecutionParameterSnapshotRegistry.LABEL_KEY, "snapshot-old"),
+                Map.of());
         FlowParameterSnapshot currentSnapshot = new FlowParameterSnapshot(2, "Asia/Shanghai", "daily", 4, List.of(
                 new FlowParameterDefinitionSnapshot(
                         "v_day", "SYSTEM_TIME", null, "yyyyMMdd", -1, null, 0, "PLANNED_TIME")));
@@ -900,6 +905,7 @@ class OperationsExecutionServiceTest {
                 startDate == null ? null : Instant.parse(startDate),
                 endDate == null ? null : Instant.parse(endDate),
                 taskRuns,
+                Map.of(),
                 Map.of(),
                 Map.of()
         );
