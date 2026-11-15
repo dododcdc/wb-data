@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import type { OfflineFlowDocument, OfflineFlowNode, OfflineFlowVersionSnapshot } from '../../api/offline';
-import { diffFlowVersions } from './flowVersionDiff';
+import { countTotalSemanticChanges, diffFlowVersions, getNodeChangeReasons, hasNodeChanges } from './flowVersionDiff';
+import { areTransferEndpointFieldsEqual, buildWorktreeVersionSelection } from './versionComparePresentation';
 
 function node(taskId: string, overrides: Partial<OfflineFlowNode> = {}): OfflineFlowNode {
     return { taskId, kind: 'SHELL', scriptContent: `echo ${taskId}`, ...overrides };
@@ -119,5 +120,138 @@ describe('diffFlowVersions', () => {
         expect(result.nodes[0].referencedParametersAdded).toEqual(['new']);
         expect(result.nodes[0].referencedParametersRemoved).toEqual(['old']);
         expect(result.nodes[0].structureChanged).toBe(false);
+    });
+
+    it('resolves impacted tasks from structured nodeMetadata and detects scriptPath changes', () => {
+        const base = snapshot(
+            document([node('sql_a', { scriptPath: 'scripts/old.sql' })], {
+                parameterBinding: {
+                    parameterGroupId: 1,
+                    code: 'biz',
+                    name: '业务参数',
+                    boundVersion: 1,
+                    definitions: [{ key: 'v_day', valueSource: 'CONSTANT', constantValue: '20261113', offsetDays: 0, sortOrder: 0 }],
+                } as OfflineFlowDocument['parameterBinding'],
+            }),
+            { sql_a: { referencedParameters: ['v_day'] } },
+        );
+        const target = snapshot(
+            document([node('sql_a', { scriptPath: 'scripts/new.sql' })], {
+                parameterBinding: {
+                    parameterGroupId: 1,
+                    code: 'biz',
+                    name: '业务参数',
+                    boundVersion: 2,
+                    definitions: [{ key: 'v_day', valueSource: 'CONSTANT', constantValue: '20261114', offsetDays: 0, sortOrder: 0 }],
+                } as OfflineFlowDocument['parameterBinding'],
+            }),
+            { sql_a: { referencedParameters: ['v_day'] } },
+        );
+
+        const result = diffFlowVersions(base, target);
+        expect(result.parameters.definitions[0].impactedTaskIds).toEqual(['sql_a']);
+        expect(result.nodes[0].scriptPathChanged).toBe(true);
+        expect(getNodeChangeReasons(result.nodes[0])).toContain('脚本路径');
+    });
+
+    it('compares transfer preSql and postSql arrays by value rather than reference', () => {
+        expect(areTransferEndpointFieldsEqual('preSql', ['DELETE FROM t WHERE id = 1'], ['DELETE FROM t WHERE id = 1'])).toBe(true);
+        expect(areTransferEndpointFieldsEqual('preSql', undefined, [])).toBe(true);
+        expect(areTransferEndpointFieldsEqual('postSql', ['ANALYZE TABLE t'], ['OPTIMIZE TABLE t'])).toBe(false);
+    });
+
+    it('omits unchanged edges and upstream dependencies present in both revisions', () => {
+        const docOverrides = {
+            edges: [{ source: 'hive_a', target: 'transfer_b' }, { source: 'transfer_b', target: 'shell_c' }],
+            dependencyConfig: {
+                dependencies: [{ groupId: 4, groupName: 'policy', flowId: 'upstream_flow', flowName: '上游' }],
+                failurePolicy: 'PAUSE' as const,
+                crossGroupDependency: 'ALLOW' as const,
+            },
+        };
+        const base = snapshot(document([node('hive_a'), node('transfer_b'), node('shell_c')], docOverrides));
+        const target = snapshot(document([node('hive_a'), node('transfer_b'), node('shell_c')], docOverrides));
+
+        const result = diffFlowVersions(base, target);
+        expect(result.edges).toEqual([]);
+        expect(result.dependencies.items).toEqual([]);
+        expect(result.summary).toEqual({ nodes: 0, schedule: 0, dependencies: 0, parameters: 0 });
+    });
+
+    it('marks HIVE_SQL hiveConf differences in node diff summary and change reasons', () => {
+        const base = snapshot(document([
+            node('hive_a', {
+                kind: 'HIVE_SQL',
+                dataSourceId: 2,
+                dataSourceType: 'HIVE',
+                hiveConf: { 'hive.exec.dynamic.partition': 'true' },
+            }),
+        ]));
+        const target = snapshot(document([
+            node('hive_a', {
+                kind: 'HIVE_SQL',
+                dataSourceId: 2,
+                dataSourceType: 'HIVE',
+                hiveConf: {
+                    'hive.exec.dynamic.partition': 'true',
+                    'hive.exec.dynamic.partition.mode': 'nonstrict',
+                },
+            }),
+        ]));
+
+        const result = diffFlowVersions(base, target);
+        expect(result.summary.nodes).toBe(1);
+        expect(result.nodes[0].hiveConfChanged).toBe(true);
+        expect(getNodeChangeReasons(result.nodes[0])).toEqual(['Hive 运行参数']);
+    });
+
+    it('treats reordered HIVE_SQL hiveConf entries as unchanged to match structured diff', () => {
+        const base = snapshot(document([
+            node('hive_a', {
+                kind: 'HIVE_SQL',
+                dataSourceId: 2,
+                dataSourceType: 'HIVE',
+                hiveConf: {
+                    'hive.exec.dynamic.partition': 'true',
+                    'hive.exec.dynamic.partition.mode': 'nonstrict',
+                },
+            }),
+        ]));
+        const target = snapshot(document([
+            node('hive_a', {
+                kind: 'HIVE_SQL',
+                dataSourceId: 2,
+                dataSourceType: 'HIVE',
+                hiveConf: {
+                    'hive.exec.dynamic.partition.mode': 'nonstrict',
+                    'hive.exec.dynamic.partition': 'true',
+                },
+            }),
+        ]));
+
+        const result = diffFlowVersions(base, target);
+        expect(result.nodes[0].hiveConfChanged).toBe(false);
+        expect(hasNodeChanges(result.nodes[0])).toBe(false);
+        expect(result.summary.nodes).toBe(0);
+        expect(countTotalSemanticChanges(result)).toBe(0);
+    });
+
+    it('excludes upstream-only edge changes from node modification summary while keeping detail reason', () => {
+        const base = snapshot(document([node('a'), node('b')], { edges: [] }));
+        const target = snapshot(document([node('a'), node('b')], { edges: [{ source: 'a', target: 'b' }] }));
+
+        const result = diffFlowVersions(base, target);
+        const downstream = result.nodes.find((entry) => entry.taskId === 'b')!;
+        expect(downstream.upstreamChanged).toBe(true);
+        expect(hasNodeChanges(downstream)).toBe(false);
+        expect(result.summary.nodes).toBe(0);
+        expect(result.edges).toHaveLength(1);
+        expect(getNodeChangeReasons(downstream)).toContain('上游连线');
+    });
+
+    it('avoids falsely marking worktree clean when development metadata is absent', () => {
+        expect(buildWorktreeVersionSelection(undefined).message).toBeNull();
+        expect(buildWorktreeVersionSelection({ dirty: true }).message).toBe('工作区有未提交修改');
+        expect(buildWorktreeVersionSelection({ dirty: false }).message).toBe('与最新提交一致');
     });
 });

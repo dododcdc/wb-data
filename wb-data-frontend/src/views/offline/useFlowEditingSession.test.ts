@@ -1082,4 +1082,38 @@ describe('useFlowEditingSession', () => {
         expect(result.current.draftSaveState).toBe('idle');
         expect(result.current.draftSaveError).toBeNull();
     });
+
+    it('flushPendingDraftIfDirty skips clean sessions and flushes unstaged node editor drafts even when isDirty is false', async () => {
+        const doc = makeFlowDocument();
+        vi.mocked(getOfflineFlowDocument).mockResolvedValue(doc);
+        vi.mocked(saveOfflineFlowDocument).mockResolvedValue(makeFlowDocument({
+            documentHash: 'saved-hash',
+            documentUpdatedAt: 20,
+        }));
+        const { result } = renderSessionHook();
+
+        await act(async () => {
+            await result.current.openFlowDocument('_flows/jack/demo/flow.yaml');
+        });
+
+        // Clean session: no save request
+        await act(async () => {
+            const ok = await result.current.flushPendingDraftIfDirty();
+            expect(ok).toBe(true);
+        });
+        expect(saveOfflineFlowDocument).not.toHaveBeenCalled();
+
+        // Pending edit inside NodeEditorDialog (isDirty still false until debounce flushes): must flush
+        act(() => {
+            result.current.openNodeEditor('shell_node_1');
+            result.current.updateNodeEditorContent('echo updated');
+        });
+        expect(result.current.isDirty).toBe(false);
+
+        await act(async () => {
+            const ok = await result.current.flushPendingDraftIfDirty();
+            expect(ok).toBe(true);
+        });
+        expect(saveOfflineFlowDocument).toHaveBeenCalledTimes(1);
+    });
 });

@@ -18,6 +18,8 @@ export interface FlowCanvasNodeData {
     onCancelRename?: () => void;
     validationError?: string | null;
     status?: string | null;
+    diffLabel?: string;
+    onOpen?: () => void;
     [key: string]: unknown;
 }
 

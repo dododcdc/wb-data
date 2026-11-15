@@ -7,6 +7,8 @@ public record OfflineFlowVersionSnapshotResponse(
         String revision,
         OfflineFlowDocumentResponse document,
         List<OfflineFlowFileSnapshot> files,
-        Map<String, List<String>> nodeMetadata
+        Map<String, NodeMetadata> nodeMetadata
 ) {
+    public record NodeMetadata(List<String> referencedParameters) {
+    }
 }

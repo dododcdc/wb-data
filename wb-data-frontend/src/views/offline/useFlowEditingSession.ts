@@ -655,6 +655,17 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
 
     const flushDraftNow = useCallback(async (): Promise<boolean> => persistDraft(), [persistDraft]);
 
+    const flushPendingDraftIfDirty = useCallback(async (): Promise<boolean> => {
+        const currentSession = draftSessionRef.current;
+        const pendingDraft = pendingNodeEditorDraftRef.current;
+        const dirtyNow = currentSession !== null && hasFlowDraftChanges(currentSession);
+        const pendingDraftChanged = hasPendingNodeEditorDraftChanges(currentSession, pendingDraft);
+        if (!dirtyNow && !pendingDraftChanged) {
+            return true;
+        }
+        return persistDraft();
+    }, [pendingNodeEditorDraftRef, persistDraft]);
+
     // 自动保存：工作草稿内容变化后防抖 2s 静默持久化。
     // 节点编辑器打开时不自动保存（避免打字中 flush 打断输入）；保存冲突未裁决前暂停。
     const workingDraftSignature = draftSession ? buildFlowDocumentSignature(draftSession.workingDraft) : null;
@@ -852,6 +863,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         commitCanvasLayout,
         persistDraft,
         flushDraftNow,
+        flushPendingDraftIfDirty,
         validateDocumentForAction,
         commitCurrentFlow,
         closeSaveConflict,

@@ -549,13 +549,6 @@ export const getOfflineFlowSnapshot = (groupId: number, path: string, rev: strin
     );
 };
 
-export const getOfflineFlowSnapshotFile = (groupId: number, path: string, rev: string, filePath: string) => {
-    const params = new URLSearchParams({ path, rev, filePath });
-    return request.get<unknown, OfflineFlowFileSnapshot>(
-        `${offlinePath(groupId, '/flows/snapshot/file')}?${params.toString()}`,
-    );
-};
-
 export const saveOfflineFlowContent = (payload: SaveOfflineFlowRequest) => {
     return request.put<unknown, OfflineFlowContent>(offlinePath(payload.groupId, '/flows/content'), omitGroupId(payload), {
         headers: {

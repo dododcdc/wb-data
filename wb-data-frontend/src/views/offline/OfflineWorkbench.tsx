@@ -167,6 +167,7 @@ export default function OfflineWorkbench() {
         stageNodeEditorDraft,
         saveNodeEditorDraft,
         flushDraftNow,
+        flushPendingDraftIfDirty,
         validateDocumentForAction,
         draftSaveState,
         draftSavedAt,
@@ -458,14 +459,18 @@ export default function OfflineWorkbench() {
         })();
     }, [flushDraftNow, isDirty, refreshWorkspace, requestBranchSwitch, resetActiveFlowAfterBranchSwitch]);
 
+    const ensureWorktreeFlushed = useCallback(async (): Promise<boolean> => {
+        if (!canWrite) return true;
+        return flushPendingDraftIfDirty();
+    }, [canWrite, flushPendingDraftIfDirty]);
+
     const handleCompareVersions = useCallback(async (base: VersionSelection, target: VersionSelection) => {
-        if (base.revision === 'WORKTREE' || target.revision === 'WORKTREE') {
-            const saved = await flushDraftNow();
-            if (!saved) return;
+        if ((base.revision === 'WORKTREE' || target.revision === 'WORKTREE') && !(await ensureWorktreeFlushed())) {
+            return;
         }
         setVersionHistoryOpen(false);
         setVersionCompare({ base, target, open: true });
-    }, [flushDraftNow]);
+    }, [ensureWorktreeFlushed]);
 
     const repoTreeNodeIndex = useMemo(
         () => (repoTree ? indexNodesByTreePath(repoTree.root, repoTree.recentFlowPaths) : null),
@@ -988,6 +993,7 @@ export default function OfflineWorkbench() {
                     target={versionCompare.target}
                     open={versionCompare.open}
                     onOpenChange={(open) => setVersionCompare((current) => current ? { ...current, open } : null)}
+                    onBeforeLoadWorktree={ensureWorktreeFlushed}
                 />
             ) : null}
 

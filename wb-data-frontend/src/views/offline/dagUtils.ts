@@ -75,6 +75,7 @@ export function autoLayout(
     nodes: Node[],
     edges: Edge[],
     direction: 'TB' | 'LR' = 'TB',
+    options?: { nodeWidth?: number; nodeHeight?: number },
 ): Node[] {
     const g = new dagre.graphlib.Graph();
     g.setGraph({
@@ -86,8 +87,8 @@ export function autoLayout(
     });
     g.setDefaultEdgeLabel(() => ({}));
 
-    const nodeWidth = 240;
-    const nodeHeight = 56;
+    const nodeWidth = options?.nodeWidth ?? 240;
+    const nodeHeight = options?.nodeHeight ?? 56;
 
     for (const node of nodes) {
         g.setNode(node.id, { width: nodeWidth, height: nodeHeight });

@@ -15,7 +15,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class OfflineFlowSnapshotService {
@@ -34,16 +36,24 @@ public class OfflineFlowSnapshotService {
 
     public OfflineFlowVersionSnapshotResponse getSnapshot(Long groupId, String path, String revision) {
         SnapshotFileAccess fileAccess = fileAccess(groupId, revision);
-        OfflineFlowDocumentResponse document = sanitize(flowDocumentService.getFlowDocumentSnapshot(groupId, path, fileAccess));
-        List<OfflineFlowFileSnapshot> files = flowDocumentService.resolveManagedFilesAtRevision(groupId, path, fileAccess)
+        OfflineFlowDocumentService.VersionSnapshotData snapshotData =
+                flowDocumentService.getVersionSnapshotData(groupId, path, fileAccess);
+        OfflineFlowDocumentResponse document = sanitize(snapshotData.document());
+        List<OfflineFlowFileSnapshot> files = snapshotData.managedFiles()
                 .stream()
                 .map(file -> readFile(groupId, fileAccess, file, false))
                 .toList();
+        Map<String, OfflineFlowVersionSnapshotResponse.NodeMetadata> nodeMetadata = new LinkedHashMap<>();
+        flowDocumentService.extractReferencedParameters(document)
+                .forEach((taskId, refs) -> nodeMetadata.put(
+                        taskId,
+                        new OfflineFlowVersionSnapshotResponse.NodeMetadata(refs)
+                ));
         return new OfflineFlowVersionSnapshotResponse(
                 revision,
                 document,
                 files,
-                flowDocumentService.extractReferencedParameters(document)
+                nodeMetadata
         );
     }
 

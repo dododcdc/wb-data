@@ -74,6 +74,8 @@ describe('OfflineVersionHistoryDrawer', () => {
         render(<OfflineVersionHistoryDrawer groupId={4} path="_flows/example/flow.yaml" open onOpenChange={vi.fn()} onCompare={vi.fn()} />);
 
         expect(await screen.findByText('开发版本（工作区）')).toBeTruthy();
+        expect(screen.getByText('版本历史 · example')).toBeTruthy();
+        expect(document.querySelector('.offline-version-history-drawer .dialog-header p')?.className).toContain('sr-only');
         expect(screen.getByText('第二次提交')).toBeTruthy();
         expect(screen.getByText('线上 v2')).toBeTruthy();
         expect(screen.getByText('当前线上')).toBeTruthy();
@@ -88,5 +90,63 @@ describe('OfflineVersionHistoryDrawer', () => {
             });
         });
         expect(screen.queryByText('开发版本（工作区）')).toBeNull();
+    });
+
+    it('distinguishes a publication selection from its commit selection', async () => {
+        vi.mocked(getOfflineFlowVersions).mockImplementation((_groupId, _path, options) =>
+            Promise.resolve(response(options?.onlineOnly ?? false)));
+
+        render(<OfflineVersionHistoryDrawer groupId={4} path="_flows/example/flow.yaml" open onOpenChange={vi.fn()} onCompare={vi.fn()} />);
+
+        const publication = await screen.findByRole('button', { name: /线上 v2/ });
+        const commit = screen.getByRole('checkbox', { name: '选择提交 ccccccc' }) as HTMLInputElement;
+        fireEvent.click(publication);
+
+        expect(publication.getAttribute('aria-pressed')).toBe('true');
+        expect(commit.checked).toBe(false);
+        expect(screen.getByText('已选 1/2 个版本')).toBeTruthy();
+
+        fireEvent.click(commit);
+        expect((screen.getByRole('button', { name: '对比所选' }) as HTMLButtonElement).disabled).toBe(false);
+        expect(screen.getByText(/同一提交（内容一致）/)).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('button', { name: '清空' }));
+        expect(screen.getByText('选择两个版本进行对比')).toBeTruthy();
+    });
+
+    it('supports one-click compare with the previous commit', async () => {
+        const onCompare = vi.fn();
+        vi.mocked(getOfflineFlowVersions).mockImplementation((_groupId, _path, options) =>
+            Promise.resolve(response(options?.onlineOnly ?? false)));
+
+        render(<OfflineVersionHistoryDrawer groupId={4} path="_flows/example/flow.yaml" open onOpenChange={vi.fn()} onCompare={onCompare} />);
+
+        const prevButtons = await screen.findAllByRole('button', { name: '与上一版对比' });
+        fireEvent.click(prevButtons[0]);
+
+        expect(onCompare).toHaveBeenCalledTimes(1);
+        expect(onCompare.mock.calls[0][0].revision).toBe('aaaaaaaa4444');
+        expect(onCompare.mock.calls[0][1].revision).toBe('cccccccc9999');
+    });
+
+    it('preserves dirty worktree metadata across onlineOnly filtering', async () => {
+        const onCompare = vi.fn();
+        vi.mocked(getOfflineFlowVersions).mockImplementation((_groupId, _path, options) =>
+            Promise.resolve(response(options?.onlineOnly ?? false)));
+
+        render(<OfflineVersionHistoryDrawer groupId={4} path="_flows/example/flow.yaml" open onOpenChange={vi.fn()} onCompare={onCompare} />);
+
+        await screen.findByText('开发版本（工作区）');
+        fireEvent.click(screen.getByRole('checkbox', { name: '只看线上版本' }));
+        await waitFor(() => {
+            expect(screen.queryByText('开发版本（工作区）')).toBeNull();
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: '与当前线上对比' }));
+        expect(onCompare).toHaveBeenCalledTimes(1);
+        expect(onCompare.mock.calls[0][1]).toMatchObject({
+            revision: 'WORKTREE',
+            message: '工作区有未提交修改',
+        });
     });
 });

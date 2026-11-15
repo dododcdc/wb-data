@@ -7,20 +7,28 @@ import type {
     OfflineFlowNode,
     OfflineFlowVersionSnapshot,
 } from '../../api/offline';
+import { areHiveConfsEqual } from './hiveConf';
 
 export type DiffKind = 'ADDED' | 'REMOVED' | 'MODIFIED';
+
+export interface VersionSnapshotNode extends OfflineFlowNode {
+    stageId?: string;
+    parallel?: boolean;
+}
 
 export interface NodeVersionDiff {
     taskId: string;
     kind: DiffKind;
     contentChanged: boolean;
     configChanged: boolean;
+    hiveConfChanged?: boolean;
+    scriptPathChanged?: boolean;
     structureChanged: boolean;
     upstreamChanged: boolean;
     referencedParametersAdded: string[];
     referencedParametersRemoved: string[];
-    baseNode: OfflineFlowNode | null;
-    targetNode: OfflineFlowNode | null;
+    baseNode: VersionSnapshotNode | null;
+    targetNode: VersionSnapshotNode | null;
 }
 
 export interface EdgeVersionDiff {
@@ -110,9 +118,58 @@ export function diffFlowVersions(base: OfflineFlowVersionSnapshot, target: Offli
     };
 }
 
+export function countTotalSemanticChanges(diff: FlowVersionDiff): number {
+    return (
+        diff.summary.nodes
+        + diff.edges.length
+        + diff.summary.schedule
+        + diff.summary.dependencies
+        + diff.summary.parameters
+    );
+}
+
 export function hasNodeChanges(node: NodeVersionDiff) {
-    return node.contentChanged || node.configChanged || node.structureChanged || node.upstreamChanged
-        || node.referencedParametersAdded.length > 0 || node.referencedParametersRemoved.length > 0;
+    return node.kind !== 'MODIFIED'
+        || node.contentChanged
+        || node.configChanged
+        || Boolean(node.hiveConfChanged)
+        || node.scriptPathChanged
+        || node.structureChanged
+        || node.referencedParametersAdded.length > 0
+        || node.referencedParametersRemoved.length > 0;
+}
+
+export function getNodeChangeReasons(node: NodeVersionDiff): string[] {
+    if (node.kind === 'ADDED') {
+        return ['新增节点'];
+    }
+    if (node.kind === 'REMOVED') {
+        return ['删除节点'];
+    }
+    const reasons: string[] = [];
+    if (node.contentChanged) {
+        const activeNode = node.targetNode ?? node.baseNode;
+        reasons.push(activeNode?.kind === 'TRANSFER' ? '传输配置' : '脚本');
+    }
+    if (node.configChanged) {
+        reasons.push('数据源/类型');
+    }
+    if (node.hiveConfChanged) {
+        reasons.push('Hive 运行参数');
+    }
+    if (node.scriptPathChanged) {
+        reasons.push('脚本路径');
+    }
+    if (node.structureChanged) {
+        reasons.push('执行阶段');
+    }
+    if (node.upstreamChanged) {
+        reasons.push('上游连线');
+    }
+    if (node.referencedParametersAdded.length > 0 || node.referencedParametersRemoved.length > 0) {
+        reasons.push('参数引用');
+    }
+    return reasons;
 }
 
 function flattenNodes(snapshot: OfflineFlowVersionSnapshot) {
@@ -139,8 +196,8 @@ function diffNodes(
     return [...ids].sort().map((taskId): NodeVersionDiff => {
         const baseNode = baseNodes.get(taskId) ?? null;
         const targetNode = targetNodes.get(taskId) ?? null;
-        const baseParameters = new Set(baseMetadata[taskId]?.referencedParameters ?? []);
-        const targetParameters = new Set(targetMetadata[taskId]?.referencedParameters ?? []);
+        const baseParameters = new Set(readReferencedParameters(baseMetadata, taskId));
+        const targetParameters = new Set(readReferencedParameters(targetMetadata, taskId));
         const referencedParametersAdded = [...targetParameters].filter((key) => !baseParameters.has(key)).sort();
         const referencedParametersRemoved = [...baseParameters].filter((key) => !targetParameters.has(key)).sort();
         const contentChanged = (baseNode?.scriptContent ?? null) !== (targetNode?.scriptContent ?? null)
@@ -148,6 +205,8 @@ function diffNodes(
         const configChanged = (baseNode?.kind ?? null) !== (targetNode?.kind ?? null)
             || (baseNode?.dataSourceId ?? null) !== (targetNode?.dataSourceId ?? null)
             || (baseNode?.dataSourceType ?? null) !== (targetNode?.dataSourceType ?? null);
+        const hiveConfChanged = !areHiveConfsEqual(baseNode?.hiveConf, targetNode?.hiveConf);
+        const scriptPathChanged = (baseNode?.scriptPath ?? null) !== (targetNode?.scriptPath ?? null);
         const structureChanged = (baseNode?.stageId ?? null) !== (targetNode?.stageId ?? null)
             || (baseNode?.parallel ?? null) !== (targetNode?.parallel ?? null);
         const upstreamChanged = upstreamFor(taskId, baseEdges) !== upstreamFor(taskId, targetEdges);
@@ -157,6 +216,8 @@ function diffNodes(
             kind,
             contentChanged,
             configChanged,
+            hiveConfChanged,
+            scriptPathChanged,
             structureChanged,
             upstreamChanged,
             referencedParametersAdded,
@@ -177,15 +238,18 @@ function upstreamFor(taskId: string, edges: Map<string, OfflineFlowEdge>) {
 
 function diffEdges(baseEdges: Map<string, OfflineFlowEdge>, targetEdges: Map<string, OfflineFlowEdge>) {
     const keys = new Set([...baseEdges.keys(), ...targetEdges.keys()]);
-    return [...keys].sort().map((key): EdgeVersionDiff => {
+    return [...keys].sort().flatMap((key): EdgeVersionDiff[] => {
         const baseEdge = baseEdges.get(key) ?? null;
         const targetEdge = targetEdges.get(key) ?? null;
-        return {
+        if (baseEdge && targetEdge && JSON.stringify(baseEdge) === JSON.stringify(targetEdge)) {
+            return [];
+        }
+        return [{
             key,
             kind: !baseEdge ? 'ADDED' : !targetEdge ? 'REMOVED' : 'MODIFIED',
             baseEdge,
             targetEdge,
-        };
+        }];
     });
 }
 
@@ -205,15 +269,18 @@ function diffDependencies(base: OfflineFlowDependencySettings | null | undefined
     const baseRefs = new Map((base?.dependencies ?? []).map((ref) => [`${ref.groupId}:${ref.flowId}`, ref]));
     const targetRefs = new Map((target?.dependencies ?? []).map((ref) => [`${ref.groupId}:${ref.flowId}`, ref]));
     const keys = new Set([...baseRefs.keys(), ...targetRefs.keys()]);
-    const items = [...keys].sort().map((key) => {
+    const items = [...keys].sort().flatMap((key) => {
         const baseRef = baseRefs.get(key) ?? null;
         const targetRef = targetRefs.get(key) ?? null;
-        return {
+        if (baseRef && targetRef && JSON.stringify(baseRef) === JSON.stringify(targetRef)) {
+            return [];
+        }
+        return [{
             key,
             kind: !baseRef ? 'ADDED' as const : !targetRef ? 'REMOVED' as const : 'MODIFIED' as const,
             baseRef,
             targetRef,
-        };
+        }];
     });
     const fields: FieldVersionDiff[] = [];
     addField(fields, 'failurePolicy', base?.failurePolicy ?? 'CONTINUE', target?.failurePolicy ?? 'CONTINUE');
@@ -228,10 +295,9 @@ function diffParameters(base: OfflineFlowVersionSnapshot, target: OfflineFlowVer
     const groups = [...keys].sort().map((key): ParameterGroupVersionDiff => {
         const baseGroup = baseGroups.get(key) ?? null;
         const targetGroup = targetGroups.get(key) ?? null;
-        const changed = !baseGroup || !targetGroup || baseGroup.boundVersion !== targetGroup.boundVersion;
         return {
             key,
-            kind: !baseGroup ? 'ADDED' : !targetGroup ? 'REMOVED' : changed ? 'MODIFIED' : 'MODIFIED',
+            kind: !baseGroup ? 'ADDED' : !targetGroup ? 'REMOVED' : 'MODIFIED',
             baseName: baseGroup?.name ?? baseGroup?.code ?? null,
             targetName: targetGroup?.name ?? targetGroup?.code ?? null,
             baseVersion: baseGroup?.boundVersion ?? null,
@@ -270,12 +336,22 @@ function parameterDefinitions(groups: Map<string, FlowParameterBindingItem>) {
         ])));
 }
 
+function readReferencedParameters(
+    nodeMetadata: OfflineFlowVersionSnapshot['nodeMetadata'] | undefined,
+    taskId: string,
+): string[] {
+    const entry = nodeMetadata?.[taskId] as { referencedParameters?: string[] } | string[] | undefined;
+    if (!entry) return [];
+    if (Array.isArray(entry)) return entry;
+    return Array.isArray(entry.referencedParameters) ? entry.referencedParameters : [];
+}
+
 function impactedTasks(base: OfflineFlowVersionSnapshot, target: OfflineFlowVersionSnapshot, parameterKey: string) {
     const key = parameterKey.split(':').pop() ?? parameterKey;
     const taskIds = new Set<string>();
     for (const snapshot of [base, target]) {
-        for (const [taskId, metadata] of Object.entries(snapshot.nodeMetadata)) {
-            if (metadata.referencedParameters.includes(key)) {
+        for (const taskId of Object.keys(snapshot.nodeMetadata ?? {})) {
+            if (readReferencedParameters(snapshot.nodeMetadata, taskId).includes(key)) {
                 taskIds.add(taskId);
             }
         }

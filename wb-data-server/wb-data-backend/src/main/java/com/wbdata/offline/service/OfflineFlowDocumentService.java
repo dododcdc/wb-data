@@ -12,7 +12,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.execution.dto.DebugDocumentExecutionRequest;
+import com.wbdata.offline.parameter.dto.FlowParameterBindingItemResponse;
 import com.wbdata.offline.parameter.dto.FlowParameterBindingResponse;
+import com.wbdata.offline.parameter.dto.FlowParameterDefinitionSnapshot;
 import com.wbdata.offline.parameter.dto.FlowParameterSnapshot;
 import com.wbdata.offline.dto.NodePosition;
 import com.wbdata.offline.dto.OfflineFlowDocumentResponse;
@@ -26,8 +28,10 @@ import com.wbdata.offline.dto.SaveOfflineFlowNodeRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowStageRequest;
 import com.wbdata.offline.service.FlowGraphDraftBuilder.GraphDraft;
 import com.wbdata.offline.parameter.service.FlowParameterBindingAssembler.ParameterSnapshotUpdate;
+import com.wbdata.offline.parameter.service.ScriptParameterRenderer;
 import com.wbdata.offline.transfer.dto.TransferConfig;
 import com.wbdata.offline.transfer.service.TransferConfigFileService;
+import com.wbdata.offline.transfer.service.TransferParameters;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -133,6 +137,26 @@ public class OfflineFlowDocumentService {
         }
     }
 
+    public record VersionSnapshotData(
+            OfflineFlowDocumentResponse document,
+            List<String> managedFiles
+    ) {
+    }
+
+    public VersionSnapshotData getVersionSnapshotData(Long groupId, String path, SnapshotFileAccess fileAccess) {
+        return repoLockManager.withLock(groupId, () -> {
+            try {
+                DocumentSnapshot snapshot = readSnapshot(groupId, path, fileAccess);
+                return new VersionSnapshotData(
+                        snapshot.response(),
+                        collectManagedFiles(groupId, path, fileAccess, snapshot)
+                );
+            } catch (IOException ex) {
+                throw new IllegalStateException("读取任务快照失败", ex);
+            }
+        });
+    }
+
     public OfflineFlowDocumentResponse getFlowDocumentSnapshot(Long groupId, String path, SnapshotFileAccess fileAccess) {
         return repoLockManager.withLock(groupId, () -> {
             try {
@@ -147,39 +171,98 @@ public class OfflineFlowDocumentService {
         return repoLockManager.withLock(groupId, () -> {
             try {
                 DocumentSnapshot snapshot = readSnapshot(groupId, path, fileAccess);
-                Path repoPath = offlineProperties.resolveRepoPath(groupId);
-                LinkedHashSet<String> files = new LinkedHashSet<>();
-                files.add(path);
-                Path layoutFile = resolveLayoutFile(repoPath, path);
-                String layoutRelative = repoPath.relativize(layoutFile).toString().replace('\\', '/');
-                if (fileAccess.exists(repoPath, layoutRelative)) {
-                    files.add(layoutRelative);
-                }
-                Path kestraFlowFile = kestraFlowFileService.resolveFlowFile(repoPath, path);
-                String kestraRelative = repoPath.relativize(kestraFlowFile).toString().replace('\\', '/');
-                if (fileAccess.exists(repoPath, kestraRelative)) {
-                    files.add(kestraRelative);
-                }
-                for (Path taskFile : snapshot.managedNodeFiles()) {
-                    files.add(repoPath.relativize(taskFile).toString().replace('\\', '/'));
-                }
-                return List.copyOf(files);
+                return collectManagedFiles(groupId, path, fileAccess, snapshot);
             } catch (IOException ex) {
                 throw new IllegalStateException("解析历史任务关联文件失败", ex);
             }
         });
     }
 
+    private List<String> collectManagedFiles(Long groupId,
+                                             String path,
+                                             SnapshotFileAccess fileAccess,
+                                             DocumentSnapshot snapshot) throws IOException {
+        Path repoPath = offlineProperties.resolveRepoPath(groupId);
+        LinkedHashSet<String> files = new LinkedHashSet<>();
+        files.add(path);
+        Path layoutFile = resolveLayoutFile(repoPath, path);
+        String layoutRelative = repoPath.relativize(layoutFile).toString().replace('\\', '/');
+        if (fileAccess.exists(repoPath, layoutRelative)) {
+            files.add(layoutRelative);
+        }
+        Path kestraFlowFile = kestraFlowFileService.resolveFlowFile(repoPath, path);
+        String kestraRelative = repoPath.relativize(kestraFlowFile).toString().replace('\\', '/');
+        if (fileAccess.exists(repoPath, kestraRelative)) {
+            files.add(kestraRelative);
+        }
+        for (Path taskFile : snapshot.managedNodeFiles()) {
+            files.add(repoPath.relativize(taskFile).toString().replace('\\', '/'));
+        }
+        return List.copyOf(files);
+    }
+
     public Map<String, List<String>> extractReferencedParameters(OfflineFlowDocumentResponse document) {
+        if (document == null || document.stages() == null) {
+            return Map.of();
+        }
+        Set<String> definedNames = extractDefinedParameterNames(document.parameterBinding());
         Map<String, List<String>> result = new LinkedHashMap<>();
         for (OfflineFlowStageResponse stage : document.stages()) {
+            if (stage.nodes() == null) {
+                continue;
+            }
             for (OfflineFlowNodeResponse node : stage.nodes()) {
-                if (node.scriptContent() != null) {
-                    result.put(node.taskId(), List.copyOf(namedParameterScanner.scan(node.scriptContent()).parameters()));
-                }
+                result.put(node.taskId(), extractNodeReferencedParameters(node, definedNames));
             }
         }
         return result;
+    }
+
+    private Set<String> extractDefinedParameterNames(FlowParameterBindingResponse binding) {
+        if (binding == null) {
+            return Set.of();
+        }
+        LinkedHashSet<String> names = new LinkedHashSet<>();
+        if (binding.definitions() != null) {
+            for (FlowParameterDefinitionSnapshot def : binding.definitions()) {
+                if (def != null && def.key() != null && !def.key().isBlank()) {
+                    names.add(def.key());
+                }
+            }
+        }
+        if (binding.bindings() != null) {
+            for (FlowParameterBindingItemResponse item : binding.bindings()) {
+                if (item != null && item.definitions() != null) {
+                    for (FlowParameterDefinitionSnapshot def : item.definitions()) {
+                        if (def != null && def.key() != null && !def.key().isBlank()) {
+                            names.add(def.key());
+                        }
+                    }
+                }
+            }
+        }
+        return Set.copyOf(names);
+    }
+
+    private List<String> extractNodeReferencedParameters(OfflineFlowNodeResponse node, Set<String> definedNames) {
+        try {
+            if ("TRANSFER".equalsIgnoreCase(node.kind())) {
+                return node.transfer() == null ? List.of() : List.copyOf(TransferParameters.references(node.transfer()));
+            }
+            String script = node.scriptContent();
+            if (script == null) {
+                return List.of();
+            }
+            if ("HIVE_SQL".equalsIgnoreCase(node.kind()) || "HIVE".equalsIgnoreCase(node.dataSourceType())) {
+                return List.copyOf(ScriptParameterRenderer.hiveReferences(script, definedNames));
+            }
+            if ("SHELL".equalsIgnoreCase(node.kind())) {
+                return List.copyOf(ScriptParameterRenderer.shellReferences(script, definedNames));
+            }
+            return List.copyOf(namedParameterScanner.scan(script).parameters());
+        } catch (IllegalArgumentException ex) {
+            return List.of();
+        }
     }
 
     /** Persistence callback; API callers must enter OfflineFlowDependencyService.saveDocument first. */
@@ -276,25 +359,9 @@ public class OfflineFlowDocumentService {
 
     private List<String> resolveManagedFilesUnlocked(Long groupId, String path) {
         try {
-            DocumentSnapshot snapshot = readSnapshot(groupId, path);
-            Path repoPath = offlineProperties.resolveRepoPath(groupId);
-            LinkedHashSet<String> files = new LinkedHashSet<>();
-            files.add(path);
-
-            Path layoutFile = resolveLayoutFile(repoPath, path);
-            if (Files.exists(layoutFile)) {
-                files.add(repoPath.relativize(layoutFile).toString().replace('\\', '/'));
-            }
-
-            Path kestraFlowFile = kestraFlowFileService.resolveFlowFile(repoPath, path);
-            if (Files.exists(kestraFlowFile)) {
-                files.add(repoPath.relativize(kestraFlowFile).toString().replace('\\', '/'));
-            }
-
-            for (Path taskFile : snapshot.managedNodeFiles()) {
-                files.add(repoPath.relativize(taskFile).toString().replace('\\', '/'));
-            }
-            return List.copyOf(files);
+            SnapshotFileAccess workingTree = new WorkingTreeSnapshotFileAccess();
+            DocumentSnapshot snapshot = readSnapshot(groupId, path, workingTree);
+            return collectManagedFiles(groupId, path, workingTree, snapshot);
         } catch (IOException ex) {
             throw new IllegalStateException("解析任务关联文件失败", ex);
         }
