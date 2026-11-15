@@ -9,6 +9,7 @@ import {
     SelectTrigger,
 } from '../../../components/ui/select';
 import type { TransferEndpointMetadataState, TransferPagedResource } from './useTransferMetadata';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../../components/ui/tooltip';
 import { supportsTransferSql, type TransferConfig, type TransferWriteMode } from './transferTypes';
 import { SqlStatements } from './TransferSqlStatements';
 import { TransferSearchSelect } from './TransferSearchSelect';
@@ -36,6 +37,7 @@ interface EndpointFieldsProps {
     dataSourceSearch: TransferPagedResource<DataSource>;
     metadata: TransferEndpointMetadataState;
     databaseUnavailable: boolean;
+    readOnly?: boolean;
     onSelectDataSource: (id: number) => void;
     onSelectDatabase: (database: string) => void;
     onSelectTable: (table: string) => void;
@@ -52,6 +54,7 @@ export function EndpointFields({
     dataSourceSearch,
     metadata,
     databaseUnavailable,
+    readOnly = false,
     onSelectDataSource,
     onSelectDatabase,
     onSelectTable,
@@ -66,7 +69,8 @@ export function EndpointFields({
     const whereValue = config.source.where ?? '';
     const whereHasPrefix = /^\s*where\b/i.test(whereValue);
     const sideLabel = side === 'source' ? '来源' : '目标';
-    const tableDisabled = !endpoint.dataSourceId
+    const tableDisabled = readOnly
+        || !endpoint.dataSourceId
         || !endpoint.database
         || databaseUnavailable
         || metadata.databases.loading
@@ -112,12 +116,15 @@ export function EndpointFields({
                             ariaLabel="数据源"
                             value={endpoint.dataSourceId ? String(endpoint.dataSourceId) : ''}
                             options={dataSourceOptions}
+                            disabled={readOnly}
                             loading={dataSourceSearch.loading}
                             loadingMore={dataSourceSearch.loadingMore}
                             hasMore={dataSourceSearch.hasMore}
                             menuContainer={menuContainer}
                             contentClassName="min-w-[280px] max-w-[calc(100vw-32px)]"
-                            onChange={(nextValue) => onSelectDataSource(Number(nextValue))}
+                            onChange={(nextValue) => {
+                                if (!readOnly) onSelectDataSource(Number(nextValue));
+                            }}
                             onSearch={dataSourceSearch.search}
                             onLoadMore={dataSourceSearch.loadMore}
                         />
@@ -130,11 +137,13 @@ export function EndpointFields({
                             ariaLabel="数据库"
                             value={endpoint.database ?? ''}
                             options={databaseOptions}
-                            disabled={!endpoint.dataSourceId || metadata.databases.loading}
+                            disabled={readOnly || !endpoint.dataSourceId || metadata.databases.loading}
                             loading={metadata.databases.loading}
                             menuContainer={menuContainer}
                             contentClassName="min-w-[180px] max-w-[calc(100vw-32px)]"
-                            onChange={onSelectDatabase}
+                            onChange={(nextValue) => {
+                                if (!readOnly) onSelectDatabase(nextValue);
+                            }}
                         />
                     </label>
                 </div>
@@ -151,7 +160,9 @@ export function EndpointFields({
                             hasMore={metadata.tables.hasMore}
                             menuContainer={menuContainer}
                             contentClassName="min-w-[280px] max-w-[calc(100vw-32px)]"
-                            onChange={onSelectTable}
+                            onChange={(nextValue) => {
+                                if (!readOnly) onSelectTable(nextValue);
+                            }}
                             onSearch={metadata.tables.search}
                             onLoadMore={metadata.tables.loadMore}
                         />
@@ -192,44 +203,56 @@ export function EndpointFields({
                 {side === 'source' ? (
                     <div className="transfer-node-field transfer-node-filter-field">
                         <label htmlFor={whereInputId}>过滤条件（可选）</label>
-                        <div className={`transfer-node-filter-control${whereTouched && whereHasPrefix ? ' is-invalid' : ''}`}>
+                        <div className={`transfer-node-filter-control${!readOnly && whereTouched && whereHasPrefix ? ' is-invalid' : ''}`}>
                             <span className="transfer-node-filter-prefix" aria-hidden="true">WHERE</span>
                             <textarea
                                 id={whereInputId}
                                 aria-label="过滤条件（可选）"
-                                aria-invalid={whereTouched && whereHasPrefix}
+                                aria-invalid={!readOnly && whereTouched && whereHasPrefix}
                                 rows={whereExpanded ? 3 : 1}
                                 value={whereValue}
-                                onBlur={() => setWhereTouched(true)}
-                                onChange={(event) => onPatch({
-                                    source: { ...config.source, where: event.target.value },
-                                })}
-                                placeholder="status = 'ACTIVE' AND created_at >= '2026-01-01'"
+                                readOnly={readOnly}
+                                onBlur={() => {
+                                    if (!readOnly) setWhereTouched(true);
+                                }}
+                                onChange={(event) => {
+                                    if (readOnly) return;
+                                    onPatch({
+                                        source: { ...config.source, where: event.target.value },
+                                    });
+                                }}
+                                placeholder={readOnly ? '未设置过滤条件' : "status = 'ACTIVE' AND created_at >= '2026-01-01'"}
                             />
-                            <button
-                                type="button"
-                                className="transfer-node-filter-expand"
-                                aria-label={whereExpanded ? '收起过滤条件' : '展开过滤条件'}
-                                title={whereExpanded ? '收起过滤条件' : '展开过滤条件'}
-                                onClick={() => setWhereExpanded((current) => !current)}
-                            >
-                                {whereExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-                            </button>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        type="button"
+                                        className="transfer-node-filter-expand"
+                                        aria-label={whereExpanded ? '收起过滤条件' : '展开过滤条件'}
+                                        onClick={() => setWhereExpanded((current) => !current)}
+                                    >
+                                        {whereExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent className="tooltip-content z-[2400]" side="left">
+                                    {whereExpanded ? '收起过滤条件' : '展开过滤条件'}
+                                </TooltipContent>
+                            </Tooltip>
                         </div>
-                        {whereTouched && whereHasPrefix ? (
+                        {!readOnly && whereTouched && whereHasPrefix ? (
                             <span className="transfer-node-filter-error">无需填写 WHERE，请从字段条件开始。</span>
-                        ) : (
+                        ) : !readOnly ? (
                             <span className="transfer-node-field-help">{'只填写 WHERE 后面的条件，语法按来源数据库执行。支持 ^[参数名] 值占位符，不要加引号。'}</span>
-                        )}
+                        ) : null}
                     </div>
                 ) : (
                     <label className="transfer-node-field">
                         写入方式
                         <Select
                             value={config.target.writeMode ?? 'append'}
-                            disabled={!metadata.metadata.data || metadata.metadata.loading}
+                            disabled={readOnly || !metadata.metadata.data || metadata.metadata.loading}
                             onValueChange={(nextMode) => {
-                                if (!nextMode) return;
+                                if (readOnly || !nextMode) return;
                                 onPatch({
                                     target: {
                                         ...config.target,
@@ -244,7 +267,7 @@ export function EndpointFields({
                             >
                                 <span data-slot="select-value" className="flex flex-1 text-left">
                                     {writeModes.find((mode) => mode.value === config.target.writeMode)?.label
-                                        ?? '加载目标表后可选择'}
+                                        ?? (config.target.writeMode || '加载目标表后可选择')}
                                 </span>
                             </SelectTrigger>
                             <SelectContent
@@ -263,20 +286,28 @@ export function EndpointFields({
             </div>
             {side === 'target' && supportsTransferSql(endpoint.dataSourceType) && (
                 <div className="transfer-node-target-sql">
-                    <p className="transfer-node-field-help">
-                        {'每项仅填写一条 SQL，可换行；按编号顺序执行。更换目标数据源、数据库或表会清空前后 SQL。支持参数组 ^[参数名] 值占位符，不要加引号；不支持动态数据库、表或字段名。'}
-                    </p>
+                    {!readOnly && (
+                        <p className="transfer-node-field-help">
+                            {'每项仅填写一条 SQL，可换行；按编号顺序执行。更换目标数据源、数据库或表会清空前后 SQL。支持参数组 ^[参数名] 值占位符，不要加引号；不支持动态数据库、表或字段名。'}
+                        </p>
+                    )}
                     <SqlStatements
                         label="前置 SQL"
                         statements={endpoint.preSql}
                         help="传输前执行，前置 SQL 失败则不进行传输。"
-                        onChange={(preSql) => onPatch({ target: { ...config.target, preSql } })}
+                        readOnly={readOnly}
+                        onChange={(preSql) => {
+                            if (!readOnly) onPatch({ target: { ...config.target, preSql } });
+                        }}
                     />
                     <SqlStatements
                         label="后置 SQL"
                         statements={endpoint.postSql}
                         help="仅传输成功后执行。后置 SQL 失败会使节点失败，但不回滚已写入数据，请自行处理。"
-                        onChange={(postSql) => onPatch({ target: { ...config.target, postSql } })}
+                        readOnly={readOnly}
+                        onChange={(postSql) => {
+                            if (!readOnly) onPatch({ target: { ...config.target, postSql } });
+                        }}
                     />
                 </div>
             )}

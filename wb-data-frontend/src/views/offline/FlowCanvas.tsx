@@ -3,7 +3,6 @@ import {
     ReactFlow,
     Background,
     Controls,
-    ControlButton,
     useNodesState,
     useEdgesState,
     addEdge,
@@ -20,6 +19,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Copy, Network, Pencil, Trash2 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { FlowCanvasNode, type FlowCanvasNodeData } from './FlowCanvasNode';
 import { wouldCreateCycle, autoLayout } from './dagUtils';
 import type { OfflineFlowDocument, OfflineFlowNode, OfflineFlowNodeKind } from '../../api/offline';
@@ -48,6 +48,7 @@ interface FlowCanvasProps {
     flowDocument: OfflineFlowDocument;
     selectedTaskIds: string[];
     activeNodeId: string | null;
+    readOnly?: boolean;
     onNodesChange: (nodes: Node[]) => void;
     onEdgesChange: (edges: Edge[]) => void;
     onNodeLayoutCommit: (nodes: Node[]) => void;
@@ -71,6 +72,7 @@ function buildInitialNodes(
     onToggleTaskSelection: (taskId: string) => void,
     nodeIssues?: Record<string, string | null>,
     nodeStatuses?: Record<string, string | null>,
+    readOnly = false,
 ): Node[] {
     const allNodes = flattenNodes(doc);
     const hasLayout = doc.layout && Object.keys(doc.layout).length > 0;
@@ -89,6 +91,7 @@ function buildInitialNodes(
                 kind: node.kind,
                 selected: selectedTaskIds.includes(node.taskId),
                 onToggleSelection: onToggleTaskSelection,
+                readOnly,
                 validationError: nodeIssues?.[node.taskId] ?? null,
                 status: nodeStatuses?.[node.taskId] ?? null,
             } satisfies FlowCanvasNodeData,
@@ -124,6 +127,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
     const {
         flowDocument,
         selectedTaskIds,
+        readOnly = false,
         onNodesChange: onNodesChangeExternal,
         onEdgesChange: onEdgesChangeExternal,
         onNodeLayoutCommit,
@@ -143,11 +147,11 @@ export default function FlowCanvas(props: FlowCanvasProps) {
     const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
 
     const handleInlineRenameCommit = useCallback((oldId: string, newId: string) => {
-        if (onRenameNode) {
+        if (!readOnly && onRenameNode) {
             onRenameNode(oldId, newId);
         }
         setEditingNodeId(null);
-    }, [onRenameNode]);
+    }, [onRenameNode, readOnly]);
 
     const handleInlineRenameCancel = useCallback(() => {
         setEditingNodeId(null);
@@ -155,7 +159,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
 
     // Build initial data
     const initialNodes = useMemo(() => {
-        let nodesToLayout = buildInitialNodes(flowDocument, selectedTaskIds, onToggleTaskSelection, nodeIssues, nodeStatuses);
+        let nodesToLayout = buildInitialNodes(flowDocument, selectedTaskIds, onToggleTaskSelection, nodeIssues, nodeStatuses, readOnly);
         const edges = buildInitialEdges(flowDocument);
         const hasLayout = flowDocument.layout && Object.keys(flowDocument.layout).length > 0;
         if (!hasLayout && nodesToLayout.length > 0) {
@@ -163,7 +167,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
         }
 
         return nodesToLayout;
-    }, [flowDocument, onToggleTaskSelection, selectedTaskIds, nodeIssues, nodeStatuses]);
+    }, [flowDocument, onToggleTaskSelection, selectedTaskIds, nodeIssues, nodeStatuses, readOnly]);
 
     const initialEdges = useMemo(
         () => buildInitialEdges(flowDocument),
@@ -179,18 +183,20 @@ export default function FlowCanvas(props: FlowCanvasProps) {
         setContextMenu(null); // Clear context menu when switching flows
     }, [initialEdges, initialNodes, setEdges, setNodes]);
 
-    // Clear editing state ONLY when the actual file changes
+    // Clear editing state ONLY when the actual file or readonly mode changes
     useEffect(() => {
         setEditingNodeId(null);
-    }, [flowDocument.path]);
+    }, [flowDocument.path, readOnly]);
 
     useEffect(() => {
+        if (readOnly) return;
         onNodesChangeExternal(nodes);
-    }, [nodes, onNodesChangeExternal]);
+    }, [nodes, onNodesChangeExternal, readOnly]);
 
     useEffect(() => {
+        if (readOnly) return;
         onEdgesChangeExternal(edges);
-    }, [edges, onEdgesChangeExternal]);
+    }, [edges, onEdgesChangeExternal, readOnly]);
 
     useEffect(() => {
         setSelectedNodeIds((current) => current.filter((nodeId) => nodes.some((node) => node.id === nodeId)));
@@ -211,12 +217,13 @@ export default function FlowCanvas(props: FlowCanvasProps) {
             // 1. Sync selection and basic data logic
             result = result.map((n) => {
                 const isSelected = selectedTaskIds.includes(n.id);
-                const isEditing = n.id === editingNodeId;
+                const isEditing = !readOnly && n.id === editingNodeId;
                 const validationError = nodeIssues?.[n.id] ?? null;
                 const status = nodeStatuses?.[n.id] ?? null;
                 if (
                     n.data.selected !== isSelected || 
                     n.data.onToggleSelection !== onToggleTaskSelection || 
+                    n.data.readOnly !== readOnly ||
                     n.data.isEditing !== isEditing ||
                     n.data.validationError !== validationError ||
                     n.data.status !== status
@@ -228,6 +235,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                             ...n.data,
                             selected: isSelected,
                             onToggleSelection: onToggleTaskSelection,
+                            readOnly,
                             isEditing,
                             validationError,
                             status,
@@ -258,7 +266,8 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                             kind: node.kind,
                             selected: selectedTaskIds.includes(node.taskId),
                             onToggleSelection: onToggleTaskSelection,
-                            isEditing: node.taskId === editingNodeId,
+                            readOnly,
+                            isEditing: !readOnly && node.taskId === editingNodeId,
                             onRename: (newId: string) => handleInlineRenameCommit(node.taskId, newId),
                             onCancelRename: handleInlineRenameCancel,
                             validationError: nodeIssues?.[node.taskId] ?? null,
@@ -271,24 +280,39 @@ export default function FlowCanvas(props: FlowCanvasProps) {
 
             return changed ? result : nds;
         });
-    }, [flowDocument, onToggleTaskSelection, selectedTaskIds, setNodes, editingNodeId, handleInlineRenameCommit, handleInlineRenameCancel, nodeIssues, nodeStatuses]);
+    }, [flowDocument, onToggleTaskSelection, readOnly, selectedTaskIds, setNodes, editingNodeId, handleInlineRenameCommit, handleInlineRenameCancel, nodeIssues, nodeStatuses]);
 
     const wrappedNodesChange: OnNodesChange = useCallback(
         (changes) => {
+            if (readOnly) {
+                const safeChanges = changes.filter((change) => change.type === 'select' || change.type === 'dimensions');
+                if (safeChanges.length > 0) {
+                    handleNodesChange(safeChanges);
+                }
+                return;
+            }
             handleNodesChange(changes);
         },
-        [handleNodesChange],
+        [handleNodesChange, readOnly],
     );
 
     const wrappedEdgesChange: OnEdgesChange = useCallback(
         (changes) => {
+            if (readOnly) {
+                const safeChanges = changes.filter((change) => change.type === 'select');
+                if (safeChanges.length > 0) {
+                    handleEdgesChange(safeChanges);
+                }
+                return;
+            }
             handleEdgesChange(changes);
         },
-        [handleEdgesChange],
+        [handleEdgesChange, readOnly],
     );
 
     const onConnect: OnConnect = useCallback(
         (connection: Connection) => {
+            if (readOnly) return;
             setEdges((eds) => {
                 const newEdges = addEdge(
                     {
@@ -301,17 +325,18 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                 return newEdges;
             });
         },
-        [setEdges],
+        [readOnly, setEdges],
     );
 
     const onReconnect = useCallback(
         (oldEdge: Edge, newConnection: Connection) => {
+            if (readOnly) return;
             setEdges((eds) => {
                 const newEdges = reconnectEdge(oldEdge, newConnection, eds);
                 return newEdges;
             });
         },
-        [setEdges],
+        [readOnly, setEdges],
     );
 
     const isValidConnection = useCallback(
@@ -378,9 +403,10 @@ export default function FlowCanvas(props: FlowCanvasProps) {
 
     const onNodeDragStop = useCallback(
         (_: React.MouseEvent, _node: Node, currentNodes: Node[]) => {
+            if (readOnly) return;
             onNodeLayoutCommit(currentNodes);
         },
-        [onNodeLayoutCommit],
+        [onNodeLayoutCommit, readOnly],
     );
 
     const onSelectionChange = useCallback((selection: { nodes: Node[]; edges: Edge[] }) => {
@@ -403,24 +429,27 @@ export default function FlowCanvas(props: FlowCanvasProps) {
 
     const onNodesDelete = useCallback(
         (deletedNodes: Node[]) => {
+            if (readOnly) return;
             const deletedIds = new Set(deletedNodes.map((node) => node.id));
             setNodes((current) => current.filter((node) => !deletedIds.has(node.id)));
             setEdges((current) => current.filter((edge) => !deletedIds.has(edge.source) && !deletedIds.has(edge.target)));
             setSelectedNodeIds((current) => current.filter((nodeId) => !deletedIds.has(nodeId)));
         },
-        [setEdges, setNodes],
+        [readOnly, setEdges, setNodes],
     );
 
     const onEdgesDelete = useCallback(
         (deletedEdges: Edge[]) => {
+            if (readOnly) return;
             const deletedIds = new Set(deletedEdges.map((edge) => edge.id));
             setEdges((current) => current.filter((edge) => !deletedIds.has(edge.id)));
             setSelectedEdgeIds((current) => current.filter((edgeId) => !deletedIds.has(edgeId)));
         },
-        [setEdges],
+        [readOnly, setEdges],
     );
 
     const handleDeleteSelection = useCallback(() => {
+        if (readOnly) return;
         const domSelectedNodeIds = containerRef.current
             ? Array.from(containerRef.current.querySelectorAll<Element>('.react-flow__node.selected'))
                 .map((element) => element.getAttribute('data-id'))
@@ -449,9 +478,12 @@ export default function FlowCanvas(props: FlowCanvasProps) {
             setEdges((current) => current.filter((edge) => !deletedEdgeIds.has(edge.id)));
             setSelectedEdgeIds([]);
         }
-    }, [selectedEdgeIds, selectedNodeIds, setEdges, setNodes]);
+    }, [readOnly, selectedEdgeIds, selectedNodeIds, setEdges, setNodes]);
 
     const onContainerKeyDown = useCallback((event: KeyboardEvent) => {
+        if (readOnly) {
+            return;
+        }
         if (event.key !== 'Delete' && event.key !== 'Backspace') {
             return;
         }
@@ -462,7 +494,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
 
         event.preventDefault();
         handleDeleteSelection();
-    }, [handleDeleteSelection]);
+    }, [handleDeleteSelection, readOnly]);
 
     useEffect(() => {
         const container = containerRef.current;
@@ -498,18 +530,21 @@ export default function FlowCanvas(props: FlowCanvasProps) {
 
 
     const handleAutoLayout = useCallback(() => {
+        if (readOnly) return;
         const nextNodes = autoLayout(nodes, edges, 'TB');
         setNodes(nextNodes);
         onNodeLayoutCommit(nextNodes);
-    }, [edges, nodes, onNodeLayoutCommit, setNodes]);
+    }, [edges, nodes, onNodeLayoutCommit, readOnly, setNodes]);
 
     const onDragOver = useCallback((event: React.DragEvent) => {
+        if (readOnly) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'copy';
-    }, []);
+    }, [readOnly]);
 
     const onDrop = useCallback(
         (event: React.DragEvent) => {
+            if (readOnly) return;
             event.preventDefault();
             const kind = event.dataTransfer.getData('nodeKind');
             if (!isOfflineFlowNodeKind(kind)) {
@@ -523,7 +558,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
             });
             onAddNode(kind, position);
         },
-        [onAddNode, screenToFlowPosition]
+        [onAddNode, readOnly, screenToFlowPosition]
     );
 
     const onNodeContextMenu = useCallback(
@@ -543,21 +578,21 @@ export default function FlowCanvas(props: FlowCanvasProps) {
     );
 
     const handleNodeRename = useCallback(() => {
-        if (contextMenu) {
+        if (!readOnly && contextMenu) {
             setEditingNodeId(contextMenu.nodeId);
         }
         setContextMenu(null);
-    }, [contextMenu]);
+    }, [contextMenu, readOnly]);
 
     const handleNodeDelete = useCallback(() => {
-        if (contextMenu) {
+        if (!readOnly && contextMenu) {
             const nodeToDelete = nodes.find(n => n.id === contextMenu.nodeId);
             if (nodeToDelete) {
                 onNodesDelete([nodeToDelete]);
             }
         }
         setContextMenu(null);
-    }, [contextMenu, nodes, onNodesDelete]);
+    }, [contextMenu, nodes, onNodesDelete, readOnly]);
 
     const handleNodeCopyName = useCallback(() => {
         if (!contextMenu) {
@@ -571,22 +606,22 @@ export default function FlowCanvas(props: FlowCanvasProps) {
     return (
         <div
             ref={containerRef}
-            className="flow-canvas-container"
+            className={`flow-canvas-container${readOnly ? ' is-readonly' : ''}`}
             tabIndex={0}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
+            onDragOver={readOnly ? undefined : onDragOver}
+            onDrop={readOnly ? undefined : onDrop}
         >
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
                 onNodesChange={wrappedNodesChange}
                 onEdgesChange={wrappedEdgesChange}
-                onConnect={onConnect}
-                onReconnect={onReconnect}
-                onNodeDragStop={onNodeDragStop}
+                onConnect={readOnly ? undefined : onConnect}
+                onReconnect={readOnly ? undefined : onReconnect}
+                onNodeDragStop={readOnly ? undefined : onNodeDragStop}
                 onSelectionChange={onSelectionChange}
-                onNodesDelete={onNodesDelete}
-                onEdgesDelete={onEdgesDelete}
+                onNodesDelete={readOnly ? undefined : onNodesDelete}
+                onEdgesDelete={readOnly ? undefined : onEdgesDelete}
                 onNodeContextMenu={onNodeContextMenu}
                 onPaneClick={() => {
                     onPaneClick();
@@ -604,9 +639,11 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                 snapGrid={[20, 20]}
                 deleteKeyCode={null}
                 elementsSelectable
+                nodesDraggable={!readOnly}
+                nodesConnectable={!readOnly}
                 nodesFocusable
                 edgesFocusable
-                edgesReconnectable
+                edgesReconnectable={!readOnly}
                 selectionOnDrag
                 panOnScroll
                 proOptions={{ hideAttribution: true }}
@@ -623,9 +660,23 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                     fitViewOptions={fitViewOptions}
                     className="flow-canvas-controls"
                 >
-                    <ControlButton onClick={handleAutoLayout} title="自动排版 (一键整理)" aria-label="自动排版">
-                        <Network size={16} />
-                    </ControlButton>
+                    {!readOnly ? (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="react-flow__controls-button"
+                                    onClick={handleAutoLayout}
+                                    aria-label="自动排版"
+                                >
+                                    <Network size={16} />
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent className="tooltip-content" side="right">
+                                自动排版 (一键整理)
+                            </TooltipContent>
+                        </Tooltip>
+                    ) : null}
                 </Controls>
             </ReactFlow>
 
@@ -639,14 +690,16 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                     }}
                     onClick={(e) => e.stopPropagation()}
                 >
-                    <button
-                        type="button"
-                        className="offline-context-menu-item"
-                        onClick={handleNodeRename}
-                    >
-                        <Pencil size={13} />
-                        重命名
-                    </button>
+                    {!readOnly && (
+                        <button
+                            type="button"
+                            className="offline-context-menu-item"
+                            onClick={handleNodeRename}
+                        >
+                            <Pencil size={13} />
+                            重命名
+                        </button>
+                    )}
                     <button
                         type="button"
                         className="offline-context-menu-item"
@@ -655,14 +708,16 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                         <Copy size={13} />
                         复制节点名称
                     </button>
-                    <button
-                        type="button"
-                        className="offline-context-menu-item danger"
-                        onClick={handleNodeDelete}
-                    >
-                        <Trash2 size={13} />
-                        删除
-                    </button>
+                    {!readOnly && (
+                        <button
+                            type="button"
+                            className="offline-context-menu-item danger"
+                            onClick={handleNodeDelete}
+                        >
+                            <Trash2 size={13} />
+                            删除
+                        </button>
+                    )}
                 </div>
             )}
         </div>

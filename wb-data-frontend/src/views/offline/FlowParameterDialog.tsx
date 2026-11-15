@@ -28,6 +28,7 @@ import {
 } from './flowParameterDiff';
 import { SearchableCombobox, type SearchableComboboxOption } from '../../components/SearchableCombobox';
 import { Button } from '../../components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import {
     Dialog,
     DialogContent,
@@ -46,6 +47,8 @@ interface FlowParameterDialogProps {
     binding: FlowParameterBinding | null | undefined;
     onOpenChange: (open: boolean) => void;
     onStage: (binding: FlowParameterBinding | null) => void;
+    readOnly?: boolean;
+    readOnlyRevision?: string | null;
 }
 
 function toBindingItem(group: ParameterGroup): FlowParameterBindingItem {
@@ -75,12 +78,14 @@ export function FlowParameterDialog({
     binding,
     onOpenChange,
     onStage,
+    readOnly = false,
+    readOnlyRevision,
 }: FlowParameterDialogProps) {
     const [availableGroups, setAvailableGroups] = useState<ParameterGroupSummary[]>([]);
     const [boundItems, setBoundItems] = useState<FlowParameterBindingItem[]>([]);
     const [selectedToAddId, setSelectedToAddId] = useState('');
-    const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
-    const [searchFilters, setSearchFilters] = useState<Record<number, string>>({});
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+    const [searchFilters, setSearchFilters] = useState<Record<string, string>>({});
     const [loadingGroups, setLoadingGroups] = useState(false);
     const [addingGroup, setAddingGroup] = useState(false);
     const [error, setError] = useState('');
@@ -105,7 +110,7 @@ export function FlowParameterDialog({
                 ...it,
                 definitions: it.definitions.map((d) => ({ ...d })),
             })));
-        } else if (binding?.parameterGroupId != null) {
+        } else if (binding && (binding.parameterGroupId != null || Boolean(binding.code) || (binding.definitions?.length ?? 0) > 0)) {
             setBoundItems([{
                 parameterGroupId: binding.parameterGroupId,
                 code: binding.code,
@@ -117,6 +122,12 @@ export function FlowParameterDialog({
             }]);
         } else {
             setBoundItems([]);
+        }
+
+        if (readOnly) {
+            setAvailableGroups([]);
+            setLoadingGroups(false);
+            return;
         }
 
         setLoadingGroups(true);
@@ -141,11 +152,11 @@ export function FlowParameterDialog({
         return () => {
             active = false;
         };
-    }, [binding, groupId, open]);
+    }, [binding, groupId, open, readOnly]);
 
     // Handle adding a new parameter group
     const handleAddGroup = async (targetIdStr: string) => {
-        if (!targetIdStr) return;
+        if (readOnly || !targetIdStr) return;
         const targetId = Number(targetIdStr);
         if (boundItems.some((item) => item.parameterGroupId === targetId)) {
             setSelectedToAddId('');
@@ -169,7 +180,7 @@ export function FlowParameterDialog({
     // Updating an outdated group: value changes require explicit confirmation with a diff;
     // a version bump without value changes applies directly.
     const handleUpgradeGroup = async (item: FlowParameterBindingItem, index: number) => {
-        if (item.parameterGroupId == null) return;
+        if (readOnly || item.parameterGroupId == null) return;
         setError('');
         try {
             const groupDetail = await getParameterGroup(groupId, item.parameterGroupId);
@@ -185,6 +196,7 @@ export function FlowParameterDialog({
     };
 
     const applyUpgrade = (index: number, groupDetail: ParameterGroup) => {
+        if (readOnly) return;
         const updated = toBindingItem(groupDetail);
         setBoundItems((prev) => {
             const next = [...prev];
@@ -196,12 +208,20 @@ export function FlowParameterDialog({
 
     // Handle removing a group
     const handleRemoveGroup = (index: number) => {
+        if (readOnly) return;
         setBoundItems((prev) => prev.filter((_, i) => i !== index));
     };
 
     // Handle moving items up/down
     const handleMove = (fromIndex: number, toIndex: number) => {
-        if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= boundItems.length || toIndex >= boundItems.length) {
+        if (
+            readOnly
+            || fromIndex === toIndex
+            || fromIndex < 0
+            || toIndex < 0
+            || fromIndex >= boundItems.length
+            || toIndex >= boundItems.length
+        ) {
             return;
         }
         setBoundItems((prev) => {
@@ -213,7 +233,7 @@ export function FlowParameterDialog({
     };
 
     // Toggle expand/collapse
-    const toggleExpand = (id: number) => {
+    const toggleExpand = (id: string) => {
         setExpandedIds((prev) => {
             const next = new Set(prev);
             if (next.has(id)) {
@@ -296,6 +316,7 @@ export function FlowParameterDialog({
     }, [boundItems]);
 
     const handleConfirmStage = () => {
+        if (readOnly) return;
         if (boundItems.length === 0) {
             onStage(null);
             onOpenChange(false);
@@ -317,14 +338,22 @@ export function FlowParameterDialog({
     };
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
+        <TooltipProvider delayDuration={150}>
+            <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent
                 className="flow-parameter-dialog"
                 style={{ maxWidth: '640px' }}
                 onOpenAutoFocus={(e) => e.preventDefault()}
             >
                 <DialogHeader>
-                    <DialogTitle>任务参数</DialogTitle>
+                    {readOnly ? (
+                        <div className="offline-dialog-title-row">
+                            <DialogTitle>任务参数</DialogTitle>
+                            <span className="offline-readonly-pill">线上只读</span>
+                        </div>
+                    ) : (
+                        <DialogTitle>任务参数</DialogTitle>
+                    )}
                     <DialogDescription>
                         可引用多个参数组。排在靠前的参数组具有更高的参数覆盖优先级。
                     </DialogDescription>
@@ -332,40 +361,43 @@ export function FlowParameterDialog({
 
                 <div className="flow-parameter-dialog-body">
                     {/* Add Parameter Group Bar */}
-                    <div className="flow-parameter-add-bar">
-                        <div className="flow-parameter-add-select">
-                            <SearchableCombobox
-                                id="flow-parameter-add-select"
-                                ariaLabel="参数组"
-                                value={selectedToAddId}
-                                options={addOptions}
-                                placeholder={
-                                    loadingGroups
-                                        ? '正在加载可用参数组…'
-                                        : addOptions.length === 0
-                                            ? '暂无更多可用参数组'
-                                            : '选择或搜索要添加的参数组…'
-                                }
-                                emptyText="未找到匹配的参数组"
-                                disabled={loadingGroups || addingGroup || addOptions.length === 0}
-                                onChange={(val) => {
-                                    setSelectedToAddId(val);
-                                    void handleAddGroup(val);
-                                }}
-                            />
+                    {!readOnly ? (
+                        <div className="flow-parameter-add-bar">
+                            <div className="flow-parameter-add-select">
+                                <SearchableCombobox
+                                    id="flow-parameter-add-select"
+                                    ariaLabel="参数组"
+                                    value={selectedToAddId}
+                                    options={addOptions}
+                                    placeholder={
+                                        loadingGroups
+                                            ? '正在加载可用参数组…'
+                                            : addOptions.length === 0
+                                                ? '暂无更多可用参数组'
+                                                : '选择或搜索要添加的参数组…'
+                                    }
+                                    emptyText="未找到匹配的参数组"
+                                    disabled={loadingGroups || addingGroup || addOptions.length === 0}
+                                    onChange={(val) => {
+                                        setSelectedToAddId(val);
+                                        void handleAddGroup(val);
+                                    }}
+                                />
+                            </div>
                         </div>
-                    </div>
+                    ) : null}
 
                     {/* Bound Parameter Groups List */}
                     <div className="flow-parameter-groups-list">
                         {boundItems.length === 0 ? (
                             <div className="flow-parameter-empty-state">
-                                尚未引入任何参数组。请在上方选择并添加参数组。
+                                {readOnly ? '当前线上版本未引用任何参数组。' : '尚未引入任何参数组。请在上方选择并添加参数组。'}
                             </div>
                         ) : (
                             boundItems.map((item, index) => {
-                                const isExpanded = item.parameterGroupId != null && expandedIds.has(item.parameterGroupId);
-                                const searchFilter = (item.parameterGroupId != null ? searchFilters[item.parameterGroupId] : '') || '';
+                                const itemKey = item.parameterGroupId != null ? String(item.parameterGroupId) : (item.code || `group-${index}`);
+                                const isExpanded = expandedIds.has(itemKey);
+                                const searchFilter = searchFilters[itemKey] || '';
                                 const filteredDefinitions = item.definitions.filter((d) => (
                                     d.key.toLowerCase().includes(searchFilter.toLowerCase())
                                     || (d.description && d.description.toLowerCase().includes(searchFilter.toLowerCase()))
@@ -374,10 +406,14 @@ export function FlowParameterDialog({
 
                                 return (
                                     <div
-                                        key={item.parameterGroupId ?? item.code}
+                                        key={itemKey}
                                         className={`flow-parameter-group-card ${isDragging ? 'is-dragging' : ''} ${dragOverIndex === index && !isDragging ? 'is-drag-over' : ''}`}
-                                        draggable
+                                        draggable={!readOnly}
                                         onDragStart={(e) => {
+                                            if (readOnly) {
+                                                e.preventDefault();
+                                                return;
+                                            }
                                             if ((e.target as HTMLElement).closest('button, input, [role="button"]')) {
                                                 e.preventDefault();
                                                 return;
@@ -387,6 +423,7 @@ export function FlowParameterDialog({
                                             e.dataTransfer.setData('text/plain', String(index));
                                         }}
                                         onDragOver={(e) => {
+                                            if (readOnly) return;
                                             e.preventDefault();
                                             e.dataTransfer.dropEffect = 'move';
                                             if (dragOverIndex !== index) {
@@ -394,11 +431,13 @@ export function FlowParameterDialog({
                                             }
                                         }}
                                         onDragLeave={(e) => {
+                                            if (readOnly) return;
                                             if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                                                 setDragOverIndex(null);
                                             }
                                         }}
                                         onDrop={(e) => {
+                                            if (readOnly) return;
                                             e.preventDefault();
                                             const fromStr = e.dataTransfer.getData('text/plain');
                                             const from = fromStr !== '' ? parseInt(fromStr, 10) : draggedIndex;
@@ -409,23 +448,40 @@ export function FlowParameterDialog({
                                             setDragOverIndex(null);
                                         }}
                                         onDragEnd={() => {
+                                            if (readOnly) return;
                                             setDraggedIndex(null);
                                             setDragOverIndex(null);
                                         }}
                                     >
                                         {/* Card Header */}
                                         <div className="flow-parameter-card-header">
-                                            <div className="flow-parameter-card-drag-handle" title="拖拽调整优先级顺序">
-                                                <GripVertical size={16} />
-                                            </div>
+                                            {!readOnly ? (
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className="flow-parameter-card-drag-handle">
+                                                            <GripVertical size={16} />
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent className="tooltip-content z-[2400]" side="top">
+                                                        拖拽调整优先级顺序
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            ) : null}
 
-                                            <div className="flow-parameter-card-priority" title="优先级序号（排在前面优先级高）">
-                                                #{index + 1}
-                                            </div>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <div className="flow-parameter-card-priority">
+                                                        #{index + 1}
+                                                    </div>
+                                                </TooltipTrigger>
+                                                <TooltipContent className="tooltip-content tooltip-content-wrap z-[2400]" side="top">
+                                                    优先级序号（排在前面优先级高）
+                                                </TooltipContent>
+                                            </Tooltip>
 
                                             <div
                                                 className="flow-parameter-card-main-info"
-                                                onClick={() => item.parameterGroupId && toggleExpand(item.parameterGroupId)}
+                                                onClick={() => toggleExpand(itemKey)}
                                             >
                                                 <span className="flow-parameter-card-name">
                                                     {item.name || item.code}
@@ -433,50 +489,67 @@ export function FlowParameterDialog({
                                                 <span className="flow-parameter-card-meta">
                                                     v{item.boundVersion} · {item.definitions.length} 个参数
                                                 </span>
-                                                {item.status === 'OUTDATED' ? (
+                                                {!readOnly && item.status === 'OUTDATED' ? (
                                                     <span className="flow-parameter-badge is-outdated">
                                                         有新版 v{item.currentVersion}
                                                     </span>
-                                                ) : item.status === 'ARCHIVED' ? (
+                                                ) : !readOnly && item.status === 'ARCHIVED' ? (
                                                     <span className="flow-parameter-badge is-archived">已归档</span>
-                                                ) : item.status === 'MISSING' ? (
+                                                ) : !readOnly && item.status === 'MISSING' ? (
                                                     <span className="flow-parameter-badge is-missing">不存在</span>
                                                 ) : null}
                                             </div>
 
                                             <div className="flow-parameter-card-actions">
-                                                {item.status === 'OUTDATED' ? (
-                                                    <button
-                                                        type="button"
-                                                        className="flow-parameter-action-btn is-upgrade"
-                                                        title="更新到最新版本"
-                                                        onClick={() => void handleUpgradeGroup(item, index)}
-                                                    >
-                                                        <RefreshCw size={13} />
-                                                        <span>更新</span>
-                                                    </button>
+                                                {!readOnly && item.status === 'OUTDATED' ? (
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <button
+                                                                type="button"
+                                                                className="flow-parameter-action-btn is-upgrade"
+                                                                aria-label="更新到最新版本"
+                                                                onClick={() => void handleUpgradeGroup(item, index)}
+                                                            >
+                                                                <RefreshCw size={13} />
+                                                                <span>更新</span>
+                                                            </button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent className="tooltip-content z-[2400]" side="top">
+                                                            更新到最新版本
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                ) : null}
+
+                                                {!readOnly ? (
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <button
+                                                                type="button"
+                                                                className="flow-parameter-action-icon-btn is-remove"
+                                                                aria-label="移除此参数组"
+                                                                onClick={() => handleRemoveGroup(index)}
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent className="tooltip-content z-[2400]" side="top">
+                                                            移除此参数组
+                                                        </TooltipContent>
+                                                    </Tooltip>
                                                 ) : null}
 
                                                 <button
                                                     type="button"
-                                                    className="flow-parameter-action-icon-btn is-remove"
-                                                    title="移除此参数组"
-                                                    onClick={() => handleRemoveGroup(index)}
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-
-                                                <button
-                                                    type="button"
                                                     className="flow-parameter-action-icon-btn"
-                                                    onClick={() => item.parameterGroupId && toggleExpand(item.parameterGroupId)}
+                                                    aria-label={isExpanded ? '收起参数详情' : '展开参数详情'}
+                                                    onClick={() => toggleExpand(itemKey)}
                                                 >
                                                     {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                                                 </button>
                                             </div>
                                         </div>
 
-                                        {upgradePreview?.index === index ? (
+                                        {!readOnly && upgradePreview?.index === index ? (
                                             <div className="flow-parameter-upgrade-preview" role="alert">
                                                 <div className="flow-parameter-upgrade-title">
                                                     v{item.boundVersion} → v{upgradePreview.group.version} 的参数变化
@@ -531,12 +604,10 @@ export function FlowParameterDialog({
                                                             placeholder="搜索参数名或描述..."
                                                             value={searchFilter}
                                                             onChange={(e) => {
-                                                                if (item.parameterGroupId) {
-                                                                    setSearchFilters((prev) => ({
-                                                                        ...prev,
-                                                                        [item.parameterGroupId!]: e.target.value,
-                                                                    }));
-                                                                }
+                                                                setSearchFilters((prev) => ({
+                                                                    ...prev,
+                                                                    [itemKey]: e.target.value,
+                                                                }));
                                                             }}
                                                         />
                                                     </div>
@@ -565,9 +636,16 @@ export function FlowParameterDialog({
 
                                                                     <div className="flow-parameter-item-right">
                                                                         {isOverridden ? (
-                                                                            <span className="flow-parameter-overridden-badge" title="已被上方更高优先级的参数组覆盖">
-                                                                                已被上层覆盖
-                                                                            </span>
+                                                                            <Tooltip>
+                                                                                <TooltipTrigger asChild>
+                                                                                    <span className="flow-parameter-overridden-badge">
+                                                                                        已被上层覆盖
+                                                                                    </span>
+                                                                                </TooltipTrigger>
+                                                                                <TooltipContent className="tooltip-content tooltip-content-wrap z-[2400]" side="top">
+                                                                                    已被上方更高优先级的参数组覆盖
+                                                                                </TooltipContent>
+                                                                            </Tooltip>
                                                                         ) : null}
                                                                         <span className="flow-parameter-item-val">
                                                                             {describeParameterDefinition(def)}
@@ -596,7 +674,11 @@ export function FlowParameterDialog({
 
                 <DialogFooter className="flow-parameter-dialog-footer">
                     <div>
-                        {boundItems.length > 0 ? (
+                        {readOnly ? (
+                            <span className="offline-readonly-footer-note">
+                                当前为已确认线上快照{readOnlyRevision ? `（${readOnlyRevision.slice(0, 7)}）` : ''}的只读视图
+                            </span>
+                        ) : boundItems.length > 0 ? (
                             <Button
                                 type="button"
                                 variant="ghost"
@@ -610,20 +692,29 @@ export function FlowParameterDialog({
                         ) : null}
                     </div>
                     <div className="flow-parameter-dialog-actions">
-                        <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
-                            取消
-                        </Button>
-                        <Button
-                            type="button"
-                            size="sm"
-                            disabled={isUnchanged && !error}
-                            onClick={handleConfirmStage}
-                        >
-                            暂存绑定
-                        </Button>
+                        {readOnly ? (
+                            <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+                                关闭
+                            </Button>
+                        ) : (
+                            <>
+                                <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+                                    取消
+                                </Button>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    disabled={isUnchanged && !error}
+                                    onClick={handleConfirmStage}
+                                >
+                                    暂存绑定
+                                </Button>
+                            </>
+                        )}
                     </div>
                 </DialogFooter>
             </DialogContent>
-        </Dialog>
+            </Dialog>
+        </TooltipProvider>
     );
 }

@@ -7,11 +7,13 @@ export function SqlStatements({
     label,
     statements = [],
     help,
+    readOnly = false,
     onChange,
 }: {
     label: string;
     statements?: string[];
     help: string;
+    readOnly?: boolean;
     onChange: (statements: string[]) => void;
 }) {
     const id = useId();
@@ -19,8 +21,8 @@ export function SqlStatements({
     const inputsRef = useRef<Array<HTMLTextAreaElement | null>>([]);
     const addButtonRef = useRef<HTMLButtonElement>(null);
     const focusIndexRef = useRef<number | null>(null);
-    const overLimit = statements.length > MAX_TRANSFER_SQL_STATEMENTS;
-    const hasEmpty = statements.some((sql) => !sql.trim());
+    const overLimit = !readOnly && statements.length > MAX_TRANSFER_SQL_STATEMENTS;
+    const hasEmpty = !readOnly && statements.some((sql) => !sql.trim());
 
     useEffect(() => {
         const index = focusIndexRef.current;
@@ -41,44 +43,55 @@ export function SqlStatements({
             >
                 {expanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
                 <span>{label}</span>
-                <span className="transfer-node-sql-count">{statements.length}/{MAX_TRANSFER_SQL_STATEMENTS}</span>
+                <span className="transfer-node-sql-count">
+                    {readOnly ? `${statements.length} 条` : `${statements.length}/${MAX_TRANSFER_SQL_STATEMENTS}`}
+                </span>
                 {(overLimit || hasEmpty) && (
                     <span className="transfer-node-filter-error">{overLimit ? '超出上限，请删除多余项' : '有空项，请填写或删除'}</span>
                 )}
             </button>
             <div id={`${id}-content`} className="transfer-node-sql-content" hidden={!expanded}>
-                <p id={`${id}-help`} className="transfer-node-field-help">{help}</p>
+                {!readOnly && <p id={`${id}-help`} className="transfer-node-field-help">{help}</p>}
+                {readOnly && statements.length === 0 ? (
+                    <p className="transfer-node-field-help">未配置{label}</p>
+                ) : null}
                 {statements.map((sql, index) => {
-                    const invalid = !sql.trim();
+                    const invalid = !readOnly && !sql.trim();
                     const inputId = `${id}-${index}`;
                     return (
                         <div className="transfer-node-field transfer-node-sql-item" key={index}>
                             <div className="transfer-node-sql-item-heading">
                                 <label htmlFor={inputId}>{label} 第 {index + 1} 条</label>
-                                <button
-                                    type="button"
-                                    className="transfer-node-sql-action"
-                                    aria-label={`删除${label}第 ${index + 1} 条`}
-                                    onClick={() => {
-                                        focusIndexRef.current = Math.min(index, statements.length - 2);
-                                        onChange(statements.filter((_, itemIndex) => itemIndex !== index));
-                                    }}
-                                >
-                                    <Trash2 size={14} aria-hidden="true" />
-                                    删除
-                                </button>
+                                {!readOnly && (
+                                    <button
+                                        type="button"
+                                        className="transfer-node-sql-action"
+                                        aria-label={`删除${label}第 ${index + 1} 条`}
+                                        onClick={() => {
+                                            focusIndexRef.current = Math.min(index, statements.length - 2);
+                                            onChange(statements.filter((_, itemIndex) => itemIndex !== index));
+                                        }}
+                                    >
+                                        <Trash2 size={14} aria-hidden="true" />
+                                        删除
+                                    </button>
+                                )}
                             </div>
                             <textarea
                                 id={inputId}
                                 ref={(element) => { inputsRef.current[index] = element; }}
                                 rows={3}
                                 value={sql}
+                                readOnly={readOnly}
                                 spellCheck={false}
                                 aria-invalid={invalid}
                                 aria-describedby={`${id}-help${invalid ? ` ${inputId}-error` : ''}`}
-                                onChange={(event) => onChange(statements.map(
-                                    (statement, itemIndex) => itemIndex === index ? event.target.value : statement,
-                                ))}
+                                onChange={(event) => {
+                                    if (readOnly) return;
+                                    onChange(statements.map(
+                                        (statement, itemIndex) => itemIndex === index ? event.target.value : statement,
+                                    ));
+                                }}
                             />
                             {invalid && (
                                 <span id={`${inputId}-error`} className="transfer-node-filter-error">请输入 SQL 或删除此项</span>
@@ -86,19 +99,21 @@ export function SqlStatements({
                         </div>
                     );
                 })}
-                <button
-                    ref={addButtonRef}
-                    type="button"
-                    className="transfer-node-sql-action"
-                    disabled={statements.length >= MAX_TRANSFER_SQL_STATEMENTS}
-                    onClick={() => {
-                        focusIndexRef.current = statements.length;
-                        onChange([...statements, '']);
-                    }}
-                >
-                    <Plus size={14} aria-hidden="true" />
-                    添加{label}
-                </button>
+                {!readOnly && (
+                    <button
+                        ref={addButtonRef}
+                        type="button"
+                        className="transfer-node-sql-action"
+                        disabled={statements.length >= MAX_TRANSFER_SQL_STATEMENTS}
+                        onClick={() => {
+                            focusIndexRef.current = statements.length;
+                            onChange([...statements, '']);
+                        }}
+                    >
+                        <Plus size={14} aria-hidden="true" />
+                        添加{label}
+                    </button>
+                )}
             </div>
         </div>
     );

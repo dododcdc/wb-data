@@ -34,6 +34,8 @@ interface ScheduleDialogProps {
     timezone: string;
     saving: boolean;
     flowId: string | null;
+    readOnly?: boolean;
+    readOnlyRevision?: string | null;
     hasRemote?: boolean;
     hasLocalOrUnpushedChanges?: boolean;
     periodChangeDisabled?: boolean;
@@ -99,6 +101,8 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
         timezone,
         saving,
         flowId,
+        readOnly = false,
+        readOnlyRevision = null,
         hasRemote = true,
         hasLocalOrUnpushedChanges = false,
         periodChangeDisabled = false,
@@ -129,8 +133,9 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
 
     const cronInvalid = preview.type === 'error';
     const enabled = schedule?.enabled ?? false;
+    const effectiveDisabled = readOnly || saving;
     // Allow turning OFF even with invalid cron; block turning ON.
-    const switchDisabled = saving || (cronInvalid && !enabled);
+    const switchDisabled = effectiveDisabled || (cronInvalid && !enabled);
     const [popupContainer, setPopupContainer] = useState<HTMLDivElement | null>(null);
     const [previewExpanded, setPreviewExpanded] = useState(false);
     const periodId = useId();
@@ -141,13 +146,14 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
     }, [open]);
 
     const handleToggle = () => {
+        if (readOnly) return;
         const next = !enabled;
         if (next && cronInvalid) return;
         onToggle(next);
     };
 
-    const showNoRemoteAlert = !hasRemote;
-    const showDriftAlert = hasLocalOrUnpushedChanges;
+    const showNoRemoteAlert = !readOnly && !hasRemote;
+    const showDriftAlert = !readOnly && hasLocalOrUnpushedChanges;
 
     // 存量非标准 cron：按“每天”展示编辑位，用户改动或选周期后才会标准化，之前禁止暂存
     const legacyCustom = period === 'CUSTOM';
@@ -156,6 +162,7 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
     const periodParts = parsePeriodPartsFromCron(cron) ?? DEFAULT_PERIOD_PARTS;
 
     const updatePeriodParts = (patch: Partial<SchedulePeriodParts>) => {
+        if (readOnly) return;
         onPeriodChange(effectivePeriod, { ...periodParts, ...patch });
     };
 
@@ -163,15 +170,26 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="offline-schedule-dialog-standard">
                 <DialogHeader>
-                    <DialogTitle>调度配置</DialogTitle>
+                    <div className="offline-dialog-title-row">
+                        <DialogTitle>调度配置</DialogTitle>
+                        {readOnly ? <span className="offline-readonly-pill">线上只读</span> : null}
+                    </div>
                     <DialogDescription className="sr-only">
-                        配置任务 {flowId || ''} 的调度频率和计划时间。
+                        {readOnly
+                            ? `查看任务 ${flowId || ''} 当前线上版本的调度频率和计划时间。`
+                            : `配置任务 ${flowId || ''} 的调度频率和计划时间。`}
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="offline-schedule-body" ref={setPopupContainer}>
+                    {readOnly && !schedule ? (
+                        <p className="offline-schedule-readonly-empty" role="status">
+                            当前线上版本未配置定时调度触发器（自动调度处于关闭状态）
+                        </p>
+                    ) : null}
+
                     <div className="offline-schedule-period-section">
-                        <fieldset className="offline-schedule-period-group" disabled={saving || periodChangeDisabled}>
+                        <fieldset className="offline-schedule-period-group" disabled={effectiveDisabled || periodChangeDisabled}>
                             <legend className="offline-schedule-field-label">调度频率</legend>
                             <div className="offline-schedule-period-options">
                                 {PERIOD_OPTIONS.map((option) => (
@@ -181,7 +199,10 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                                             name={periodId}
                                             value={option.value}
                                             checked={!legacyCustom && period === option.value}
-                                            onChange={() => onPeriodChange(option.value)}
+                                            disabled={effectiveDisabled || periodChangeDisabled}
+                                            onChange={() => {
+                                                if (!readOnly) onPeriodChange(option.value);
+                                            }}
                                             className="sr-only"
                                         />
                                         <span>{option.label}</span>
@@ -190,7 +211,9 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                             </div>
                             {legacyCustom ? (
                                 <p className="offline-schedule-legacy-note">
-                                    当前调度为非标准 Cron 表达式（{cron}），选择调度频率并暂存后将覆盖为标准调度。
+                                    {readOnly
+                                        ? `当前线上调度为非标准 Cron 表达式（${cron}）。`
+                                        : `当前调度为非标准 Cron 表达式（${cron}），选择调度频率并暂存后将覆盖为标准调度。`}
                                 </p>
                             ) : null}
                         </fieldset>
@@ -207,7 +230,7 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                                     options={MONTH_OPTIONS}
                                     suffix="月"
                                     ariaLabel="月份"
-                                    disabled={saving}
+                                    disabled={effectiveDisabled}
                                     popupContainer={popupContainer}
                                     onChange={(month) => updatePeriodParts({ month })}
                                 />
@@ -218,7 +241,7 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                                     options={DAY_OF_MONTH_OPTIONS}
                                     suffix="日"
                                     ariaLabel="第几日"
-                                    disabled={saving}
+                                    disabled={effectiveDisabled}
                                     popupContainer={popupContainer}
                                     onChange={(dayOfMonth) => updatePeriodParts({ dayOfMonth })}
                                 />
@@ -228,7 +251,7 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                                     value={periodParts.dayOfWeek}
                                     options={WEEK_DAY_OPTIONS}
                                     ariaLabel="星期几"
-                                    disabled={saving}
+                                    disabled={effectiveDisabled}
                                     popupContainer={popupContainer}
                                     formatLabel={(v) => `周${WEEK_DAY_NAMES[v - 1] ?? v}`}
                                     onChange={(dayOfWeek) => updatePeriodParts({ dayOfWeek })}
@@ -240,7 +263,7 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                                     options={HOUR_OPTIONS}
                                     suffix="时"
                                     ariaLabel="小时"
-                                    disabled={saving}
+                                    disabled={effectiveDisabled}
                                     popupContainer={popupContainer}
                                     onChange={(hour) => updatePeriodParts({ hour })}
                                 />
@@ -250,7 +273,7 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                                 options={MINUTE_OPTIONS}
                                 suffix="分"
                                 ariaLabel="分钟"
-                                disabled={saving}
+                                disabled={effectiveDisabled}
                                 popupContainer={popupContainer}
                                 onChange={(minute) => updatePeriodParts({ minute })}
                             />
@@ -260,17 +283,22 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
 
                     <div className="offline-schedule-toggle-row">
                         <span className="offline-schedule-field-label">自动调度</span>
-                        <button
-                            type="button"
-                            role="switch"
-                            aria-label="启用调度"
-                            aria-checked={enabled}
-                            disabled={switchDisabled}
-                            onClick={handleToggle}
-                            className="offline-switch"
-                        >
-                            <span className="offline-switch-thumb" aria-hidden="true" />
-                        </button>
+                        <div className="offline-schedule-toggle-control">
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-label="启用调度"
+                                aria-checked={enabled}
+                                disabled={switchDisabled}
+                                onClick={handleToggle}
+                                className="offline-switch"
+                            >
+                                <span className="offline-switch-thumb" aria-hidden="true" />
+                            </button>
+                            {readOnly ? (
+                                <span className="offline-schedule-toggle-state">{enabled ? '已开启' : '已关闭'}</span>
+                            ) : null}
+                        </div>
                     </div>
 
                     <section className="offline-schedule-preview" aria-labelledby={`${previewId}-heading`}>
@@ -302,24 +330,40 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
 
                 <DialogFooter className="offline-schedule-footer">
                     <div className="offline-schedule-publish-note">
-                        <p>暂存后自动保存草稿，提交并推送、同步成功后生效</p>
-                        {(showNoRemoteAlert || showDriftAlert) ? (
-                            <p className="offline-schedule-publish-warning" role="status">
-                                <AlertTriangle size={14} aria-hidden="true" />
-                                <span>{showNoRemoteAlert
-                                    ? '尚未配置 Git 远程，暂时无法发布调度'
-                                    : '存在本地或未推送变更，线上配置可能不同'}</span>
+                        {readOnly ? (
+                            <p>
+                                当前为已确认线上快照{readOnlyRevision ? `（${readOnlyRevision.slice(0, 7)}）` : ''}的只读视图，切换至开发模式后可修改
                             </p>
-                        ) : null}
+                        ) : (
+                            <>
+                                <p>暂存后自动保存草稿，提交并推送、同步成功后生效</p>
+                                {(showNoRemoteAlert || showDriftAlert) ? (
+                                    <p className="offline-schedule-publish-warning" role="status">
+                                        <AlertTriangle size={14} aria-hidden="true" />
+                                        <span>{showNoRemoteAlert
+                                            ? '尚未配置 Git 远程，暂时无法发布调度'
+                                            : '存在本地或未推送变更，线上配置可能不同'}</span>
+                                    </p>
+                                ) : null}
+                            </>
+                        )}
                     </div>
                     <div className="offline-schedule-actions">
-                        <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-                            取消
-                        </Button>
-                        <Button variant="default" onClick={onSave} disabled={saving || cronInvalid || legacyCustom}>
-                            {saving ? <LoaderCircle size={14} className="offline-spin" style={{ marginRight: 8 }} /> : null}
-                            {saving ? '正在暂存...' : '暂存配置'}
-                        </Button>
+                        {readOnly ? (
+                            <Button variant="outline" onClick={() => onOpenChange(false)}>
+                                关闭
+                            </Button>
+                        ) : (
+                            <>
+                                <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+                                    取消
+                                </Button>
+                                <Button variant="default" onClick={onSave} disabled={saving || cronInvalid || legacyCustom}>
+                                    {saving ? <LoaderCircle size={14} className="offline-spin" style={{ marginRight: 8 }} /> : null}
+                                    {saving ? '正在暂存...' : '暂存配置'}
+                                </Button>
+                            </>
+                        )}
                     </div>
                 </DialogFooter>
             </DialogContent>

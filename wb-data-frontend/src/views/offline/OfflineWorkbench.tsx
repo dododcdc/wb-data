@@ -10,6 +10,7 @@ import {
     getOfflineRepoTree,
     type FlowParameterBinding,
     type OfflineRepoTreeResponse,
+    type OfflineScheduleResponse,
 } from '../../api/offline';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { useAuthStore } from '../../utils/auth';
@@ -19,6 +20,7 @@ import type { TransferNodeDraftState } from './transfer/TransferNodeDialog';
 import { DependencyAwareScheduleDialog } from './DependencyAwareScheduleDialog';
 import { DependencyDialog } from './DependencyDialog';
 import { FlowParameterDialog } from './FlowParameterDialog';
+import { ScheduleDialog } from './ScheduleDialog';
 import {
     flattenFlowDocumentNodes,
     resolveFlowSelectedTaskIds,
@@ -52,8 +54,11 @@ import {
     useOfflineWorkbenchUrlRestore,
 } from './OfflineWorkbenchLifecycle';
 import { updateFlowDependencyDraft, updateFlowParameterBindingDraft } from './flowDraftController';
+import { useOnlineFlowSnapshot, type CanvasMode } from './useOnlineFlowSnapshot';
 
 import './OfflineWorkbench.css';
+
+const NOOP = () => undefined;
 
 export default function OfflineWorkbench() {
     const [searchParams] = useSearchParams();
@@ -91,9 +96,16 @@ export default function OfflineWorkbench() {
     const [committing, setCommitting] = useState(false);
     const [parameterDialogOpen, setParameterDialogOpen] = useState(false);
     const [dependencyDialogOpen, setDependencyDialogOpen] = useState(false);
+    const [canvasMode, setCanvasMode] = useState<CanvasMode>('dev');
+    const [onlineActiveNodeId, setOnlineActiveNodeId] = useState<string | null>(null);
+    const [onlineNodeEditorOpen, setOnlineNodeEditorOpen] = useState(false);
+    const [onlineScheduleDialogOpen, setOnlineScheduleDialogOpen] = useState(false);
+    const [onlineDependencyDialogOpen, setOnlineDependencyDialogOpen] = useState(false);
+    const [onlineParameterDialogOpen, setOnlineParameterDialogOpen] = useState(false);
     const loadScheduleSnapshotRef = useRef<((path: string) => Promise<void>) | null>(null);
     const resetExecutionAndScheduleRef = useRef<(() => void) | null>(null);
     const refreshRepoStatusRef = useRef<(() => Promise<void>) | null>(null);
+    const refreshDeploymentRef = useRef<(() => void) | null>(null);
 
     const loadScheduleSnapshotBridge = useCallback((path: string) => loadScheduleSnapshotRef.current?.(path) ?? Promise.resolve(), []);
     const resetExecutionAndScheduleBridge = useCallback(() => {
@@ -188,7 +200,16 @@ export default function OfflineWorkbench() {
 
     useEffect(() => {
         setDependencyDialogOpen(false);
+        setOnlineActiveNodeId(null);
+        setOnlineNodeEditorOpen(false);
+        setOnlineScheduleDialogOpen(false);
+        setOnlineDependencyDialogOpen(false);
+        setOnlineParameterDialogOpen(false);
     }, [groupId, activeFlowPath]);
+
+    useEffect(() => {
+        setCanvasMode('dev');
+    }, [groupId]);
 
     const {
         repoStatus,
@@ -232,6 +253,22 @@ export default function OfflineWorkbench() {
         showFeedback,
     });
     refreshRepoStatusRef.current = refreshRepoStatus;
+    const {
+        deploymentConfig,
+        confirmedRevision,
+        status: onlineStatus,
+        snapshot: onlineSnapshot,
+        onlineDocument,
+        error: onlineError,
+        refresh: refreshOnlineSnapshot,
+        refreshDeployment,
+    } = useOnlineFlowSnapshot({
+        groupId,
+        branch: repoStatus?.branch ?? null,
+        activeFlowPath,
+        enabled: canvasMode === 'online',
+    });
+    refreshDeploymentRef.current = refreshDeployment;
     const {
         executionDialogOpen,
         setExecutionDialogOpen,
@@ -284,6 +321,55 @@ export default function OfflineWorkbench() {
     });
     loadScheduleSnapshotRef.current = loadScheduleSnapshot;
     resetExecutionAndScheduleRef.current = resetExecutionAndSchedule;
+
+    const onlineActiveNode = useMemo(() => {
+        if (!onlineDocument || !onlineActiveNodeId) return null;
+        return flattenFlowDocumentNodes(onlineDocument).find((node) => node.taskId === onlineActiveNodeId) ?? null;
+    }, [onlineActiveNodeId, onlineDocument]);
+
+    const onlineNodeContent = useMemo(() => {
+        if (!onlineActiveNode) return '';
+        if (onlineActiveNode.scriptContent !== undefined) return onlineActiveNode.scriptContent;
+        if (onlineActiveNode.scriptPath && onlineSnapshot?.files) {
+            const file = onlineSnapshot.files.find((item) => item.path === onlineActiveNode.scriptPath);
+            if (file?.content != null) return file.content;
+        }
+        return '';
+    }, [onlineActiveNode, onlineSnapshot]);
+
+    const onlineScheduleResponse: OfflineScheduleResponse | null = useMemo(() => {
+        if (!onlineDocument?.schedule || !groupId) return null;
+        return {
+            groupId,
+            path: onlineDocument.path,
+            triggerId: 'schedule',
+            cron: onlineDocument.schedule.cron,
+            timezone: onlineDocument.schedule.timezone,
+            enabled: onlineDocument.schedule.enabled,
+            period: onlineDocument.schedule.period,
+            contentHash: '',
+            fileUpdatedAt: 0,
+        };
+    }, [groupId, onlineDocument]);
+
+    const handleCanvasModeChange = useCallback((nextMode: CanvasMode) => {
+        setCanvasMode(nextMode);
+        if (nextMode === 'online') {
+            setScheduleDialogOpen(false);
+            setDependencyDialogOpen(false);
+            setParameterDialogOpen(false);
+        } else {
+            setOnlineScheduleDialogOpen(false);
+            setOnlineDependencyDialogOpen(false);
+            setOnlineParameterDialogOpen(false);
+            setOnlineNodeEditorOpen(false);
+        }
+    }, [setScheduleDialogOpen]);
+
+    const handleOpenOnlineNodeEditor = useCallback((taskId: string) => {
+        setOnlineActiveNodeId(taskId);
+        setOnlineNodeEditorOpen(true);
+    }, []);
 
     const nodeIssues = useMemo(() => {
         if (!flowDocument) return {};
@@ -341,6 +427,7 @@ export default function OfflineWorkbench() {
             refreshRepoTree(),
             refreshRemoteStatus(),
         ]);
+        refreshDeploymentRef.current?.();
     }, [refreshRepoStatus, refreshRepoTree, refreshRemoteStatus]);
 
     const resetActiveFlowAfterBranchSwitch = useCallback(() => {
@@ -498,12 +585,12 @@ export default function OfflineWorkbench() {
 
     useOfflineWorkbenchNewFlowShortcut({
         newFlowDialogOpen,
-        nodeEditorOpen,
+        nodeEditorOpen: nodeEditorOpen || onlineNodeEditorOpen,
         executionDialogOpen,
         executionContextDialogOpen,
-        scheduleDialogOpen,
-        parameterDialogOpen,
-        dependencyDialogOpen,
+        scheduleDialogOpen: scheduleDialogOpen || onlineScheduleDialogOpen,
+        parameterDialogOpen: parameterDialogOpen || onlineParameterDialogOpen,
+        dependencyDialogOpen: dependencyDialogOpen || onlineDependencyDialogOpen,
         openRootNewFlowDialog,
     });
 
@@ -584,11 +671,37 @@ export default function OfflineWorkbench() {
     }, [activeFlowPath, commitCurrentFlow, commitMessage, groupId]);
 
     const handleOpenScheduleDialog = useCallback(() => {
+        if (canvasMode === 'online') {
+            if (onlineDocument) {
+                setOnlineScheduleDialogOpen(true);
+            }
+            return;
+        }
         setScheduleDialogOpen(true);
         if (activeFlowPath) {
             void loadScheduleSnapshot(activeFlowPath);
         }
-    }, [activeFlowPath, loadScheduleSnapshot, setScheduleDialogOpen]);
+    }, [activeFlowPath, canvasMode, loadScheduleSnapshot, onlineDocument, setScheduleDialogOpen]);
+
+    const handleOpenDependencyDialog = useCallback(() => {
+        if (canvasMode === 'online') {
+            if (onlineDocument) {
+                setOnlineDependencyDialogOpen(true);
+            }
+            return;
+        }
+        setDependencyDialogOpen(true);
+    }, [canvasMode, onlineDocument]);
+
+    const handleOpenParameterDialog = useCallback(() => {
+        if (canvasMode === 'online') {
+            if (onlineDocument) {
+                setOnlineParameterDialogOpen(true);
+            }
+            return;
+        }
+        setParameterDialogOpen(true);
+    }, [canvasMode, onlineDocument]);
 
     const handleStageParameterBinding = useCallback((binding: FlowParameterBinding | null) => {
         setDraftSession((current) => current
@@ -697,7 +810,7 @@ export default function OfflineWorkbench() {
                             loading: treeLoading,
                             flowLoading,
                             activeFlowPath,
-                            canWrite: canWrite && !nodeEditorOpen && draftSaveState !== 'saving' && !isDirty,
+                            canWrite: canWrite && !nodeEditorOpen && !onlineNodeEditorOpen && draftSaveState !== 'saving' && !isDirty,
                             onOpenFlow: (path) => void openFlowDocument(path),
                             onContextMenu: handleContextMenu,
                             onMoveNode: handleMoveNode,
@@ -712,6 +825,17 @@ export default function OfflineWorkbench() {
                         activeFlowPath={activeFlowPath}
                         groupId={groupId}
                         branch={repoStatus?.branch ?? null}
+                        canvasMode={canvasMode}
+                        onCanvasModeChange={handleCanvasModeChange}
+                        onlineStatus={onlineStatus}
+                        onlineDocument={onlineDocument}
+                        onlineRevision={confirmedRevision}
+                        deploymentConfig={deploymentConfig}
+                        onlineError={onlineError}
+                        onRetryOnlineSnapshot={refreshOnlineSnapshot}
+                        onlineActiveNodeId={onlineActiveNodeId}
+                        onSelectOnlineNode={setOnlineActiveNodeId}
+                        onOpenOnlineNodeEditor={handleOpenOnlineNodeEditor}
                         flowDocument={flowDocument}
                         canWrite={canWrite}
                         canConfigureParameters={canConfigureParameters}
@@ -731,8 +855,8 @@ export default function OfflineWorkbench() {
                         onSelectAllNodes={handleSelectAllNodes}
                         onOpenFlowCommitDialog={handleOpenFlowCommitDialog}
                         onOpenScheduleDialog={handleOpenScheduleDialog}
-                        onOpenDependencyDialog={() => setDependencyDialogOpen(true)}
-                        onOpenParameterDialog={() => setParameterDialogOpen(true)}
+                        onOpenDependencyDialog={handleOpenDependencyDialog}
+                        onOpenParameterDialog={handleOpenParameterDialog}
                         onExecute={() => void handleExecute()}
                         onOpenExecutionDialog={openExecutionDialog}
                         onOpenVersions={() => setVersionHistoryOpen(true)}
@@ -800,7 +924,7 @@ export default function OfflineWorkbench() {
                 path={activeFlowPath}
                 dependencyConfig={flowDocument?.dependencyConfig}
                 savedPeriod={draftSession?.baseDocument.schedule?.period ?? null}
-                open={scheduleDialogOpen}
+                open={canvasMode === 'dev' && scheduleDialogOpen}
                 schedule={schedule}
                 cron={scheduleCron || ''}
                 period={schedulePeriod}
@@ -820,7 +944,7 @@ export default function OfflineWorkbench() {
                 onToggle={(enabled) => void handleScheduleToggle(enabled)}
             />
 
-            {dependencyDialogOpen && groupId && flowDocument && flowDocument.groupId === groupId ? (
+            {canvasMode === 'dev' && dependencyDialogOpen && groupId && flowDocument && flowDocument.groupId === groupId ? (
                 <DependencyDialog
                     key={`${groupId}:${activeFlowPath}`}
                     groupId={groupId}
@@ -838,7 +962,7 @@ export default function OfflineWorkbench() {
 
             {groupId && flowDocument ? (
                 <FlowParameterDialog
-                    open={parameterDialogOpen}
+                    open={canvasMode === 'dev' && parameterDialogOpen}
                     groupId={groupId}
                     binding={flowDocument.parameterBinding}
                     onOpenChange={setParameterDialogOpen}
@@ -893,7 +1017,13 @@ export default function OfflineWorkbench() {
                 pushDialogOpen={pushDialogOpen}
                 pushLoading={pushLoading}
                 onPushDialogOpenChange={setPushDialogOpen}
-                onPush={() => void pushRepository()}
+                onPush={() => void (async () => {
+                    try {
+                        await pushRepository();
+                    } finally {
+                        refreshDeployment();
+                    }
+                })()}
                 discardBranchSwitchOpen={discardBranchSwitchOpen}
                 branchSwitching={branchSwitching}
                 pendingBranchSwitch={pendingBranchSwitch}
@@ -902,11 +1032,17 @@ export default function OfflineWorkbench() {
                 rebuildDialogOpen={rebuildDialogOpen}
                 rebuildLoading={rebuildLoading}
                 onRebuildDialogOpenChange={setRebuildDialogOpen}
-                onRebuildRemote={() => void rebuildRemote()}
+                onRebuildRemote={() => void (async () => {
+                    try {
+                        await rebuildRemote();
+                    } finally {
+                        refreshDeployment();
+                    }
+                })()}
             />
 
             <NodeEditorDialog
-                open={nodeEditorOpen}
+                open={canvasMode === 'dev' && nodeEditorOpen}
                 activeNode={activeNode}
                 groupId={groupId}
                 content={nodeEditorContent}
@@ -917,6 +1053,61 @@ export default function OfflineWorkbench() {
                 onDraftChange={handleNodeEditorDraftChange}
                 onTransferChange={handleTransferNodeDraftChange}
             />
+
+            {canvasMode === 'online' && groupId && onlineDocument ? (
+                <>
+                    <ScheduleDialog
+                        open={onlineScheduleDialogOpen}
+                        readOnly
+                        readOnlyRevision={confirmedRevision}
+                        schedule={onlineScheduleResponse}
+                        cron={onlineScheduleResponse?.cron ?? ''}
+                        period={onlineScheduleResponse?.period ?? 'DAILY'}
+                        timezone={onlineDocument.runtimeTimezone || onlineScheduleResponse?.timezone || defaultTimezone}
+                        saving={false}
+                        flowId={onlineDocument.flowId ?? null}
+                        onOpenChange={setOnlineScheduleDialogOpen}
+                        onPeriodChange={NOOP}
+                        onSave={NOOP}
+                        onToggle={NOOP}
+                    />
+
+                    {onlineDependencyDialogOpen ? (
+                        <DependencyDialog
+                            key={`online:${groupId}:${onlineDocument.path}:${confirmedRevision ?? ''}`}
+                            groupId={groupId}
+                            document={onlineDocument}
+                            canWrite={false}
+                            readOnly
+                            readOnlyRevision={confirmedRevision}
+                            onClose={() => setOnlineDependencyDialogOpen(false)}
+                            onStage={NOOP}
+                        />
+                    ) : null}
+
+                    <FlowParameterDialog
+                        open={onlineParameterDialogOpen}
+                        groupId={groupId}
+                        binding={onlineDocument.parameterBinding}
+                        readOnly
+                        readOnlyRevision={confirmedRevision}
+                        onOpenChange={setOnlineParameterDialogOpen}
+                        onStage={NOOP}
+                    />
+
+                    <NodeEditorDialog
+                        open={onlineNodeEditorOpen}
+                        readOnly
+                        activeNode={onlineActiveNode}
+                        groupId={groupId}
+                        content={onlineNodeContent}
+                        parameterDefinitions={onlineDocument.parameterBinding?.definitions}
+                        onOpenChange={setOnlineNodeEditorOpen}
+                        onTempSave={NOOP}
+                        onContentChange={NOOP}
+                    />
+                </>
+            ) : null}
 
             <OfflineTreeActionDialogs
                 repoTree={repoTree}

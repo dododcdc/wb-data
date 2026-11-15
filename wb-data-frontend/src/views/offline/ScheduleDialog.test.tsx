@@ -206,4 +206,46 @@ describe('ScheduleDialog', () => {
             month: 1,
         });
     });
+
+    it('renders read-only online snapshot schedule with disabled inputs and close-only footer', () => {
+        const { props, rerender } = renderDialog({
+            readOnly: true,
+            readOnlyRevision: 'abcdef1234567890',
+            schedule: makeSchedule({ enabled: true }),
+        });
+
+        const dialog = screen.getByRole('dialog', { name: '调度配置' });
+        expect(within(dialog).getByText('线上只读')).toBeTruthy();
+        expect(within(dialog).getByText('已开启')).toBeTruthy();
+        expect(within(dialog).getByText(/abcdef1/)).toBeTruthy();
+        expect(within(dialog).queryByRole('button', { name: '暂存配置' })).toBeNull();
+        expect(within(dialog).queryByRole('button', { name: '取消' })).toBeNull();
+
+        for (const radio of within(dialog).getAllByRole('radio')) {
+            expect((radio as HTMLInputElement).disabled).toBe(true);
+        }
+        const toggle = within(dialog).getByRole('switch', { name: '启用调度' }) as HTMLButtonElement;
+        expect(toggle.disabled).toBe(true);
+        fireEvent.click(toggle);
+        expect(props.onToggle).not.toHaveBeenCalled();
+
+        // Preview expand remains functional in read-only mode
+        const expandBtn = within(dialog).getByRole('button', { name: '展开更多' });
+        fireEvent.click(expandBtn);
+        expect(within(dialog).getByRole('button', { name: '收起' })).toBeTruthy();
+
+        fireEvent.click(within(dialog).getAllByRole('button', { name: '关闭' })[0]);
+        expect(props.onOpenChange).toHaveBeenCalledWith(false);
+
+        rerender(
+            <ScheduleDialog
+                {...props}
+                readOnly
+                readOnlyRevision="abcdef1234567890"
+                schedule={null}
+            />,
+        );
+        expect(screen.getByText(/当前线上版本未配置定时调度触发器/)).toBeTruthy();
+        expect(screen.getByText('已关闭')).toBeTruthy();
+    });
 });

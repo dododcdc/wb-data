@@ -54,6 +54,7 @@ vi.mock('../../components/ui/tooltip', () => ({
 vi.mock('./FlowCanvas', () => ({
     default: ({
         flowDocument,
+        readOnly,
         onAddNode,
         onEdgesChange,
         onNodeLayoutCommit,
@@ -64,6 +65,7 @@ vi.mock('./FlowCanvas', () => ({
             path: string;
             stages: Array<{ nodes: Array<{ taskId: string; kind: string }> }>;
         };
+        readOnly?: boolean;
         onAddNode: (kind: OfflineFlowNodeKind, position: { x: number; y: number }) => void;
         onEdgesChange: (edges: Array<{ id: string; source: string; target: string }>) => void;
         onNodeLayoutCommit: (nodes: Array<{ id: string; position: { x: number; y: number } }>) => void;
@@ -71,10 +73,13 @@ vi.mock('./FlowCanvas', () => ({
         onDoubleClickNode: (taskId: string) => void;
     }) => {
         flowCanvasRenderSpy(flowDocument);
-        const transferNode = flowDocument.stages.flatMap((stage) => stage.nodes).find((node) => node.kind === 'TRANSFER');
+        const allNodes = flowDocument.stages.flatMap((stage) => stage.nodes);
+        const transferNode = allNodes.find((node) => node.kind === 'TRANSFER');
+        const firstNode = allNodes[0];
         return (
             <div
                 data-testid="flow-canvas"
+                data-readonly={String(Boolean(readOnly))}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => {
                     const kind = event.dataTransfer.getData('nodeKind');
@@ -84,9 +89,17 @@ vi.mock('./FlowCanvas', () => ({
                 }}
             >
                 {flowDocument.path}
-                <span data-testid="transfer-node-count">
-                    {flowDocument.stages.flatMap((stage) => stage.nodes).filter((node) => node.kind === 'TRANSFER').length}
+                <span data-testid="flow-canvas-node-ids">
+                    {allNodes.map((node) => node.taskId).join(',')}
                 </span>
+                <span data-testid="transfer-node-count">
+                    {allNodes.filter((node) => node.kind === 'TRANSFER').length}
+                </span>
+                {firstNode && (
+                    <button type="button" aria-label="打开首个节点" onClick={() => onDoubleClickNode(firstNode.taskId)}>
+                        open-first-node
+                    </button>
+                )}
                 {transferNode && (
                     <button type="button" aria-label="打开传输节点" onClick={() => onDoubleClickNode(transferNode.taskId)}>
                         open-transfer
@@ -230,6 +243,7 @@ vi.mock('../../api/offline', async () => {
         getOfflineRepoTree: vi.fn(),
         getOfflineRepoRemote: vi.fn(),
         getOfflineFlowDocument: vi.fn(),
+        getOfflineFlowSnapshot: vi.fn(),
         getOfflineSchedule: vi.fn(),
         getOfflineDependents: vi.fn().mockResolvedValue([]),
         searchOfflineDependencyCandidates: vi.fn().mockResolvedValue([]),
@@ -1596,5 +1610,310 @@ describe('OfflineWorkbench destructive confirmations', () => {
         await waitFor(() => {
             expect(screen.queryByRole('dialog', { name: '确认删除文件夹' })).toBeNull();
         });
+    });
+});
+
+describe('OfflineWorkbench online mode', () => {
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        removeRecoverySnapshot(1, '_flows/example/flow.yaml');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write', 'parameter.read'];
+        setCurrentGroup({ id: 1, name: 'Team' });
+
+        const offlineApi = await import('../../api/offline');
+        const gitSettingsApi = await import('../../api/gitSettings');
+        vi.mocked(gitSettingsApi.getGitSyncConfigs).mockResolvedValue({
+            configs: [],
+            availableBranches: ['main'],
+            syncCron: '*/5 * * * *',
+        });
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue(makeRepoStatus());
+        vi.mocked(offlineApi.getOfflineRepoTree).mockResolvedValue(makeRepoTree());
+        vi.mocked(offlineApi.getOfflineRepoRemote).mockResolvedValue({ hasRemote: true, remoteUrl: 'https://git.example.com/repo.git' });
+        vi.mocked(offlineApi.getOfflineFlowDocument).mockResolvedValue(makeFlowDocumentBase());
+        vi.mocked(offlineApi.getOfflineFlowSnapshot).mockReset();
+        vi.mocked(offlineApi.getOfflineDependents).mockResolvedValue([]);
+        vi.mocked(offlineApi.searchOfflineDependencyCandidates).mockResolvedValue([]);
+        vi.mocked(offlineApi.getOfflineSchedule).mockResolvedValue({
+            groupId: 1,
+            path: '_flows/example/flow.yaml',
+            triggerId: 'schedule',
+            cron: '0 2 * * *',
+            timezone: 'Asia/Shanghai',
+            enabled: false,
+            period: 'DAILY',
+            contentHash: 'schedule-hash',
+            fileUpdatedAt: 100,
+        });
+        vi.mocked(offlineApi.getOfflineFlowCommitStatus).mockResolvedValue({
+            groupId: 1,
+            flowPath: '_flows/example/flow.yaml',
+            dirty: false,
+        });
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue({
+            ...makeFlowDocumentBase(),
+            documentHash: 'saved-hash',
+            documentUpdatedAt: 200,
+        });
+    });
+
+    afterEach(() => {
+        cleanup();
+    });
+
+    it('shows unconfirmed online notice when deploymentEvidence is UNKNOWN without fetching snapshot', async () => {
+        const offlineApi = await import('../../api/offline');
+        const gitSettingsApi = await import('../../api/gitSettings');
+        vi.mocked(gitSettingsApi.getGitSyncConfigs).mockResolvedValue({
+            configs: [
+                {
+                    id: 1,
+                    groupId: 1,
+                    branch: 'main',
+                    namespace: 'pg-1',
+                    syncFlowId: 'git-sync-main',
+                    enabled: true,
+                    lastSyncAt: '2026-11-14T10:00:00Z',
+                    lastSyncStatus: 'SUCCESS',
+                    lastSyncMessage: null,
+                    lastDeployedSha: null,
+                    lastDeployedAt: null,
+                    deploymentEvidence: 'UNKNOWN',
+                },
+            ],
+            availableBranches: ['main'],
+            syncCron: '*/5 * * * *',
+        });
+
+        renderOfflineWorkbench();
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
+        const devCanvas = await screen.findByTestId('flow-canvas');
+        expect(devCanvas.getAttribute('data-readonly')).toBe('false');
+        expect(screen.getByText('拖到画布添加')).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('tab', { name: '线上模式' }));
+
+        expect(await screen.findByText('暂无已确认的线上快照')).toBeTruthy();
+        expect(offlineApi.getOfflineFlowSnapshot).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('flow-canvas')).toBeNull();
+        expect(screen.queryByText('拖到画布添加')).toBeNull();
+        expect(screen.queryByRole('button', { name: '提交当前任务' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '执行' })).toBeNull();
+        expect((screen.getByRole('button', { name: '调度' }) as HTMLButtonElement).disabled).toBe(true);
+        expect((screen.getByRole('button', { name: '依赖' }) as HTMLButtonElement).disabled).toBe(true);
+        expect((screen.getByRole('button', { name: '参数' }) as HTMLButtonElement).disabled).toBe(true);
+        expect((screen.getByRole('button', { name: '版本' }) as HTMLButtonElement).disabled).toBe(false);
+        expect((screen.getByRole('button', { name: '执行结果' }) as HTMLButtonElement).disabled).toBe(false);
+
+        fireEvent.click(screen.getByRole('button', { name: '返回开发模式' }));
+        const restoredCanvas = await screen.findByTestId('flow-canvas');
+        expect(restoredCanvas.getAttribute('data-readonly')).toBe('false');
+        expect(screen.getByText('拖到画布添加')).toBeTruthy();
+    });
+
+    it('renders confirmed online snapshot in read-only mode and inspects schedule, dependencies, parameters, and nodes without mutating dev draft', async () => {
+        const rev = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
+        const offlineApi = await import('../../api/offline');
+        const gitSettingsApi = await import('../../api/gitSettings');
+        vi.mocked(gitSettingsApi.getGitSyncConfigs).mockResolvedValue({
+            configs: [
+                {
+                    id: 1,
+                    groupId: 1,
+                    branch: 'main',
+                    namespace: 'pg-1',
+                    syncFlowId: 'git-sync-main',
+                    enabled: true,
+                    lastSyncAt: '2026-11-14T10:00:00Z',
+                    lastSyncStatus: 'SUCCESS',
+                    lastSyncMessage: null,
+                    lastDeployedSha: rev,
+                    lastDeployedAt: '2026-11-14T10:00:05Z',
+                    deploymentEvidence: 'CONFIRMED',
+                },
+            ],
+            availableBranches: ['main'],
+            syncCron: '*/5 * * * *',
+        });
+        vi.mocked(offlineApi.searchOfflineDependencyCandidates).mockResolvedValue([
+            {
+                groupId: 1,
+                groupName: 'Team',
+                flowId: 'upstream_online',
+                path: '_flows/upstream/flow.yaml',
+                hasSchedule: true,
+                period: 'HOURLY',
+                cron: '0 * * * *',
+                timezone: 'UTC',
+                enabled: true,
+                crossGroupDependency: 'DENY',
+            },
+        ]);
+        vi.mocked(offlineApi.getOfflineFlowSnapshot).mockResolvedValue({
+            revision: rev,
+            document: {
+                ...makeFlowDocumentBase(),
+                runtimeTimezone: 'UTC',
+                schedule: {
+                    period: 'HOURLY',
+                    cron: '15 * * * *',
+                    timezone: 'UTC',
+                    enabled: true,
+                },
+                dependencyConfig: {
+                    dependencies: [{ groupId: 1, flowId: 'upstream_online' }],
+                    failurePolicy: 'PAUSE',
+                    crossGroupDependency: 'DENY',
+                },
+                parameterBinding: {
+                    parameterGroupId: null,
+                    code: 'online_params',
+                    name: '线上环境参数',
+                    boundVersion: 3,
+                    currentVersion: null,
+                    status: 'CURRENT',
+                    definitions: [
+                        {
+                            key: 'biz_date',
+                            valueSource: 'CONSTANT',
+                            constantValue: '2026-11-14',
+                            offsetDays: 0,
+                            description: '业务日',
+                            sortOrder: 1,
+                        },
+                    ],
+                },
+                stages: [
+                    {
+                        stageId: 'main',
+                        parallel: false,
+                        nodes: [
+                            {
+                                taskId: 'online_sql',
+                                kind: 'HIVE_SQL',
+                                scriptPath: 'scripts/example/online_sql.sql',
+                                scriptContent: 'SELECT online_col FROM tbl',
+                                dataSourceId: 9,
+                                hiveConf: { 'hive.merge.mapfiles': 'true' },
+                            },
+                        ],
+                    },
+                ],
+                layout: {
+                    online_sql: { x: 40, y: 60 },
+                },
+            },
+            files: [],
+            nodeMetadata: {},
+        });
+
+        renderOfflineWorkbench();
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+        expect(screen.getByTestId('flow-canvas-node-ids').textContent).toBe('node_1');
+
+        fireEvent.click(screen.getByRole('tab', { name: '线上模式' }));
+
+        await waitFor(() => {
+            const canvas = screen.getByTestId('flow-canvas');
+            expect(canvas.getAttribute('data-readonly')).toBe('true');
+            expect(screen.getByTestId('flow-canvas-node-ids').textContent).toBe('online_sql');
+        });
+        expect(offlineApi.getOfflineFlowSnapshot).toHaveBeenCalledWith(1, '_flows/example/flow.yaml', rev);
+        expect(screen.getByText('线上快照 · 只读')).toBeTruthy();
+
+        // Inspect Schedule read-only dialog
+        fireEvent.click(screen.getByRole('button', { name: '调度' }));
+        const scheduleDlg = await screen.findByRole('dialog', { name: '调度配置' });
+        expect(within(scheduleDlg).getByText('线上只读')).toBeTruthy();
+        expect(within(scheduleDlg).getByText(/a1b2c3d/)).toBeTruthy();
+        expect(within(scheduleDlg).getByText('已开启')).toBeTruthy();
+        expect(within(scheduleDlg).queryByRole('button', { name: '暂存配置' })).toBeNull();
+        fireEvent.click(within(scheduleDlg).getAllByRole('button', { name: '关闭' })[0]);
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: '调度配置' })).toBeNull());
+
+        // Inspect Dependency read-only dialog
+        fireEvent.click(screen.getByRole('button', { name: '依赖' }));
+        const depDlg = await screen.findByRole('dialog', { name: '依赖配置' });
+        expect(within(depDlg).getByText('线上只读')).toBeTruthy();
+        await waitFor(() => expect(within(depDlg).getByText('upstream_online')).toBeTruthy());
+        expect(within(depDlg).queryByRole('searchbox')).toBeNull();
+        expect(within(depDlg).queryByRole('button', { name: '暂存配置' })).toBeNull();
+        fireEvent.click(within(depDlg).getAllByRole('button', { name: '关闭' })[0]);
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: '依赖配置' })).toBeNull());
+
+        // Inspect Parameter read-only dialog
+        fireEvent.click(screen.getByRole('button', { name: '参数' }));
+        const paramDlg = await screen.findByRole('dialog', { name: '任务参数' });
+        expect(within(paramDlg).getByText('线上只读')).toBeTruthy();
+        expect(within(paramDlg).getByText('线上环境参数')).toBeTruthy();
+        expect(within(paramDlg).queryByRole('button', { name: '暂存绑定' })).toBeNull();
+        fireEvent.click(within(paramDlg).getAllByRole('button', { name: '关闭' })[0]);
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: '任务参数' })).toBeNull());
+
+        // Inspect read-only Node Editor dialog + Hive config drawer
+        fireEvent.click(screen.getByRole('button', { name: '打开首个节点' }));
+        const nodeDlg = await screen.findByRole('dialog', { name: 'online_sql' });
+        expect(within(nodeDlg).getByText('线上只读')).toBeTruthy();
+        expect(within(nodeDlg).queryByTestId('sql-format-button')).toBeNull();
+        fireEvent.click(within(nodeDlg).getByTestId('hive-conf-drawer-toggle'));
+        expect((within(nodeDlg).getByLabelText('参数名 1') as HTMLInputElement).readOnly).toBe(true);
+        fireEvent.click(within(nodeDlg).getByRole('button', { name: '关闭' }));
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'online_sql' })).toBeNull());
+
+        expect(offlineApi.saveOfflineFlowDocument).not.toHaveBeenCalled();
+
+        // Switch back to dev mode and confirm dev document is intact
+        fireEvent.click(screen.getByRole('tab', { name: '开发模式' }));
+        await waitFor(() => {
+            const devCanvas = screen.getByTestId('flow-canvas');
+            expect(devCanvas.getAttribute('data-readonly')).toBe('false');
+            expect(screen.getByTestId('flow-canvas-node-ids').textContent).toBe('node_1');
+        });
+    });
+
+    it('shows not-in-revision notice when confirmed snapshot endpoint returns 404', async () => {
+        const rev = 'f0e1d2c3b4a5f0e1d2c3b4a5f0e1d2c3b4a5f0e1';
+        const offlineApi = await import('../../api/offline');
+        const gitSettingsApi = await import('../../api/gitSettings');
+        vi.mocked(gitSettingsApi.getGitSyncConfigs).mockResolvedValue({
+            configs: [
+                {
+                    id: 1,
+                    groupId: 1,
+                    branch: 'main',
+                    namespace: 'pg-1',
+                    syncFlowId: 'git-sync-main',
+                    enabled: true,
+                    lastSyncAt: '2026-11-14T10:00:00Z',
+                    lastSyncStatus: 'SUCCESS',
+                    lastSyncMessage: null,
+                    lastDeployedSha: rev,
+                    lastDeployedAt: '2026-11-14T10:00:05Z',
+                    deploymentEvidence: 'CONFIRMED',
+                },
+            ],
+            availableBranches: ['main'],
+            syncCron: '*/5 * * * *',
+        });
+        vi.mocked(offlineApi.getOfflineFlowSnapshot).mockRejectedValue(
+            new AxiosError('Not Found', 'ERR_BAD_REQUEST', undefined, undefined, {
+                status: 404,
+                statusText: 'Not Found',
+                headers: AxiosHeaders.from({}),
+                config: { headers: AxiosHeaders.from({}) },
+                data: { message: '任务文件不存在' },
+            }),
+        );
+
+        renderOfflineWorkbench();
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        fireEvent.click(screen.getByRole('tab', { name: '线上模式' }));
+
+        expect(await screen.findByText('当前任务尚未存在于已确认线上版本')).toBeTruthy();
+        expect(screen.getByText('f0e1d2c')).toBeTruthy();
     });
 });

@@ -445,4 +445,43 @@ describe('DependencyDialog', () => {
         expect(screen.getByRole('dialog').contains(selected)).toBe(true);
         expect(screen.getByRole('dialog').contains(screen.getByRole('list', { name: '候选任务' }))).toBe(true);
     });
+
+    it('renders online snapshot read-only mode without candidate picker or staging action', async () => {
+        vi.mocked(searchOfflineDependencyCandidates).mockResolvedValue([
+            makeCandidate(),
+            makeCandidate({ flowId: 'other' }),
+        ]);
+        const { props } = renderDialog({
+            canWrite: false,
+            readOnly: true,
+            readOnlyRevision: 'sha1234567890abcdef',
+            document: makeDocument({
+                dependencyConfig: {
+                    dependencies: [{ groupId: 1, flowId: 'upstream' }],
+                    failurePolicy: 'PAUSE',
+                    crossGroupDependency: 'DENY',
+                },
+            }),
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('upstream')).toBeTruthy();
+        });
+
+        const dialog = screen.getByRole('dialog', { name: '依赖配置' });
+        expect(within(dialog).getByText('线上只读')).toBeTruthy();
+        expect(within(dialog).getByText(/sha1234/)).toBeTruthy();
+        expect(within(dialog).queryByRole('searchbox')).toBeNull();
+        expect(within(dialog).queryByRole('button', { name: '移除 数据平台 / upstream' })).toBeNull();
+        expect(within(dialog).queryByRole('button', { name: '暂存配置' })).toBeNull();
+        expect(within(dialog).queryByRole('button', { name: '取消' })).toBeNull();
+        for (const radio of within(dialog).getAllByRole('radio')) {
+            expect(radio.matches(':disabled')).toBe(true);
+        }
+        expect(crossGroupSwitch().disabled).toBe(true);
+
+        fireEvent.click(within(dialog).getAllByRole('button', { name: '关闭' })[0]);
+        expect(props.onStage).not.toHaveBeenCalled();
+        expect(props.onClose).toHaveBeenCalledOnce();
+    });
 });

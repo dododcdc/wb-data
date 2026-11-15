@@ -1081,4 +1081,47 @@ describe('TransferNodeDialog', () => {
             [expect.objectContaining({ target: expect.objectContaining({ writeMode: 'overwrite_table' }) })],
         ]));
     });
+
+    it('preserves snapshot transfer config without auto-reconciling or exposing edits in readOnly mode', async () => {
+        const onChange = vi.fn();
+        const onDraftChange = vi.fn();
+        render(
+            <TransferNodeDialog
+                groupId={1}
+                readOnly
+                value={{
+                    ...validTransfer,
+                    source: {
+                        ...validTransfer.source,
+                        where: 'dt = "2026-11-14"',
+                    },
+                    target: {
+                        ...validTransfer.target,
+                        dataSourceId: 4,
+                        dataSourceType: 'CLICKHOUSE',
+                        writeMode: 'overwrite_table',
+                        preSql: ['SELECT 1'],
+                        postSql: [],
+                    },
+                    fieldMappings: [{ target: 'stale_col', kind: 'source_field', source: 'id' }],
+                }}
+                onChange={onChange}
+                onDraftChange={onDraftChange}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText('dt = "2026-11-14"')).toBeTruthy();
+        });
+        expect(screen.queryByRole('button', { name: '刷新字段结构' })).toBeNull();
+        expect(screen.queryByRole('button', { name: /移除/ })).toBeNull();
+        expect(screen.queryByRole('button', { name: '添加' })).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: /前置 SQL/ }));
+        fireEvent.click(screen.getByRole('button', { name: /后置 SQL/ }));
+        expect((screen.getByDisplayValue('SELECT 1') as HTMLTextAreaElement).readOnly).toBe(true);
+        expect(screen.getByText('未配置后置 SQL')).toBeTruthy();
+        expect((screen.getByDisplayValue('dt = "2026-11-14"') as HTMLTextAreaElement).readOnly).toBe(true);
+        expect(onChange).not.toHaveBeenCalled();
+        expect(onDraftChange).not.toHaveBeenCalled();
+    });
 });

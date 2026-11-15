@@ -1,4 +1,4 @@
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { FlowCanvasNode, type FlowCanvasNodeData } from './FlowCanvasNode';
@@ -6,7 +6,13 @@ import { FlowCanvasNode, type FlowCanvasNodeData } from './FlowCanvasNode';
 afterEach(() => cleanup());
 
 vi.mock('@xyflow/react', () => ({
-    Handle: () => <div data-testid="handle" />,
+    Handle: (props: { isConnectable?: boolean; position?: string }) => (
+        <div
+            data-testid="handle"
+            data-position={props.position}
+            data-connectable={String(props.isConnectable ?? true)}
+        />
+    ),
     Position: { Top: 'top', Bottom: 'bottom' },
 }));
 
@@ -68,5 +74,28 @@ describe('FlowCanvasNode', () => {
         expect(kindBadge?.getAttribute('title')).toBeNull();
         expect(img).toBeTruthy();
         expect(img?.getAttribute('title')).toBeNull();
+    });
+
+    it('hides selection checkbox, disables handles, and blocks inline editing when readOnly', () => {
+        const data: FlowCanvasNodeData = {
+            taskId: 'readonly_node_1',
+            kind: 'HIVE_SQL',
+            selected: false,
+            readOnly: true,
+            isEditing: true,
+            onToggleSelection: vi.fn(),
+        };
+
+        const { container } = render(<FlowCanvasNode data={data} />);
+        const node = container.querySelector('.flow-canvas-node');
+        expect(node?.classList.contains('is-readonly')).toBe(true);
+        expect(container.querySelector('.flow-canvas-node-check')).toBeNull();
+        expect(screen.queryByRole('textbox', { name: '编辑节点名称' })).toBeNull();
+
+        const handles = screen.getAllByTestId('handle');
+        expect(handles).toHaveLength(2);
+        handles.forEach((handle) => {
+            expect(handle.getAttribute('data-connectable')).toBe('false');
+        });
     });
 });

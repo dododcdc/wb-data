@@ -13,16 +13,22 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import type { GitSyncConfig } from '../../api/gitSettings';
 import type { FlowParameterBinding } from '../../api/offline';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { isExecuteButtonDisabled } from './executionToolbarState';
 import { OfflineDeploymentBadge } from './OfflineDeploymentBadge';
 import { getTimezoneOffset } from './ScheduleUtils';
+import type { CanvasMode } from './useOnlineFlowSnapshot';
 
 interface OfflineCanvasToolbarProps {
     activeFlowPath: string | null;
     groupId: number | null;
     branch: string | null;
+    canvasMode?: CanvasMode;
+    onCanvasModeChange?: (mode: CanvasMode) => void;
+    deploymentConfig?: GitSyncConfig | null;
+    hasOnlineDocument?: boolean;
     canWrite: boolean;
     canConfigureParameters: boolean;
     parameterBindingStatus?: FlowParameterBinding['status'] | null;
@@ -75,6 +81,10 @@ export function OfflineCanvasToolbar({
     activeFlowPath,
     groupId,
     branch,
+    canvasMode = 'dev',
+    onCanvasModeChange,
+    deploymentConfig,
+    hasOnlineDocument = false,
     canWrite,
     canConfigureParameters,
     parameterBindingStatus,
@@ -97,11 +107,14 @@ export function OfflineCanvasToolbar({
     onOpenVersions,
 }: OfflineCanvasToolbarProps) {
     const active = activeFlowPath !== null;
+    const isOnlineMode = canvasMode === 'online';
     const editDisabled = !active || !canWrite;
-    const hasDraftStatus = draftSaveState === 'saving'
+    const hasDraftStatus = !isOnlineMode && (
+        draftSaveState === 'saving'
         || draftSaveState === 'error'
         || dirty
-        || Boolean(draftSaveState === 'saved' && draftSavedAt);
+        || Boolean(draftSaveState === 'saved' && draftSavedAt)
+    );
     const timezoneOffset = timezone ? getTimezoneOffset(timezone) : '';
     const timezoneTooltip = timezone
         ? `任务运行时区：${timezone}${timezoneOffset && timezoneOffset !== timezone ? ` (${timezoneOffset})` : ''}`
@@ -109,43 +122,78 @@ export function OfflineCanvasToolbar({
 
     return (
         <header className="offline-canvas-toolbar">
-            <label className="offline-canvas-toolbar-selectall">
-                <input
-                    type="checkbox"
-                    checked={nodeCount > 0 && selectedNodeCount === nodeCount}
-                    onChange={(event) => onSelectAll(event.target.checked)}
-                    disabled={nodeCount === 0}
-                />
-                全选
-            </label>
+            <div className="offline-mode-tabs" role="tablist" aria-label="画布视图模式">
+                <button
+                    type="button"
+                    role="tab"
+                    aria-selected={!isOnlineMode}
+                    className={`offline-mode-tab ${!isOnlineMode ? 'is-active' : ''}`}
+                    onClick={() => onCanvasModeChange?.('dev')}
+                >
+                    开发模式
+                </button>
+                <button
+                    type="button"
+                    role="tab"
+                    aria-selected={isOnlineMode}
+                    className={`offline-mode-tab ${isOnlineMode ? 'is-active' : ''}`}
+                    onClick={() => onCanvasModeChange?.('online')}
+                >
+                    线上模式
+                </button>
+            </div>
+
+            <span className="offline-toolbar-divider" aria-hidden="true" />
+
+            {!isOnlineMode ? (
+                <label className="offline-canvas-toolbar-selectall">
+                    <input
+                        type="checkbox"
+                        checked={nodeCount > 0 && selectedNodeCount === nodeCount}
+                        onChange={(event) => onSelectAll(event.target.checked)}
+                        disabled={nodeCount === 0}
+                    />
+                    全选
+                </label>
+            ) : null}
+
+            {!isOnlineMode ? (
+                <ToolbarButton
+                    label="提交当前任务"
+                    disabled={editDisabled || !(dirty || commitDirty) || committing}
+                    onClick={onCommit}
+                >
+                    <span className="relative flex">
+                        <GitCommitHorizontal size={16} />
+                        {(dirty || commitDirty) && <span className="offline-toolbar-dot" />}
+                    </span>
+                </ToolbarButton>
+            ) : null}
 
             <ToolbarButton
-                label="提交当前任务"
-                disabled={editDisabled || !(dirty || commitDirty) || committing}
-                onClick={onCommit}
+                label="调度"
+                disabled={isOnlineMode ? (!active || !hasOnlineDocument) : editDisabled}
+                onClick={onOpenSchedule}
             >
-                <span className="relative flex">
-                    <GitCommitHorizontal size={16} />
-                    {(dirty || commitDirty) && <span className="offline-toolbar-dot" />}
-                </span>
-            </ToolbarButton>
-
-            <ToolbarButton label="调度" disabled={editDisabled} onClick={onOpenSchedule}>
                 <Settings2 size={16} />
             </ToolbarButton>
 
-            <ToolbarButton label="依赖" disabled={!active} onClick={onOpenDependencies}>
+            <ToolbarButton
+                label="依赖"
+                disabled={isOnlineMode ? (!active || !hasOnlineDocument) : !active}
+                onClick={onOpenDependencies}
+            >
                 <GitPullRequest size={16} />
             </ToolbarButton>
 
             <ToolbarButton
                 label="参数"
-                disabled={editDisabled || !canConfigureParameters}
+                disabled={isOnlineMode ? (!active || !hasOnlineDocument) : (editDisabled || !canConfigureParameters)}
                 onClick={onOpenParameters}
             >
                 <span className="relative flex">
                     <Braces size={16} />
-                    {parameterBindingStatus ? (
+                    {!isOnlineMode && parameterBindingStatus ? (
                         <span
                             className={`offline-toolbar-binding-dot is-${parameterBindingStatus.toLowerCase()}`}
                             aria-hidden="true"
@@ -154,13 +202,15 @@ export function OfflineCanvasToolbar({
                 </span>
             </ToolbarButton>
 
-            <ToolbarButton
-                label="执行"
-                disabled={isExecuteButtonDisabled({ activeFlowPath, canWrite })}
-                onClick={onExecute}
-            >
-                <Play size={16} />
-            </ToolbarButton>
+            {!isOnlineMode ? (
+                <ToolbarButton
+                    label="执行"
+                    disabled={isExecuteButtonDisabled({ activeFlowPath, canWrite })}
+                    onClick={onExecute}
+                >
+                    <Play size={16} />
+                </ToolbarButton>
+            ) : null}
 
             <ToolbarButton label="版本" disabled={!active} onClick={onOpenVersions}>
                 <ListOrdered size={16} />
@@ -170,16 +220,20 @@ export function OfflineCanvasToolbar({
                 <History size={16} />
             </ToolbarButton>
 
-            {(hasDraftStatus || timezone || branch) ? (
+            {(hasDraftStatus || timezone || branch || isOnlineMode) ? (
                 <div className="offline-canvas-toolbar-meta">
-                    <OfflineDeploymentBadge groupId={groupId} branch={branch} />
-                    <DraftSaveIndicator
-                        state={draftSaveState}
-                        savedAt={draftSavedAt}
-                        error={draftSaveError}
-                        dirty={dirty}
-                    />
-                    {hasDraftStatus && timezone ? (
+                    <OfflineDeploymentBadge groupId={groupId} branch={branch} config={deploymentConfig} />
+                    {isOnlineMode ? (
+                        <span className="offline-readonly-pill">线上快照 · 只读</span>
+                    ) : (
+                        <DraftSaveIndicator
+                            state={draftSaveState}
+                            savedAt={draftSavedAt}
+                            error={draftSaveError}
+                            dirty={dirty}
+                        />
+                    )}
+                    {((isOnlineMode || hasDraftStatus) && timezone) ? (
                         <span className="offline-canvas-meta-sep" aria-hidden="true" />
                     ) : null}
                     {timezone ? (
@@ -226,7 +280,7 @@ function DraftSaveIndicator({ state, savedAt, error, dirty }: DraftSaveIndicator
                         <span>保存失败</span>
                     </span>
                 </TooltipTrigger>
-                <TooltipContent className="tooltip-content" side="bottom">
+                <TooltipContent className="tooltip-content tooltip-content-wrap" side="bottom" align="end" collisionPadding={12}>
                     {error || '自动保存失败，继续编辑将自动重试'}
                 </TooltipContent>
             </Tooltip>

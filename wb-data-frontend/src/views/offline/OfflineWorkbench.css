@@ -308,6 +308,77 @@ button.offline-tree-row {
     height: 48px;
 }
 
+.offline-mode-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+    flex-shrink: 0;
+}
+
+.offline-mode-tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 24px;
+    padding: 0 10px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.offline-mode-tab:hover:not(.is-active) {
+    color: var(--color-text-primary);
+    background: var(--color-surface-secondary);
+}
+
+.offline-mode-tab.is-active {
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(28, 22, 16, 0.08);
+}
+
+.offline-readonly-pill {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(217, 119, 87, 0.28);
+    background: rgba(217, 119, 87, 0.09);
+    color: var(--color-accent-strong, var(--color-accent));
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.offline-dialog-title-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.offline-readonly-footer-note {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    line-height: 1.4;
+}
+
 .offline-canvas-toolbar-selectall {
     display: flex;
     align-items: center;
@@ -744,6 +815,11 @@ button.offline-tree-row {
     cursor: grabbing;
 }
 
+.flow-canvas-node.is-readonly,
+.flow-canvas-node.is-readonly:active {
+    cursor: pointer;
+}
+
 .flow-canvas-node.is-rf-selected {
     border-color: rgba(217, 119, 87, 0.75);
     box-shadow: 0 0 0 3px var(--color-accent-soft), var(--shadow-lg);
@@ -865,6 +941,15 @@ button.offline-tree-row {
     background: rgba(217, 119, 87, 0.8) !important;
     width: 14px !important;
     height: 14px !important;
+}
+
+.flow-canvas-container.is-readonly .flow-canvas-handle,
+.flow-canvas-container.is-readonly .flow-canvas-handle:hover {
+    width: 10px !important;
+    height: 10px !important;
+    background: rgba(166, 106, 71, 0.35) !important;
+    cursor: default;
+    pointer-events: none;
 }
 
 .flow-canvas-controls {
@@ -1380,6 +1465,7 @@ button.offline-branch-row:hover:not(:disabled) .offline-branch-row-icon {
     width: 52%;
     margin-left: 18px;
 }
+
 /* 节点全屏编辑器紧凑顶栏 */
 .dialog-toolbar.offline-node-editor-toolbar {
     align-items: center;
@@ -1779,4 +1865,65 @@ button.offline-branch-row:hover:not(:disabled) .offline-branch-row-icon {
 .offline-hive-kv-error {
     font-size: 11px;
     color: var(--color-error);
+}
+
+.offline-online-status-panel {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 28px;
+    text-align: center;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(246, 242, 235, 0.94));
+    box-sizing: border-box;
+}
+
+.offline-online-status-icon {
+    color: var(--color-text-muted);
+}
+
+.offline-online-status-icon.is-warning {
+    color: var(--color-warning, #b45309);
+}
+
+.offline-online-status-icon.is-error {
+    color: var(--color-danger);
+}
+
+.offline-online-status-panel h3 {
+    margin: 0;
+    max-width: 440px;
+    color: var(--color-text-primary);
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+.offline-online-status-panel p {
+    margin: 0;
+    max-width: 460px;
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+}
+
+.offline-online-status-panel code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    color: var(--color-text-primary);
+}
+
+.offline-online-status-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 6px;
 }

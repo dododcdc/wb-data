@@ -30,6 +30,8 @@ interface DependencyDialogProps {
     onClose: () => void;
     onStage: (config: OfflineFlowDependencySettings) => void;
     canWrite?: boolean;
+    readOnly?: boolean;
+    readOnlyRevision?: string | null;
 }
 
 type LoadState =
@@ -120,10 +122,30 @@ function TaskSummary({ candidate }: { candidate: OfflineDependencyCandidate }) {
 
 // A task switch starts a fresh editing session and disposes all requests from the old task.
 export function DependencyDialog(props: DependencyDialogProps) {
-    return <DependencyDialogSession key={JSON.stringify([props.groupId, props.document.path, props.document.flowId])} {...props} />;
+    return (
+        <DependencyDialogSession
+            key={JSON.stringify([
+                props.groupId,
+                props.document.path,
+                props.document.flowId,
+                Boolean(props.readOnly),
+                props.readOnlyRevision ?? null,
+            ])}
+            {...props}
+        />
+    );
 }
 
-function DependencyDialogSession({ groupId, document, onClose, onStage, canWrite = true }: DependencyDialogProps) {
+function DependencyDialogSession({
+    groupId,
+    document,
+    onClose,
+    onStage,
+    canWrite = true,
+    readOnly = false,
+    readOnlyRevision,
+}: DependencyDialogProps) {
+    const effectiveCanWrite = canWrite && !readOnly;
     const [settings, setSettings] = useState<OfflineFlowDependencySettings>(() => ({
         dependencies: Array.from(new Map((document.dependencyConfig?.dependencies ?? []).map(({ groupId, flowId }) => (
             [refKey({ groupId, flowId }), { groupId, flowId }]
@@ -176,20 +198,20 @@ function DependencyDialogSession({ groupId, document, onClose, onStage, canWrite
             : '任务不可见或已不存在，请移除后暂存';
         return { ref, candidate, reason };
     });
-    const stageDisabled = !canWrite || load.status !== 'ready'
+    const stageDisabled = !effectiveCanWrite || load.status !== 'ready'
         || settings.dependencies.length > MAX_DEPENDENCIES
         || selectedItems.some((item) => item.reason != null)
         || (crossGroupLocked && !allowCrossGroup);
 
     const remove = (ref: OfflineFlowDependencyRef) => {
-        if (!canWrite) return;
+        if (!effectiveCanWrite) return;
         setSettings((current) => ({
             ...current,
             dependencies: current.dependencies.filter((item) => refKey(item) !== refKey(ref)),
         }));
     };
     const add = (candidate: OfflineDependencyCandidate) => {
-        if (!canWrite || load.status !== 'ready' || unavailableReason(candidate, groupId, document)) return;
+        if (!effectiveCanWrite || load.status !== 'ready' || unavailableReason(candidate, groupId, document)) return;
         setSettings((current) => {
             if (current.dependencies.length >= MAX_DEPENDENCIES || current.dependencies.some((ref) => refKey(ref) === refKey(candidate))) return current;
             return { ...current, dependencies: [...current.dependencies, { groupId: candidate.groupId, flowId: candidate.flowId }] };
@@ -200,14 +222,25 @@ function DependencyDialogSession({ groupId, document, onClose, onStage, canWrite
         <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
             <DialogContent className="offline-schedule-dialog-standard offline-dependency-dialog">
                 <DialogHeader>
-                    <DialogTitle>依赖配置</DialogTitle>
+                    {readOnly ? (
+                        <div className="offline-dialog-title-row">
+                            <DialogTitle>依赖配置</DialogTitle>
+                            <span className="offline-readonly-pill">线上只读</span>
+                        </div>
+                    ) : (
+                        <DialogTitle>依赖配置</DialogTitle>
+                    )}
                     <DialogDescription className="offline-dependency-subtitle">
                         {document.flowId} · {scheduleSummary(document.schedule)}
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="offline-schedule-body offline-dependency-body">
-                    {!canWrite ? <p className="offline-dependency-hint" role="note">当前为只读，无法修改依赖配置。</p> : null}
+                    {!readOnly && !effectiveCanWrite ? (
+                        <p className="offline-dependency-hint" role="note">
+                            当前为只读，无法修改依赖配置。
+                        </p>
+                    ) : null}
 
                     <section aria-labelledby={`${id}-selected`} className="offline-dependency-selected-section">
                         <div className="offline-dependency-section-heading">
@@ -218,7 +251,7 @@ function DependencyDialogSession({ groupId, document, onClose, onStage, canWrite
                             state={settings.dependencies.length === 0 ? 'empty' : 'ready'}
                             className="offline-dependency-list-shell"
                             emptyTitle="暂无前置任务"
-                            emptyDescription="从下方候选任务中添加。"
+                            emptyDescription={readOnly ? '当前线上版本未配置前置依赖。' : '从下方候选任务中添加。'}
                         >
                             <ul className="offline-dependency-list offline-dependency-selected" aria-label="已选前置任务" tabIndex={0}>
                                 {selectedItems.map(({ ref, candidate, reason }, index) => (
@@ -232,100 +265,104 @@ function DependencyDialogSession({ groupId, document, onClose, onStage, canWrite
                                             )}
                                             {reason ? <p className="offline-dependency-invalid">{reason}</p> : null}
                                         </div>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="icon-sm"
-                                            disabled={!canWrite}
-                                            aria-label={candidate ? `移除 ${groupLabel(candidate)} / ${candidate.flowId}` : `移除前置任务 ${index + 1}`}
-                                            onClick={() => remove(ref)}
-                                        ><X size={14} aria-hidden="true" /></Button>
+                                        {!readOnly ? (
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon-sm"
+                                                disabled={!effectiveCanWrite}
+                                                aria-label={candidate ? `移除 ${groupLabel(candidate)} / ${candidate.flowId}` : `移除前置任务 ${index + 1}`}
+                                                onClick={() => remove(ref)}
+                                            ><X size={14} aria-hidden="true" /></Button>
+                                        ) : null}
                                     </li>
                                 ))}
                             </ul>
                         </ListShell>
                     </section>
 
-                    <section aria-labelledby={`${id}-search-label`} aria-busy={load.status === 'loading'} className="offline-dependency-search-section">
-                        <label id={`${id}-search-label`} htmlFor={`${id}-search`} className="sr-only">添加前置任务</label>
-                        <div className="offline-dependency-search">
-                            <Search size={15} aria-hidden="true" />
-                            <input
-                                id={`${id}-search`}
-                                type="search"
-                                placeholder="搜索并添加前置任务"
-                                value={keyword}
-                                onCompositionStart={() => { isComposingRef.current = true; }}
-                                onCompositionEnd={(event) => {
-                                    isComposingRef.current = false;
-                                    const next = event.currentTarget.value;
-                                    setKeyword(next);
-                                    setFilterQuery(next);
-                                }}
-                                onChange={(event) => {
-                                    const next = event.target.value;
-                                    setKeyword(next);
-                                    if (!isComposingRef.current) setFilterQuery(next);
-                                }}
-                                aria-controls={`${id}-candidates`}
-                            />
-                        </div>
-                        <ListShell
-                            state={load.status === 'loading'
-                                ? 'loading'
-                                : load.status === 'error'
-                                    ? 'error'
-                                    : candidates.length === 0
-                                        ? query ? 'filtered-empty' : 'empty'
-                                        : 'ready'}
-                            className="offline-dependency-list-shell"
-                            errorMessage={load.status === 'error' ? '候选任务加载失败，暂时无法暂存配置。' : undefined}
-                            errorAction={<Button type="button" variant="outline" size="sm" onClick={() => {
-                                setLoad({ status: 'loading' });
-                                setAttempt((current) => current + 1);
-                            }}>重试</Button>}
-                            emptyTitle="暂无可依赖的任务"
-                            filteredEmptyTitle="没有匹配的任务"
-                        >
-                            {load.status === 'loading' ? (
-                                <div aria-hidden="true" className="offline-dependency-skeleton">
-                                    <div className="h-3 w-3/4 rounded bg-muted" />
-                                    <div className="h-3 w-1/2 rounded bg-muted" />
-                                </div>
-                            ) : (
-                                <ul id={`${id}-candidates`} className="offline-dependency-list offline-dependency-candidates" aria-label="候选任务" tabIndex={0}>
-                                    {candidates.map((candidate) => {
-                                        const selected = selectedKeys.has(refKey(candidate));
-                                        const reason = unavailableReason(candidate, groupId, document)
-                                            ?? (!selected && atLimit ? '已达到 20 个前置任务上限' : null);
-                                        return (
-                                            <li key={refKey(candidate)} className="offline-dependency-row">
-                                                <div className="offline-dependency-row-content">
-                                                    <TaskSummary candidate={candidate} />
-                                                    {reason ? <p className="offline-dependency-hint">{reason}</p> : null}
-                                                </div>
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    disabled={!canWrite || selected || reason != null}
-                                                    aria-label={`${selected ? '已添加' : '添加'} ${groupLabel(candidate)} / ${candidate.flowId}`}
-                                                    onClick={() => add(candidate)}
-                                                >{selected ? '已添加' : '添加'}</Button>
-                                            </li>
-                                        );
-                                    })}
-                                </ul>
-                            )}
-                        </ListShell>
-                    </section>
+                    {!readOnly ? (
+                        <section aria-labelledby={`${id}-search-label`} aria-busy={load.status === 'loading'} className="offline-dependency-search-section">
+                            <label id={`${id}-search-label`} htmlFor={`${id}-search`} className="sr-only">添加前置任务</label>
+                            <div className="offline-dependency-search">
+                                <Search size={15} aria-hidden="true" />
+                                <input
+                                    id={`${id}-search`}
+                                    type="search"
+                                    placeholder="搜索并添加前置任务"
+                                    value={keyword}
+                                    onCompositionStart={() => { isComposingRef.current = true; }}
+                                    onCompositionEnd={(event) => {
+                                        isComposingRef.current = false;
+                                        const next = event.currentTarget.value;
+                                        setKeyword(next);
+                                        setFilterQuery(next);
+                                    }}
+                                    onChange={(event) => {
+                                        const next = event.target.value;
+                                        setKeyword(next);
+                                        if (!isComposingRef.current) setFilterQuery(next);
+                                    }}
+                                    aria-controls={`${id}-candidates`}
+                                />
+                            </div>
+                            <ListShell
+                                state={load.status === 'loading'
+                                    ? 'loading'
+                                    : load.status === 'error'
+                                        ? 'error'
+                                        : candidates.length === 0
+                                            ? query ? 'filtered-empty' : 'empty'
+                                            : 'ready'}
+                                className="offline-dependency-list-shell"
+                                errorMessage={load.status === 'error' ? '候选任务加载失败，暂时无法暂存配置。' : undefined}
+                                errorAction={<Button type="button" variant="outline" size="sm" onClick={() => {
+                                    setLoad({ status: 'loading' });
+                                    setAttempt((current) => current + 1);
+                                }}>重试</Button>}
+                                emptyTitle="暂无可依赖的任务"
+                                filteredEmptyTitle="没有匹配的任务"
+                            >
+                                {load.status === 'loading' ? (
+                                    <div aria-hidden="true" className="offline-dependency-skeleton">
+                                        <div className="h-3 w-3/4 rounded bg-muted" />
+                                        <div className="h-3 w-1/2 rounded bg-muted" />
+                                    </div>
+                                ) : (
+                                    <ul id={`${id}-candidates`} className="offline-dependency-list offline-dependency-candidates" aria-label="候选任务" tabIndex={0}>
+                                        {candidates.map((candidate) => {
+                                            const selected = selectedKeys.has(refKey(candidate));
+                                            const reason = unavailableReason(candidate, groupId, document)
+                                                ?? (!selected && atLimit ? '已达到 20 个前置任务上限' : null);
+                                            return (
+                                                <li key={refKey(candidate)} className="offline-dependency-row">
+                                                    <div className="offline-dependency-row-content">
+                                                        <TaskSummary candidate={candidate} />
+                                                        {reason ? <p className="offline-dependency-hint">{reason}</p> : null}
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        disabled={!effectiveCanWrite || selected || reason != null}
+                                                        aria-label={`${selected ? '已添加' : '添加'} ${groupLabel(candidate)} / ${candidate.flowId}`}
+                                                        onClick={() => add(candidate)}
+                                                    >{selected ? '已添加' : '添加'}</Button>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                )}
+                            </ListShell>
+                        </section>
+                    ) : null}
 
                     <div className="offline-dependency-policies">
-                        <fieldset className="offline-dependency-failure-policy" disabled={!canWrite}>
+                        <fieldset className="offline-dependency-failure-policy" disabled={!effectiveCanWrite}>
                             <span className="offline-schedule-field-label" id={`${id}-failure-label`}>上一期失败后</span>
                             <div className="offline-dependency-radio-options" role="radiogroup" aria-labelledby={`${id}-failure-label`}>
-                                <label><input type="radio" name={`${id}-failure`} checked={settings.failurePolicy === 'CONTINUE'} onChange={() => setSettings((current) => ({ ...current, failurePolicy: 'CONTINUE' }))} />继续调度</label>
-                                <label><input type="radio" name={`${id}-failure`} checked={settings.failurePolicy === 'PAUSE'} onChange={() => setSettings((current) => ({ ...current, failurePolicy: 'PAUSE' }))} />暂停后续调度</label>
+                                <label><input type="radio" name={`${id}-failure`} disabled={!effectiveCanWrite} checked={settings.failurePolicy === 'CONTINUE'} onChange={() => setSettings((current) => ({ ...current, failurePolicy: 'CONTINUE' }))} />继续调度</label>
+                                <label><input type="radio" name={`${id}-failure`} disabled={!effectiveCanWrite} checked={settings.failurePolicy === 'PAUSE'} onChange={() => setSettings((current) => ({ ...current, failurePolicy: 'PAUSE' }))} />暂停后续调度</label>
                             </div>
                         </fieldset>
                         <div className="offline-schedule-toggle-row">
@@ -336,14 +373,17 @@ function DependencyDialogSession({ groupId, document, onClose, onStage, canWrite
                                 aria-labelledby={`${id}-cross-label`}
                                 aria-describedby={crossGroupLocked ? `${id}-cross-note` : undefined}
                                 aria-checked={allowCrossGroup}
-                                disabled={!canWrite || load.status !== 'ready' || (crossGroupLocked && allowCrossGroup)}
+                                disabled={!effectiveCanWrite || load.status !== 'ready' || (crossGroupLocked && allowCrossGroup)}
                                 className="offline-switch offline-dependency-switch"
-                                onClick={() => setSettings((current) => ({ ...current, crossGroupDependency: current.crossGroupDependency === 'ALLOW' ? 'DENY' : 'ALLOW' }))}
+                                onClick={() => {
+                                    if (!effectiveCanWrite) return;
+                                    setSettings((current) => ({ ...current, crossGroupDependency: current.crossGroupDependency === 'ALLOW' ? 'DENY' : 'ALLOW' }));
+                                }}
                             ><span className="offline-switch-thumb" aria-hidden="true" /></button>
                         </div>
                         {crossGroupLocked ? (
                             <div id={`${id}-cross-note`} className="offline-dependency-downstream">
-                                <p>已有跨项目组下游依赖，请先解除以下依赖，再关闭开关：</p>
+                                <p>{readOnly ? '当前存在以下跨项目组下游依赖：' : '已有跨项目组下游依赖，请先解除以下依赖，再关闭开关：'}</p>
                                 <ListShell state="ready" className="offline-dependency-list-shell">
                                     <ul aria-label="跨项目组下游任务">
                                         {crossGroupDependents.map((dependent) => <li key={refKey(dependent)}>{groupLabel(dependent)} / {dependent.flowId}</li>)}
@@ -355,19 +395,32 @@ function DependencyDialogSession({ groupId, document, onClose, onStage, canWrite
                 </div>
 
                 <DialogFooter className="offline-schedule-footer">
-                    <p className="offline-schedule-publish-note">暂存后自动保存草稿；运行等待机制将在后续版本接入。</p>
-                    <div className="offline-schedule-actions">
-                        <Button type="button" variant="outline" onClick={onClose}>取消</Button>
-                        <Button type="button" disabled={stageDisabled} onClick={() => {
-                            if (stageDisabled) return;
-                            onStage({
-                                dependencies: settings.dependencies.map(({ groupId, flowId }) => ({ groupId, flowId })),
-                                failurePolicy: settings.failurePolicy,
-                                crossGroupDependency: settings.crossGroupDependency,
-                            });
-                            onClose();
-                        }}>暂存配置</Button>
-                    </div>
+                    {readOnly ? (
+                        <>
+                            <p className="offline-schedule-publish-note">
+                                当前为已确认线上快照{readOnlyRevision ? `（${readOnlyRevision.slice(0, 7)}）` : ''}的只读视图
+                            </p>
+                            <div className="offline-schedule-actions">
+                                <Button type="button" variant="outline" onClick={onClose}>关闭</Button>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <p className="offline-schedule-publish-note">暂存后自动保存草稿；运行等待机制将在后续版本接入。</p>
+                            <div className="offline-schedule-actions">
+                                <Button type="button" variant="outline" onClick={onClose}>取消</Button>
+                                <Button type="button" disabled={stageDisabled} onClick={() => {
+                                    if (stageDisabled) return;
+                                    onStage({
+                                        dependencies: settings.dependencies.map(({ groupId, flowId }) => ({ groupId, flowId })),
+                                        failurePolicy: settings.failurePolicy,
+                                        crossGroupDependency: settings.crossGroupDependency,
+                                    });
+                                    onClose();
+                                }}>暂存配置</Button>
+                            </div>
+                        </>
+                    )}
                 </DialogFooter>
             </DialogContent>
         </Dialog>

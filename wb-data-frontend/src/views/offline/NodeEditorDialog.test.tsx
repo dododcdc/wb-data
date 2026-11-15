@@ -443,4 +443,80 @@ describe('NodeEditorDialog', () => {
         );
         expect(screen.queryByTestId('sql-format-button')).toBeNull();
     });
+
+    it('renders read-only mode across SQL, Hive config, and Transfer nodes without mutating drafts', () => {
+        const onTempSave = vi.fn();
+        const onContentChange = vi.fn();
+        const onDraftChange = vi.fn();
+        const onTransferChange = vi.fn();
+        const { rerender } = render(
+            <TooltipProvider>
+                <NodeEditorDialog
+                    open
+                    readOnly
+                    groupId={1}
+                    activeNode={makeSqlNode({
+                        kind: 'HIVE_SQL',
+                        taskId: 'hive_online',
+                        hiveConf: { 'hive.exec.dynamic.partition': 'true' },
+                    })}
+                    content="SELECT 1"
+                    parameterDefinitions={[
+                        {
+                            key: 'biz_date',
+                            valueSource: 'CONSTANT',
+                            constantValue: '2026-11-14',
+                            offsetDays: 0,
+                            sortOrder: 1,
+                        },
+                    ]}
+                    onOpenChange={vi.fn()}
+                    onTempSave={onTempSave}
+                    onContentChange={onContentChange}
+                    onDraftChange={onDraftChange}
+                    onTransferChange={onTransferChange}
+                />
+            </TooltipProvider>,
+        );
+
+        expect(screen.getByText('线上只读')).toBeTruthy();
+        expect(screen.queryByTestId('sql-format-button')).toBeNull();
+        expect(screen.queryByRole('button', { name: '插入参数' })).toBeNull();
+        expect(dataSourceSelectPropsSpy).toHaveBeenCalledWith(expect.objectContaining({
+            disabled: true,
+        }));
+        expect(sqlEditorPropsSpy).toHaveBeenCalledWith(expect.objectContaining({
+            options: expect.objectContaining({ readOnly: true }),
+        }));
+
+        // Hive config drawer stays accessible in read-only mode
+        fireEvent.click(screen.getByTestId('hive-conf-drawer-toggle'));
+        expect((screen.getByLabelText('参数名 1') as HTMLInputElement).readOnly).toBe(true);
+        expect(screen.queryByTestId('hive-conf-presets-toggle')).toBeNull();
+        expect(onDraftChange).not.toHaveBeenCalled();
+
+        rerender(
+            <TooltipProvider>
+                <NodeEditorDialog
+                    open
+                    readOnly
+                    groupId={1}
+                    activeNode={makeTransferNode()}
+                    content=""
+                    onOpenChange={vi.fn()}
+                    onTempSave={onTempSave}
+                    onContentChange={onContentChange}
+                    onDraftChange={onDraftChange}
+                    onTransferChange={onTransferChange}
+                />
+            </TooltipProvider>,
+        );
+
+        expect(transferNodeDialogPropsSpy).toHaveBeenCalledWith(expect.objectContaining({
+            readOnly: true,
+        }));
+        expect(onTempSave).not.toHaveBeenCalled();
+        expect(onDraftChange).not.toHaveBeenCalled();
+        expect(onTransferChange).not.toHaveBeenCalled();
+    });
 });

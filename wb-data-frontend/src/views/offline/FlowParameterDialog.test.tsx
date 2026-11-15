@@ -196,7 +196,8 @@ describe('FlowParameterDialog', () => {
         );
 
         // Outdated badge and upgrade button
-        const upgradeBtn = await screen.findByTitle('更新到最新版本');
+        const upgradeBtn = await screen.findByRole('button', { name: '更新到最新版本' });
+        expect(upgradeBtn.getAttribute('title')).toBeNull();
         fireEvent.click(upgradeBtn);
 
         // Click stage button
@@ -257,7 +258,7 @@ describe('FlowParameterDialog', () => {
             />,
         );
 
-        fireEvent.click(await screen.findByTitle('更新到最新版本'));
+        fireEvent.click(await screen.findByRole('button', { name: '更新到最新版本' }));
 
         expect(await screen.findByText('v2 → v3 的参数变化')).toBeTruthy();
         expect(screen.getByText(/变更：计划时间 · yyyyMMdd → 计划时间 · yyyyMMdd · -1 天/)).toBeTruthy();
@@ -309,7 +310,7 @@ describe('FlowParameterDialog', () => {
             />,
         );
 
-        fireEvent.click(await screen.findByTitle('更新到最新版本'));
+        fireEvent.click(await screen.findByRole('button', { name: '更新到最新版本' }));
 
         expect(await screen.findByText(/移除：计划时间 · yyyyMMdd（SQL 中的该参数升级后将无法解析）/)).toBeTruthy();
 
@@ -460,7 +461,9 @@ describe('FlowParameterDialog', () => {
         );
 
         expect(await screen.findByText('日常公共参数')).toBeTruthy();
-        fireEvent.click(screen.getByTitle('移除此参数组'));
+        const removeButton = screen.getByRole('button', { name: '移除此参数组' });
+        expect(removeButton.getAttribute('title')).toBeNull();
+        fireEvent.click(removeButton);
 
         expect(document.querySelector('.flow-parameter-group-card')).toBeNull();
         expect(screen.getByText('尚未引入任何参数组。请在上方选择并添加参数组。')).toBeTruthy();
@@ -520,5 +523,75 @@ describe('FlowParameterDialog', () => {
         expect(onStage).toHaveBeenCalledWith(expect.objectContaining({
             parameterGroupId: 8,
         }));
+    });
+
+    it('supports read-only online snapshot viewing without fetching active groups or exposing mutations', () => {
+        vi.mocked(getParameterGroupPage).mockClear();
+        const onOpenChange = vi.fn();
+        const onStage = vi.fn();
+        const snapshotBinding = {
+            parameterGroupId: null,
+            code: 'online_params',
+            name: '线上环境参数',
+            boundVersion: 4,
+            currentVersion: null,
+            status: null,
+            definitions: [
+                {
+                    key: 'biz_date',
+                    valueSource: 'SYSTEM_TIME',
+                    format: 'yyyy-MM-dd',
+                    offsetDays: -1,
+                    timeBasis: 'SCHEDULED',
+                    description: '业务日期',
+                    sortOrder: 1,
+                },
+            ],
+        } as unknown as FlowParameterBinding;
+
+        const { rerender } = render(
+            <FlowParameterDialog
+                open
+                groupId={1}
+                binding={snapshotBinding}
+                readOnly
+                readOnlyRevision="rev1234567"
+                onOpenChange={onOpenChange}
+                onStage={onStage}
+            />,
+        );
+
+        expect(getParameterGroupPage).not.toHaveBeenCalled();
+        expect(screen.getByText('线上只读')).toBeTruthy();
+        expect(screen.getByText(/rev1234/)).toBeTruthy();
+        expect(screen.queryByRole('combobox', { name: '参数组' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '更新到最新版本' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '移除此参数组' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '清空所有绑定' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '暂存绑定' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '取消' })).toBeNull();
+
+        // Can expand even when snapshot parameterGroupId is null
+        const card = document.querySelector('.flow-parameter-group-card') as HTMLElement;
+        expect(card.getAttribute('draggable')).toBe('false');
+        fireEvent.click(screen.getByRole('button', { name: '展开参数详情' }));
+        expect(screen.getByText('biz_date')).toBeTruthy();
+
+        fireEvent.click(screen.getAllByRole('button', { name: '关闭' })[0]);
+        expect(onOpenChange).toHaveBeenCalledWith(false);
+        expect(onStage).not.toHaveBeenCalled();
+
+        rerender(
+            <FlowParameterDialog
+                open
+                groupId={1}
+                binding={null}
+                readOnly
+                readOnlyRevision="rev1234567"
+                onOpenChange={onOpenChange}
+                onStage={onStage}
+            />,
+        );
+        expect(screen.getByText('当前线上版本未引用任何参数组。')).toBeTruthy();
     });
 });

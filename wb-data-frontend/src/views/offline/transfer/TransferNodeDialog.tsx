@@ -15,6 +15,7 @@ import { validateTransferConfig } from './transferValidation';
 import { useTransferMetadata } from './useTransferMetadata';
 import { EndpointFields, ResourceError } from './TransferEndpointFields';
 import { MappingRows, type TransferSchemaField } from './TransferMappingRows';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../../components/ui/tooltip';
 import './TransferNodeDialog.css';
 
 export interface TransferNodeDraftState {
@@ -25,6 +26,7 @@ export interface TransferNodeDraftState {
 interface TransferNodeDialogProps {
     groupId: number | null;
     value?: TransferConfig;
+    readOnly?: boolean;
     onChange: (value: TransferConfig) => void;
     onDraftChange?: (value: TransferConfig, state: TransferNodeDraftState) => void;
     menuContainer?: HTMLElement | null;
@@ -49,7 +51,7 @@ function schemaFingerprint(fields: TransferSchemaField[]) {
     return JSON.stringify(fields.map((field) => [field.name, field.type, field.remarks]));
 }
 
-export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, menuContainer }: TransferNodeDialogProps) {
+export function TransferNodeDialog({ groupId, value, readOnly = false, onChange, onDraftChange, menuContainer }: TransferNodeDialogProps) {
     const [config, setConfig] = useState<TransferConfig>(value ?? emptyConfig);
     const emittedConfigRef = useRef('');
     const reportedDraftRef = useRef('');
@@ -97,6 +99,7 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
         && targetDatabaseSelection.unavailable;
 
     useEffect(() => {
+        if (readOnly) return;
         if (source.databases.loading || source.databases.error
             || target.databases.loading || target.databases.error) return;
         setConfig((current) => {
@@ -121,6 +124,7 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
         });
     }, [
         dataSources,
+        readOnly,
         source.databases.data,
         source.databases.error,
         source.databases.loading,
@@ -163,6 +167,7 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
     );
 
     const reconciledConfig = useMemo(() => {
+        if (readOnly) return config;
         if (!config.source.table || !config.target.table || !sourceMetadata || !targetMetadata) return config;
         const next = {
             ...config,
@@ -184,12 +189,12 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
             },
         };
         return JSON.stringify(next) === JSON.stringify(config) ? config : next;
-    }, [config, partitionColumns, sourceColumns, sourceMetadata, targetColumns, targetMetadata, writeModes]);
+    }, [config, partitionColumns, readOnly, sourceColumns, sourceMetadata, targetColumns, targetMetadata, writeModes]);
 
     useEffect(() => {
-        if (reconciledConfig === config) return;
+        if (readOnly || reconciledConfig === config) return;
         setConfig((current) => current === config ? reconciledConfig : current);
-    }, [config, reconciledConfig]);
+    }, [config, readOnly, reconciledConfig]);
 
     const validation = useMemo(
         () => validateTransferConfig(reconciledConfig, targetColumns, partitionColumns, sourceColumns),
@@ -216,6 +221,7 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
     );
 
     useEffect(() => {
+        if (readOnly) return;
         const draftReport = JSON.stringify({ config: reconciledConfig, valid: saveable, errors: validationErrors });
         if (draftReport !== reportedDraftRef.current) {
             reportedDraftRef.current = draftReport;
@@ -228,12 +234,14 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
             emittedConfigRef.current = next;
             onChange(reconciledConfig);
         }
-    }, [onChange, onDraftChange, reconciledConfig, saveable, validationErrors, validationKey]);
+    }, [onChange, onDraftChange, readOnly, reconciledConfig, saveable, validationErrors, validationKey]);
 
     const patch = (next: Partial<TransferConfig>) => {
+        if (readOnly) return;
         setConfig((current) => ({ ...current, ...next }));
     };
     const selectEndpoint = (side: 'source' | 'target', id: number) => {
+        if (readOnly) return;
         const selected = dataSources.find((item) => item.id === id);
         setConfig((current) => current[side].dataSourceId === id ? current : ({
             ...current,
@@ -250,6 +258,7 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
         }));
     };
     const selectDatabase = (side: 'source' | 'target', database: string) => {
+        if (readOnly) return;
         const nextDatabase = database || undefined;
         setConfig((current) => current[side].database === nextDatabase ? current : ({
             ...current,
@@ -264,6 +273,7 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
         }));
     };
     const selectTable = (side: 'source' | 'target', table: string) => {
+        if (readOnly) return;
         setConfig((current) => current[side].table === table ? current : ({
             ...current,
             [side]: {
@@ -341,7 +351,8 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
     };
 
     return (
-        <div className="transfer-node-dialog" data-testid="transfer-node-dialog">
+        <TooltipProvider delayDuration={150}>
+            <div className="transfer-node-dialog" data-testid="transfer-node-dialog">
             <div className="transfer-node-grid">
                 <EndpointFields
                     side="source"
@@ -351,6 +362,7 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
                     dataSourceSearch={dataSourceSearch}
                     metadata={source}
                     databaseUnavailable={sourceDatabaseUnavailable}
+                    readOnly={readOnly}
                     onSelectDataSource={(id) => selectEndpoint('source', id)}
                     onSelectDatabase={(database) => selectDatabase('source', database)}
                     onSelectTable={(table) => selectTable('source', table)}
@@ -366,6 +378,7 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
                     dataSourceSearch={dataSourceSearch}
                     metadata={target}
                     databaseUnavailable={targetDatabaseUnavailable}
+                    readOnly={readOnly}
                     onSelectDataSource={(id) => selectEndpoint('target', id)}
                     onSelectDatabase={(database) => selectDatabase('target', database)}
                     onSelectTable={(table) => selectTable('target', table)}
@@ -378,26 +391,36 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
             <section className="transfer-node-panel transfer-node-mappings-panel">
                 <div className="transfer-node-panel-heading">
                     <h3>字段映射</h3>
-                    <div className="transfer-node-mapping-actions">
-                        {metadataReady && validation.unmappedTargetColumns.length > 0 && (
-                            <span className="transfer-node-mapping-summary">
-                                {validation.unmappedTargetColumns.length} 个目标字段待映射
-                            </span>
-                        )}
-                        {metadataReady && (
-                            <button
-                                type="button"
-                                className="transfer-node-refresh-fields"
-                                aria-label="刷新字段结构"
-                                title="重新读取来源表和目标表的字段结构"
-                                disabled={metadataRefreshing || refreshPhase !== 'idle'}
-                                onClick={refreshFieldStructures}
-                            >
-                                <RefreshCw size={14} className={metadataRefreshing ? 'is-spinning' : undefined} />
-                                刷新字段结构
-                            </button>
-                        )}
-                    </div>
+                    {!readOnly ? (
+                        <div className="transfer-node-mapping-actions">
+                            {metadataReady && validation.unmappedTargetColumns.length > 0 && (
+                                <span className="transfer-node-mapping-summary">
+                                    {validation.unmappedTargetColumns.length} 个目标字段待映射
+                                </span>
+                            )}
+                            {metadataReady && (
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <span className="inline-flex">
+                                            <button
+                                                type="button"
+                                                className="transfer-node-refresh-fields"
+                                                aria-label="刷新字段结构"
+                                                disabled={metadataRefreshing || refreshPhase !== 'idle'}
+                                                onClick={refreshFieldStructures}
+                                            >
+                                                <RefreshCw size={14} className={metadataRefreshing ? 'is-spinning' : undefined} />
+                                                刷新字段结构
+                                            </button>
+                                        </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="tooltip-content tooltip-content-wrap z-[2400]" side="bottom">
+                                        重新读取来源表和目标表的字段结构
+                                    </TooltipContent>
+                                </Tooltip>
+                            )}
+                        </div>
+                    ) : null}
                 </div>
                 {metadataReady && targetHasFields && (
                     <p className="transfer-node-field-help">
@@ -437,6 +460,7 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
                         targetFields={targetFields}
                         targetLabel="目标字段"
                         menuContainer={menuContainer}
+                        readOnly={readOnly}
                         onChange={(fieldMappings) => patch({ fieldMappings: fieldMappings as TransferFieldMapping[] })}
                         onRemove={(removedTarget) => patch({
                             fieldMappings: reconciledConfig.fieldMappings?.filter(
@@ -458,6 +482,7 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
                         targetFields={partitionFields}
                         targetLabel="分区字段"
                         menuContainer={menuContainer}
+                        readOnly={readOnly}
                         onChange={(partitions) => patch({ partitions: partitions as TransferPartitionMapping[] })}
                         onRemove={(removedTarget) => patch({
                             partitions: reconciledConfig.partitions?.filter(
@@ -468,6 +493,7 @@ export function TransferNodeDialog({ groupId, value, onChange, onDraftChange, me
                 </section>
             )}
 
-        </div>
+            </div>
+        </TooltipProvider>
     );
 }

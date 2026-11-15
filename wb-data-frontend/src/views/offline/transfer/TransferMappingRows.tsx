@@ -12,6 +12,7 @@ import {
     SelectTrigger,
 } from '../../../components/ui/select';
 import { updateMapping } from './transferMapping';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../../components/ui/tooltip';
 import type {
     TransferFieldMapping,
     TransferMappingKind,
@@ -40,6 +41,7 @@ interface MappingRowsProps {
     targetFields: TransferSchemaField[];
     targetLabel: '目标字段' | '分区字段';
     menuContainer?: HTMLElement | null;
+    readOnly?: boolean;
     onChange: (mappings: Array<TransferFieldMapping | TransferPartitionMapping>) => void;
     onRemove: (target: string) => void;
 }
@@ -72,6 +74,7 @@ export function MappingRows({
     targetFields,
     targetLabel,
     menuContainer,
+    readOnly = false,
     onChange,
     onRemove,
 }: MappingRowsProps) {
@@ -134,14 +137,18 @@ export function MappingRows({
                                 value={value || undefined}
                                 selectedOption={selectedSourceOption}
                                 placeholder=""
+                                disabled={readOnly}
                                 clearInputOnOpen
                                 menuContainer={menuContainer}
-                                onChange={(nextValue) => onChange(updateMapping(
-                                    mappings ?? [],
-                                    mapping.target,
-                                    mapping.kind,
-                                    nextValue,
-                                ))}
+                                onChange={(nextValue) => {
+                                    if (readOnly) return;
+                                    onChange(updateMapping(
+                                        mappings ?? [],
+                                        mapping.target,
+                                        mapping.kind,
+                                        nextValue,
+                                    ));
+                                }}
                                 renderItem={(option) => {
                                     const field = option.raw as TransferSchemaField;
                                     return (
@@ -158,14 +165,20 @@ export function MappingRows({
                         <input
                             aria-label={`${mapping.target} 映射值`}
                             value={value}
-                            aria-invalid={showInvalid}
-                            onBlur={() => setTouchedFields((prev) => ({ ...prev, [mapping.target]: true }))}
-                            onChange={(event) => onChange(updateMapping(
-                                mappings ?? [],
-                                mapping.target,
-                                mapping.kind,
-                                event.target.value,
-                            ))}
+                            readOnly={readOnly}
+                            aria-invalid={!readOnly && showInvalid}
+                            onBlur={() => {
+                                if (!readOnly) setTouchedFields((prev) => ({ ...prev, [mapping.target]: true }));
+                            }}
+                            onChange={(event) => {
+                                if (readOnly) return;
+                                onChange(updateMapping(
+                                    mappings ?? [],
+                                    mapping.target,
+                                    mapping.kind,
+                                    event.target.value,
+                                ));
+                            }}
                             placeholder={
                                 mapping.kind === 'static_value'
                                     ? '例如: 100、ACTIVE 或 ^[v_day]'
@@ -180,8 +193,9 @@ export function MappingRows({
                 <div className="transfer-node-mapping-kind">
                     <Select
                         value={mapping.kind}
+                        disabled={readOnly}
                         onValueChange={(nextKind) => {
-                            if (!nextKind) return;
+                            if (readOnly || !nextKind) return;
                             setTouchedFields((prev) => ({ ...prev, [mapping.target]: false }));
                             onChange(updateMapping(
                                 mappings ?? [],
@@ -214,14 +228,22 @@ export function MappingRows({
                                 <strong>{mapping.target}</strong>
                                 <span className="transfer-node-mapping-error">{targetLabel}已不存在</span>
                             </div>
-                            <button
-                                type="button"
-                                aria-label={`移除 ${mapping.target} 失效映射`}
-                                title="移除失效映射"
-                                onClick={() => onRemove(mapping.target)}
-                            >
-                                <Trash2 size={15} />
-                            </button>
+                            {!readOnly && (
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            type="button"
+                                            aria-label={`移除 ${mapping.target} 失效映射`}
+                                            onClick={() => onRemove(mapping.target)}
+                                        >
+                                            <Trash2 size={15} />
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="tooltip-content z-[2400]" side="left">
+                                        移除失效映射
+                                    </TooltipContent>
+                                </Tooltip>
+                            )}
                         </div>
                     )}
                 </div>

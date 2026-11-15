@@ -12,6 +12,7 @@ export interface FlowCanvasNodeData {
     kind: OfflineFlowNodeKind;
     selected: boolean;
     onToggleSelection: (taskId: string) => void;
+    readOnly?: boolean;
     isEditing?: boolean;
     onRename?: (newId: string) => void;
     onCancelRename?: () => void;
@@ -96,6 +97,7 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
 
     const StatusIcon = data.status ? getTaskStatusIcon(data.status) : null;
     const isRunning = data.status ? isRunningStatus(data.status) : false;
+    const readOnly = Boolean(data.readOnly);
 
     return (
         <>
@@ -103,20 +105,23 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
                 type="target"
                 position={Position.Top}
                 className="flow-canvas-handle"
+                isConnectable={!readOnly}
             />
-            <div className={`flow-canvas-node${rfSelected ? ' is-rf-selected' : ''}${data.selected ? ' is-checked' : ''}${data.status ? ` has-status is-${data.status.toLowerCase()}` : ''}`}>
-                <label
-                    className="flow-canvas-node-check"
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                >
-                    <input
-                        type="checkbox"
-                        checked={data.selected}
-                        onChange={() => data.onToggleSelection(data.taskId)}
-                    />
-                </label>
-                {data.isEditing ? (
+            <div className={`flow-canvas-node${rfSelected ? ' is-rf-selected' : ''}${data.selected ? ' is-checked' : ''}${readOnly ? ' is-readonly' : ''}${data.status ? ` has-status is-${data.status.toLowerCase()}` : ''}`}>
+                {!readOnly && (
+                    <label
+                        className="flow-canvas-node-check"
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={data.selected}
+                            onChange={() => data.onToggleSelection(data.taskId)}
+                        />
+                    </label>
+                )}
+                {data.isEditing && !readOnly ? (
                     <strong
                         ref={editableLabelRef}
                         className="flow-canvas-node-label is-editing nodrag nopan nowheel"
@@ -211,6 +216,7 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
                 type="source"
                 position={Position.Bottom}
                 className="flow-canvas-handle"
+                isConnectable={!readOnly}
             />
         </>
     );

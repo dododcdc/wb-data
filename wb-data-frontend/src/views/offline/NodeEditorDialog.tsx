@@ -54,6 +54,7 @@ export interface NodeEditorDialogProps {
     activeNode: OfflineFlowNode | null;
     groupId: number | null;
     content: string;
+    readOnly?: boolean;
     parameterDefinitions?: FlowParameterDefinitionSnapshot[];
     onOpenChange: (open: boolean) => void;
     onTempSave: (
@@ -77,6 +78,7 @@ export function NodeEditorDialog({
     activeNode,
     groupId,
     content,
+    readOnly = false,
     parameterDefinitions = [],
     onOpenChange,
     onContentChange,
@@ -159,14 +161,14 @@ export function NodeEditorDialog({
     }, [activeNode, isHiveNode, open]);
 
     useEffect(() => {
-        if (!open) return;
+        if (!open || readOnly) return;
         onDraftChange?.(
             latestContentRef.current,
             currentDataSourceId,
             effectiveDataSourceType,
             isHiveNode ? latestHiveConfRef.current : undefined,
         );
-    }, [currentDataSourceId, effectiveDataSourceType, isHiveNode, onDraftChange, open]);
+    }, [currentDataSourceId, effectiveDataSourceType, isHiveNode, onDraftChange, open, readOnly]);
 
     useEffect(() => {
         if (!open || !editorRef.current) {
@@ -202,10 +204,12 @@ export function NodeEditorDialog({
     }, []);
 
     const handleTransferDraftChange = useCallback((transferDraft: TransferConfig, state: TransferNodeDraftState) => {
+        if (readOnly) return;
         onTransferChange?.(transferDraft, state);
-    }, [onTransferChange]);
+    }, [onTransferChange, readOnly]);
 
     const handleHiveConfChange = useCallback((nextHiveConf: Record<string, string> | undefined) => {
+        if (readOnly) return;
         const normalized = normalizeHiveConfRecord(nextHiveConf);
         latestHiveConfRef.current = normalized;
         setCurrentHiveConf(normalized);
@@ -215,9 +219,10 @@ export function NodeEditorDialog({
             effectiveDataSourceType,
             normalized,
         );
-    }, [currentDataSourceId, effectiveDataSourceType, onDraftChange]);
+    }, [currentDataSourceId, effectiveDataSourceType, onDraftChange, readOnly]);
 
     const handleInsertParameter = useCallback((key: string) => {
+        if (readOnly) return;
         const editor = editorRef.current;
         const textToInsert = `^[${key}]`;
         if (!editor) {
@@ -237,13 +242,13 @@ export function NodeEditorDialog({
             editor.trigger('keyboard', 'type', { text: textToInsert });
             editor.focus();
         }
-    }, [content, onContentChange]);
+    }, [content, onContentChange, readOnly]);
 
     const isSqlNode = activeNode ? isSqlEditorNodeKind(activeNode.kind) : false;
     const sqlFormatOptions = activeNode ? SQL_FORMAT_OPTIONS_BY_KIND[activeNode.kind] : undefined;
 
     const handleFormatSql = useCallback(() => {
-        if (!isSqlNode) {
+        if (readOnly || !isSqlNode) {
             return;
         }
         const editor = editorRef.current;
@@ -259,7 +264,7 @@ export function NodeEditorDialog({
         if (formatted !== raw) {
             onContentChange(formatted);
         }
-    }, [isSqlNode, onContentChange, sqlFormatOptions]);
+    }, [isSqlNode, onContentChange, readOnly, sqlFormatOptions]);
 
     useEffect(() => {
         if (!paramMenuOpen) return;
@@ -300,8 +305,9 @@ export function NodeEditorDialog({
                             <DialogTitle className="text-sm font-mono font-semibold text-[var(--color-text-primary)] truncate">
                                 {activeNode.taskId}
                             </DialogTitle>
+                            {readOnly ? <span className="offline-readonly-pill">线上只读</span> : null}
                             <DialogDescription className="sr-only">
-                                {getOfflineNodeKindDescription(activeNode.kind)}: {activeNode.taskId}
+                                {getOfflineNodeKindDescription(activeNode.kind)}: {activeNode.taskId}{readOnly ? '（只读）' : ''}
                             </DialogDescription>
                         </div>
 
@@ -319,9 +325,11 @@ export function NodeEditorDialog({
                                             size="compact"
                                             options={dataSourceSelectOptions}
                                             menuContainer={dialogEl}
+                                            disabled={readOnly}
                                             value={dataSourceSelectValue}
                                             selectedOption={selectedDataSourceOption}
                                             onChange={(val, option) => {
+                                                if (readOnly) return;
                                                 const nextDataSourceId = val ? Number(val) : undefined;
                                                 setCurrentDataSourceId(nextDataSourceId);
                                                 onDraftChange?.(
@@ -343,7 +351,7 @@ export function NodeEditorDialog({
                             </>
                         )}
 
-                        {supportsParameters && parameterDefinitions && parameterDefinitions.length > 0 && (
+                        {!readOnly && supportsParameters && parameterDefinitions && parameterDefinitions.length > 0 && (
                             <>
                                 <div className="h-4 w-[1px] bg-[var(--color-border)] shrink-0" />
                                 <div className="relative" ref={paramMenuRef}>
@@ -397,7 +405,7 @@ export function NodeEditorDialog({
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                            {isSqlNode && (
+                            {!readOnly && isSqlNode && (
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <button
@@ -466,20 +474,24 @@ export function NodeEditorDialog({
                     {isTransferNode ? (
                         <TransferNodeDialog
                             groupId={groupId}
-                            value={activeNode.transferDraft ?? activeNode.transfer}
+                            value={readOnly ? (activeNode.transfer ?? activeNode.transferDraft) : (activeNode.transferDraft ?? activeNode.transfer)}
+                            readOnly={readOnly}
                             onChange={() => {}}
-                            onDraftChange={handleTransferDraftChange}
+                            onDraftChange={readOnly ? undefined : handleTransferDraftChange}
                             menuContainer={dialogEl}
                         />
                     ) : isSqlNode ? (
                         <SqlEditor
                             value={content}
-                            onChange={(value) => onContentChange(value ?? '')}
+                            onChange={(value) => {
+                                if (!readOnly) onContentChange(value ?? '');
+                            }}
                             onMount={handleSqlEditorMount}
                             formatOptions={sqlFormatOptions}
                             options={{
                                 lineNumbersMinChars: 3,
                                 padding: { top: 8, bottom: 8 },
+                                readOnly,
                             }}
                         />
                     ) : (
@@ -491,7 +503,9 @@ export function NodeEditorDialog({
                                 language="shell"
                                 theme="warm-parchment"
                                 value={content}
-                                onChange={(value: string | undefined) => onContentChange(value ?? '')}
+                                onChange={(value: string | undefined) => {
+                                    if (!readOnly) onContentChange(value ?? '');
+                                }}
                                 options={{
                                     minimap: { enabled: false },
                                     fontSize: 14,
@@ -502,6 +516,7 @@ export function NodeEditorDialog({
                                     scrollBeyondLastLine: false,
                                     tabSize: 2,
                                     padding: { top: 8, bottom: 8 },
+                                    readOnly,
                                 }}
                             />
                         </Suspense>
@@ -511,6 +526,7 @@ export function NodeEditorDialog({
                         <HiveConfigDrawer
                             nodeKey={activeNode.taskId}
                             value={currentHiveConf}
+                            readOnly={readOnly}
                             onChange={handleHiveConfChange}
                             onClose={() => setHiveDrawerOpen(false)}
                         />
