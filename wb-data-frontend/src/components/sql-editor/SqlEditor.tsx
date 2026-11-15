@@ -3,11 +3,13 @@ import type * as Monaco from 'monaco-editor';
 import { loadSqlEditorModule } from './sqlEditorModule';
 import { defaultSqlEditorOptions } from './sqlEditorOptions';
 import { setupSqlEditorCore } from './sqlEditorCore';
+import type { SqlFormatOptions } from './sqlFormatting';
 
 export interface SqlEditorProps {
     value: string;
     onChange?: (value: string) => void;
     options?: Monaco.editor.IStandaloneEditorConstructionOptions;
+    formatOptions?: SqlFormatOptions;
     onMount?: (editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco) => void;
 }
 
@@ -23,11 +25,17 @@ export function SqlEditor({
     value,
     onChange,
     options,
+    formatOptions,
     onMount,
 }: SqlEditorProps) {
     const disposeRef = useRef<(() => void) | null>(null);
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const monacoRef = useRef<typeof Monaco | null>(null);
+    const formatOptionsRef = useRef<SqlFormatOptions | undefined>(formatOptions);
+
+    useEffect(() => {
+        formatOptionsRef.current = formatOptions;
+    }, [formatOptions]);
 
     useEffect(() => {
         return () => {
@@ -43,7 +51,11 @@ export function SqlEditor({
         monacoRef.current = monaco;
 
         // Setup shared SQL editor core (theme + format action)
-        const dispose = setupSqlEditorCore(monaco, editor);
+        const dispose = formatOptionsRef.current
+            ? setupSqlEditorCore(monaco, editor, {
+                getFormatOptions: () => formatOptionsRef.current,
+            })
+            : setupSqlEditorCore(monaco, editor);
         disposeRef.current = dispose;
 
         // Call optional onMount callback for scene-specific setup

@@ -1,6 +1,40 @@
 import type * as Monaco from 'monaco-editor';
 import { registerSqlEditorTheme } from './sqlEditorTheme';
-import { formatSqlContent } from './sqlFormatting';
+import { formatSqlContent, type SqlFormatOptions } from './sqlFormatting';
+
+export interface SqlEditorCoreOptions {
+    getFormatOptions?: () => SqlFormatOptions | undefined;
+}
+
+/**
+ * Apply formatted SQL while preserving Monaco's undo stack whenever a text model is attached.
+ */
+export function applyFormattedSqlToEditor(
+    editor: Monaco.editor.IStandaloneCodeEditor,
+    formattedSql: string,
+): boolean {
+    const currentValue = editor.getValue();
+    if (formattedSql === currentValue) {
+        return false;
+    }
+
+    const model = editor.getModel?.();
+    if (model && typeof editor.executeEdits === 'function') {
+        editor.pushUndoStop?.();
+        editor.executeEdits('format-sql', [
+            {
+                range: model.getFullModelRange(),
+                text: formattedSql,
+                forceMoveMarkers: true,
+            },
+        ]);
+        editor.pushUndoStop?.();
+        return true;
+    }
+
+    editor.setValue(formattedSql);
+    return true;
+}
 
 /**
  * Setup shared SQL editor core functionality:
@@ -13,6 +47,7 @@ import { formatSqlContent } from './sqlFormatting';
 export function setupSqlEditorCore(
     monaco: typeof Monaco,
     editor: Monaco.editor.IStandaloneCodeEditor,
+    options?: SqlEditorCoreOptions,
 ): () => void {
     // Register theme
     registerSqlEditorTheme(monaco);
@@ -25,11 +60,16 @@ export function setupSqlEditorCore(
             monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF,
         ],
         run: (ed) => {
-            const currentValue = ed.getValue();
-            const formatted = formatSqlContent(currentValue);
-            if (formatted !== currentValue) {
-                ed.setValue(formatted);
+            const readOnlyOptionId = monaco?.editor?.EditorOption?.readOnly;
+            const isReadOnly = readOnlyOptionId !== undefined && typeof ed.getOption === 'function'
+                ? Boolean(ed.getOption(readOnlyOptionId))
+                : Boolean(ed.getRawOptions?.()?.readOnly);
+            if (isReadOnly) {
+                return;
             }
+            const currentValue = ed.getValue();
+            const formatted = formatSqlContent(currentValue, options?.getFormatOptions?.());
+            applyFormattedSqlToEditor(ed as Monaco.editor.IStandaloneCodeEditor, formatted);
         },
     });
 

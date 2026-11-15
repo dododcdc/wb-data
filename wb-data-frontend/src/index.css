@@ -380,6 +380,12 @@
     gap: 8px;
 }
 
+.tooltip-content.tooltip-content-wrap {
+    white-space: normal;
+    max-width: 320px;
+    line-height: 1.45;
+}
+
 .tooltip-content kbd {
     display: inline-flex;
     align-items: center;
@@ -467,6 +473,15 @@
     padding: 24px;
     overflow-y: auto;
     pointer-events: none;
+}
+
+/* Nested dialogs rendered as later portals must sit above earlier modal layers */
+.dialog-positioner ~ .dialog-overlay {
+    z-index: calc(var(--z-modal) + 10);
+}
+
+.dialog-positioner ~ .dialog-positioner {
+    z-index: calc(var(--z-modal) + 20);
 }
 
 .dialog-positioner > * {

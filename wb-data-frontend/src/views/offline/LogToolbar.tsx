@@ -1,6 +1,7 @@
 // wb-data-frontend/src/views/offline/LogToolbar.tsx
 import { useState, useCallback } from 'react';
 import { ArrowDownToLine, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import './LogToolbar.css';
 
 interface LogToolbarProps {
@@ -60,7 +61,8 @@ export default function LogToolbar({
     const hasMatches = matchCount > 0;
 
     return (
-        <div className="log-toolbar">
+        <TooltipProvider delayDuration={150}>
+            <div className="log-toolbar">
             <div className="log-toolbar-levels">
                 {LEVELS.map(({ key, label, cls }) => {
                     const dimmed = anyFilterActive && !activeLevels.has(key);
@@ -97,24 +99,42 @@ export default function LogToolbar({
                             {currentMatchIndex + 1}/{matchCount}
                         </span>
                     )}
-                    <button
-                        type="button"
-                        className="log-toolbar-search-btn"
-                        disabled={!hasMatches}
-                        onClick={onPrevMatch}
-                        title="上一个匹配 (Shift+Enter)"
-                    >
-                        <ChevronUp size={12} />
-                    </button>
-                    <button
-                        type="button"
-                        className="log-toolbar-search-btn"
-                        disabled={!hasMatches}
-                        onClick={onNextMatch}
-                        title="下一个匹配 (Enter)"
-                    >
-                        <ChevronDown size={12} />
-                    </button>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <span className="inline-flex">
+                                <button
+                                    type="button"
+                                    className="log-toolbar-search-btn"
+                                    disabled={!hasMatches}
+                                    onClick={onPrevMatch}
+                                    aria-label="上一个匹配"
+                                >
+                                    <ChevronUp size={12} />
+                                </button>
+                            </span>
+                        </TooltipTrigger>
+                        <TooltipContent className="tooltip-content z-[2400]" side="bottom">
+                            上一个匹配 <kbd>Shift+Enter</kbd>
+                        </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <span className="inline-flex">
+                                <button
+                                    type="button"
+                                    className="log-toolbar-search-btn"
+                                    disabled={!hasMatches}
+                                    onClick={onNextMatch}
+                                    aria-label="下一个匹配"
+                                >
+                                    <ChevronDown size={12} />
+                                </button>
+                            </span>
+                        </TooltipTrigger>
+                        <TooltipContent className="tooltip-content z-[2400]" side="bottom">
+                            下一个匹配 <kbd>Enter</kbd>
+                        </TooltipContent>
+                    </Tooltip>
                 </div>
                 {!isAtBottom && (
                     <button type="button" className="log-toolbar-scroll-btn" onClick={onScrollToBottom}>
@@ -123,5 +143,6 @@ export default function LogToolbar({
                 )}
             </div>
         </div>
+        </TooltipProvider>
     );
 }

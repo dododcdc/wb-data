@@ -24,6 +24,10 @@ type DataSourceSelectProps = {
     virtualize?: boolean;
     virtualItemSize?: number;
     theme?: 'light' | 'dark';
+    size?: 'default' | 'compact';
+    className?: string;
+    triggerClassName?: string;
+    contentClassName?: string;
 };
 
 export function DataSourceSelect(props: DataSourceSelectProps) {

@@ -170,13 +170,19 @@ function FlowCanvasNodeComponent(props: { data: FlowCanvasNodeData; selected?: b
                             </TooltipContent>
                         </Tooltip>
                 )}
-                <span
-                    className={`flow-canvas-node-kind is-icon is-${getOfflineNodeKindClassName(data.kind)}`}
-                    title={getOfflineNodeKindLabel(data.kind)}
-                    aria-label={getOfflineNodeKindLabel(data.kind)}
-                >
-                    <NodeKindIcon kind={data.kind} size={14} />
-                </span>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <span
+                            className={`flow-canvas-node-kind is-icon is-${getOfflineNodeKindClassName(data.kind)}`}
+                            aria-label={getOfflineNodeKindLabel(data.kind)}
+                        >
+                            <NodeKindIcon kind={data.kind} size={14} decorative />
+                        </span>
+                    </TooltipTrigger>
+                    <TooltipContent className="tooltip-content" side="top">
+                        {getOfflineNodeKindLabel(data.kind)}
+                    </TooltipContent>
+                </Tooltip>
                 
                 {/* Status Indicator */}
                 {StatusIcon && (

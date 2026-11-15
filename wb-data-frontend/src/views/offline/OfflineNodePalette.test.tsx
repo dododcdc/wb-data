@@ -65,7 +65,9 @@ describe('OfflineNodePalette', () => {
         expect(screen.getByTitle('PostgreSQL')).toBeTruthy();
 
         const hive = screen.getByTitle('HiveSQL');
-        expect(hive.className).toContain('offline-node-kind-mask');
+        expect(hive.tagName).toBe('IMG');
+        expect(hive.className).toContain('offline-node-kind-image');
+        expect(hive.getAttribute('draggable')).toBe('false');
 
         const clickhouse = screen.getByTitle('ClickHouse').closest('svg');
         expect(clickhouse?.getAttribute('viewBox')).toBe('0 0 9 8');

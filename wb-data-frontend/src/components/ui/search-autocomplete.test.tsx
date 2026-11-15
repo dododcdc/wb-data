@@ -98,4 +98,23 @@ describe('SearchAutocomplete', () => {
 
         expect(selectedValue).toHaveProperty('value', 'mysql_source (MYSQL)');
     });
+
+    it('supports a compact size variant for dense toolbars', () => {
+        const { container } = render(
+            <SearchAutocomplete
+                options={OPTIONS}
+                value="mysql"
+                ariaLabel="选择数据源"
+                size="compact"
+            />,
+        );
+
+        const wrapper = container.querySelector('.border-input');
+        expect(wrapper?.className).toContain('h-7');
+        expect(wrapper?.className).not.toContain('!h-[38px]');
+
+        const input = screen.getByRole('combobox', { name: '选择数据源' });
+        expect(input.className).toContain('text-xs');
+        expect(input.className).toContain('!py-0');
+    });
 });

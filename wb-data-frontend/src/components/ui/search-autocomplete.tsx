@@ -40,6 +40,7 @@ export interface SearchAutocompleteProps<T extends SearchAutocompleteOption> {
     className?: string;
     triggerClassName?: string;
     contentClassName?: string;
+    size?: 'default' | 'compact';
     menuContainer?: HTMLElement | null;
     ariaLabel?: string;
     clearInputOnOpen?: boolean;
@@ -72,6 +73,7 @@ export function SearchAutocomplete<T extends SearchAutocompleteOption>(props: Se
         className,
         triggerClassName,
         contentClassName,
+        size = 'default',
         ariaLabel,
         clearInputOnOpen = false,
         onChange,
@@ -169,16 +171,24 @@ export function SearchAutocomplete<T extends SearchAutocompleteOption>(props: Se
             isItemEqualToValue={(option, selected) => option.value === selected.value}
         >
             <div className={cn(
-                "relative flex items-center !h-[38px] !bg-transparent border border-input rounded-md overflow-hidden focus-within:ring-1 focus-within:ring-ring transition-shadow",
+                "relative flex items-center !bg-transparent border border-input rounded-md overflow-hidden focus-within:ring-1 focus-within:ring-ring transition-shadow",
+                size === 'compact' ? "h-7" : "!h-[38px]",
                 theme === 'dark' && "dark",
                 className
             )}>
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={14} />
+                <Search
+                    className={cn(
+                        "absolute top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none",
+                        size === 'compact' ? "left-2" : "left-2.5"
+                    )}
+                    size={size === 'compact' ? 13 : 14}
+                />
                 <ComboboxInput 
                     placeholder={placeholder}
                     aria-label={ariaLabel}
                     className={cn(
-                        "!h-full w-full !pl-9 !pr-8 !m-0 !bg-transparent text-sm !border-0 focus-visible:ring-0 !shadow-none outline-none",
+                        "!h-full w-full !m-0 !bg-transparent !border-0 focus-visible:ring-0 !shadow-none outline-none",
+                        size === 'compact' ? "!pl-7 !pr-7 !py-0 text-xs" : "!pl-9 !pr-8 text-sm",
                         triggerClassName
                     )}
                     onChange={(event) => {
@@ -198,12 +208,15 @@ export function SearchAutocomplete<T extends SearchAutocompleteOption>(props: Se
                 />
                 {!hideChevron && (
                     <ComboboxTrigger
-                        className="absolute right-0 top-0 bottom-0 w-8 border-l border-transparent flex items-center justify-center hover:bg-muted/50 transition-colors"
+                        className={cn(
+                            "absolute right-0 top-0 bottom-0 border-l border-transparent flex items-center justify-center hover:bg-muted/50 transition-colors",
+                            size === 'compact' ? "w-7" : "w-8"
+                        )}
                         onClick={() => {
                             if (!open) setFilterValue('');
                         }}
                     >
-                        <ChevronDown size={14} className="text-muted-foreground" />
+                        <ChevronDown size={size === 'compact' ? 13 : 14} className="text-muted-foreground" />
                     </ComboboxTrigger>
                 )}
             </div>

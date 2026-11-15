@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type * as Monaco from 'monaco-editor';
-import { Braces, Database, LoaderCircle, X } from 'lucide-react';
+import { Braces, Database, LoaderCircle, Wand2, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import {
     Dialog,
@@ -12,7 +12,9 @@ import { cn } from '../../lib/utils';
 import { SqlEditor } from '../../components/sql-editor/SqlEditor';
 import { loadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import { registerSqlEditorTheme } from '../../components/sql-editor/sqlEditorTheme';
-import type { FlowParameterDefinitionSnapshot, OfflineFlowNode } from '../../api/offline';
+import { applyFormattedSqlToEditor } from '../../components/sql-editor/sqlEditorCore';
+import { formatSqlContent, type SqlFormatOptions } from '../../components/sql-editor/sqlFormatting';
+import type { FlowParameterDefinitionSnapshot, OfflineFlowNode, OfflineFlowNodeKind } from '../../api/offline';
 import type { TransferConfig } from './transfer/transferTypes';
 import { TransferNodeDialog, type TransferNodeDraftState } from './transfer/TransferNodeDialog';
 import { DataSourceSelect } from '../../components/DataSourceSelect';
@@ -33,6 +35,17 @@ import {
  * SQL/HiveSQL nodes use the shared SqlEditor component instead.
  */
 const LazyEditor = lazy(() => loadSqlEditorModule());
+
+const SQL_FORMAT_OPTIONS_BY_KIND: Partial<Record<OfflineFlowNodeKind, SqlFormatOptions>> = {
+    HIVE_SQL: { language: 'hive', commaPosition: 'before' },
+    MYSQL: { language: 'mysql', commaPosition: 'after' },
+    POSTGRESQL: { language: 'postgresql', commaPosition: 'after' },
+    CLICKHOUSE: { language: 'clickhouse', commaPosition: 'after' },
+    SQL: { language: 'sql', commaPosition: 'after' },
+};
+
+const IS_MAC_PLATFORM = typeof navigator !== 'undefined'
+    && /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent);
 
 export interface NodeEditorDialogProps {
     open: boolean;
@@ -165,6 +178,28 @@ export function NodeEditorDialog({
         }
     }, [content, onContentChange]);
 
+    const isSqlNode = activeNode ? isSqlEditorNodeKind(activeNode.kind) : false;
+    const sqlFormatOptions = activeNode ? SQL_FORMAT_OPTIONS_BY_KIND[activeNode.kind] : undefined;
+
+    const handleFormatSql = useCallback(() => {
+        if (!isSqlNode) {
+            return;
+        }
+        const editor = editorRef.current;
+        if (editor) {
+            const raw = editor.getValue();
+            const formatted = formatSqlContent(raw, sqlFormatOptions);
+            applyFormattedSqlToEditor(editor, formatted);
+            editor.focus();
+            return;
+        }
+        const raw = latestContentRef.current;
+        const formatted = formatSqlContent(raw, sqlFormatOptions);
+        if (formatted !== raw) {
+            onContentChange(formatted);
+        }
+    }, [isSqlNode, onContentChange, sqlFormatOptions]);
+
     useEffect(() => {
         if (!paramMenuOpen) return;
         const handleClickOutside = (e: MouseEvent) => {
@@ -177,7 +212,6 @@ export function NodeEditorDialog({
     }, [paramMenuOpen]);
 
     if (!activeNode) return null;
-    const isSqlNode = isSqlEditorNodeKind(activeNode.kind);
     const supportsParameters = supportsParameterInsertion(activeNode.kind);
     const isTransferNode = activeNode.kind === 'TRANSFER';
 
@@ -191,17 +225,17 @@ export function NodeEditorDialog({
                 hideClose
                 fullScreen
             >
-                <div className="dialog-toolbar flex items-center justify-between gap-4 bg-[var(--color-surface)] z-10">
-                    <div className="flex items-center gap-4">
+                <div className="dialog-toolbar offline-node-editor-toolbar z-10">
+                    <div className="flex items-center gap-3 min-w-0">
                         {/* Identity Section */}
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
                             <div className={cn(
                                 "flow-canvas-node-kind",
                                 `is-${getOfflineNodeKindClassName(activeNode.kind)}`,
                             )}>
                                 {getOfflineNodeKindLabel(activeNode.kind)}
                             </div>
-                            <DialogTitle className="text-sm font-mono font-semibold text-[var(--color-text-primary)]">
+                            <DialogTitle className="text-sm font-mono font-semibold text-[var(--color-text-primary)] truncate">
                                 {activeNode.taskId}
                             </DialogTitle>
                             <DialogDescription className="sr-only">
@@ -212,14 +246,15 @@ export function NodeEditorDialog({
                         {/* Config Section */}
                         {isSqlNode && (
                             <>
-                                <div className="h-4 w-[1px] bg-[var(--color-border)]" />
-                                <div className="flex items-center gap-3">
+                                <div className="h-4 w-[1px] bg-[var(--color-border)] shrink-0" />
+                                <div className="flex items-center gap-2.5">
                                     <div className="flex items-center gap-1.5 text-[var(--color-text-secondary)]">
-                                        <Database size={14} strokeWidth={2.2} />
+                                        <Database size={13} strokeWidth={2.2} />
                                         <span className="text-xs font-semibold tracking-wide text-[var(--color-text-secondary)]">数据源</span>
                                     </div>
                                     <div className="min-w-[260px]">
                                         <DataSourceSelect
+                                            size="compact"
                                             options={dataSourceSelectOptions}
                                             menuContainer={dialogEl}
                                             value={dataSourceSelectValue}
@@ -243,18 +278,24 @@ export function NodeEditorDialog({
 
                         {supportsParameters && parameterDefinitions && parameterDefinitions.length > 0 && (
                             <>
-                                <div className="h-4 w-[1px] bg-[var(--color-border)]" />
+                                <div className="h-4 w-[1px] bg-[var(--color-border)] shrink-0" />
                                 <div className="relative" ref={paramMenuRef}>
-                                    <button
-                                        type="button"
-                                        className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border border-dashed border-gray-300 hover:border-gray-400 text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-xs"
-                                        title={activeNode.kind === 'SHELL' ? '插入任务参数到脚本' : '插入任务参数到 SQL'}
-                                        onClick={() => setParamMenuOpen((prev) => !prev)}
-                                    >
-                                        <Braces size={13} className="text-gray-500" />
-                                        <span>插入参数</span>
-                                        <span className="text-[10px] text-gray-400">({parameterDefinitions.length})</span>
-                                    </button>
+                                    <Tooltip open={paramMenuOpen ? false : undefined}>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className="flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium rounded-md border border-dashed border-gray-300 hover:border-gray-400 text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-xs"
+                                                onClick={() => setParamMenuOpen((prev) => !prev)}
+                                            >
+                                                <Braces size={13} className="text-gray-500" />
+                                                <span>插入参数</span>
+                                                <span className="text-[10px] text-gray-400">({parameterDefinitions.length})</span>
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="tooltip-content z-[2100]" side="bottom">
+                                            {activeNode.kind === 'SHELL' ? '插入任务参数到脚本' : '插入任务参数到 SQL'}
+                                        </TooltipContent>
+                                    </Tooltip>
 
                                     {paramMenuOpen && (
                                         <div className="absolute left-0 top-full mt-1.5 w-64 rounded-md border border-gray-200 bg-white shadow-lg p-1.5 z-[2200]">
@@ -288,17 +329,36 @@ export function NodeEditorDialog({
                         )}
                     </div>
 
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-2 shrink-0">
+                            {isSqlNode && (
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            type="button"
+                                            className="offline-node-editor-toolbar-btn offline-node-editor-icon-btn"
+                                            aria-label="格式化 SQL"
+                                            data-testid="sql-format-button"
+                                            disabled={!content.trim()}
+                                            onClick={handleFormatSql}
+                                        >
+                                            <Wand2 size={14} aria-hidden="true" />
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="tooltip-content z-[2100]" side="bottom">
+                                        格式化 SQL <kbd>{IS_MAC_PLATFORM ? '⌘' : 'Ctrl'}+⇧+F</kbd>
+                                    </TooltipContent>
+                                </Tooltip>
+                            )}
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <button
                                         type="button"
                                         aria-label="关闭"
                                         data-slot="dialog-close"
-                                        className="dialog-close-button"
+                                        className="dialog-close-button offline-node-editor-close"
                                         onClick={handleAttemptClose}
                                     >
-                                        <X size={18} />
+                                        <X size={16} />
                                     </button>
                                 </TooltipTrigger>
                                 <TooltipContent className="tooltip-content z-[2100]" side="bottom">
@@ -327,9 +387,10 @@ export function NodeEditorDialog({
                             value={content}
                             onChange={(value) => onContentChange(value ?? '')}
                             onMount={handleSqlEditorMount}
+                            formatOptions={sqlFormatOptions}
                             options={{
                                 lineNumbersMinChars: 3,
-                                padding: { top: 14, bottom: 14 },
+                                padding: { top: 8, bottom: 8 },
                             }}
                         />
                     ) : (
@@ -351,7 +412,7 @@ export function NodeEditorDialog({
                                     automaticLayout: true,
                                     scrollBeyondLastLine: false,
                                     tabSize: 2,
-                                    padding: { top: 14, bottom: 14 },
+                                    padding: { top: 8, bottom: 8 },
                                 }}
                             />
                         </Suspense>

@@ -1,7 +1,9 @@
-import { render } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, render } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { FlowCanvasNode, type FlowCanvasNodeData } from './FlowCanvasNode';
+
+afterEach(() => cleanup());
 
 vi.mock('@xyflow/react', () => ({
     Handle: () => <div data-testid="handle" />,
@@ -46,6 +48,25 @@ describe('FlowCanvasNode', () => {
 
         expect(kindBadge?.classList.contains('is-mysql')).toBe(true);
         expect(kindBadge?.getAttribute('aria-label')).toBe('MySQL');
+        expect(kindBadge?.getAttribute('title')).toBeNull();
         expect(kindBadge?.querySelector('svg')).toBeTruthy();
+        expect(kindBadge?.querySelector('title')).toBeNull();
+    });
+
+    it('renders decorative HiveSQL icon without native img title attribute', () => {
+        const data: FlowCanvasNodeData = {
+            taskId: 'hive_node_1',
+            kind: 'HIVE_SQL',
+            selected: false,
+            onToggleSelection: vi.fn(),
+        };
+
+        const { container } = render(<FlowCanvasNode data={data} />);
+        const kindBadge = container.querySelector('.flow-canvas-node-kind');
+        const img = kindBadge?.querySelector('img');
+
+        expect(kindBadge?.getAttribute('title')).toBeNull();
+        expect(img).toBeTruthy();
+        expect(img?.getAttribute('title')).toBeNull();
     });
 });
