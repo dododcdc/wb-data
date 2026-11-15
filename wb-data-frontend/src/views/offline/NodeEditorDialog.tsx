@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type * as Monaco from 'monaco-editor';
-import { Braces, Database, LoaderCircle, Wand2, X } from 'lucide-react';
+import { Braces, Database, LoaderCircle, SlidersHorizontal, Wand2, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import {
     Dialog,
@@ -19,6 +19,8 @@ import type { TransferConfig } from './transfer/transferTypes';
 import { TransferNodeDialog, type TransferNodeDraftState } from './transfer/TransferNodeDialog';
 import { DataSourceSelect } from '../../components/DataSourceSelect';
 import { useNodeEditorDataSources } from './useNodeEditorDataSources';
+import { HiveConfigDrawer } from './HiveConfigDrawer';
+import { areHiveConfsEqual, cloneHiveConfRecord, normalizeHiveConfRecord } from './hiveConf';
 import {
     buildNodeEditorDataSourceOptions,
 } from './nodeEditorDataSourceRules';
@@ -54,9 +56,19 @@ export interface NodeEditorDialogProps {
     content: string;
     parameterDefinitions?: FlowParameterDefinitionSnapshot[];
     onOpenChange: (open: boolean) => void;
-    onTempSave: (content: string, dataSourceId?: number, dataSourceType?: string) => void;
+    onTempSave: (
+        content: string,
+        dataSourceId?: number,
+        dataSourceType?: string,
+        hiveConf?: Record<string, string>,
+    ) => void;
     onContentChange: (content: string) => void;
-    onDraftChange?: (content: string, dataSourceId?: number, dataSourceType?: string) => void;
+    onDraftChange?: (
+        content: string,
+        dataSourceId?: number,
+        dataSourceType?: string,
+        hiveConf?: Record<string, string>,
+    ) => void;
     onTransferChange?: (transferDraft: TransferConfig, state: TransferNodeDraftState) => void;
 }
 
@@ -76,6 +88,13 @@ export function NodeEditorDialog({
     const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
     const [paramMenuOpen, setParamMenuOpen] = useState(false);
     const paramMenuRef = useRef<HTMLDivElement | null>(null);
+    const isHiveNode = activeNode?.kind === 'HIVE_SQL';
+    const [hiveDrawerOpen, setHiveDrawerOpen] = useState(false);
+    const initialHiveConf = cloneHiveConfRecord(isHiveNode ? activeNode?.hiveConf : undefined);
+    const [currentHiveConf, setCurrentHiveConf] = useState<Record<string, string> | undefined>(initialHiveConf);
+    const latestHiveConfRef = useRef<Record<string, string> | undefined>(initialHiveConf);
+    const prevDialogOpenRef = useRef(open);
+    const prevNodeKeyRef = useRef(activeNode ? `${activeNode.taskId}:${activeNode.kind}` : '');
     const {
         currentDataSourceId,
         selectedDataSource,
@@ -109,15 +128,45 @@ export function NodeEditorDialog({
         }
         return dataSourceSelectOptions.find((option) => option.value === dataSourceSelectValue) ?? null;
     }, [currentDS, dataSourceSelectOptions, dataSourceSelectValue]);
+    const effectiveDataSourceType = selectedDataSourceOption?.type
+        ?? (currentDataSourceId === activeNode?.dataSourceId ? activeNode?.dataSourceType : undefined);
 
     useEffect(() => {
         latestContentRef.current = content;
     }, [content]);
 
     useEffect(() => {
+        const nodeKey = activeNode ? `${activeNode.taskId}:${activeNode.kind}` : '';
+        if (!open) {
+            if (prevDialogOpenRef.current) {
+                setHiveDrawerOpen(false);
+            }
+            prevDialogOpenRef.current = false;
+            return;
+        }
+        const openingOrSwitching = !prevDialogOpenRef.current || prevNodeKeyRef.current !== nodeKey;
+        prevDialogOpenRef.current = true;
+        prevNodeKeyRef.current = nodeKey;
+        const nextHiveConf = cloneHiveConfRecord(isHiveNode ? activeNode?.hiveConf : undefined);
+        if (openingOrSwitching) {
+            setHiveDrawerOpen(false);
+            latestHiveConfRef.current = nextHiveConf;
+            setCurrentHiveConf(nextHiveConf);
+        } else if (!areHiveConfsEqual(nextHiveConf, latestHiveConfRef.current)) {
+            latestHiveConfRef.current = nextHiveConf;
+            setCurrentHiveConf(nextHiveConf);
+        }
+    }, [activeNode, isHiveNode, open]);
+
+    useEffect(() => {
         if (!open) return;
-        onDraftChange?.(latestContentRef.current, currentDataSourceId, selectedDataSourceOption?.type);
-    }, [currentDataSourceId, onDraftChange, open, selectedDataSourceOption?.type]);
+        onDraftChange?.(
+            latestContentRef.current,
+            currentDataSourceId,
+            effectiveDataSourceType,
+            isHiveNode ? latestHiveConfRef.current : undefined,
+        );
+    }, [currentDataSourceId, effectiveDataSourceType, isHiveNode, onDraftChange, open]);
 
     useEffect(() => {
         if (!open || !editorRef.current) {
@@ -155,6 +204,18 @@ export function NodeEditorDialog({
     const handleTransferDraftChange = useCallback((transferDraft: TransferConfig, state: TransferNodeDraftState) => {
         onTransferChange?.(transferDraft, state);
     }, [onTransferChange]);
+
+    const handleHiveConfChange = useCallback((nextHiveConf: Record<string, string> | undefined) => {
+        const normalized = normalizeHiveConfRecord(nextHiveConf);
+        latestHiveConfRef.current = normalized;
+        setCurrentHiveConf(normalized);
+        onDraftChange?.(
+            latestContentRef.current,
+            currentDataSourceId,
+            effectiveDataSourceType,
+            normalized,
+        );
+    }, [currentDataSourceId, effectiveDataSourceType, onDraftChange]);
 
     const handleInsertParameter = useCallback((key: string) => {
         const editor = editorRef.current;
@@ -214,6 +275,7 @@ export function NodeEditorDialog({
     if (!activeNode) return null;
     const supportsParameters = supportsParameterInsertion(activeNode.kind);
     const isTransferNode = activeNode.kind === 'TRANSFER';
+    const hiveConfCount = currentHiveConf ? Object.keys(currentHiveConf).length : 0;
 
     const handleAttemptClose = () => onOpenChange(false);
 
@@ -262,7 +324,12 @@ export function NodeEditorDialog({
                                             onChange={(val, option) => {
                                                 const nextDataSourceId = val ? Number(val) : undefined;
                                                 setCurrentDataSourceId(nextDataSourceId);
-                                                onDraftChange?.(latestContentRef.current, nextDataSourceId, option?.type);
+                                                onDraftChange?.(
+                                                    latestContentRef.current,
+                                                    nextDataSourceId,
+                                                    option?.type,
+                                                    isHiveNode ? latestHiveConfRef.current : undefined,
+                                                );
                                             }}
                                             onInputChange={handleSearchKeywordChange}
                                             loading={dataSourcesLoading}
@@ -349,6 +416,27 @@ export function NodeEditorDialog({
                                     </TooltipContent>
                                 </Tooltip>
                             )}
+                            {isHiveNode && (
+                                <button
+                                    type="button"
+                                    className={cn(
+                                        'offline-node-editor-toolbar-btn',
+                                        'offline-node-editor-drawer-toggle',
+                                        hiveDrawerOpen && 'is-active',
+                                        hiveConfCount > 0 && 'has-params',
+                                    )}
+                                    aria-expanded={hiveDrawerOpen}
+                                    aria-label="Hive 运行参数"
+                                    data-testid="hive-conf-drawer-toggle"
+                                    onClick={() => setHiveDrawerOpen((prev) => !prev)}
+                                >
+                                    <SlidersHorizontal size={13} aria-hidden="true" />
+                                    <span>运行参数</span>
+                                    {hiveConfCount > 0 ? (
+                                        <span className="offline-node-editor-drawer-badge">{hiveConfCount}</span>
+                                    ) : null}
+                                </button>
+                            )}
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <button
@@ -368,12 +456,13 @@ export function NodeEditorDialog({
                         </div>
                 </div>
                 <div
-                    className="flex-1 min-h-0 relative"
+                    className="flex-1 min-h-0 flex relative overflow-hidden"
                     onKeyDown={(event) => {
                         event.stopPropagation();
                         event.nativeEvent.stopImmediatePropagation?.();
                     }}
                 >
+                    <div className="flex-1 min-w-0 min-h-0 relative">
                     {isTransferNode ? (
                         <TransferNodeDialog
                             groupId={groupId}
@@ -417,6 +506,15 @@ export function NodeEditorDialog({
                             />
                         </Suspense>
                     )}
+                    </div>
+                    {isHiveNode && hiveDrawerOpen ? (
+                        <HiveConfigDrawer
+                            nodeKey={activeNode.taskId}
+                            value={currentHiveConf}
+                            onChange={handleHiveConfChange}
+                            onClose={() => setHiveDrawerOpen(false)}
+                        />
+                    ) : null}
                 </div>
             </DialogContent>
         </Dialog>

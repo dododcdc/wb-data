@@ -8,6 +8,7 @@ import {
 
 import type { OfflineFlowDocument } from '../../api/offline';
 import type { TransferConfig } from './transfer/transferTypes';
+import { cloneHiveConfRecord } from './hiveConf';
 import { flattenFlowDocumentNodes } from './flowDocumentMutations';
 import {
     flushNodeEditorDraft,
@@ -62,6 +63,7 @@ export function useNodeEditorDraftController({
         transfer?: TransferConfig,
         transferDraft?: TransferConfig,
         transferDraftValid?: boolean,
+        hiveConf?: Record<string, string>,
     ): PendingNodeEditorDraft => ({
         taskId,
         scriptContent,
@@ -70,6 +72,7 @@ export function useNodeEditorDraftController({
         ...(transfer !== undefined ? { transfer } : {}),
         ...(transferDraft !== undefined ? { transferDraft } : {}),
         ...(transferDraftValid !== undefined ? { transferDraftValid } : {}),
+        hiveConf: cloneHiveConfRecord(hiveConf),
     }), []);
 
     const openNodeEditor = useCallback((taskId: string) => {
@@ -87,6 +90,7 @@ export function useNodeEditorDraftController({
             node.transfer,
             node.transferDraft,
             node.transferDraftValid,
+            node.hiveConf,
         );
         setNodeEditorOpenState(true);
     }, [buildPendingNodeEditorDraft, flowDocument, setSelectedNodeId]);
@@ -111,6 +115,7 @@ export function useNodeEditorDraftController({
         transfer?: TransferConfig,
         transferDraft?: TransferConfig,
         transferDraftValid?: boolean,
+        hiveConf?: Record<string, string>,
     ) => {
         const taskId = activeNodeId ?? pendingNodeEditorDraftRef.current?.taskId;
         if (!taskId) return null;
@@ -122,6 +127,7 @@ export function useNodeEditorDraftController({
             transfer,
             transferDraft,
             transferDraftValid,
+            hiveConf,
         );
         pendingNodeEditorDraftRef.current = pendingDraft;
         nodeEditorDraftSchedulerRef.current?.flushNow(pendingDraft);
@@ -141,6 +147,7 @@ export function useNodeEditorDraftController({
             transfer ?? currentPending?.transfer,
             currentPending?.transferDraft,
             currentPending?.transferDraftValid,
+            currentPending?.hiveConf,
         );
         pendingNodeEditorDraftRef.current = pendingDraft;
         nodeEditorDraftSchedulerRef.current?.schedule(pendingDraft);
@@ -150,8 +157,17 @@ export function useNodeEditorDraftController({
         content: string,
         dataSourceId?: number,
         dataSourceType?: string,
+        hiveConf?: Record<string, string>,
     ) => {
-        const pendingDraft = stageNodeEditorDraft(content, dataSourceId, dataSourceType);
+        const pendingDraft = stageNodeEditorDraft(
+            content,
+            dataSourceId,
+            dataSourceType,
+            undefined,
+            undefined,
+            undefined,
+            hiveConf,
+        );
         setNodeEditorOpen(false);
         return pendingDraft;
     }, [setNodeEditorOpen, stageNodeEditorDraft]);

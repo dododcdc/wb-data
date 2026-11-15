@@ -28,6 +28,7 @@ import com.wbdata.offline.service.FlowGraphDraftBuilder.GraphDraft;
 import com.wbdata.offline.parameter.service.FlowParameterBindingAssembler.ParameterSnapshotUpdate;
 import com.wbdata.offline.transfer.dto.TransferConfig;
 import com.wbdata.offline.transfer.service.TransferConfigFileService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -64,6 +65,7 @@ public class OfflineFlowDocumentService {
     private final FlowParameterBindingAssembler parameterBindingAssembler;
     private final FlowGraphDraftBuilder graphDraftBuilder;
     private final ExecutionParameterSnapshotRegistry executionParameterSnapshotRegistry;
+    private final OfflineHiveConfigStore hiveConfigStore;
     private final FlowParameterCompiler parameterCompiler = new FlowParameterCompiler();
     private final OfflineFlowYamlSupport yamlSupport;
     private final SqlNamedParameterScanner namedParameterScanner = new SqlNamedParameterScanner();
@@ -79,6 +81,33 @@ public class OfflineFlowDocumentService {
                                       FlowGraphDraftBuilder graphDraftBuilder,
                                       ExecutionParameterSnapshotRegistry executionParameterSnapshotRegistry,
                                       OfflineTransferProperties transferProperties) {
+        this(
+                offlineProperties,
+                offlineFlowContentService,
+                repoLockManager,
+                kestraFlowFileService,
+                transferConfigFileService,
+                parameterSnapshotStore,
+                parameterBindingAssembler,
+                graphDraftBuilder,
+                executionParameterSnapshotRegistry,
+                transferProperties,
+                new OfflineHiveConfigStore(new ObjectMapper())
+        );
+    }
+
+    @Autowired
+    public OfflineFlowDocumentService(OfflineProperties offlineProperties,
+                                      OfflineFlowContentService offlineFlowContentService,
+                                      RepoLockManager repoLockManager,
+                                      OfflineKestraFlowFileService kestraFlowFileService,
+                                      TransferConfigFileService transferConfigFileService,
+                                      FlowParameterSnapshotStore parameterSnapshotStore,
+                                      FlowParameterBindingAssembler parameterBindingAssembler,
+                                      FlowGraphDraftBuilder graphDraftBuilder,
+                                      ExecutionParameterSnapshotRegistry executionParameterSnapshotRegistry,
+                                      OfflineTransferProperties transferProperties,
+                                      OfflineHiveConfigStore hiveConfigStore) {
         this.offlineProperties = offlineProperties;
         this.offlineFlowContentService = offlineFlowContentService;
         this.repoLockManager = repoLockManager;
@@ -88,6 +117,7 @@ public class OfflineFlowDocumentService {
         this.parameterBindingAssembler = parameterBindingAssembler;
         this.graphDraftBuilder = graphDraftBuilder;
         this.executionParameterSnapshotRegistry = executionParameterSnapshotRegistry;
+        this.hiveConfigStore = hiveConfigStore;
         this.yamlSupport = new OfflineFlowYamlSupport(transferProperties);
     }
 
@@ -207,8 +237,10 @@ public class OfflineFlowDocumentService {
                     throw new ResponseStatusException(HttpStatus.CONFLICT, "检测到文件已被修改，请先加载最新内容");
                 }
                 saveWithStages(request, current);
-                if (effectiveParameterSnapshot != null || parameterUpdate.requested()) {
-                    recompileLegacyFlowWithParameters(request, effectiveParameterSnapshot);
+                LegacyHiveConfResolution hiveConfResolution = syncLegacyHiveConfAndDetectChange(repoPath, request);
+                if (effectiveParameterSnapshot != null || parameterUpdate.requested() || hiveConfResolution.changed()) {
+                    recompileLegacyFlowWithParameters(
+                            request, hiveConfResolution.mergedStages(), effectiveParameterSnapshot);
                 }
             }
 
@@ -388,7 +420,76 @@ public class OfflineFlowDocumentService {
         }
     }
 
+    private record LegacyHiveConfResolution(
+            List<SaveOfflineFlowStageRequest> mergedStages,
+            boolean changed
+    ) {
+    }
+
+    private LegacyHiveConfResolution syncLegacyHiveConfAndDetectChange(Path repoPath,
+                                                                     SaveOfflineFlowDocumentRequest request) throws IOException {
+        Map<String, Map<String, String>> existingByNode = hiveConfigStore.read(repoPath, request.path())
+                .map(OfflineHiveConfigStore.StoredHiveConfigFile::nodes)
+                .orElse(Map.of());
+        List<OfflineFlowNode> resolvedNodes = new ArrayList<>();
+        List<SaveOfflineFlowStageRequest> mergedStages = new ArrayList<>(request.stages().size());
+        Map<String, Map<String, String>> nextByNode = new LinkedHashMap<>();
+        for (SaveOfflineFlowStageRequest stage : request.stages()) {
+            List<SaveOfflineFlowNodeRequest> mergedNodes = new ArrayList<>(stage.nodes().size());
+            for (SaveOfflineFlowNodeRequest node : stage.nodes()) {
+                Map<String, String> existingConf = existingByNode.getOrDefault(node.taskId(), Map.of());
+                // Preserve existing sidecar hiveConf when legacy callers omit the field (null); explicit Map updates/clears it.
+                Map<String, String> effectiveConf = node.hiveConf() == null
+                        ? existingConf
+                        : OfflineHiveConfigStore.normalizeAndValidateNodeConf(node.kind(), node.hiveConf());
+                if (!effectiveConf.isEmpty()) {
+                    nextByNode.put(node.taskId(), effectiveConf);
+                }
+                resolvedNodes.add(new OfflineFlowNode(
+                        node.taskId(),
+                        node.kind(),
+                        node.scriptPath(),
+                        node.dataSourceId(),
+                        node.dataSourceType(),
+                        null,
+                        effectiveConf
+                ));
+                mergedNodes.add(new SaveOfflineFlowNodeRequest(
+                        node.taskId(),
+                        node.scriptContent(),
+                        node.kind(),
+                        node.scriptPath(),
+                        node.dataSourceId(),
+                        node.dataSourceType(),
+                        node.transfer(),
+                        effectiveConf.isEmpty() ? Map.of() : effectiveConf
+                ));
+            }
+            mergedStages.add(new SaveOfflineFlowStageRequest(stage.stageId(), mergedNodes));
+        }
+        boolean changed = !orderedNodeConfEquals(existingByNode, nextByNode);
+        if (changed) {
+            hiveConfigStore.writeForNodes(repoPath, request.path(), resolvedNodes);
+        }
+        return new LegacyHiveConfResolution(mergedStages, changed);
+    }
+
+    private static boolean orderedNodeConfEquals(Map<String, Map<String, String>> left,
+                                                 Map<String, Map<String, String>> right) {
+        if (left.size() != right.size() || !left.keySet().equals(right.keySet())) {
+            return false;
+        }
+        for (Map.Entry<String, Map<String, String>> entry : left.entrySet()) {
+            Map<String, String> rightEntries = right.get(entry.getKey());
+            if (rightEntries == null || !List.copyOf(entry.getValue().entrySet()).equals(List.copyOf(rightEntries.entrySet()))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private void recompileLegacyFlowWithParameters(SaveOfflineFlowDocumentRequest request,
+                                                   List<SaveOfflineFlowStageRequest> stages,
                                                    FlowParameterSnapshot parameterSnapshot) throws IOException {
         String flowSource = offlineFlowContentService.getFlowContent(request.groupId(), request.path()).content();
         OfflineFlowYamlSupport.FlowGraph graph = yamlSupport.parseGraph(flowSource);
@@ -398,7 +499,7 @@ public class OfflineFlowDocumentService {
         GraphDraft draft = graphDraftBuilder.prepare(
                 request.groupId(),
                 request.path(),
-                request.stages(),
+                stages,
                 edges
         );
         FlowParameterCompiler.Compilation parameterCompilation = parameterCompiler.compile(
@@ -483,6 +584,20 @@ public class OfflineFlowDocumentService {
             parameterBinding = parameterBindingAssembler.resolveParameterBinding(groupId, file.snapshot());
         }
 
+        Optional<OfflineHiveConfigStore.StoredHiveConfigFile> hiveConfigFile =
+                hiveConfigStore.read(repoPath, path, fileAccess);
+        Map<String, Map<String, String>> hiveConfByNode = Map.of();
+        if (hiveConfigFile.isPresent()) {
+            OfflineHiveConfigStore.StoredHiveConfigFile file = hiveConfigFile.get();
+            updatedAt = Math.max(updatedAt, file.updatedAt());
+            signature.append('\n')
+                    .append(file.path().getFileName())
+                    .append('\n')
+                    .append(file.content());
+            managedNodeFiles.add(file.path());
+            hiveConfByNode = file.nodes();
+        }
+
         for (OfflineFlowYamlSupport.FlowStage stage : document.stages()) {
             stageKeys.add(stage.stageId());
             List<OfflineFlowNodeResponse> nodes = new ArrayList<>();
@@ -533,13 +648,21 @@ public class OfflineFlowDocumentService {
                             .append(scriptContent);
                     taskFiles.put(node.taskId(), scriptFile);
                     managedNodeFiles.add(scriptFile);
+                    Map<String, String> nodeHiveConf = "HIVE_SQL".equalsIgnoreCase(node.kind())
+                            ? hiveConfByNode.get(node.taskId())
+                            : null;
+                    if (nodeHiveConf != null && nodeHiveConf.isEmpty()) {
+                        nodeHiveConf = null;
+                    }
                     nodes.add(new OfflineFlowNodeResponse(
                             node.taskId(),
                             node.kind(),
                             node.scriptPath(),
                             scriptContent,
                             node.dataSourceId(),
-                            node.dataSourceType()
+                            node.dataSourceType(),
+                            null,
+                            nodeHiveConf
                     ));
                 }
             }

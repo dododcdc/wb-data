@@ -2,6 +2,7 @@ import type { FlowParameterBinding, OfflineFlowDependencySettings, OfflineFlowDo
 import type { TransferConfig } from './transfer/transferTypes';
 
 import { buildFlowDocumentSignature } from './flowCanvasState';
+import { cloneHiveConfRecord } from './hiveConf';
 import type { RecoverySnapshot } from './recoverySnapshotStore';
 
 export interface DraftConflict {
@@ -26,6 +27,7 @@ export interface PendingNodeEditorDraft {
     transfer?: TransferConfig;
     transferDraft?: TransferConfig;
     transferDraftValid?: boolean;
+    hiveConf?: Record<string, string>;
 }
 
 function cloneDocument(document: OfflineFlowDocument): OfflineFlowDocument {
@@ -33,7 +35,10 @@ function cloneDocument(document: OfflineFlowDocument): OfflineFlowDocument {
         ...document,
         stages: document.stages.map((stage) => ({
             ...stage,
-            nodes: stage.nodes.map((node) => ({ ...node })),
+            nodes: stage.nodes.map((node) => ({
+                ...node,
+                ...(node.hiveConf ? { hiveConf: cloneHiveConfRecord(node.hiveConf) } : {}),
+            })),
         })),
         edges: document.edges.map((edge) => ({ ...edge })),
         layout: Object.fromEntries(
@@ -124,6 +129,14 @@ export function flushNodeEditorDraft(
                 } else if (input.transferDraftValid === false) {
                     nextNode.transferDraft = input.transferDraft;
                     nextNode.transferDraftValid = false;
+                }
+                if (Object.prototype.hasOwnProperty.call(input, 'hiveConf')) {
+                    const nextHiveConf = node.kind === 'HIVE_SQL' ? cloneHiveConfRecord(input.hiveConf) : undefined;
+                    if (nextHiveConf) {
+                        nextNode.hiveConf = nextHiveConf;
+                    } else {
+                        delete nextNode.hiveConf;
+                    }
                 }
                 return nextNode;
             });

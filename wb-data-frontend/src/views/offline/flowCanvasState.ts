@@ -1,5 +1,6 @@
 import type { Edge, Node } from '@xyflow/react';
 import type { NodePosition, OfflineFlowDocument, OfflineFlowEdge } from '../../api/offline';
+import { serializeHiveConfForSignature } from './hiveConf';
 
 function sortObjectEntries<T>(record: Record<string, T>) {
     return Object.entries(record).sort(([left], [right]) => left.localeCompare(right));
@@ -42,6 +43,7 @@ export function buildFlowDocumentSignature(document: OfflineFlowDocument | null)
                 transfer: node.transfer ?? null,
                 transferDraft: node.transferDraft ?? null,
                 transferDraftValid: node.transferDraftValid ?? null,
+                hiveConf: serializeHiveConfForSignature(node.hiveConf),
             })),
         })),
         edges: buildEdgesFromCanvasEdges(document.edges.map((edge) => ({

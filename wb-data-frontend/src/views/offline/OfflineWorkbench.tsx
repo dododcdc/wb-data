@@ -519,9 +519,14 @@ export default function OfflineWorkbench() {
         setDraftSelectedTaskIds(resolveFlowSelectedTaskIds(flowDocument, taskIds));
     }, [flowDocument, setDraftSelectedTaskIds]);
 
-    const handleNodeEditorTempSave = useCallback((content: string, dataSourceId?: number, dataSourceType?: string) => {
+    const handleNodeEditorTempSave = useCallback((
+        content: string,
+        dataSourceId?: number,
+        dataSourceType?: string,
+        hiveConf?: Record<string, string>,
+    ) => {
         if (!activeNodeId) return;
-        saveNodeEditorDraft(content, dataSourceId, dataSourceType);
+        saveNodeEditorDraft(content, dataSourceId, dataSourceType, hiveConf);
         const activeEditingNode = flattenFlowDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null;
         const validation = validateSqlNodeDataSourceRequirement({
             kind: activeEditingNode?.kind ?? 'SHELL',
@@ -536,8 +541,21 @@ export default function OfflineWorkbench() {
         });
     }, [activeNodeId, flowDocument, saveNodeEditorDraft, showFeedback]);
 
-    const handleNodeEditorDraftChange = useCallback((content: string, dataSourceId?: number, dataSourceType?: string) => {
-        stageNodeEditorDraft(content, dataSourceId, dataSourceType);
+    const handleNodeEditorDraftChange = useCallback((
+        content: string,
+        dataSourceId?: number,
+        dataSourceType?: string,
+        hiveConf?: Record<string, string>,
+    ) => {
+        stageNodeEditorDraft(
+            content,
+            dataSourceId,
+            dataSourceType,
+            undefined,
+            undefined,
+            undefined,
+            hiveConf,
+        );
     }, [stageNodeEditorDraft]);
 
     const handleTransferNodeDraftChange = useCallback((transferDraft: TransferConfig, state: TransferNodeDraftState) => {

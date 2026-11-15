@@ -300,7 +300,7 @@ final class OfflineNodeTaskCompiler {
             if (transferRuntimeSettings.runner() == TransferRunner.DOCKER) {
                 task.put("containerImage", transferRuntimeSettings.hiveSqlImage());
             }
-            task.put("commands", List.of(buildBeelineCommand(dataSource, node.scriptPath())));
+            task.put("commands", List.of(buildBeelineCommand(dataSource, node.scriptPath(), node.hiveConf())));
         }
     }
 
@@ -388,7 +388,10 @@ final class OfflineNodeTaskCompiler {
         return namespaceFiles;
     }
 
-    private String buildBeelineCommand(DataSource dataSource, String scriptPath) {
+    private String buildBeelineCommand(DataSource dataSource,
+                                       String scriptPath,
+                                       Map<String, String> hiveConf) {
+        Map<String, String> normalizedConf = OfflineHiveConfigStore.normalizeAndValidateNodeConf("HIVE_SQL", hiveConf);
         StringBuilder command = new StringBuilder("beeline -u ")
                 .append(shellQuote(buildJdbcUrl(
                         dataSource.getHost(),
@@ -401,6 +404,10 @@ final class OfflineNodeTaskCompiler {
         }
         if (dataSource.getPassword() != null && !dataSource.getPassword().isBlank()) {
             command.append(" -p ").append(shellQuote(dataSource.getPassword()));
+        }
+        for (Map.Entry<String, String> entry : normalizedConf.entrySet()) {
+            command.append(" --hiveconf ")
+                    .append(shellQuote(entry.getKey() + "=" + entry.getValue()));
         }
         command.append(" -f ").append(shellQuote(scriptPath));
         return command.toString();

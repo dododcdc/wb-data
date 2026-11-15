@@ -286,6 +286,78 @@ describe('NodeEditorDialog', () => {
         expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 
+    it('shows collapsible Hive parameter drawer only on HIVE_SQL nodes and emits hiveConf updates', () => {
+        const onDraftChange = vi.fn();
+        const hiveNode: OfflineFlowNode = {
+            taskId: 'hive_1',
+            kind: 'HIVE_SQL',
+            scriptPath: 'scripts/demo/hive_1.sql',
+            scriptContent: 'SELECT 1;',
+            dataSourceId: 2,
+            dataSourceType: 'HIVE',
+            hiveConf: {
+                'hive.exec.dynamic.partition': 'true',
+            },
+        };
+
+        const { rerender } = render(
+            <TooltipProvider>
+                <NodeEditorDialog
+                    open
+                    groupId={1}
+                    activeNode={makeSqlNode()}
+                    content="select 1"
+                    onOpenChange={() => {}}
+                    onTempSave={() => {}}
+                    onContentChange={() => {}}
+                    onDraftChange={onDraftChange}
+                />
+            </TooltipProvider>,
+        );
+
+        expect(screen.queryByTestId('hive-conf-drawer-toggle')).toBeNull();
+        expect(screen.queryByTestId('hive-conf-drawer')).toBeNull();
+
+        rerender(
+            <TooltipProvider>
+                <NodeEditorDialog
+                    open
+                    groupId={1}
+                    activeNode={hiveNode}
+                    content="SELECT 1;"
+                    onOpenChange={() => {}}
+                    onTempSave={() => {}}
+                    onContentChange={() => {}}
+                    onDraftChange={onDraftChange}
+                />
+            </TooltipProvider>,
+        );
+
+        const toggle = screen.getByTestId('hive-conf-drawer-toggle');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(toggle.textContent).toContain('1');
+        expect(screen.queryByTestId('hive-conf-drawer')).toBeNull();
+
+        fireEvent.click(toggle);
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByTestId('hive-conf-drawer')).toBeTruthy();
+
+        const presetsToggle = screen.getByTestId('hive-conf-presets-toggle');
+        expect(presetsToggle.getAttribute('aria-expanded')).toBe('false');
+        fireEvent.click(presetsToggle);
+
+        fireEvent.click(screen.getByRole('button', { name: /非严格分区模式/i }));
+        expect(onDraftChange).toHaveBeenLastCalledWith(
+            'SELECT 1;',
+            2,
+            'HIVE',
+            {
+                'hive.exec.dynamic.partition': 'true',
+                'hive.exec.dynamic.partition.mode': 'nonstrict',
+            },
+        );
+    });
+
     it('renders the SQL format button for SQL nodes and formats HiveSQL with leading commas', () => {
         const onContentChange = vi.fn();
         render(

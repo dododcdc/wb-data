@@ -6,6 +6,8 @@ import com.wbdata.offline.transfer.dto.TransferConfig;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 
+import java.util.Map;
+
 public record SaveOfflineFlowNodeRequest(
         @NotBlank @Pattern(regexp = "^[a-zA-Z0-9_]+$") String taskId,
         String scriptContent,
@@ -13,11 +15,17 @@ public record SaveOfflineFlowNodeRequest(
         String scriptPath,
         Long dataSourceId,
         String dataSourceType,
-        @Valid TransferConfig transfer
+        @Valid TransferConfig transfer,
+        Map<String, String> hiveConf
 ) {
     public SaveOfflineFlowNodeRequest(String taskId, String scriptContent, String kind, String scriptPath,
                                       Long dataSourceId, String dataSourceType) {
-        this(taskId, scriptContent, kind, scriptPath, dataSourceId, dataSourceType, null);
+        this(taskId, scriptContent, kind, scriptPath, dataSourceId, dataSourceType, null, null);
+    }
+
+    public SaveOfflineFlowNodeRequest(String taskId, String scriptContent, String kind, String scriptPath,
+                                      Long dataSourceId, String dataSourceType, TransferConfig transfer) {
+        this(taskId, scriptContent, kind, scriptPath, dataSourceId, dataSourceType, transfer, null);
     }
 
     @AssertTrue(message = "Script nodes require scriptPath and scriptContent")

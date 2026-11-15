@@ -1,5 +1,6 @@
 package com.wbdata.offline.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.datasource.service.DataSourceService;
 import com.wbdata.offline.dto.SaveOfflineFlowEdgeRequest;
@@ -7,6 +8,7 @@ import com.wbdata.offline.dto.SaveOfflineFlowNodeRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowStageRequest;
 import com.wbdata.offline.transfer.dto.TransferConfig;
 import com.wbdata.offline.transfer.service.TransferConfigFileService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
@@ -37,11 +39,20 @@ public class FlowGraphDraftBuilder {
 
     private final DataSourceService dataSourceService;
     private final TransferConfigFileService transferConfigFileService;
+    private final OfflineHiveConfigStore hiveConfigStore;
 
     public FlowGraphDraftBuilder(DataSourceService dataSourceService,
                                  TransferConfigFileService transferConfigFileService) {
+        this(dataSourceService, transferConfigFileService, new OfflineHiveConfigStore(new ObjectMapper()));
+    }
+
+    @Autowired
+    public FlowGraphDraftBuilder(DataSourceService dataSourceService,
+                                 TransferConfigFileService transferConfigFileService,
+                                 OfflineHiveConfigStore hiveConfigStore) {
         this.dataSourceService = dataSourceService;
         this.transferConfigFileService = transferConfigFileService;
+        this.hiveConfigStore = hiveConfigStore;
     }
 
     public GraphDraft prepare(Long groupId,
@@ -60,13 +71,16 @@ public class FlowGraphDraftBuilder {
                 String transferConfigPath = transferNode
                         ? transferConfigFileService.buildPath(flowPath, nodeReq.taskId())
                         : null;
+                Map<String, String> hiveConf = OfflineHiveConfigStore.normalizeAndValidateNodeConf(
+                        nodeReq.kind(), nodeReq.hiveConf());
                 nodes.add(new OfflineFlowNode(
                         nodeReq.taskId(),
                         nodeReq.kind(),
                         nodeReq.scriptPath(),
                         nodeReq.dataSourceId(),
                         nodeReq.dataSourceType(),
-                        transferConfigPath
+                        transferConfigPath,
+                        hiveConf
                 ));
                 if (nodeReq.dataSourceId() != null) {
                     dataSourceIds.add(nodeReq.dataSourceId());
@@ -117,6 +131,7 @@ public class FlowGraphDraftBuilder {
                 .map(OfflineFlowNode::transferConfigPath)
                 .toList();
         transferConfigFileService.deleteStaleForFlow(repoPath, flowPath, activeTransferPaths);
+        hiveConfigStore.writeForNodes(repoPath, flowPath, graphDraft.nodes());
     }
 
     private Path resolveRepoFile(Path repoPath, String path) {

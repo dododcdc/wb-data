@@ -47,6 +47,7 @@ import org.yaml.snakeyaml.Yaml;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -1193,6 +1194,222 @@ class OfflineFlowDocumentServiceTest {
         var reloadResponse = service.getFlowDocument(1L, "_flows/example/flow.yaml");
         assertThat(reloadResponse.parameterBinding().bindings()).hasSize(2);
         assertThat(reloadResponse.parameterBinding().definitions()).hasSize(3);
+    }
+
+    @Test
+    void saveAndCompileFlowDocumentPersistsHiveConfInSidecarAndBeelineCommands() throws Exception {
+        OfflineProperties properties = offlineProperties();
+        RepoLockManager repoLockManager = new RepoLockManager();
+        DataSourceService dataSourceService = mock(DataSourceService.class);
+        DataSource hive = new DataSource();
+        hive.setId(2L);
+        hive.setGroupId(1L);
+        hive.setType("HIVE");
+        hive.setHost("omarchy.local");
+        hive.setPort(10000);
+        hive.setDatabaseName("default");
+        hive.setUsername("hive");
+        hive.setPassword("secret");
+        when(dataSourceService.getById(2L)).thenReturn(hive);
+
+        OfflineFlowDocumentService service = service(
+                properties, repoLockManager, mock(ParameterGroupService.class), dataSourceService);
+
+        Map<String, String> hiveConf = new LinkedHashMap<>();
+        hiveConf.put("hive.exec.dynamic.partition", "true");
+        hiveConf.put("hive.exec.dynamic.partition.mode", "nonstrict");
+
+        OfflineFlowDocumentResponse saved = service.saveFlowDocument(new SaveOfflineFlowDocumentRequest(
+                1L,
+                "_flows/hive_demo/flow.yaml",
+                null,
+                0L,
+                List.of(new SaveOfflineFlowStageRequest(
+                        "main",
+                        List.of(new SaveOfflineFlowNodeRequest(
+                                "hive_1",
+                                "SELECT 1;",
+                                "HIVE_SQL",
+                                "scripts/hive_demo/hive_1.sql",
+                                2L,
+                                "HIVE",
+                                null,
+                                hiveConf
+                        ))
+                )),
+                List.of(),
+                Map.of("hive_1", new NodePosition(120, 80)),
+                null,
+                null,
+                null,
+                "Asia/Shanghai",
+                null
+        ));
+
+        OfflineFlowNodeResponse savedNode = findNodeInResponse(saved, "hive_1");
+        assertThat(savedNode).isNotNull();
+        assertThat(savedNode.hiveConf()).containsExactlyEntriesOf(hiveConf);
+
+        Path repo = properties.resolveRepoPath(1L);
+        Path sidecar = repo.resolve("_flows/hive_demo/.hive-conf.json");
+        assertThat(sidecar).exists();
+        String flowYaml = Files.readString(repo.resolve("_flows/hive_demo/flow.yaml"));
+        assertThat(flowYaml)
+                .contains("--hiveconf 'hive.exec.dynamic.partition=true'")
+                .contains("--hiveconf 'hive.exec.dynamic.partition.mode=nonstrict'")
+                .contains("-f 'scripts/hive_demo/hive_1.sql'");
+
+        assertThat(service.resolveManagedFiles(1L, "_flows/hive_demo/flow.yaml"))
+                .contains("_flows/hive_demo/.hive-conf.json");
+
+        // Debug draft compilation applies updated uncommitted hiveConf immediately
+        OfflineFlowDocumentService.CompiledFlowDraft debugDraft = service.compileFlowDraft(
+                new DebugDocumentExecutionRequest(
+                        1L,
+                        "_flows/hive_demo/flow.yaml",
+                        saved.documentHash(),
+                        saved.documentUpdatedAt(),
+                        List.of(new SaveOfflineFlowStageRequest(
+                                "main",
+                                List.of(new SaveOfflineFlowNodeRequest(
+                                        "hive_1",
+                                        "SELECT 2;",
+                                        "HIVE_SQL",
+                                        "scripts/hive_demo/hive_1.sql",
+                                        2L,
+                                        "HIVE",
+                                        null,
+                                        Map.of("mapreduce.job.queuename", "bi")
+                                ))
+                        )),
+                        List.of(),
+                        saved.layout(),
+                        List.of("hive_1"),
+                        "ALL",
+                        Map.of(),
+                        null
+                )
+        );
+        assertThat(debugDraft.content())
+                .contains("--hiveconf 'mapreduce.job.queuename=bi'")
+                .doesNotContain("hive.exec.dynamic.partition");
+
+        // Clearing hiveConf deletes sidecar and removes flags from flow.yaml
+        OfflineFlowDocumentResponse cleared = service.saveFlowDocument(new SaveOfflineFlowDocumentRequest(
+                1L,
+                "_flows/hive_demo/flow.yaml",
+                saved.documentHash(),
+                saved.documentUpdatedAt(),
+                List.of(new SaveOfflineFlowStageRequest(
+                        "main",
+                        List.of(new SaveOfflineFlowNodeRequest(
+                                "hive_1",
+                                "SELECT 1;",
+                                "HIVE_SQL",
+                                "scripts/hive_demo/hive_1.sql",
+                                2L,
+                                "HIVE",
+                                null,
+                                Map.of()
+                        ))
+                )),
+                List.of(),
+                saved.layout(),
+                null,
+                null,
+                null,
+                "Asia/Shanghai",
+                null
+        ));
+        assertThat(findNodeInResponse(cleared, "hive_1").hiveConf()).isNull();
+        assertThat(sidecar).doesNotExist();
+        assertThat(cleared.documentHash()).isNotEqualTo(saved.documentHash());
+        assertThat(Files.readString(repo.resolve("_flows/hive_demo/flow.yaml")))
+                .doesNotContain("--hiveconf");
+    }
+
+    @Test
+    void legacyStageSavePreservesExistingHiveConfWhenHiveConfIsNull() throws Exception {
+        OfflineProperties properties = offlineProperties();
+        RepoLockManager repoLockManager = new RepoLockManager();
+        DataSourceService dataSourceService = mock(DataSourceService.class);
+        DataSource hive = new DataSource();
+        hive.setId(2L);
+        hive.setGroupId(1L);
+        hive.setType("HIVE");
+        hive.setHost("omarchy.local");
+        hive.setPort(10000);
+        hive.setDatabaseName("default");
+        hive.setUsername("hive");
+        hive.setPassword("secret");
+        when(dataSourceService.getById(2L)).thenReturn(hive);
+
+        OfflineFlowDocumentService service = service(
+                properties, repoLockManager, mock(ParameterGroupService.class), dataSourceService);
+
+        Map<String, String> hiveConf = new LinkedHashMap<>();
+        hiveConf.put("hive.exec.dynamic.partition", "true");
+        OfflineFlowDocumentResponse initial = service.saveFlowDocument(new SaveOfflineFlowDocumentRequest(
+                1L,
+                "_flows/hive_legacy/flow.yaml",
+                null,
+                0L,
+                List.of(new SaveOfflineFlowStageRequest(
+                        "main",
+                        List.of(new SaveOfflineFlowNodeRequest(
+                                "hive_1",
+                                "SELECT 1;",
+                                "HIVE_SQL",
+                                "scripts/hive_legacy/hive_1.sql",
+                                2L,
+                                "HIVE",
+                                null,
+                                hiveConf
+                        ))
+                )),
+                List.of(),
+                Map.of("hive_1", new NodePosition(120, 80)),
+                null,
+                null,
+                null,
+                "Asia/Shanghai",
+                null
+        ));
+
+        // Legacy stage-only save (edges == null) with omitted hiveConf (null) preserves existing .hive-conf.json
+        OfflineFlowDocumentResponse legacySaved = service.saveFlowDocument(new SaveOfflineFlowDocumentRequest(
+                1L,
+                "_flows/hive_legacy/flow.yaml",
+                initial.documentHash(),
+                initial.documentUpdatedAt(),
+                List.of(new SaveOfflineFlowStageRequest(
+                        initial.stages().getFirst().stageId(),
+                        List.of(new SaveOfflineFlowNodeRequest(
+                                "hive_1",
+                                "SELECT 2;",
+                                "HIVE_SQL",
+                                "scripts/hive_legacy/hive_1.sql",
+                                2L,
+                                "HIVE",
+                                null
+                        ))
+                )),
+                null,
+                null,
+                null,
+                null,
+                null,
+                "Asia/Shanghai",
+                null
+        ));
+
+        assertThat(findNodeInResponse(legacySaved, "hive_1").hiveConf())
+                .containsExactlyEntriesOf(hiveConf);
+        Path repo = properties.resolveRepoPath(1L);
+        assertThat(repo.resolve("_flows/hive_legacy/.hive-conf.json")).exists();
+        assertThat(Files.readString(repo.resolve("_flows/hive_legacy/flow.yaml")))
+                .contains("--hiveconf 'hive.exec.dynamic.partition=true'")
+                .contains("-f 'scripts/hive_legacy/hive_1.sql'");
     }
 
     private DataSource mysqlDataSource() {

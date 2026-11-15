@@ -58,6 +58,7 @@ export function buildDraftExecutionRequest({
                 dataSourceId: node.dataSourceId,
                 dataSourceType: node.dataSourceType,
                 transfer: node.transfer,
+                ...(node.hiveConf && Object.keys(node.hiveConf).length > 0 ? { hiveConf: node.hiveConf } : {}),
             })),
         })),
         edges: draftDocument.edges,

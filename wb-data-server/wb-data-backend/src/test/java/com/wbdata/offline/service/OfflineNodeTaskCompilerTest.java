@@ -417,4 +417,33 @@ class OfflineNodeTaskCompilerTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("只能绑定 MYSQL 数据源");
     }
+
+    @Test
+    void compile_emitsQuotedHiveConfFlagsBeforeScriptAndPreservesWhenParametersRendered() {
+        OfflineNodeTaskCompiler compiler = new OfflineNodeTaskCompiler();
+        DataSource hive = dataSource(2L, "HIVE");
+        hive.setPort(10000);
+        Map<String, String> hiveConf = new LinkedHashMap<>();
+        hiveConf.put("hive.exec.dynamic.partition.mode", "nonstrict");
+        hiveConf.put("mapred.job.name", "daily's job; part=1");
+
+        OfflineFlowNode node = new OfflineFlowNode(
+                "hive_1", "HIVE_SQL", "scripts/hive_1.sql", 2L, "HIVE", null, hiveConf);
+
+        Map<String, Object> plain = compiler.compile(null, node, Map.of(2L, hive));
+        assertThat((List<String>) plain.get("commands")).containsExactly(
+                "beeline -u 'jdbc:hive2://db.example:10000/warehouse' -n 'analyst' -p 'existing-password'"
+                        + " --hiveconf 'hive.exec.dynamic.partition.mode=nonstrict'"
+                        + " --hiveconf 'mapred.job.name=daily'\"'\"'s job; part=1'"
+                        + " -f 'scripts/hive_1.sql'"
+        );
+
+        Map<String, Object> parameterized = compiler.compile(null, node, Map.of(2L, hive), "{\"v_day\":\"20261114\"}", true);
+        assertThat((List<String>) parameterized.get("commands")).last().asString().isEqualTo(
+                "beeline -u 'jdbc:hive2://db.example:10000/warehouse' -n 'analyst' -p 'existing-password'"
+                        + " --hiveconf 'hive.exec.dynamic.partition.mode=nonstrict'"
+                        + " --hiveconf 'mapred.job.name=daily'\"'\"'s job; part=1'"
+                        + " -f '/tmp/wb-data-script/hive_1.sql'"
+        );
+    }
 }

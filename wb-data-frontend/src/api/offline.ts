@@ -133,6 +133,7 @@ export interface OfflineFlowNode {
     transfer?: TransferConfig;
     transferDraft?: TransferConfig;
     transferDraftValid?: boolean;
+    hiveConf?: Record<string, string>;
 }
 
 export interface OfflineFlowEdge {
@@ -229,6 +230,7 @@ export interface SaveOfflineFlowNodeRequest {
     dataSourceId?: number;
     dataSourceType?: string;
     transfer?: TransferConfig;
+    hiveConf?: Record<string, string>;
 }
 
 export interface SaveOfflineFlowStageRequest {

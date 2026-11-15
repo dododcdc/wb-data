@@ -69,7 +69,9 @@ class GitWorkingTreeStatus {
             if ("flow.yaml".equals(fileName)) {
                 return path.toString();
             }
-            if ((".layout.json".equals(fileName) || ".parameters.json".equals(fileName))
+            if ((".layout.json".equals(fileName)
+                    || ".parameters.json".equals(fileName)
+                    || ".hive-conf.json".equals(fileName))
                     && path.getParent() != null) {
                 return path.getParent().resolve("flow.yaml").toString();
             }

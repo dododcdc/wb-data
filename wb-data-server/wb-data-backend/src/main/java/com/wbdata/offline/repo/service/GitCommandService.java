@@ -117,7 +117,7 @@ public class GitCommandService extends GitRepositoryOperations {
     private CommitResult commitCurrentFlowUnlocked(Long groupId, String flowPath, String commitMessage) {
         Path repoPath = repoPath(groupId);
         ensureRepoExists(repoPath);
-        List<String> trackedFiles = offlineFlowDocumentService.resolveManagedFiles(groupId, flowPath);
+        List<String> trackedFiles = resolveFlowTrackedFiles(repoPath, groupId, flowPath);
 
         ensureNoOutOfScopeStagedChanges(repoPath, trackedFiles);
 
@@ -138,8 +138,28 @@ public class GitCommandService extends GitRepositoryOperations {
     private boolean hasFlowChangesUnlocked(Long groupId, String flowPath) {
         Path repoPath = repoPath(groupId);
         ensureRepoExists(repoPath);
-        List<String> trackedFiles = offlineFlowDocumentService.resolveManagedFiles(groupId, flowPath);
+        List<String> trackedFiles = resolveFlowTrackedFiles(repoPath, groupId, flowPath);
         return !runGitWithPaths(repoPath, List.of("status", "--porcelain"), trackedFiles).isBlank();
+    }
+
+    private List<String> resolveFlowTrackedFiles(Path repoPath, Long groupId, String flowPath) {
+        LinkedHashSet<String> tracked = new LinkedHashSet<>(offlineFlowDocumentService.resolveManagedFiles(groupId, flowPath));
+        Path parent = Path.of(flowPath).normalize().getParent();
+        if (parent != null) {
+            String flowDir = parent.toString().replace('\\', '/');
+            String trackedSidecars = runGit(
+                    repoPath,
+                    "ls-files",
+                    "--",
+                    flowDir + "/.hive-conf.json",
+                    flowDir + "/.parameters.json"
+            );
+            trackedSidecars.lines()
+                    .map(String::trim)
+                    .filter(line -> !line.isEmpty())
+                    .forEach(tracked::add);
+        }
+        return List.copyOf(tracked);
     }
 
     private String normalizeCommitMessage(String commitMessage) {

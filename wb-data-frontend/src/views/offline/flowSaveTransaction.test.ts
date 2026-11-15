@@ -335,6 +335,65 @@ describe('flowSaveTransaction', () => {
         })).toBe(true);
     });
 
+    it('flushes, persists, and detects clearing of hiveConf on HIVE_SQL nodes', () => {
+        const session = makeSession();
+        session.baseDocument.stages[0].nodes.push({
+            taskId: 'hive_node_1',
+            kind: 'HIVE_SQL',
+            scriptPath: 'scripts/demo/hive_node_1.sql',
+            scriptContent: 'SELECT 1;',
+            dataSourceId: 2,
+            dataSourceType: 'HIVE',
+            hiveConf: { 'hive.exec.dynamic.partition': 'true' },
+        });
+        session.workingDraft.stages[0].nodes.push({
+            taskId: 'hive_node_1',
+            kind: 'HIVE_SQL',
+            scriptPath: 'scripts/demo/hive_node_1.sql',
+            scriptContent: 'SELECT 1;',
+            dataSourceId: 2,
+            dataSourceType: 'HIVE',
+            hiveConf: { 'hive.exec.dynamic.partition': 'true' },
+        });
+
+        expect(hasPendingNodeEditorDraftChanges(session, {
+            taskId: 'hive_node_1',
+            scriptContent: 'SELECT 1;',
+            dataSourceId: 2,
+            dataSourceType: 'HIVE',
+            hiveConf: { 'hive.exec.dynamic.partition': 'true' },
+        })).toBe(false);
+
+        expect(hasPendingNodeEditorDraftChanges(session, {
+            taskId: 'hive_node_1',
+            scriptContent: 'SELECT 1;',
+            dataSourceId: 2,
+            dataSourceType: 'HIVE',
+            hiveConf: undefined,
+        })).toBe(true);
+
+        const updatedSession = flushNodeEditorDraft(session, {
+            taskId: 'hive_node_1',
+            scriptContent: 'SELECT 1;',
+            dataSourceId: 2,
+            dataSourceType: 'HIVE',
+            hiveConf: { 'hive.exec.dynamic.partition.mode': 'nonstrict' },
+        });
+        const request = buildSaveFlowDocumentRequest(1, updatedSession);
+        expect(request.stages[0].nodes[1].hiveConf).toEqual({
+            'hive.exec.dynamic.partition.mode': 'nonstrict',
+        });
+
+        const clearedSession = flushNodeEditorDraft(updatedSession, {
+            taskId: 'hive_node_1',
+            scriptContent: 'SELECT 1;',
+            dataSourceId: 2,
+            dataSourceType: 'HIVE',
+            hiveConf: undefined,
+        });
+        expect(clearedSession.workingDraft.stages[0].nodes[1].hiveConf).toBeUndefined();
+    });
+
     it('recognizes HTTP 409 save conflicts', () => {
         const conflict = new AxiosError('conflict', undefined, undefined, undefined, {
             data: {},

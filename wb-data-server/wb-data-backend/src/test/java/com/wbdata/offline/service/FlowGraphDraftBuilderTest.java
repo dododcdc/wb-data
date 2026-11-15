@@ -97,6 +97,31 @@ class FlowGraphDraftBuilderTest {
         assertThat(draft.namespaceFileContents()).doesNotContainKey("transfers/example/transfer_1.transfer.json");
     }
 
+    @Test
+    void prepareValidatesHiveConfAndNormalizesOnlyForHiveSqlNodes() throws Exception {
+        DataSource hive = dataSource(22L, 1L);
+        hive.setType("HIVE");
+        when(dataSourceService.getById(22L)).thenReturn(hive);
+
+        var hiveNode = new SaveOfflineFlowNodeRequest(
+                "hive_1", "select 1", "HIVE_SQL", "scripts/example/hive_1.sql", 22L, "HIVE",
+                null, Map.of(" hive.exec.dynamic.partition.mode ", "nonstrict"));
+        var draft = builder.prepare(1L, "_flows/example/flow.yaml",
+                List.of(new SaveOfflineFlowStageRequest("main", List.of(hiveNode))),
+                List.of());
+        assertThat(draft.nodes().get(0).hiveConf())
+                .containsExactlyInAnyOrderEntriesOf(Map.of("hive.exec.dynamic.partition.mode", "nonstrict"));
+
+        var mysqlNodeWithHiveConf = new SaveOfflineFlowNodeRequest(
+                "mysql_1", "select 1", "MYSQL", "scripts/example/mysql_1.sql", null, "MYSQL",
+                null, Map.of("hive.exec.dynamic.partition", "true"));
+        assertThatThrownBy(() -> builder.prepare(1L, "_flows/example/flow.yaml",
+                List.of(new SaveOfflineFlowStageRequest("main", List.of(mysqlNodeWithHiveConf))),
+                List.of()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("仅 HiveSQL 节点");
+    }
+
     private SaveOfflineFlowNodeRequest node(String taskId, String kind, Long dataSourceId) {
         return new SaveOfflineFlowNodeRequest(taskId, "select 1", kind,
                 "scripts/example/" + taskId + ".sql", dataSourceId, "HIVE_SQL".equals(kind) ? "HIVE" : "MYSQL");

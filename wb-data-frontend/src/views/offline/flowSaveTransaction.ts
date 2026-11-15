@@ -7,6 +7,7 @@ import type {
 } from '../../api/offline';
 import type { TransferConfig } from './transfer/transferTypes';
 import { flattenFlowDocumentNodes } from './flowDocumentMutations';
+import { areHiveConfsEqual } from './hiveConf';
 import {
     flushNodeEditorDraft,
     type FlowDraftSession,
@@ -21,6 +22,7 @@ export interface PendingNodeOverrideForSave {
     transfer?: TransferConfig;
     transferDraft?: TransferConfig;
     transferDraftValid?: boolean;
+    hiveConf?: Record<string, string>;
 }
 
 interface PreparedFlowSessionForSave {
@@ -38,6 +40,7 @@ function toNodeOverride(draft: PendingNodeEditorDraft): PendingNodeOverrideForSa
         transfer: draft.transfer,
         transferDraft: draft.transferDraft,
         transferDraftValid: draft.transferDraftValid,
+        hiveConf: draft.hiveConf,
     };
 }
 
@@ -50,6 +53,7 @@ function toPendingDraft(override: PendingNodeOverrideForSave): PendingNodeEditor
         transfer: override.transfer,
         transferDraft: override.transferDraft,
         transferDraftValid: override.transferDraftValid,
+        hiveConf: override.hiveConf,
     };
 }
 
@@ -102,6 +106,7 @@ export function buildSaveFlowDocumentRequest(
                 dataSourceId: node.dataSourceId,
                 dataSourceType: node.dataSourceType,
                 ...(node.transfer !== undefined ? { transfer: node.transfer } : {}),
+                ...(node.hiveConf && Object.keys(node.hiveConf).length > 0 ? { hiveConf: node.hiveConf } : {}),
             })),
         })),
         edges: draftDocument.edges,
@@ -175,6 +180,7 @@ export function hasPendingNodeEditorDraftChanges(
                 || JSON.stringify(node.transfer) !== JSON.stringify(pendingDraft.transfer)
                 || JSON.stringify(node.transferDraft) !== JSON.stringify(pendingDraft.transferDraft)
                 || node.transferDraftValid !== pendingDraft.transferDraftValid
+                || ('hiveConf' in pendingDraft && !areHiveConfsEqual(node.hiveConf, pendingDraft.hiveConf))
             )),
     );
 }
@@ -199,6 +205,7 @@ export function findFirstNodeWithInvalidTransferEditorDraft(
             transfer: nodeOverride.transfer,
             transferDraft: nodeOverride.transferDraft,
             transferDraftValid: nodeOverride.transferDraftValid,
+            hiveConf: nodeOverride.hiveConf,
         };
     });
 

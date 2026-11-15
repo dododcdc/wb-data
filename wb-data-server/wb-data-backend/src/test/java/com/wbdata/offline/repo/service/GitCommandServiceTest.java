@@ -79,6 +79,31 @@ class GitCommandServiceTest {
     }
 
     @Test
+    void commitCurrentFlow_commitsDeletionWhenHiveConfSidecarClearedFromDisk() throws Exception {
+        OfflineProperties properties = new OfflineProperties();
+        properties.setRepoBaseDir(tempDir.toString());
+        properties.setRepoDirPrefix("wb-data-");
+        OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
+        GitCommandService service = new GitCommandService(properties, Mockito.mock(OfflineGitRemotePort.class), flowDocumentService, publishRecordService(), new RepoLockManager());
+
+        Path repo = properties.resolveRepoPath(1L);
+        initRepo(repo);
+        write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
+        write(repo, "_flows/example/.hive-conf.json", "{\"schemaVersion\":1}\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "with hive conf");
+
+        Files.delete(repo.resolve("_flows/example/.hive-conf.json"));
+        when(flowDocumentService.resolveManagedFiles(1L, "_flows/example/flow.yaml"))
+                .thenReturn(List.of("_flows/example/flow.yaml"));
+
+        assertThat(service.hasFlowChanges(1L, "_flows/example/flow.yaml")).isTrue();
+        service.commitCurrentFlow(1L, "_flows/example/flow.yaml", "clear hive conf");
+        assertThat(git(repo, "status", "--porcelain")).isBlank();
+        assertThat(git(repo, "log", "-1", "--pretty=%s")).isEqualTo("clear hive conf");
+    }
+
+    @Test
     void push_pushesCurrentHeadBranch() throws Exception {
         OfflineProperties properties = new OfflineProperties();
         properties.setRepoBaseDir(tempDir.toString());

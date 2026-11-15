@@ -73,7 +73,10 @@ function cloneFlowDocument(document: OfflineFlowDocument): OfflineFlowDocument {
         ...document,
         stages: document.stages.map((stage) => ({
             ...stage,
-            nodes: stage.nodes.map((node) => ({ ...node })),
+            nodes: stage.nodes.map((node) => ({
+                ...node,
+                ...(node.hiveConf ? { hiveConf: { ...node.hiveConf } } : {}),
+            })),
         })),
         edges: (document.edges ?? []).map((edge) => ({ ...edge })),
         layout: Object.fromEntries(
