@@ -4,6 +4,8 @@ import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.dto.OfflineFlowDocumentResponse;
 import com.wbdata.offline.dto.OfflineFlowFileSnapshot;
 import com.wbdata.offline.dto.OfflineFlowVersionSnapshotResponse;
+import com.wbdata.offline.dto.RollbackOfflineFlowRequest;
+import com.wbdata.offline.dto.RollbackOfflineFlowResponse;
 import com.wbdata.offline.parameter.dto.FlowParameterBindingItemResponse;
 import com.wbdata.offline.parameter.dto.FlowParameterBindingResponse;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
@@ -64,6 +66,27 @@ public class OfflineFlowSnapshotService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "文件不属于该任务快照");
         }
         return readFile(groupId, fileAccess, filePath, true);
+    }
+
+    public RollbackOfflineFlowResponse rollbackFlow(
+            RollbackOfflineFlowRequest request,
+            OfflineFlowDocumentService.DependencyRollbackValidator dependencyValidator) {
+        String revision = request.revision() == null ? null : request.revision().trim();
+        if (revision == null || revision.isBlank() || "WORKTREE".equals(revision)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "仅支持回滚到历史提交版本");
+        }
+        RollbackOfflineFlowRequest normalizedRequest = new RollbackOfflineFlowRequest(
+                request.groupId(),
+                request.path(),
+                revision,
+                request.documentHash(),
+                request.documentUpdatedAt()
+        );
+        return flowDocumentService.rollbackFlowDocument(
+                normalizedRequest,
+                new GitRevisionSnapshotFileAccess(request.groupId(), revision, gitCommandService),
+                dependencyValidator
+        );
     }
 
     private SnapshotFileAccess fileAccess(Long groupId, String revision) {

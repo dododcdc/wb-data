@@ -30,6 +30,7 @@ import {
     formatFlowDisplayName,
     formatRevisionTag,
     formatVersionInlineText,
+    isDevelopmentVersion,
     type VersionSelection,
 } from './versionComparePresentation';
 import './OfflineVersionCompareDialog.css';
@@ -50,8 +51,10 @@ interface OfflineVersionCompareDialogProps {
     base: VersionSelection;
     target: VersionSelection;
     open: boolean;
+    canWrite?: boolean;
     onOpenChange: (open: boolean) => void;
     onBeforeLoadWorktree?: () => Promise<boolean>;
+    onRollback?: (selection: VersionSelection) => void;
 }
 
 function collectReferencedDataSourceIds(snapshots: (OfflineFlowVersionSnapshot | null)[]): number[] {
@@ -85,8 +88,10 @@ export function OfflineVersionCompareDialog({
     base,
     target,
     open,
+    canWrite = false,
     onOpenChange,
     onBeforeLoadWorktree,
+    onRollback,
 }: OfflineVersionCompareDialogProps) {
     const [activePair, setActivePair] = useState<{ base: VersionSelection; target: VersionSelection }>({ base, target });
     const [syncedPropPair, setSyncedPropPair] = useState(() => ({
@@ -545,6 +550,31 @@ export function OfflineVersionCompareDialog({
                             onRetry={handleRetryVersions}
                             onSelect={(selection) => handleSelectSideVersion('target', selection)}
                         />
+                        {(() => {
+                            if (!canWrite || !onRollback) return null;
+                            const baseIsCommit = !isDevelopmentVersion(activePair.base);
+                            const targetIsCommit = !isDevelopmentVersion(activePair.target);
+                            const candidate = activePair.target.revision === 'WORKTREE' && baseIsCommit
+                                ? activePair.base
+                                : activePair.base.revision === 'WORKTREE' && targetIsCommit
+                                    ? activePair.target
+                                    : baseIsCommit
+                                        ? activePair.base
+                                        : targetIsCommit
+                                            ? activePair.target
+                                            : null;
+                            if (!candidate) return null;
+                            return (
+                                <button
+                                    type="button"
+                                    className="offline-compare-rollback-btn"
+                                    onClick={() => onRollback(candidate)}
+                                >
+                                    <RotateCcw size={13} aria-hidden="true" />
+                                    <span>回滚到 {formatRevisionTag(candidate.revision)}</span>
+                                </button>
+                            );
+                        })()}
                     </div>
                 </DialogHeader>
 

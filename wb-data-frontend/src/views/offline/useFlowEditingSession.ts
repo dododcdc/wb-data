@@ -215,7 +215,16 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         payload: OfflineFlowDocument,
         options?: { preferRecoverySnapshot?: boolean },
     ) => {
-        const snapshot = groupId && (options?.preferRecoverySnapshot ?? true)
+        const preferRecovery = options?.preferRecoverySnapshot ?? true;
+        if (!preferRecovery) {
+            cancelNodeEditorDraftFlush();
+            resetNodeEditorState();
+            if (groupId) {
+                removeRecoverySnapshot(groupId, path);
+            }
+            setSaveConflictState((current) => (current && current.path === path ? null : current));
+        }
+        const snapshot = groupId && preferRecovery
             ? readRecoverySnapshot(groupId, path)
             : null;
         const nextSession = createFlowDraftSession({
@@ -230,7 +239,14 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         setDraftSaveState('idle');
         setDraftSavedAt(null);
         setDraftSaveError(null);
-    }, [clearPendingNodeEditorDraft, groupId, setDraftSessionSync, syncCanvasRefsFromDocument]);
+    }, [
+        cancelNodeEditorDraftFlush,
+        clearPendingNodeEditorDraft,
+        groupId,
+        resetNodeEditorState,
+        setDraftSessionSync,
+        syncCanvasRefsFromDocument,
+    ]);
 
     const leaveCurrentFlow = useCallback((
         session?: FlowDraftSession | null,

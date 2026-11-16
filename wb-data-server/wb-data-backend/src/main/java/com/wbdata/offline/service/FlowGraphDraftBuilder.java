@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 @Component
@@ -101,10 +102,8 @@ public class FlowGraphDraftBuilder {
 
         Map<Long, DataSource> dataSourceMap = new LinkedHashMap<>();
         for (Long dsId : dataSourceIds) {
-            DataSource ds = dataSourceService.getById(dsId);
-            if (ds == null || groupId == null || !groupId.equals(ds.getGroupId())) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "数据源不存在");
-            }
+            DataSource ds = findGroupDataSource(groupId, dsId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "数据源不存在"));
             dataSourceMap.put(dsId, ds);
         }
 
@@ -115,12 +114,28 @@ public class FlowGraphDraftBuilder {
         return new GraphDraft(nodes, edges, dataSourceMap, scriptFileContents, transferConfigs, namespaceFileContents);
     }
 
+    public Optional<DataSource> findGroupDataSource(Long groupId, Long dataSourceId) {
+        if (dataSourceId == null || groupId == null) {
+            return Optional.empty();
+        }
+        DataSource ds = dataSourceService.getById(dataSourceId);
+        if (ds == null || !groupId.equals(ds.getGroupId())) {
+            return Optional.empty();
+        }
+        return Optional.of(ds);
+    }
+
+    public boolean isValidGroupDataSource(Long groupId, Long dataSourceId) {
+        return findGroupDataSource(groupId, dataSourceId).isPresent();
+    }
+
     public void writeFiles(Path repoPath, Long groupId, String flowPath, GraphDraft graphDraft) throws IOException {
         for (Map.Entry<String, String> entry : graphDraft.scriptFileContents().entrySet()) {
             Path scriptFile = resolveRepoFile(repoPath, entry.getKey());
             Files.createDirectories(scriptFile.getParent());
             Files.writeString(scriptFile, entry.getValue(), StandardCharsets.UTF_8);
         }
+        deleteStaleScriptsForFlow(repoPath, flowPath, graphDraft.scriptFileContents().keySet());
         for (Map.Entry<String, TransferConfig> entry : graphDraft.transferConfigs().entrySet()) {
             if (entry.getValue() != null) {
                 transferConfigFileService.write(repoPath, groupId, flowPath, entry.getKey(), entry.getValue());
@@ -132,6 +147,33 @@ public class FlowGraphDraftBuilder {
                 .toList();
         transferConfigFileService.deleteStaleForFlow(repoPath, flowPath, activeTransferPaths);
         hiveConfigStore.writeForNodes(repoPath, flowPath, graphDraft.nodes());
+    }
+
+    public void deleteStaleScriptsForFlow(Path repoPath, String flowPath, Set<String> activeScriptPaths) throws IOException {
+        Path normalizedFlow = Path.of(flowPath).normalize();
+        Path flowParent = normalizedFlow.getParent();
+        if (flowParent == null || !flowParent.startsWith("_flows") || flowParent.getNameCount() < 2) {
+            return;
+        }
+        String relativeFlowDir = Path.of("_flows").relativize(flowParent).toString().replace('\\', '/');
+        Path scriptDir = repoPath.resolve("scripts").resolve(relativeFlowDir).normalize();
+        if (!scriptDir.startsWith(repoPath) || !Files.isDirectory(scriptDir)) {
+            return;
+        }
+        Set<String> normalizedActive = new LinkedHashSet<>();
+        for (String activePath : activeScriptPaths) {
+            if (activePath != null && !activePath.isBlank()) {
+                normalizedActive.add(Path.of(activePath).normalize().toString().replace('\\', '/'));
+            }
+        }
+        try (var files = Files.walk(scriptDir)) {
+            for (Path file : files.filter(Files::isRegularFile).toList()) {
+                String relativePath = repoPath.relativize(file).toString().replace('\\', '/');
+                if (!normalizedActive.contains(relativePath)) {
+                    Files.deleteIfExists(file);
+                }
+            }
+        }
     }
 
     private Path resolveRepoFile(Path repoPath, String path) {

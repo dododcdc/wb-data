@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { AlertTriangle, GitCompare, LoaderCircle, RotateCcw, X } from 'lucide-react';
 import '../core/RouteSkeletons.css';
+import { Button } from '../../components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '../../components/ui/dialog';
 import {
     ResizableHandle,
     ResizablePanel,
@@ -8,12 +18,14 @@ import {
 } from '../../components/ui/resizable';
 import {
     getOfflineRepoTree,
+    rollbackOfflineFlow,
     type FlowParameterBinding,
     type OfflineRepoTreeResponse,
     type OfflineScheduleResponse,
 } from '../../api/offline';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { useAuthStore } from '../../utils/auth';
+import { getErrorMessage } from '../../utils/error';
 import { NodeEditorDialog } from './NodeEditorDialog';
 import type { TransferConfig } from './transfer/transferTypes';
 import type { TransferNodeDraftState } from './transfer/TransferNodeDialog';
@@ -37,6 +49,7 @@ import { ExecutionTimeContextDialog } from './ExecutionTimeContextDialog';
 import { OfflineRepositoryDialogs } from './OfflineRepositoryDialogs';
 import { OfflineVersionHistoryDrawer } from './OfflineVersionHistoryDrawer';
 import { OfflineVersionCompareDialog, type VersionSelection } from './OfflineVersionCompareDialog';
+import { buildWorktreeVersionSelection, formatRevisionTag } from './versionComparePresentation';
 import { OfflineWorkbenchMainPanel } from './OfflineWorkbenchMainPanel';
 import { preloadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
@@ -92,6 +105,9 @@ export default function OfflineWorkbench() {
     const [repoCommitDialogOpen, setRepoCommitDialogOpen] = useState(false);
     const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
     const [versionCompare, setVersionCompare] = useState<{ base: VersionSelection; target: VersionSelection; open: boolean } | null>(null);
+    const [rollbackTarget, setRollbackTarget] = useState<VersionSelection | null>(null);
+    const [rollingBack, setRollingBack] = useState(false);
+    const [rollbackNodeIssues, setRollbackNodeIssues] = useState<Record<string, string>>({});
     const [commitMessage, setCommitMessage] = useState('');
     const [committing, setCommitting] = useState(false);
     const [parameterDialogOpen, setParameterDialogOpen] = useState(false);
@@ -142,6 +158,7 @@ export default function OfflineWorkbench() {
         flowLoading,
         draftSession,
         setDraftSession,
+        savingFlow,
         nodeEditorOpen,
         nodeEditorContent,
         flowCommitDirty,
@@ -158,6 +175,7 @@ export default function OfflineWorkbench() {
         canvasEdgesRef,
         setSelectedNodeId: setDraftSelectedNodeId,
         setSelectedTaskIds: setDraftSelectedTaskIds,
+        applyFlowDocumentPayload,
         leaveCurrentFlow,
         openFlowDocument: openFlowDocumentFromSession,
         resetAfterBranchSwitch,
@@ -206,6 +224,8 @@ export default function OfflineWorkbench() {
         setOnlineScheduleDialogOpen(false);
         setOnlineDependencyDialogOpen(false);
         setOnlineParameterDialogOpen(false);
+        setRollbackNodeIssues({});
+        setRollbackTarget(null);
     }, [groupId, activeFlowPath]);
 
     useEffect(() => {
@@ -372,6 +392,18 @@ export default function OfflineWorkbench() {
         setOnlineNodeEditorOpen(true);
     }, []);
 
+    const activeRollbackIssues = useMemo(() => {
+        if (!flowDocument) return {};
+        const existingTaskIds = new Set(flattenFlowDocumentNodes(flowDocument).map((node) => node.taskId));
+        const active: Record<string, string> = {};
+        for (const [taskId, reason] of Object.entries(rollbackNodeIssues)) {
+            if (existingTaskIds.has(taskId) && reason) {
+                active[taskId] = reason;
+            }
+        }
+        return active;
+    }, [flowDocument, rollbackNodeIssues]);
+
     const nodeIssues = useMemo(() => {
         if (!flowDocument) return {};
         const issues: Record<string, string | null> = {};
@@ -388,10 +420,14 @@ export default function OfflineWorkbench() {
             });
             if (!validation.allowed && validation.feedback) {
                 issues[node.taskId] = validation.feedback.detail || validation.feedback.title;
+                return;
+            }
+            if (activeRollbackIssues[node.taskId]) {
+                issues[node.taskId] = activeRollbackIssues[node.taskId];
             }
         });
         return issues;
-    }, [flowDocument]);
+    }, [activeRollbackIssues, flowDocument]);
 
     const nodeStatuses = useMemo(() => {
         if (!executionDetail?.taskRuns) return {};
@@ -611,6 +647,82 @@ export default function OfflineWorkbench() {
         setDraftSelectedTaskIds(resolveFlowSelectedTaskIds(flowDocument, taskIds));
     }, [flowDocument, setDraftSelectedTaskIds]);
 
+    const clearRollbackNodeIssue = useCallback((taskId: string) => {
+        setRollbackNodeIssues((current) => {
+            if (!(taskId in current)) return current;
+            const next = { ...current };
+            delete next[taskId];
+            return next;
+        });
+    }, []);
+
+    const handleConfirmRollback = useCallback(async () => {
+        if (!groupId || !activeFlowPath || !rollbackTarget || rollingBack || savingFlow) return;
+        const target = rollbackTarget;
+        const targetPath = activeFlowPath;
+        const targetGroupId = groupId;
+        setRollingBack(true);
+        try {
+            const response = await rollbackOfflineFlow({
+                groupId: targetGroupId,
+                path: targetPath,
+                revision: target.revision,
+                documentHash: draftSession?.baseDocument?.documentHash,
+                documentUpdatedAt: draftSession?.baseDocument?.documentUpdatedAt,
+            });
+            applyFlowDocumentPayload(targetPath, response.document, { preferRecoverySnapshot: false });
+            setRollbackNodeIssues(response.nodeIssues ?? {});
+            setCanvasMode('dev');
+            setRollbackTarget(null);
+            setVersionHistoryOpen(false);
+            setVersionCompare(null);
+            await Promise.all([
+                loadScheduleSnapshot(targetPath),
+                refreshRepoStatus(),
+                refreshFlowCommitStatus(),
+            ]);
+            const shortSha = target.shortRevision?.trim() || formatRevisionTag(target.revision);
+            if (response.warnings?.length) {
+                showFeedback({
+                    tone: 'info',
+                    title: `已回滚到版本 ${shortSha}（含 ${response.warnings.length} 项兼容提示）`,
+                    detail: response.warnings.join('；'),
+                });
+            } else {
+                showSuccess(`已回滚到版本 ${shortSha}`, '仅更新当前工作区草稿，确认无误后再提交和推送');
+            }
+        } catch (error) {
+            showFeedback({
+                tone: 'error',
+                title: '版本回滚失败',
+                detail: getErrorMessage(error, ''),
+            });
+        } finally {
+            setRollingBack(false);
+        }
+    }, [
+        activeFlowPath,
+        applyFlowDocumentPayload,
+        draftSession?.baseDocument?.documentHash,
+        draftSession?.baseDocument?.documentUpdatedAt,
+        groupId,
+        loadScheduleSnapshot,
+        refreshFlowCommitStatus,
+        refreshRepoStatus,
+        rollbackTarget,
+        rollingBack,
+        savingFlow,
+        showFeedback,
+        showSuccess,
+    ]);
+
+    const handleCompareRollbackWithWorktree = useCallback(() => {
+        if (!rollbackTarget) return;
+        const target = rollbackTarget;
+        setRollbackTarget(null);
+        void handleCompareVersions(target, buildWorktreeVersionSelection({ dirty: isDirty || flowCommitDirty }));
+    }, [flowCommitDirty, handleCompareVersions, isDirty, rollbackTarget]);
+
     const handleNodeEditorTempSave = useCallback((
         content: string,
         dataSourceId?: number,
@@ -619,6 +731,7 @@ export default function OfflineWorkbench() {
     ) => {
         if (!activeNodeId) return;
         saveNodeEditorDraft(content, dataSourceId, dataSourceType, hiveConf);
+        clearRollbackNodeIssue(activeNodeId);
         const activeEditingNode = flattenFlowDocumentNodes(flowDocument).find((node) => node.taskId === activeNodeId) ?? null;
         const validation = validateSqlNodeDataSourceRequirement({
             kind: activeEditingNode?.kind ?? 'SHELL',
@@ -631,7 +744,7 @@ export default function OfflineWorkbench() {
             title: '草稿已暂存',
             detail: '自动保存后生效',
         });
-    }, [activeNodeId, flowDocument, saveNodeEditorDraft, showFeedback]);
+    }, [activeNodeId, clearRollbackNodeIssue, flowDocument, saveNodeEditorDraft, showFeedback]);
 
     const handleNodeEditorDraftChange = useCallback((
         content: string,
@@ -659,7 +772,10 @@ export default function OfflineWorkbench() {
             transferDraft,
             state.valid,
         );
-    }, [nodeEditorContent, stageNodeEditorDraft]);
+        if (state.valid && activeNodeId) {
+            clearRollbackNodeIssue(activeNodeId);
+        }
+    }, [activeNodeId, clearRollbackNodeIssue, nodeEditorContent, stageNodeEditorDraft]);
 
     const handleFlowCommit = useCallback(async (mode: 'save-and-commit' | 'saved-only') => {
         if (!groupId || !activeFlowPath) return;
@@ -742,9 +858,19 @@ export default function OfflineWorkbench() {
 
     const handleOpenFlowCommitDialog = useCallback(() => {
         if (!groupId || !activeFlowPath || !flowDocument) return;
+        const rollbackEntries = Object.entries(activeRollbackIssues);
+        if (rollbackEntries.length > 0) {
+            const [taskId, reason] = rollbackEntries[0];
+            showFeedback({
+                tone: 'error',
+                title: '请先修复节点数据源配置',
+                detail: `节点「${taskId}」${reason}`,
+            });
+            return;
+        }
         if (!validateDocumentForAction()) return;
         setFlowCommitDialogOpen(true);
-    }, [groupId, activeFlowPath, flowDocument, validateDocumentForAction]);
+    }, [activeFlowPath, activeRollbackIssues, flowDocument, groupId, showFeedback, validateDocumentForAction]);
 
     const handleOpenRepoCommitDialog = useCallback(() => {
         if (!groupId) return;
@@ -980,8 +1106,10 @@ export default function OfflineWorkbench() {
                     groupId={groupId}
                     path={activeFlowPath}
                     open={versionHistoryOpen}
+                    canWrite={canWrite}
                     onOpenChange={setVersionHistoryOpen}
                     onCompare={(base, target) => void handleCompareVersions(base, target)}
+                    onRollback={(selection) => setRollbackTarget(selection)}
                 />
             ) : null}
 
@@ -992,8 +1120,10 @@ export default function OfflineWorkbench() {
                     base={versionCompare.base}
                     target={versionCompare.target}
                     open={versionCompare.open}
+                    canWrite={canWrite}
                     onOpenChange={(open) => setVersionCompare((current) => current ? { ...current, open } : null)}
                     onBeforeLoadWorktree={ensureWorktreeFlushed}
+                    onRollback={(selection) => setRollbackTarget(selection)}
                 />
             ) : null}
 
@@ -1191,6 +1321,109 @@ export default function OfflineWorkbench() {
                     onOpenDeleteFolder: openDeleteFolderDialogFromContext,
                 }}
             />
+
+            <Dialog
+                open={rollbackTarget !== null}
+                onOpenChange={(open) => {
+                    if (!open && !rollingBack) {
+                        setRollbackTarget(null);
+                    }
+                }}
+            >
+                <DialogContent style={{ maxWidth: '520px' }} hideClose>
+                    <div className="dialog-toolbar">
+                        <DialogHeader className="flex-1" style={{ padding: 0, borderBottom: 'none' }}>
+                            <DialogTitle className="flex items-center gap-2">
+                                <RotateCcw size={16} aria-hidden="true" />
+                                <span>
+                                    确认回滚到版本 {rollbackTarget ? (rollbackTarget.shortRevision?.trim() || formatRevisionTag(rollbackTarget.revision)) : ''}
+                                </span>
+                            </DialogTitle>
+                            <DialogDescription>
+                                此操作仅覆盖当前任务工作区草稿（WORKTREE），不会自动提交或推送，也不会影响线上调度中的版本。
+                            </DialogDescription>
+                        </DialogHeader>
+                        <button
+                            type="button"
+                            data-slot="dialog-close"
+                            className="dialog-close-button"
+                            aria-label="关闭"
+                            onClick={() => setRollbackTarget(null)}
+                            disabled={rollingBack}
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+
+                    <div className="dialog-body" style={{ display: 'grid', gap: 12 }}>
+                        {rollbackTarget ? (
+                            <div
+                                style={{
+                                    padding: '10px 12px',
+                                    borderRadius: 'var(--radius-md)',
+                                    border: '1px solid var(--color-border)',
+                                    background: 'var(--color-bg-secondary)',
+                                    fontSize: 13,
+                                    display: 'grid',
+                                    gap: 4,
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{ color: 'var(--color-text-muted)' }}>目标提交</span>
+                                    <code>{rollbackTarget.shortRevision?.trim() || formatRevisionTag(rollbackTarget.revision)}</code>
+                                </div>
+                                <div style={{ color: 'var(--color-text-primary)', fontWeight: 500, wordBreak: 'break-word' }}>
+                                    {rollbackTarget.message?.trim() || '未填写提交说明'}
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {isDirty || flowCommitDirty ? (
+                            <div className="offline-conflict-copy" role="alert">
+                                <AlertTriangle size={16} />
+                                <div>
+                                    <strong>当前工作区有未保存或未提交的修改</strong>
+                                    <p>继续回滚将直接覆盖这些修改；如需先核对差异，可点击下方“先与工作区对比”。</p>
+                                </div>
+                            </div>
+                        ) : null}
+                    </div>
+
+                    <DialogFooter className="dialog-footer" style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleCompareRollbackWithWorktree}
+                            disabled={rollingBack || !rollbackTarget}
+                        >
+                            <GitCompare size={14} aria-hidden="true" />
+                            <span>先与工作区对比</span>
+                        </Button>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setRollbackTarget(null)}
+                                disabled={rollingBack}
+                            >
+                                取消
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => void handleConfirmRollback()}
+                                disabled={rollingBack || savingFlow}
+                            >
+                                {rollingBack ? <LoaderCircle size={14} className="offline-spin" aria-hidden="true" /> : null}
+                                <span>{rollingBack ? '回滚中…' : '确认回滚'}</span>
+                            </Button>
+                        </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
         </section>
     );

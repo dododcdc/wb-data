@@ -557,12 +557,38 @@ export const saveOfflineFlowContent = (payload: SaveOfflineFlowRequest) => {
     });
 };
 
+export interface RollbackOfflineFlowRequest {
+    groupId: number;
+    path: string;
+    revision: string;
+    documentHash?: string;
+    documentUpdatedAt?: number;
+}
+
+export interface RollbackOfflineFlowResponse {
+    document: OfflineFlowDocument;
+    warnings: string[];
+    nodeIssues: Record<string, string>;
+}
+
 export const saveOfflineFlowDocument = (payload: SaveOfflineFlowDocumentRequest) => {
     return request.put<unknown, OfflineFlowDocument>(offlinePath(payload.groupId, '/flows/document'), omitGroupId(payload), {
         headers: {
             'Content-Type': 'application/json',
         },
     });
+};
+
+export const rollbackOfflineFlow = (payload: RollbackOfflineFlowRequest) => {
+    return request.post<unknown, RollbackOfflineFlowResponse>(
+        offlinePath(payload.groupId, '/flows/rollback'),
+        omitGroupId(payload),
+        {
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        },
+    );
 };
 
 export const createOfflineDebugExecution = (payload: DebugExecutionRequest) => {

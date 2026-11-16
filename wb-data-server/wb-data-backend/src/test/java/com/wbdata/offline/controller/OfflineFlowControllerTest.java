@@ -1,6 +1,10 @@
 package com.wbdata.offline.controller;
 
 import com.wbdata.offline.dto.DeleteOfflineFlowRequest;
+import com.wbdata.offline.dto.OfflineFlowDocumentResponse;
+import com.wbdata.offline.dto.RollbackOfflineFlowRequest;
+import com.wbdata.offline.dto.RollbackOfflineFlowResponse;
+import com.wbdata.offline.repo.service.OfflineFlowSnapshotService;
 import com.wbdata.offline.enums.OfflineCrossGroupDependency;
 import com.wbdata.offline.enums.OfflineFailurePolicy;
 import com.wbdata.offline.schedule.dto.OfflineFlowDependencySettings;
@@ -110,6 +114,53 @@ class OfflineFlowControllerTest {
 
         verify(dependencyService).assertDeletionAllowed(4L, path, accessibleGroups);
         verify(contentService).deleteFlow(4L, path);
+    }
+
+    @Test
+    void rollbackFlowNormalizesGroupIdValidatesDependenciesAndRecordsRecentFlow() {
+        OfflineFlowContentService contentService = mock(OfflineFlowContentService.class);
+        OfflineFlowDocumentService documentService = mock(OfflineFlowDocumentService.class);
+        OfflineFlowDependencyService dependencyService = mock(OfflineFlowDependencyService.class);
+        OfflineFlowSnapshotService snapshotService = mock(OfflineFlowSnapshotService.class);
+        OfflineRecentFlowService recentFlowService = mock(OfflineRecentFlowService.class);
+        AuthContextService authContextService = mock(AuthContextService.class);
+        GroupAuthContext context = context(4L);
+        List<ProjectGroupContextItem> accessibleGroups = List.of(
+                new ProjectGroupContextItem(4L, "policy", "", "GROUP_ADMIN"));
+        when(authContextService.listAccessibleGroups(context.user())).thenReturn(accessibleGroups);
+
+        OfflineFlowDocumentService.DependencyRollbackValidator validator = content -> List.of("warn-upstream");
+        when(dependencyService.rollbackDocument(
+                org.mockito.ArgumentMatchers.eq(4L),
+                org.mockito.ArgumentMatchers.eq("_flows/example/flow.yaml"),
+                org.mockito.ArgumentMatchers.eq(accessibleGroups),
+                org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation -> invocation
+                        .<java.util.function.Function<OfflineFlowDocumentService.DependencyRollbackValidator, ?>>getArgument(3)
+                        .apply(validator));
+
+        OfflineFlowDocumentResponse doc = new OfflineFlowDocumentResponse(
+                4L, "_flows/example/flow.yaml", "example", "pg-4", "hash-2", 200L,
+                List.of(), List.of(), Map.of(), null, null, "Asia/Shanghai", null);
+        RollbackOfflineFlowResponse expected = new RollbackOfflineFlowResponse(
+                doc, List.of("warn-upstream"), Map.of("t1", "missing ds"));
+        when(snapshotService.rollbackFlow(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(validator)))
+                .thenReturn(expected);
+
+        OfflineFlowController controller = new OfflineFlowController(
+                contentService, documentService, dependencyService, authContextService, recentFlowService);
+        controller.setOfflineFlowSnapshotService(snapshotService);
+
+        String sha = "a".repeat(40);
+        var result = controller.rollbackFlow(context, new RollbackOfflineFlowRequest(
+                999L, "_flows/example/flow.yaml", sha, "hash-1", 100L));
+
+        ArgumentCaptor<RollbackOfflineFlowRequest> captor = ArgumentCaptor.forClass(RollbackOfflineFlowRequest.class);
+        verify(snapshotService).rollbackFlow(captor.capture(), org.mockito.ArgumentMatchers.eq(validator));
+        assertThat(captor.getValue().groupId()).isEqualTo(4L);
+        assertThat(captor.getValue().revision()).isEqualTo(sha);
+        assertThat(result.getData()).isEqualTo(expected);
+        verify(recentFlowService).recordRecentFlow(1L, 4L, "_flows/example/flow.yaml");
     }
 
     private GroupAuthContext context(Long groupId) {

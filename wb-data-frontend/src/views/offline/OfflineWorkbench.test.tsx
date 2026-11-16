@@ -55,6 +55,7 @@ vi.mock('./FlowCanvas', () => ({
     default: ({
         flowDocument,
         readOnly,
+        nodeIssues,
         onAddNode,
         onEdgesChange,
         onNodeLayoutCommit,
@@ -66,6 +67,7 @@ vi.mock('./FlowCanvas', () => ({
             stages: Array<{ nodes: Array<{ taskId: string; kind: string }> }>;
         };
         readOnly?: boolean;
+        nodeIssues?: Record<string, string | null>;
         onAddNode: (kind: OfflineFlowNodeKind, position: { x: number; y: number }) => void;
         onEdgesChange: (edges: Array<{ id: string; source: string; target: string }>) => void;
         onNodeLayoutCommit: (nodes: Array<{ id: string; position: { x: number; y: number } }>) => void;
@@ -80,6 +82,7 @@ vi.mock('./FlowCanvas', () => ({
             <div
                 data-testid="flow-canvas"
                 data-readonly={String(Boolean(readOnly))}
+                data-node-issues={JSON.stringify(nodeIssues ?? {})}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => {
                     const kind = event.dataTransfer.getData('nodeKind');
@@ -253,6 +256,8 @@ vi.mock('../../api/offline', async () => {
         listOfflineExecutions: vi.fn(),
         getOfflineExecution: vi.fn(),
         getOfflineFlowCommitStatus: vi.fn(),
+        getOfflineFlowVersions: vi.fn(),
+        rollbackOfflineFlow: vi.fn(),
         commitOfflineCurrentFlow: vi.fn(),
         commitOfflineRepo: vi.fn(),
         pushOfflineRepo: vi.fn(),
@@ -1915,5 +1920,118 @@ describe('OfflineWorkbench online mode', () => {
 
         expect(await screen.findByText('当前任务尚未存在于已确认线上版本')).toBeTruthy();
         expect(screen.getByText('f0e1d2c')).toBeTruthy();
+    });
+
+    it('rolls back worktree via confirm dialog, surfaces warnings/nodeIssues, blocks commit until resolved, and supports compare first', async () => {
+        const offlineApi = await import('../../api/offline');
+        const v1Sha = '1111111111111111111111111111111111111111';
+        vi.mocked(offlineApi.getOfflineFlowDocument).mockResolvedValue(makeFlowDocument());
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue({
+            ...makeFlowDocument(),
+            documentHash: 'saved-hash',
+            documentUpdatedAt: 200,
+        });
+        vi.mocked(offlineApi.getOfflineFlowCommitStatus).mockResolvedValue({
+            groupId: 1,
+            flowPath: '_flows/example/flow.yaml',
+            dirty: true,
+        });
+        vi.mocked(offlineApi.getOfflineFlowVersions).mockResolvedValue({
+            branch: 'main',
+            total: 2,
+            page: 1,
+            size: 50,
+            items: [
+                {
+                    revision: 'WORKTREE',
+                    kind: 'DEVELOPMENT',
+                    message: null,
+                    authorName: null,
+                    committedAt: null,
+                    dirty: true,
+                    publications: [],
+                },
+                {
+                    revision: v1Sha,
+                    kind: 'COMMIT',
+                    message: '历史提交 v1',
+                    authorName: 'alice',
+                    committedAt: '2026-11-08T01:00:00Z',
+                    dirty: false,
+                    publications: [],
+                },
+            ],
+        });
+
+        const rolledBackTransferDoc = {
+            ...makeFlowDocumentWithTransferNode(),
+            documentHash: 'rollback-hash-v1',
+            documentUpdatedAt: 202,
+        };
+        vi.mocked(offlineApi.rollbackOfflineFlow).mockResolvedValue({
+            document: rolledBackTransferDoc,
+            warnings: ['传输节点「transfer_orders」引用的数据源已不存在，请重新配置传输节点'],
+            nodeIssues: { transfer_orders: '引用的数据源已不存在，请重新配置传输规则' },
+        });
+        vi.mocked(offlineApi.getOfflineFlowSnapshot).mockImplementation((_g, _p, rev) => Promise.resolve({
+            revision: rev,
+            document: rev === v1Sha ? rolledBackTransferDoc : makeFlowDocument(),
+            files: [],
+            nodeMetadata: {},
+        }));
+
+        renderOfflineWorkbench();
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        // Make a dirty change so dirty warning shows inside rollback confirm dialog
+        fireEvent.click(screen.getByRole('button', { name: '模拟画布修改' }));
+
+        // Open version history drawer and click "回滚到此版本"
+        fireEvent.click(screen.getByRole('button', { name: '版本' }));
+        const rollbackRowBtn = await screen.findByRole('button', { name: '回滚到此版本' });
+        fireEvent.click(rollbackRowBtn);
+
+        const confirmDialog = await screen.findByRole('dialog', { name: /确认回滚到版本 1111111/ });
+        expect(within(confirmDialog).getByText('当前工作区有未保存或未提交的修改')).toBeTruthy();
+
+        // Verify "先与工作区对比" switches into compare dialog for v1Sha vs WORKTREE
+        fireEvent.click(within(confirmDialog).getByRole('button', { name: '先与工作区对比' }));
+        await waitFor(() => {
+            expect(offlineApi.getOfflineFlowSnapshot).toHaveBeenCalledWith(1, '_flows/example/flow.yaml', v1Sha);
+        });
+        const compareRollbackBtn = await screen.findByRole('button', { name: '回滚到 1111111' });
+        fireEvent.click(compareRollbackBtn);
+
+        const secondConfirm = await screen.findByRole('dialog', { name: /确认回滚到版本 1111111/ });
+        fireEvent.click(within(secondConfirm).getByRole('button', { name: '确认回滚' }));
+
+        await waitFor(() => {
+            expect(offlineApi.rollbackOfflineFlow).toHaveBeenCalledWith({
+                groupId: 1,
+                path: '_flows/example/flow.yaml',
+                revision: v1Sha,
+                documentHash: 'saved-hash',
+                documentUpdatedAt: 200,
+            });
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('flow-canvas-node-ids').textContent).toBe('transfer_orders');
+            expect(screen.getByTestId('flow-canvas').getAttribute('data-node-issues'))
+                .toContain('引用的数据源已不存在');
+        });
+        expect(feedbackSpy).toHaveBeenCalledWith(expect.objectContaining({
+            tone: 'info',
+            title: expect.stringContaining('已回滚到版本 1111111'),
+        }));
+
+        // Trying to commit while unresolved transfer rollback issue exists blocks commit dialog
+        fireEvent.click(screen.getByRole('button', { name: '提交当前任务' }));
+        expect(feedbackSpy).toHaveBeenCalledWith(expect.objectContaining({
+            tone: 'error',
+            title: '请先修复节点数据源配置',
+        }));
+        expect(screen.queryByRole('dialog', { name: /提交当前任务/ })).toBeNull();
     });
 });

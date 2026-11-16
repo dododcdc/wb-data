@@ -65,6 +65,60 @@ final class OfflineFlowGraphYaml {
         );
     }
 
+    String unbindSqlDataSources(String source, Set<String> taskIds) {
+        if (taskIds == null || taskIds.isEmpty()) {
+            return source;
+        }
+        Map<String, Object> root = yaml.loadRoot(source);
+        unbindSqlDataSourcesInTasks(yaml.requireTasks(root), taskIds);
+        return yaml.dump(root);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void unbindSqlDataSourcesInTasks(List<Map<String, Object>> tasks, Set<String> taskIds) {
+        for (Map<String, Object> task : tasks) {
+            if (OfflineFlowDependencyYaml.GATE_TASK_ID.equals(yaml.readOptionalString(task, "id"))) {
+                continue;
+            }
+            if (yaml.isDagTask(task)) {
+                Object rawChildTasks = task.get("tasks");
+                if (rawChildTasks instanceof List<?> childTasks) {
+                    for (Map<String, Object> wrapper : yaml.castTaskList(childTasks)) {
+                        Object innerTask = wrapper.get("task");
+                        if (innerTask instanceof Map<?, ?> inner) {
+                            unbindSingleTaskDataSource((Map<String, Object>) inner, taskIds);
+                        }
+                    }
+                }
+            } else {
+                unbindSingleTaskDataSource(task, taskIds);
+            }
+        }
+    }
+
+    private void unbindSingleTaskDataSource(Map<String, Object> task, Set<String> taskIds) {
+        String taskId = yaml.readOptionalString(task, "id");
+        if (taskId == null || !taskIds.contains(taskId)) {
+            return;
+        }
+        OfflineFlowNode parsed = parseLeafNode(task);
+        if ("TRANSFER".equalsIgnoreCase(parsed.kind())) {
+            return;
+        }
+        OfflineFlowNode unboundNode = new OfflineFlowNode(
+                parsed.taskId(),
+                parsed.kind(),
+                parsed.scriptPath(),
+                null,
+                parsed.dataSourceType(),
+                parsed.transferConfigPath(),
+                parsed.hiveConf()
+        );
+        Map<String, Object> compiled = nodeTaskCompiler.compile(task, unboundNode, Collections.emptyMap());
+        task.clear();
+        task.putAll(compiled);
+    }
+
     private void parseGraphTasks(List<Map<String, Object>> tasks,
                                  List<OfflineFlowNode> outNodes,
                                  List<OfflineFlowYamlSupport.FlowEdge> outEdges) {

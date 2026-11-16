@@ -42,8 +42,10 @@ interface OfflineVersionHistoryDrawerProps {
     groupId: number;
     path: string;
     open: boolean;
+    canWrite?: boolean;
     onOpenChange: (open: boolean) => void;
     onCompare: (base: VersionSelection, target: VersionSelection) => void;
+    onRollback?: (selection: VersionSelection) => void;
 }
 
 function orderVersionPair(first: VersionSelection, second: VersionSelection): [VersionSelection, VersionSelection] {
@@ -64,7 +66,15 @@ function orderVersionPair(first: VersionSelection, second: VersionSelection): [V
     return [first, second];
 }
 
-export function OfflineVersionHistoryDrawer({ groupId, path, open, onOpenChange, onCompare }: OfflineVersionHistoryDrawerProps) {
+export function OfflineVersionHistoryDrawer({
+    groupId,
+    path,
+    open,
+    canWrite = false,
+    onOpenChange,
+    onCompare,
+    onRollback,
+}: OfflineVersionHistoryDrawerProps) {
     const [onlineOnly, setOnlineOnly] = useState(false);
     const [selectedVersions, setSelectedVersions] = useState<VersionSelection[]>([]);
     const [page, setPage] = useState(1);
@@ -274,6 +284,7 @@ export function OfflineVersionHistoryDrawer({ groupId, path, open, onOpenChange,
                                     buildCommitVersionSelection(previousCommit, previousOrderIndex),
                                     buildCommitVersionSelection(item, globalOrderIndex),
                                 ) : null}
+                                onRollback={canWrite && onRollback ? onRollback : undefined}
                             />
                         );
                     })}
@@ -358,6 +369,7 @@ interface VersionRowProps {
     onToggle: (selection: VersionSelection) => void;
     onCompareDevelopment: () => void;
     onComparePrevious: (() => void) | null;
+    onRollback?: (selection: VersionSelection) => void;
 }
 
 function VersionRow({
@@ -367,6 +379,7 @@ function VersionRow({
     onToggle,
     onCompareDevelopment,
     onComparePrevious,
+    onRollback,
 }: VersionRowProps) {
     const isSelected = (selection: VersionSelection) => selectedVersions.some((candidate) => (
         candidate.revision === selection.revision && candidate.label === selection.label
@@ -453,6 +466,15 @@ function VersionRow({
                         <button type="button" className="offline-version-quick-btn" onClick={onCompareDevelopment}>
                             与开发版本对比
                         </button>
+                        {onRollback ? (
+                            <button
+                                type="button"
+                                className="offline-version-quick-btn is-rollback"
+                                onClick={() => onRollback(commitSelection)}
+                            >
+                                回滚到此版本
+                            </button>
+                        ) : null}
                     </div>
                 </div>
 

@@ -472,4 +472,50 @@ describe('OfflineVersionCompareDialog', () => {
             expect(getOfflineFlowSnapshot).toHaveBeenCalledWith(4, '_flows/s5_version_probe/flow.yaml', 'WORKTREE');
         });
     });
+
+    it('renders rollback button for compared COMMIT when canWrite and calls onRollback with preferred historical commit', async () => {
+        vi.mocked(getOfflineFlowSnapshot).mockImplementation((_groupId, _path, rev) => Promise.resolve({
+            revision: rev,
+            document: { stages: [], edges: [], layout: {} } as never,
+            files: [],
+            nodeMetadata: {},
+        }));
+        const onRollback = vi.fn();
+
+        const { rerender } = render(
+            <OfflineVersionCompareDialog
+                groupId={4}
+                path="_flows/example/flow.yaml"
+                base={{ revision: 'aaaa11112222', kind: 'COMMIT', label: 'v1' }}
+                target={{ revision: 'WORKTREE', kind: 'DEVELOPMENT', label: '开发版本' }}
+                open
+                canWrite={false}
+                onOpenChange={vi.fn()}
+                onRollback={onRollback}
+            />,
+        );
+
+        await screen.findAllByRole('button', { name: /节点/ });
+        expect(screen.queryByRole('button', { name: /回滚到/ })).toBeNull();
+
+        rerender(
+            <OfflineVersionCompareDialog
+                groupId={4}
+                path="_flows/example/flow.yaml"
+                base={{ revision: 'aaaa11112222', kind: 'COMMIT', label: 'v1' }}
+                target={{ revision: 'WORKTREE', kind: 'DEVELOPMENT', label: '开发版本' }}
+                open
+                canWrite
+                onOpenChange={vi.fn()}
+                onRollback={onRollback}
+            />,
+        );
+
+        const rollbackBtn = screen.getByRole('button', { name: '回滚到 aaaa111' });
+        fireEvent.click(rollbackBtn);
+        expect(onRollback).toHaveBeenCalledTimes(1);
+        expect(onRollback).toHaveBeenCalledWith(expect.objectContaining({
+            revision: 'aaaa11112222',
+        }));
+    });
 });

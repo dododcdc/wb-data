@@ -303,6 +303,46 @@ class GitCommandServiceTest {
         assertThat(git(repo, "status", "--porcelain")).isBlank();
     }
 
+    @Test
+    void commitCurrentFlow_stagesAndCommitsDeletedFlowFilesAfterRollback() throws Exception {
+        OfflineProperties properties = new OfflineProperties();
+        properties.setRepoBaseDir(tempDir.toString());
+        properties.setRepoDirPrefix("wb-data-");
+        OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
+        GitCommandService service = new GitCommandService(
+                properties, Mockito.mock(OfflineGitRemotePort.class), flowDocumentService, publishRecordService(), new RepoLockManager());
+
+        Path repo = properties.resolveRepoPath(1L);
+        initRepo(repo);
+        write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
+        write(repo, "_flows/example/.layout.json", "{\"n1\":{\"x\":10,\"y\":20}}");
+        write(repo, "scripts/example/stale.sql", "SELECT 1;\n");
+        write(repo, "transfers/example/t1.transfer.json", "{\"version\":1}\n");
+        write(repo, ".wb-data/kestra-flows/example.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
+        write(repo, "scripts/other/keep.sql", "SELECT 2;\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "v2");
+
+        // Simulate rollback deleting stale script, transfer config, and layout sidecar while updating flow.yaml
+        Files.delete(repo.resolve("scripts/example/stale.sql"));
+        Files.delete(repo.resolve("transfers/example/t1.transfer.json"));
+        Files.delete(repo.resolve("_flows/example/.layout.json"));
+        write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks:\n  - id: n1\n");
+        write(repo, ".wb-data/kestra-flows/example.yaml", "id: example\nnamespace: pg-1\ntasks:\n  - id: n1\n");
+        when(flowDocumentService.resolveManagedFiles(1L, "_flows/example/flow.yaml"))
+                .thenReturn(List.of("_flows/example/flow.yaml", ".wb-data/kestra-flows/example.yaml"));
+
+        service.commitCurrentFlow(1L, "_flows/example/flow.yaml", "commit rollback");
+
+        assertThat(git(repo, "log", "-1", "--pretty=%s")).isEqualTo("commit rollback");
+        String headFiles = git(repo, "ls-tree", "-r", "--name-only", "HEAD");
+        assertThat(headFiles)
+                .doesNotContain("scripts/example/stale.sql")
+                .doesNotContain("transfers/example/t1.transfer.json")
+                .doesNotContain("_flows/example/.layout.json")
+                .contains("scripts/other/keep.sql");
+    }
+
     private static OfflinePublishRecordService publishRecordService() {
         OfflinePublishRecordService service = Mockito.mock(OfflinePublishRecordService.class);
         when(service.recordPush(

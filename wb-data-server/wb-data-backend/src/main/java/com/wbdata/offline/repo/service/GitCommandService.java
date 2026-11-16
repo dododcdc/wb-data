@@ -147,14 +147,17 @@ public class GitCommandService extends GitRepositoryOperations {
         Path parent = Path.of(flowPath).normalize().getParent();
         if (parent != null) {
             String flowDir = parent.toString().replace('\\', '/');
-            String trackedSidecars = runGit(
-                    repoPath,
-                    "ls-files",
-                    "--",
-                    flowDir + "/.hive-conf.json",
-                    flowDir + "/.parameters.json"
-            );
-            trackedSidecars.lines()
+            List<String> lsFilesArgs = new java.util.ArrayList<>(List.of("-c", "core.quotepath=false", "ls-files", "--", flowDir));
+            if (flowDir.startsWith("_flows/") && flowDir.length() > "_flows/".length()) {
+                lsFilesArgs.add("scripts/" + flowDir.substring("_flows/".length()));
+            }
+            Path leafName = parent.getFileName();
+            if (leafName != null && !leafName.toString().isBlank()) {
+                lsFilesArgs.add("transfers/" + leafName);
+                lsFilesArgs.add(".wb-data/kestra-flows/" + leafName + ".yaml");
+            }
+            String trackedFiles = runGit(repoPath, lsFilesArgs.toArray(String[]::new));
+            trackedFiles.lines()
                     .map(String::trim)
                     .filter(line -> !line.isEmpty())
                     .forEach(tracked::add);

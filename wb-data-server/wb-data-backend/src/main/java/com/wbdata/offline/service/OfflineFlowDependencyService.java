@@ -37,7 +37,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -88,31 +90,57 @@ public class OfflineFlowDependencyService {
         return repoLockManager.withGraphLock(action);
     }
 
+    /** Must be called before taking any group lock; validates rollback safety and collects soft upstream warnings. */
+    public <T> T rollbackDocument(Long groupId,
+                                  String path,
+                                  List<ProjectGroupContextItem> accessibleGroups,
+                                  Function<OfflineFlowDocumentService.DependencyRollbackValidator, T> rollbackAction) {
+        return withDependencyGraphLock(() -> {
+            Path repoPath = offlineProperties.resolveRepoPath(groupId);
+            Path relative = validateFlowPath(path);
+            Path flowFile = repoPath.resolve(relative);
+            OfflineFlowDependencyRef currentSelf = Files.exists(flowFile)
+                    ? new OfflineFlowDependencyRef(
+                            groupId,
+                            yamlSupport.parseIdentity(offlineFlowContentService.getFlowContent(groupId, path).content()).flowId())
+                    : null;
+            var snapshots = scanAll();
+            OfflineFlowDocumentService.DependencyRollbackValidator validator = targetFlowContent ->
+                    validateRollbackConfig(groupId, relative, currentSelf, targetFlowContent, accessibleGroups, snapshots);
+            return rollbackAction.apply(validator);
+        });
+    }
+
     /** Must be called before taking any group lock; the callback keeps validation and all writes together. */
     public <T> T saveDocument(SaveOfflineFlowDocumentRequest request,
                               List<ProjectGroupContextItem> accessibleGroups, Supplier<T> save) {
         return withDependencyGraphLock(() -> {
             Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
-            Path relative = Path.of(request.path()).normalize();
-            if (relative.isAbsolute() || !relative.startsWith("_flows") || relative.getNameCount() < 3
-                    || !"flow.yaml".equals(relative.getFileName().toString())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务路径不合法");
-            }
+            Path relative = validateFlowPath(request.path());
             Path flowFile = repoPath.resolve(relative);
-            String source = Files.exists(flowFile)
+            boolean existsOnDisk = Files.exists(flowFile);
+            String source = existsOnDisk
                     ? offlineFlowContentService.getFlowContent(request.groupId(), request.path()).content()
                     : yamlSupport.buildEmptyFlowYaml(relative.getParent().getFileName().toString(), "pg-" + request.groupId());
             // Validate the requested schedule, not the old persisted frequency, without creating a stub file.
             String finalSource = yamlSupport.applySchedule(source, request.schedule());
+            OfflineFlowDependencySettings existingSettings = yamlSupport.readDependencyConfig(source);
+            OfflineFlowYamlSupport.ScheduleData existingSchedule = yamlSupport.readSchedule(source);
             OfflineFlowDependencySettings settings = request.dependencyConfig() == null
-                    ? yamlSupport.readDependencyConfig(source) : request.dependencyConfig();
+                    ? existingSettings : request.dependencyConfig();
+            OfflineFlowYamlSupport.ScheduleData targetSchedule = yamlSupport.readSchedule(finalSource);
             var self = new OfflineFlowDependencyRef(request.groupId(), yamlSupport.parseIdentity(source).flowId());
             var snapshots = scanAll();
             var existing = snapshots.get(self);
             if (existing != null && !Path.of(existing.path()).normalize().equals(relative)) {
                 throw invalid("任务标识已存在，请使用其他任务名称");
             }
-            validateConfig(self, yamlSupport.readSchedule(finalSource), settings, accessibleGroups, snapshots);
+            boolean validateUpstreamStrictly = !existsOnDisk
+                    || !Objects.equals(existingSettings.dependencies(), settings.dependencies())
+                    || !Objects.equals(
+                            existingSchedule == null ? null : existingSchedule.period(),
+                            targetSchedule == null ? null : targetSchedule.period());
+            validateConfig(self, targetSchedule, settings, accessibleGroups, snapshots, validateUpstreamStrictly);
             return save.get();
         });
     }
@@ -124,7 +152,7 @@ public class OfflineFlowDependencyService {
             OfflineFlowDependencySettings settings = new OfflineFlowDependencySettings(
                     request.dependencies(), request.failurePolicy(), request.crossGroupDependency());
             validateConfig(new OfflineFlowDependencyRef(request.groupId(), yamlSupport.parseIdentity(current.content()).flowId()),
-                    yamlSupport.readSchedule(current.content()), settings, accessibleGroups, scanAll());
+                    yamlSupport.readSchedule(current.content()), settings, accessibleGroups, scanAll(), true);
             String updated = yamlSupport.applyDependencyConfig(current.content(), settings.dependencies(),
                     settings.failurePolicy(), settings.crossGroupDependency());
             offlineFlowContentService.saveFlowContent(new SaveOfflineFlowRequest(request.groupId(), request.path(),
@@ -133,10 +161,62 @@ public class OfflineFlowDependencyService {
         });
     }
 
+    private Path validateFlowPath(String path) {
+        if (path == null || path.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务路径不合法");
+        }
+        Path relative = Path.of(path).normalize();
+        if (relative.isAbsolute() || !relative.startsWith("_flows") || relative.getNameCount() < 3
+                || !"flow.yaml".equals(relative.getFileName().toString())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务路径不合法");
+        }
+        return relative;
+    }
+
+    private List<String> validateRollbackConfig(Long groupId,
+                                                Path relative,
+                                                OfflineFlowDependencyRef currentSelf,
+                                                String targetFlowContent,
+                                                List<ProjectGroupContextItem> accessibleGroups,
+                                                Map<OfflineFlowDependencyRef, FlowDependencySnapshot> snapshots) {
+        OfflineFlowDependencyRef self = new OfflineFlowDependencyRef(
+                groupId, yamlSupport.parseIdentity(targetFlowContent).flowId());
+        FlowDependencySnapshot existing = snapshots.get(self);
+        if (existing != null && !Path.of(existing.path()).normalize().equals(relative)) {
+            throw invalid("任务标识已存在，请使用其他任务名称");
+        }
+        if (currentSelf != null && !currentSelf.equals(self)) {
+            List<FlowDependencySnapshot> dependents = findDependentsIn(snapshots.values(), currentSelf);
+            if (!dependents.isEmpty()) {
+                throw invalid("存在下游任务依赖，不能修改任务标识: "
+                        + formatDependents(dependents, accessibleGroups) + "，请先解除依赖");
+            }
+        }
+        OfflineFlowYamlSupport.ScheduleData schedule = yamlSupport.readSchedule(targetFlowContent);
+        OfflineFlowDependencySettings settings = yamlSupport.readDependencyConfig(targetFlowContent);
+        validateBasicRefs(self, settings.dependencies());
+        List<String> upstreamIssues = collectUpstreamIssues(
+                self, schedule, settings.dependencies(), accessibleGroups, snapshots);
+        validateCycleAndDownstreams(self, schedule, settings, accessibleGroups, snapshots);
+        return upstreamIssues;
+    }
+
     private void validateConfig(OfflineFlowDependencyRef self, OfflineFlowYamlSupport.ScheduleData schedule,
                                 OfflineFlowDependencySettings settings, List<ProjectGroupContextItem> accessibleGroups,
-                                Map<OfflineFlowDependencyRef, FlowDependencySnapshot> snapshots) {
-        List<OfflineFlowDependencyRef> refs = settings.dependencies();
+                                Map<OfflineFlowDependencyRef, FlowDependencySnapshot> snapshots,
+                                boolean validateUpstreamStrictly) {
+        validateBasicRefs(self, settings.dependencies());
+        if (validateUpstreamStrictly) {
+            List<String> upstreamIssues = collectUpstreamIssues(
+                    self, schedule, settings.dependencies(), accessibleGroups, snapshots);
+            if (!upstreamIssues.isEmpty()) {
+                throw invalid(upstreamIssues.getFirst());
+            }
+        }
+        validateCycleAndDownstreams(self, schedule, settings, accessibleGroups, snapshots);
+    }
+
+    private void validateBasicRefs(OfflineFlowDependencyRef self, List<OfflineFlowDependencyRef> refs) {
         if (refs.size() > MAX_DEPENDENCIES) {
             throw invalid("前置任务数量超过上限 " + MAX_DEPENDENCIES);
         }
@@ -150,30 +230,14 @@ public class OfflineFlowDependencyService {
         if (refs.contains(self)) {
             throw invalid("任务不能依赖自身");
         }
-        if (!refs.isEmpty() && !standard(schedule == null ? null : schedule.period())) {
-            throw invalid("本任务需先配置标准调度频率，才能配置前置依赖");
-        }
-        Set<Long> accessibleIds = groupNames(accessibleGroups).keySet();
-        for (OfflineFlowDependencyRef ref : refs) {
-            if (!accessibleIds.contains(ref.groupId())) {
-                throw invalid("无权引用前置任务，请检查项目组访问权限");
-            }
-            FlowDependencySnapshot upstream = snapshots.get(ref);
-            if (upstream == null) {
-                throw invalid("前置任务不存在: " + ref.flowId());
-            }
-            if (!upstream.hasSchedule() || !standard(upstream.period())) {
-                throw invalid("前置任务 " + ref.flowId() + " 未配置标准调度频率，无法依赖");
-            }
-            if (upstream.period() != schedule.period()) {
-                throw invalid("仅支持相同调度频率的任务依赖: " + ref.flowId());
-            }
-            if (!ref.groupId().equals(self.groupId())
-                    && upstream.crossGroupDependency() == OfflineCrossGroupDependency.DENY) {
-                throw invalid("前置任务 " + ref.flowId() + " 不允许跨项目组依赖");
-            }
-        }
-        if (createsCycle(snapshots, self, refs)) {
+    }
+
+    private void validateCycleAndDownstreams(OfflineFlowDependencyRef self,
+                                             OfflineFlowYamlSupport.ScheduleData schedule,
+                                             OfflineFlowDependencySettings settings,
+                                             List<ProjectGroupContextItem> accessibleGroups,
+                                             Map<OfflineFlowDependencyRef, FlowDependencySnapshot> snapshots) {
+        if (createsCycle(snapshots, self, settings.dependencies())) {
             throw invalid("依赖配置会形成循环，请调整前置任务");
         }
         List<FlowDependencySnapshot> dependents = findDependentsIn(snapshots.values(), self);
@@ -188,6 +252,43 @@ public class OfflineFlowDependencyService {
             throw invalid("存在下游任务依赖，不能修改调度频率: "
                     + formatDependents(incompatible, accessibleGroups) + "，请先解除依赖");
         }
+    }
+
+    private List<String> collectUpstreamIssues(OfflineFlowDependencyRef self,
+                                               OfflineFlowYamlSupport.ScheduleData schedule,
+                                               List<OfflineFlowDependencyRef> refs,
+                                               List<ProjectGroupContextItem> accessibleGroups,
+                                               Map<OfflineFlowDependencyRef, FlowDependencySnapshot> snapshots) {
+        List<String> issues = new ArrayList<>();
+        boolean selfHasStandardPeriod = standard(schedule == null ? null : schedule.period());
+        if (!refs.isEmpty() && !selfHasStandardPeriod) {
+            issues.add("本任务需先配置标准调度频率，才能配置前置依赖");
+        }
+        Set<Long> accessibleIds = groupNames(accessibleGroups).keySet();
+        for (OfflineFlowDependencyRef ref : refs) {
+            if (!accessibleIds.contains(ref.groupId())) {
+                issues.add("无权引用前置任务，请检查项目组访问权限");
+                continue;
+            }
+            FlowDependencySnapshot upstream = snapshots.get(ref);
+            if (upstream == null) {
+                issues.add("前置任务不存在: " + ref.flowId());
+                continue;
+            }
+            if (!upstream.hasSchedule() || !standard(upstream.period())) {
+                issues.add("前置任务 " + ref.flowId() + " 未配置标准调度频率，无法依赖");
+                continue;
+            }
+            if (selfHasStandardPeriod && upstream.period() != schedule.period()) {
+                issues.add("仅支持相同调度频率的任务依赖: " + ref.flowId());
+                continue;
+            }
+            if (!ref.groupId().equals(self.groupId())
+                    && upstream.crossGroupDependency() == OfflineCrossGroupDependency.DENY) {
+                issues.add("前置任务 " + ref.flowId() + " 不允许跨项目组依赖");
+            }
+        }
+        return List.copyOf(issues);
     }
 
     private boolean standard(OfflineSchedulePeriod period) {
@@ -241,7 +342,7 @@ public class OfflineFlowDependencyService {
             var proposed = new OfflineFlowYamlSupport.ScheduleData("schedule", schedule == null ? "" : schedule.cron(),
                     schedule == null ? null : schedule.timezone(), schedule != null && schedule.enabled(), newPeriod);
             validateConfig(new OfflineFlowDependencyRef(groupId, yamlSupport.parseIdentity(flow.content()).flowId()),
-                    proposed, yamlSupport.readDependencyConfig(flow.content()), accessibleGroups, scanAll());
+                    proposed, yamlSupport.readDependencyConfig(flow.content()), accessibleGroups, scanAll(), true);
             return null;
         });
     }

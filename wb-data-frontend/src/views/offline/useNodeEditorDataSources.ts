@@ -233,6 +233,7 @@ export function useNodeEditorDataSources(_params: UseNodeEditorDataSourcesParams
                 if (requestId !== selectedRequestIdRef.current) {
                     return;
                 }
+                setSelectedDataSource(null);
                 console.error('Failed to resolve node editor data source', error);
             });
     }, [allowedDataSourceTypes, currentDataSourceId, dataSources, groupId, kind, open]);

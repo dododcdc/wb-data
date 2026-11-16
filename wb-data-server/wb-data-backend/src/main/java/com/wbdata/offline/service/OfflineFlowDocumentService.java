@@ -22,6 +22,8 @@ import com.wbdata.offline.dto.OfflineFlowEdgeResponse;
 import com.wbdata.offline.dto.OfflineFlowNodeResponse;
 import com.wbdata.offline.schedule.dto.OfflineFlowSchedule;
 import com.wbdata.offline.dto.OfflineFlowStageResponse;
+import com.wbdata.offline.dto.RollbackOfflineFlowRequest;
+import com.wbdata.offline.dto.RollbackOfflineFlowResponse;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowEdgeRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowNodeRequest;
@@ -48,11 +50,17 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
 @Service
 public class OfflineFlowDocumentService {
+
+    @FunctionalInterface
+    public interface DependencyRollbackValidator {
+        List<String> validate(String targetFlowContent);
+    }
 
     public record CompiledFlowDraft(
             String content,
@@ -351,6 +359,222 @@ public class OfflineFlowDocumentService {
         } catch (IOException ex) {
             throw new IllegalStateException("保存任务文档失败", ex);
         }
+    }
+
+    /**
+     * Rolls back the target flow's working tree files to the specified historical revision.
+     * Callers must enter OfflineFlowDependencyService.rollbackDocument first so lock ordering
+     * stays graph-lock -> group-lock.
+     */
+    public RollbackOfflineFlowResponse rollbackFlowDocument(RollbackOfflineFlowRequest request,
+                                                            SnapshotFileAccess revisionAccess,
+                                                            DependencyRollbackValidator dependencyValidator) {
+        return repoLockManager.withLock(request.groupId(),
+                () -> rollbackFlowDocumentUnlocked(request, revisionAccess, dependencyValidator));
+    }
+
+    private RollbackOfflineFlowResponse rollbackFlowDocumentUnlocked(RollbackOfflineFlowRequest request,
+                                                                     SnapshotFileAccess revisionAccess,
+                                                                     DependencyRollbackValidator dependencyValidator) {
+        try {
+            Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
+            Path flowFile = resolveRepoFile(repoPath, request.path());
+            OfflineRecentFlowService.assertNotReservedRootPath(repoPath, flowFile);
+
+            DocumentSnapshot current = Files.exists(flowFile)
+                    ? readSnapshot(request.groupId(), request.path())
+                    : null;
+            if (request.documentHash() != null) {
+                if (current == null
+                        || !current.response().documentHash().equals(request.documentHash())
+                        || (request.documentUpdatedAt() != null
+                        && current.response().documentUpdatedAt() != request.documentUpdatedAt())) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "检测到文件已被修改，请先加载最新内容");
+                }
+            }
+
+            if (!revisionAccess.exists(repoPath, request.path())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "目标版本不存在或未包含该任务");
+            }
+
+            DocumentSnapshot targetSnapshot = readSnapshot(request.groupId(), request.path(), revisionAccess);
+            String targetFlowContent = revisionAccess.readString(repoPath, request.path());
+
+            List<String> warnings = new ArrayList<>(dependencyValidator.validate(targetFlowContent));
+
+            String effectiveTimezone = targetSnapshot.response().runtimeTimezone();
+            if (effectiveTimezone == null || effectiveTimezone.isBlank()) {
+                effectiveTimezone = current == null ? null : current.response().runtimeTimezone();
+            }
+            if (effectiveTimezone != null && !effectiveTimezone.isBlank()
+                    && !Objects.equals(yamlSupport.readLabel(targetFlowContent, "wbdataRuntimeTimezone"), effectiveTimezone.trim())) {
+                targetFlowContent = yamlSupport.applyRuntimeTimezoneLabel(targetFlowContent, effectiveTimezone);
+            }
+
+            Set<String> invalidSqlDataSourceTaskIds = new LinkedHashSet<>();
+            Map<String, String> nodeIssues = new LinkedHashMap<>();
+            collectInvalidDataSources(request.groupId(), targetSnapshot.response(), invalidSqlDataSourceTaskIds, nodeIssues, warnings);
+            if (!invalidSqlDataSourceTaskIds.isEmpty()) {
+                targetFlowContent = yamlSupport.unbindSqlDataSources(targetFlowContent, invalidSqlDataSourceTaskIds);
+            }
+
+            targetFlowContent = restoreParameterSnapshotForRollback(
+                    repoPath, request.groupId(), request.path(), effectiveTimezone, targetFlowContent, revisionAccess);
+            restoreManagedNodeFilesForRollback(repoPath, request.path(), current, targetSnapshot, revisionAccess);
+            restoreSidecarFile(repoPath, resolveLayoutFile(repoPath, request.path()), revisionAccess);
+            restoreSidecarFile(repoPath, hiveConfigStore.resolveConfigFile(repoPath, request.path()), revisionAccess);
+
+            Files.createDirectories(flowFile.getParent());
+            Files.writeString(flowFile, targetFlowContent, StandardCharsets.UTF_8);
+            kestraFlowFileService.syncFlowFile(repoPath, request.path());
+
+            OfflineFlowDocumentResponse restored = readSnapshot(request.groupId(), request.path()).response();
+            FlowParameterBindingResponse restoredBinding = restored.parameterBinding();
+            if (restoredBinding != null && restoredBinding.status() != null && !"CURRENT".equals(restoredBinding.status())) {
+                warnings.add(describeParameterBindingWarning(restoredBinding.status()));
+            }
+            return new RollbackOfflineFlowResponse(restored, List.copyOf(warnings), Map.copyOf(nodeIssues));
+        } catch (IOException ex) {
+            throw new IllegalStateException("回滚任务文档失败", ex);
+        }
+    }
+
+    private void collectInvalidDataSources(Long groupId,
+                                           OfflineFlowDocumentResponse targetDocument,
+                                           Set<String> invalidSqlDataSourceTaskIds,
+                                           Map<String, String> nodeIssues,
+                                           List<String> warnings) {
+        if (targetDocument.stages() == null) {
+            return;
+        }
+        for (OfflineFlowStageResponse stage : targetDocument.stages()) {
+            if (stage.nodes() == null) {
+                continue;
+            }
+            for (OfflineFlowNodeResponse node : stage.nodes()) {
+                if ("TRANSFER".equalsIgnoreCase(node.kind())) {
+                    TransferConfig transfer = node.transfer();
+                    if (transfer != null) {
+                        boolean sourceInvalid = transfer.source() != null
+                                && transfer.source().dataSourceId() != null
+                                && !graphDraftBuilder.isValidGroupDataSource(groupId, transfer.source().dataSourceId());
+                        boolean targetInvalid = transfer.target() != null
+                                && transfer.target().dataSourceId() != null
+                                && !graphDraftBuilder.isValidGroupDataSource(groupId, transfer.target().dataSourceId());
+                        if (sourceInvalid || targetInvalid) {
+                            nodeIssues.put(node.taskId(), "引用的数据源已不存在，请重新配置传输规则");
+                            warnings.add("传输节点「" + node.taskId() + "」引用的数据源已不存在，请重新配置传输节点");
+                        }
+                    }
+                } else if (node.dataSourceId() != null
+                        && !graphDraftBuilder.isValidGroupDataSource(groupId, node.dataSourceId())) {
+                    invalidSqlDataSourceTaskIds.add(node.taskId());
+                    warnings.add("节点「" + node.taskId() + "」原绑定的数据源（ID: " + node.dataSourceId() + "）已不存在，已解除绑定，请重新选择数据源");
+                }
+            }
+        }
+    }
+
+    private String restoreParameterSnapshotForRollback(Path repoPath,
+                                                       Long groupId,
+                                                       String flowPath,
+                                                       String effectiveTimezone,
+                                                       String flowContent,
+                                                       SnapshotFileAccess revisionAccess) throws IOException {
+        Optional<FlowParameterSnapshotStore.SnapshotFile> targetParamFile =
+                parameterSnapshotStore.read(repoPath, flowPath, revisionAccess);
+        if (targetParamFile.isEmpty()) {
+            parameterSnapshotStore.delete(repoPath, flowPath);
+            if (yamlSupport.readLabel(flowContent, ExecutionParameterSnapshotRegistry.LABEL_KEY) != null) {
+                return yamlSupport.applyParameterSnapshotId(flowContent, null);
+            }
+            return flowContent;
+        }
+
+        FlowParameterSnapshot targetParam = targetParamFile.get().snapshot();
+        FlowParameterSnapshot snapshotToRegister = targetParam;
+        Path paramFile = parameterSnapshotStore.resolve(repoPath, flowPath);
+        if (effectiveTimezone != null && !effectiveTimezone.isBlank()) {
+            ParameterSnapshotUpdate normalized = parameterBindingAssembler.normalizeParameterSnapshotForSave(
+                    new ParameterSnapshotUpdate(true, targetParam), targetParam, effectiveTimezone);
+            snapshotToRegister = normalized.snapshot();
+            if (targetParam.schemaVersion() == 2 && snapshotToRegister.equals(targetParam)) {
+                Files.createDirectories(paramFile.getParent());
+                Files.writeString(paramFile, targetParamFile.get().content(), StandardCharsets.UTF_8);
+            } else {
+                parameterSnapshotStore.write(repoPath, flowPath, snapshotToRegister);
+            }
+        } else {
+            Files.createDirectories(paramFile.getParent());
+            Files.writeString(paramFile, targetParamFile.get().content(), StandardCharsets.UTF_8);
+        }
+
+        if (snapshotToRegister.schemaVersion() == 2
+                && snapshotToRegister.runtimeTimezone() != null
+                && !snapshotToRegister.runtimeTimezone().isBlank()) {
+            String snapshotId = executionParameterSnapshotRegistry.register(groupId, snapshotToRegister);
+            if (snapshotId != null && !snapshotId.isBlank()) {
+                String existingSnapshotId = yamlSupport.readLabel(flowContent, ExecutionParameterSnapshotRegistry.LABEL_KEY);
+                if (!snapshotId.equals(existingSnapshotId)) {
+                    return yamlSupport.applyParameterSnapshotId(flowContent, snapshotId);
+                }
+            }
+        }
+        return flowContent;
+    }
+
+    private void restoreManagedNodeFilesForRollback(Path repoPath,
+                                                    String flowPath,
+                                                    DocumentSnapshot current,
+                                                    DocumentSnapshot targetSnapshot,
+                                                    SnapshotFileAccess revisionAccess) throws IOException {
+        Path paramPath = parameterSnapshotStore.resolve(repoPath, flowPath).normalize();
+        Path hiveConfPath = hiveConfigStore.resolveConfigFile(repoPath, flowPath).normalize();
+        Set<String> activeScriptPaths = new LinkedHashSet<>();
+        Set<String> activeTransferPaths = new LinkedHashSet<>();
+        for (Path targetManaged : targetSnapshot.managedNodeFiles()) {
+            Path normalizedManaged = targetManaged.normalize();
+            if (normalizedManaged.equals(paramPath) || normalizedManaged.equals(hiveConfPath)) {
+                continue;
+            }
+            String relPath = repoPath.relativize(normalizedManaged).toString().replace('\\', '/');
+            String fileContent = revisionAccess.readString(repoPath, relPath);
+            Files.createDirectories(normalizedManaged.getParent());
+            Files.writeString(normalizedManaged, fileContent, StandardCharsets.UTF_8);
+            if (targetSnapshot.taskFiles().containsValue(targetManaged)) {
+                activeScriptPaths.add(relPath);
+            } else {
+                activeTransferPaths.add(relPath);
+            }
+        }
+        if (current != null) {
+            for (Path oldManaged : current.managedNodeFiles()) {
+                if (!targetSnapshot.managedNodeFiles().contains(oldManaged)) {
+                    Files.deleteIfExists(oldManaged);
+                }
+            }
+        }
+        transferConfigFileService.deleteStaleForFlow(repoPath, flowPath, activeTransferPaths);
+        graphDraftBuilder.deleteStaleScriptsForFlow(repoPath, flowPath, activeScriptPaths);
+    }
+
+    private void restoreSidecarFile(Path repoPath, Path sidecarFile, SnapshotFileAccess revisionAccess) throws IOException {
+        String relPath = repoPath.relativize(sidecarFile).toString().replace('\\', '/');
+        if (revisionAccess.exists(repoPath, relPath)) {
+            Files.createDirectories(sidecarFile.getParent());
+            Files.writeString(sidecarFile, revisionAccess.readString(repoPath, relPath), StandardCharsets.UTF_8);
+        } else {
+            Files.deleteIfExists(sidecarFile);
+        }
+    }
+
+    private String describeParameterBindingWarning(String status) {
+        return switch (status) {
+            case "MISSING" -> "回滚版本绑定的参数组已不存在，请打开「参数」弹窗检查或重新绑定";
+            case "ARCHIVED" -> "回滚版本绑定的参数组已归档，请打开「参数」弹窗检查或调整";
+            case "OUTDATED" -> "回滚版本使用的参数组版本落后于当前最新版本，如需同步请打开「参数」弹窗更新";
+            default -> "参数组绑定状态需要检查（" + status + "），请打开「参数」弹窗确认";
+        };
     }
 
     public List<String> resolveManagedFiles(Long groupId, String path) {

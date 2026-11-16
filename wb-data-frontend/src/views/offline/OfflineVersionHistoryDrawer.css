@@ -441,6 +441,15 @@
     background: var(--color-accent-soft);
 }
 
+.offline-version-quick-btn.is-rollback {
+    color: var(--color-warning);
+}
+
+.offline-version-quick-btn.is-rollback:hover {
+    color: var(--color-error);
+    background: var(--color-error-bg);
+}
+
 .offline-version-quick-btn:focus-visible,
 .offline-publication-badge:focus-visible,
 .offline-version-clear-btn:focus-visible,

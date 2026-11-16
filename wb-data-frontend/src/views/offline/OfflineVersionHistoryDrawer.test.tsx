@@ -149,4 +149,47 @@ describe('OfflineVersionHistoryDrawer', () => {
             message: '工作区有未提交修改',
         });
     });
+
+    it('shows rollback buttons only on COMMIT rows when canWrite is enabled and invokes onRollback', async () => {
+        const onRollback = vi.fn();
+        vi.mocked(getOfflineFlowVersions).mockImplementation((_groupId, _path, options) =>
+            Promise.resolve(response(options?.onlineOnly ?? false)));
+
+        const { rerender } = render(
+            <OfflineVersionHistoryDrawer
+                groupId={4}
+                path="_flows/example/flow.yaml"
+                open
+                canWrite={false}
+                onOpenChange={vi.fn()}
+                onCompare={vi.fn()}
+                onRollback={onRollback}
+            />,
+        );
+
+        await screen.findByText('第二次提交');
+        expect(screen.queryByRole('button', { name: '回滚到此版本' })).toBeNull();
+
+        rerender(
+            <OfflineVersionHistoryDrawer
+                groupId={4}
+                path="_flows/example/flow.yaml"
+                open
+                canWrite
+                onOpenChange={vi.fn()}
+                onCompare={vi.fn()}
+                onRollback={onRollback}
+            />,
+        );
+
+        const rollbackButtons = screen.getAllByRole('button', { name: '回滚到此版本' });
+        expect(rollbackButtons).toHaveLength(2);
+        fireEvent.click(rollbackButtons[1]);
+
+        expect(onRollback).toHaveBeenCalledTimes(1);
+        expect(onRollback.mock.calls[0][0]).toMatchObject({
+            revision: 'aaaaaaaa4444',
+            message: '第一次提交',
+        });
+    });
 });

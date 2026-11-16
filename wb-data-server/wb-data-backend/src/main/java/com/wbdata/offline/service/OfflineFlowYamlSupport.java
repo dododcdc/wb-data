@@ -205,6 +205,10 @@ final class OfflineFlowYamlSupport {
         return graphYaml.compileGraph(existingSource, nodes, edges, dataSourceMap, parameterCompilation);
     }
 
+    String unbindSqlDataSources(String source, Set<String> taskIds) {
+        return graphYaml.unbindSqlDataSources(source, taskIds);
+    }
+
     record FlowIdentity(String namespace, String flowId) {
     }
 

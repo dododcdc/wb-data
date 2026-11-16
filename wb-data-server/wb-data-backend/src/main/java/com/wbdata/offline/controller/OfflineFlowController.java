@@ -14,6 +14,8 @@ import com.wbdata.offline.dto.OfflineFlowVersionHistoryResponse;
 import com.wbdata.offline.dto.OfflineFlowVersionSnapshotResponse;
 import com.wbdata.offline.dto.OfflineFlowFileSnapshot;
 import com.wbdata.offline.dto.MoveOfflineFlowRequest;
+import com.wbdata.offline.dto.RollbackOfflineFlowRequest;
+import com.wbdata.offline.dto.RollbackOfflineFlowResponse;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowRequest;
 import com.wbdata.offline.service.OfflineFlowContentService;
@@ -176,6 +178,36 @@ public class OfflineFlowController {
                     context.groupId(),
                     response != null && response.path() != null ? response.path() : request.path()
             );
+        }
+        return Result.success(response);
+    }
+
+    @Operation(summary = "回滚任务工作区到指定历史提交")
+    @PostMapping("/rollback")
+    public Result<RollbackOfflineFlowResponse> rollbackFlow(
+            @RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
+            @Valid @RequestBody RollbackOfflineFlowRequest request) {
+        if (offlineFlowSnapshotService == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "版本服务未启用");
+        }
+        RollbackOfflineFlowRequest normalizedRequest = new RollbackOfflineFlowRequest(
+                context.groupId(),
+                request.path(),
+                request.revision(),
+                request.documentHash(),
+                request.documentUpdatedAt()
+        );
+        RollbackOfflineFlowResponse response = offlineFlowDependencyService.rollbackDocument(
+                context.groupId(),
+                normalizedRequest.path(),
+                authContextService.listAccessibleGroups(context.user()),
+                validator -> offlineFlowSnapshotService.rollbackFlow(normalizedRequest, validator)
+        );
+        if (context.user() != null) {
+            String recordedPath = response != null && response.document() != null && response.document().path() != null
+                    ? response.document().path()
+                    : normalizedRequest.path();
+            offlineRecentFlowService.recordRecentFlow(context.user().id(), context.groupId(), recordedPath);
         }
         return Result.success(response);
     }
