@@ -121,6 +121,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
     const [draftSession, setDraftSession] = useState<FlowDraftSession | null>(null);
     const [savingFlow, setSavingFlow] = useState(false);
     const [flowCommitDirty, setFlowCommitDirty] = useState(false);
+    const [flowAhead, setFlowAhead] = useState(false);
     const [saveConflictState, setSaveConflictState] = useState<SaveConflictState | null>(null);
     const [saveConflictPending, setSaveConflictPending] = useState(false);
     const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -346,6 +347,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         resetNodeEditorState();
         setSavingFlow(false);
         setFlowCommitDirty(false);
+        setFlowAhead(false);
         setSaveConflictState(null);
         setSaveConflictPending(false);
         setDraftSaveState('idle');
@@ -361,6 +363,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
     const refreshCurrentFlowCommitStatus = useCallback(async () => {
         if (!groupId || !activeFlowPath) {
             setFlowCommitDirty(false);
+            setFlowAhead(false);
             return;
         }
         const requestedGroupId = groupId;
@@ -373,10 +376,12 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
                 && result.flowPath === activeFlowPathRef.current
             ) {
                 setFlowCommitDirty(result.dirty);
+                setFlowAhead(Boolean(result.ahead));
             }
         } catch {
             if (requestedGroupId === currentGroupIdRef.current && requestedFlowPath === activeFlowPathRef.current) {
                 setFlowCommitDirty(false);
+                setFlowAhead(false);
             }
         }
     }, [activeFlowPath, groupId]);
@@ -844,6 +849,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
         nodeEditorContent,
         savingFlow,
         flowCommitDirty,
+        flowAhead,
         saveConflictState,
         isSaveConflictPending: saveConflictPending,
         flowDocument,

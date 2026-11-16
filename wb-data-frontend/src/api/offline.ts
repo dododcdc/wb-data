@@ -29,6 +29,7 @@ export interface OfflineFlowCommitStatus {
     groupId: number;
     flowPath: string;
     dirty: boolean;
+    ahead?: boolean;
 }
 
 export interface OfflineFlowPublicationItem {
@@ -492,6 +493,14 @@ export const pushOfflineRepo = (groupId: number) => {
     return request.post<unknown, PushResult>(offlinePath(groupId, '/repo/push'), {}, {
         headers: { 'Content-Type': 'application/json' },
     });
+};
+
+export const pushOfflineCurrentFlow = (groupId: number, flowPath: string) => {
+    return request.post<unknown, PushResult>(
+        offlinePath(groupId, '/repo/push/flow'),
+        { flowPath },
+        { headers: { 'Content-Type': 'application/json' } }
+    );
 };
 
 export const rebuildOfflineRepo = (groupId: number) => {

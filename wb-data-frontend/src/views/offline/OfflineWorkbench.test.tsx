@@ -260,6 +260,7 @@ vi.mock('../../api/offline', async () => {
         rollbackOfflineFlow: vi.fn(),
         commitOfflineCurrentFlow: vi.fn(),
         commitOfflineRepo: vi.fn(),
+        pushOfflineCurrentFlow: vi.fn(),
         pushOfflineRepo: vi.fn(),
         listBranches: vi.fn(),
         switchBranch: vi.fn(),
@@ -2033,5 +2034,61 @@ describe('OfflineWorkbench online mode', () => {
             title: '请先修复节点数据源配置',
         }));
         expect(screen.queryByRole('dialog', { name: /提交当前任务/ })).toBeNull();
+    });
+
+    it('lets developers push only the current flow from toolbar or commit-and-push action', async () => {
+        const offlineApi = await import('../../api/offline');
+        authState.currentGroup = { id: 1, name: 'Team' };
+        authState.permissions = ['offline.write'];
+        vi.mocked(offlineApi.getOfflineFlowDocument).mockResolvedValue(makeFlowDocument());
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue({
+            ...makeFlowDocument(),
+            documentHash: 'saved-hash',
+            documentUpdatedAt: 200,
+        });
+        vi.mocked(offlineApi.getOfflineFlowCommitStatus).mockResolvedValue({
+            groupId: 1,
+            flowPath: '_flows/example/flow.yaml',
+            dirty: false,
+            ahead: true,
+        });
+        vi.mocked(offlineApi.commitOfflineCurrentFlow).mockResolvedValue({ success: true, message: '当前任务 版本提交成功' });
+        vi.mocked(offlineApi.pushOfflineCurrentFlow).mockResolvedValue({
+            success: true,
+            message: '当前任务推送成功',
+            remoteUrl: 'https://github.example/team/wb-data-1',
+            remoteCreated: false,
+            remoteDeleted: false,
+        });
+
+        renderOfflineWorkbench();
+        fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
+        await screen.findByTestId('flow-canvas');
+
+        // Repo-level push remains hidden for developers, while single-flow push is enabled
+        expect(screen.queryByRole('button', { name: '推送' })).toBeNull();
+        const flowPushBtn = await screen.findByRole('button', { name: '推送当前任务' });
+        await waitFor(() => expect((flowPushBtn as HTMLButtonElement).disabled).toBe(false));
+
+        fireEvent.click(flowPushBtn);
+        const pushDialog = await screen.findByRole('dialog', { name: '推送当前任务' });
+        fireEvent.click(within(pushDialog).getByRole('button', { name: '确认推送' }));
+
+        await waitFor(() => {
+            expect(offlineApi.pushOfflineCurrentFlow).toHaveBeenCalledWith(1, '_flows/example/flow.yaml');
+        });
+        expect(offlineApi.pushOfflineRepo).not.toHaveBeenCalled();
+
+        // Developer can also commit and push in one step after modifying the canvas
+        fireEvent.click(screen.getByRole('button', { name: '模拟画布修改' }));
+        fireEvent.click(screen.getByRole('button', { name: '提交当前任务' }));
+        const commitDialog = await screen.findByRole('dialog', { name: '提交改动' });
+        fireEvent.change(within(commitDialog).getByPlaceholderText(/简要描述本次修改/), { target: { value: 'one step flow push' } });
+        fireEvent.click(within(commitDialog).getByRole('button', { name: '保存、提交并推送' }));
+
+        await waitFor(() => {
+            expect(offlineApi.commitOfflineCurrentFlow).toHaveBeenCalledWith(1, '_flows/example/flow.yaml', 'one step flow push');
+            expect(offlineApi.pushOfflineCurrentFlow).toHaveBeenCalledTimes(2);
+        });
     });
 });

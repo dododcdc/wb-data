@@ -98,4 +98,19 @@ describe('OfflineCommitDialogs', () => {
         expect((within(blankDialog).getByRole('button', { name: '仅提交已保存内容' }) as HTMLButtonElement).disabled).toBe(true);
         expect(blankProps.onCommitFlow).not.toHaveBeenCalled();
     });
+
+    it('supports commit-and-push action when onCommitAndPushFlow is provided', () => {
+        const onCommitAndPushFlow = vi.fn();
+        renderDialogs({
+            flowCommitOpen: true,
+            commitMessage: 'commit and push',
+            flowDraftDirty: true,
+            flowCommitDirty: true,
+            onCommitAndPushFlow,
+        });
+
+        const dialog = screen.getByRole('dialog', { name: '提交改动' });
+        fireEvent.click(within(dialog).getByRole('button', { name: '保存、提交并推送' }));
+        expect(onCommitAndPushFlow).toHaveBeenCalledWith('save-and-commit' satisfies CommitMode);
+    });
 });

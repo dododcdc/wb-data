@@ -38,13 +38,16 @@ interface OfflineWorkbenchMainPanelProps {
     nodeStatuses: Record<string, string>;
     dirty: boolean;
     commitDirty: boolean;
+    flowAhead?: boolean;
     committing: boolean;
+    pushingFlow?: boolean;
     staleDraft: boolean;
     draftSaveState: 'idle' | 'saving' | 'saved' | 'error';
     draftSavedAt: number | null;
     draftSaveError: string | null;
     onSelectAllNodes: (selected: boolean) => void;
     onOpenFlowCommitDialog: () => void;
+    onOpenFlowPushDialog?: () => void;
     onOpenScheduleDialog: () => void;
     onOpenDependencyDialog: () => void;
     onOpenParameterDialog: () => void;
@@ -117,13 +120,16 @@ export function OfflineWorkbenchMainPanel({
     nodeStatuses,
     dirty,
     commitDirty,
+    flowAhead = false,
     committing,
+    pushingFlow = false,
     staleDraft,
     draftSaveState,
     draftSavedAt,
     draftSaveError,
     onSelectAllNodes,
     onOpenFlowCommitDialog,
+    onOpenFlowPushDialog,
     onOpenScheduleDialog,
     onOpenDependencyDialog,
     onOpenParameterDialog,
@@ -182,12 +188,15 @@ export function OfflineWorkbenchMainPanel({
                 selectedNodeCount={isOnlineMode ? 0 : selectedTaskIds.length}
                 dirty={dirty}
                 commitDirty={commitDirty}
+                flowAhead={flowAhead}
                 committing={committing}
+                pushingFlow={pushingFlow}
                 draftSaveState={draftSaveState}
                 draftSavedAt={draftSavedAt}
                 draftSaveError={draftSaveError}
                 onSelectAll={onSelectAllNodes}
                 onCommit={onOpenFlowCommitDialog}
+                onPushFlow={onOpenFlowPushDialog}
                 onOpenSchedule={onOpenScheduleDialog}
                 onOpenDependencies={onOpenDependencyDialog}
                 onOpenParameters={onOpenParameterDialog}

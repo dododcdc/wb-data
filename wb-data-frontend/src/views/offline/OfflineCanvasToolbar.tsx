@@ -1,4 +1,5 @@
 import {
+    ArrowUpRight,
     Braces,
     Check,
     CircleAlert,
@@ -37,12 +38,15 @@ interface OfflineCanvasToolbarProps {
     selectedNodeCount: number;
     dirty: boolean;
     commitDirty: boolean;
+    flowAhead?: boolean;
     committing: boolean;
+    pushingFlow?: boolean;
     draftSaveState: 'idle' | 'saving' | 'saved' | 'error';
     draftSavedAt: number | null;
     draftSaveError: string | null;
     onSelectAll: (selected: boolean) => void;
     onCommit: () => void;
+    onPushFlow?: () => void;
     onOpenSchedule: () => void;
     onOpenDependencies: () => void;
     onOpenParameters: () => void;
@@ -93,12 +97,15 @@ export function OfflineCanvasToolbar({
     selectedNodeCount,
     dirty,
     commitDirty,
+    flowAhead = false,
     committing,
+    pushingFlow = false,
     draftSaveState,
     draftSavedAt,
     draftSaveError,
     onSelectAll,
     onCommit,
+    onPushFlow,
     onOpenSchedule,
     onOpenDependencies,
     onOpenParameters,
@@ -160,13 +167,30 @@ export function OfflineCanvasToolbar({
             {!isOnlineMode ? (
                 <ToolbarButton
                     label="提交当前任务"
-                    disabled={editDisabled || !(dirty || commitDirty) || committing}
+                    disabled={editDisabled || !(dirty || commitDirty) || committing || pushingFlow}
                     onClick={onCommit}
                 >
                     <span className="relative flex">
                         <GitCommitHorizontal size={16} />
                         {(dirty || commitDirty) && <span className="offline-toolbar-dot" />}
                     </span>
+                </ToolbarButton>
+            ) : null}
+
+            {!isOnlineMode && onPushFlow ? (
+                <ToolbarButton
+                    label="推送当前任务"
+                    disabled={editDisabled || !flowAhead || committing || pushingFlow}
+                    onClick={onPushFlow}
+                >
+                    {pushingFlow ? (
+                        <LoaderCircle size={16} className="offline-spin" />
+                    ) : (
+                        <span className="relative flex">
+                            <ArrowUpRight size={16} />
+                            {flowAhead && <span className="offline-toolbar-dot" />}
+                        </span>
+                    )}
                 </ToolbarButton>
             ) : null}
 

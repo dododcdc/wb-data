@@ -267,4 +267,78 @@ describe('OfflineCanvasToolbar status and timezone metadata', () => {
         expect(onOpenVersions).toHaveBeenCalledOnce();
         expect(onOpenExecutions).toHaveBeenCalledOnce();
     });
+
+    it('renders single-flow push button enabled only when flowAhead and hides it in online mode', () => {
+        const onPushFlow = vi.fn();
+        const { rerender } = render(
+            <TooltipProvider delayDuration={0}>
+                <OfflineCanvasToolbar
+                    activeFlowPath="_flows/example/flow.yaml"
+                    groupId={1}
+                    branch="main"
+                    canvasMode="dev"
+                    canWrite
+                    canConfigureParameters
+                    timezone="Asia/Shanghai"
+                    nodeCount={2}
+                    selectedNodeCount={0}
+                    dirty={false}
+                    commitDirty={false}
+                    flowAhead={false}
+                    committing={false}
+                    draftSaveState="idle"
+                    draftSavedAt={null}
+                    draftSaveError={null}
+                    onSelectAll={vi.fn()}
+                    onCommit={vi.fn()}
+                    onPushFlow={onPushFlow}
+                    onOpenSchedule={vi.fn()}
+                    onOpenDependencies={vi.fn()}
+                    onOpenParameters={vi.fn()}
+                    onExecute={vi.fn()}
+                    onOpenExecutions={vi.fn()}
+                    onOpenVersions={vi.fn()}
+                />
+            </TooltipProvider>,
+        );
+
+        const pushBtn = screen.getByRole('button', { name: '推送当前任务' }) as HTMLButtonElement;
+        expect(pushBtn.disabled).toBe(true);
+
+        rerender(
+            <TooltipProvider delayDuration={0}>
+                <OfflineCanvasToolbar
+                    activeFlowPath="_flows/example/flow.yaml"
+                    groupId={1}
+                    branch="main"
+                    canvasMode="dev"
+                    canWrite
+                    canConfigureParameters
+                    timezone="Asia/Shanghai"
+                    nodeCount={2}
+                    selectedNodeCount={0}
+                    dirty={false}
+                    commitDirty={false}
+                    flowAhead
+                    committing={false}
+                    draftSaveState="idle"
+                    draftSavedAt={null}
+                    draftSaveError={null}
+                    onSelectAll={vi.fn()}
+                    onCommit={vi.fn()}
+                    onPushFlow={onPushFlow}
+                    onOpenSchedule={vi.fn()}
+                    onOpenDependencies={vi.fn()}
+                    onOpenParameters={vi.fn()}
+                    onExecute={vi.fn()}
+                    onOpenExecutions={vi.fn()}
+                    onOpenVersions={vi.fn()}
+                />
+            </TooltipProvider>,
+        );
+
+        expect((screen.getByRole('button', { name: '推送当前任务' }) as HTMLButtonElement).disabled).toBe(false);
+        fireEvent.click(screen.getByRole('button', { name: '推送当前任务' }));
+        expect(onPushFlow).toHaveBeenCalledOnce();
+    });
 });

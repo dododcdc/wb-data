@@ -70,6 +70,14 @@ abstract class GitRepositoryOperations {
     }
 
     protected String runGit(Path repoPath, String... args) {
+        return runGitWithEnv(repoPath, java.util.Map.of(), args);
+    }
+
+    protected String runGitWithEnv(Path repoPath, java.util.Map<String, String> env, String... args) {
+        return runGitWithEnvAndInput(repoPath, env, null, args);
+    }
+
+    protected String runGitWithEnvAndInput(Path repoPath, java.util.Map<String, String> env, String stdinInput, String... args) {
         List<String> command = new java.util.ArrayList<>();
         command.add("git");
         command.add("-C");
@@ -77,14 +85,22 @@ abstract class GitRepositoryOperations {
         command.addAll(List.of(args));
 
         try {
-            Process process = new ProcessBuilder(command)
-                    .redirectErrorStream(true)
-                    .start();
+            ProcessBuilder builder = new ProcessBuilder(command)
+                    .redirectErrorStream(true);
+            if (env != null && !env.isEmpty()) {
+                builder.environment().putAll(env);
+            }
+            Process process = builder.start();
+            try (java.io.OutputStream stdin = process.getOutputStream()) {
+                if (stdinInput != null) {
+                    stdin.write(stdinInput.getBytes(StandardCharsets.UTF_8));
+                }
+            }
+            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
             if (!process.waitFor(30, TimeUnit.SECONDS)) {
                 process.destroyForcibly();
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Git 命令执行超时");
             }
-            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
             if (process.exitValue() != 0) {
                 throw new GitException(output);
             }

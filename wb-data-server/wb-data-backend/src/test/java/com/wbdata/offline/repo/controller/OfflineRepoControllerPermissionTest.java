@@ -8,6 +8,7 @@ import com.wbdata.offline.repo.dto.CommitRequest;
 import com.wbdata.offline.repo.dto.CreateBranchRequest;
 import com.wbdata.offline.repo.dto.DeleteBranchRequest;
 import com.wbdata.offline.repo.dto.MergeBranchRequest;
+import com.wbdata.offline.repo.dto.PushCurrentFlowRequest;
 import com.wbdata.offline.repo.dto.PushRequest;
 import com.wbdata.offline.repo.dto.SwitchBranchRequest;
 import org.junit.jupiter.api.Test;
@@ -19,15 +20,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 class OfflineRepoControllerPermissionTest {
 
     @Test
-    void flowCommit_keepsOfflineWritePermission() throws Exception {
-        Method method = OfflineRepoController.class.getMethod(
+    void flowCommitAndFlowPush_keepOfflineWritePermission() throws Exception {
+        Method commitMethod = OfflineRepoController.class.getMethod(
                 "commitCurrentFlow",
                 GroupAuthContext.class,
                 CommitCurrentFlowRequest.class
         );
+        Method pushMethod = OfflineRepoController.class.getMethod(
+                "pushCurrentFlow",
+                GroupAuthContext.class,
+                PushCurrentFlowRequest.class
+        );
 
-        RequireGroupAuth auth = (RequireGroupAuth) method.getParameters()[0].getAnnotations()[0];
-        assertThat(auth.value()).isEqualTo(Permission.OFFLINE_WRITE);
+        RequireGroupAuth commitAuth = (RequireGroupAuth) commitMethod.getParameters()[0].getAnnotations()[0];
+        RequireGroupAuth pushAuth = (RequireGroupAuth) pushMethod.getParameters()[0].getAnnotations()[0];
+        assertThat(commitAuth.value()).isEqualTo(Permission.OFFLINE_WRITE);
+        assertThat(pushAuth.value()).isEqualTo(Permission.OFFLINE_WRITE);
     }
 
     @Test

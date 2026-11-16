@@ -12,9 +12,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -135,11 +139,80 @@ public class GitCommandService extends GitRepositoryOperations {
         return repoLockManager.withLock(groupId, () -> hasFlowChangesUnlocked(groupId, flowPath));
     }
 
+    public boolean hasUnpushedFlowChanges(Long groupId, String flowPath) {
+        return repoLockManager.withLock(groupId, () -> hasUnpushedFlowChangesUnlocked(groupId, flowPath));
+    }
+
     private boolean hasFlowChangesUnlocked(Long groupId, String flowPath) {
         Path repoPath = repoPath(groupId);
         ensureRepoExists(repoPath);
         List<String> trackedFiles = resolveFlowTrackedFiles(repoPath, groupId, flowPath);
         return !runGitWithPaths(repoPath, List.of("status", "--porcelain"), trackedFiles).isBlank();
+    }
+
+    private boolean hasUnpushedFlowChangesUnlocked(Long groupId, String flowPath) {
+        Path repoPath = repoPath(groupId);
+        if (!Files.isDirectory(repoPath.resolve(".git"))) {
+            return false;
+        }
+        String headSha = tryRevParse(repoPath, "HEAD");
+        if (headSha == null) {
+            return false;
+        }
+        List<String> flowPathSpecs = resolveFlowPathSpecs(groupId, flowPath);
+        String branch = getCurrentBranch(repoPath);
+        String originRef = (branch == null || branch.isBlank()) ? null : tryRevParse(repoPath, "refs/remotes/origin/" + branch);
+        if (originRef == null) {
+            return !runGitWithPaths(
+                    repoPath,
+                    List.of("-c", "core.quotepath=false", "ls-tree", "-r", "--name-only", "HEAD"),
+                    flowPathSpecs
+            ).isBlank();
+        }
+        return !runGitWithPaths(
+                repoPath,
+                List.of("-c", "core.quotepath=false", "diff", "--no-renames", "--name-only", originRef, headSha),
+                flowPathSpecs
+        ).isBlank();
+    }
+
+    private List<String> resolveFlowPathSpecs(Long groupId, String flowPath) {
+        Path normalized = Path.of(flowPath == null ? "" : flowPath).normalize();
+        String normalizedValue = normalized.toString().replace('\\', '/');
+        if (normalized.isAbsolute()
+                || normalizedValue.contains("..")
+                || !normalizedValue.startsWith("_flows/")
+                || !normalizedValue.endsWith("/flow.yaml")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务路径不合法");
+        }
+        LinkedHashSet<String> specs = new LinkedHashSet<>();
+        Path parent = normalized.getParent();
+        if (parent != null) {
+            String flowDir = parent.toString().replace('\\', '/');
+            specs.add(flowDir);
+            if (flowDir.length() > "_flows/".length()) {
+                specs.add("scripts/" + flowDir.substring("_flows/".length()));
+            }
+            Path leafName = parent.getFileName();
+            if (leafName != null && !leafName.toString().isBlank()) {
+                specs.add("transfers/" + leafName);
+                specs.add(".wb-data/kestra-flows/" + leafName + ".yaml");
+            }
+        }
+        try {
+            specs.addAll(offlineFlowDocumentService.resolveManagedFiles(groupId, flowPath));
+        } catch (RuntimeException ignored) {
+            // Flow file may not exist on disk if deleted or only present in historical commit.
+        }
+        return List.copyOf(specs);
+    }
+
+    private boolean pathBelongsToFlow(String relativePath, List<String> flowPathSpecs) {
+        String normalized = relativePath == null ? "" : relativePath.replace('\\', '/').trim();
+        if (normalized.isEmpty()) {
+            return false;
+        }
+        return flowPathSpecs.stream().anyMatch(spec -> normalized.equals(spec) || normalized.startsWith(spec + "/"));
     }
 
     private List<String> resolveFlowTrackedFiles(Path repoPath, Long groupId, String flowPath) {
@@ -214,6 +287,8 @@ public class GitCommandService extends GitRepositoryOperations {
         return new CommitResult(true, "仓库版本提交成功");
     }
 
+    private record RemoteOriginSetup(String displayUrl, boolean remoteCreated, boolean remoteDeleted) {}
+
     /**
      * 推送仓库到远程
      * - 检测配置是否切换，切换时清理旧 remote
@@ -224,29 +299,37 @@ public class GitCommandService extends GitRepositoryOperations {
         return repoLockManager.withLock(groupId, () -> pushUnlocked(groupId, pushedBy));
     }
 
+    /**
+     * 仅推送当前任务已提交的改动到远程分支，不带入其他任务尚未推送的提交
+     */
+    public PushResult pushCurrentFlow(Long groupId, String flowPath, Long pushedBy) {
+        return repoLockManager.withLock(groupId, () -> pushCurrentFlowUnlocked(groupId, flowPath, pushedBy));
+    }
+
+    private RemoteOriginSetup prepareRemoteOrigin(Path repoPath, Long groupId, String repoName) {
+        String currentRemote = getCurrentRemote(repoPath);
+        currentRemote = clearStaleRemote(repoPath, currentRemote, groupId, repoName);
+
+        boolean remoteCreated = false;
+        if (currentRemote == null) {
+            gitRemotePort.createRepository(groupId, repoName, true);
+            String pushUrl = gitRemotePort.buildPushUrl(groupId, repoName);
+            runGit(repoPath, "remote", "add", "origin", pushUrl);
+            remoteCreated = true;
+        } else if (!gitRemotePort.repositoryExists(groupId, repoName)) {
+            return new RemoteOriginSetup(null, false, true);
+        }
+        return new RemoteOriginSetup(gitRemotePort.buildDisplayUrl(groupId, repoName), remoteCreated, false);
+    }
+
     private PushResult pushUnlocked(Long groupId, Long pushedBy) {
         Path repoPath = repoPath(groupId);
         ensureRepoExists(repoPath);
 
         String repoName = "wb-data-" + groupId;
-        String currentRemote = getCurrentRemote(repoPath);
-
-        // 检测配置是否切换，切换时清理旧 remote
-        currentRemote = clearStaleRemote(repoPath, currentRemote, groupId, repoName);
-
-        boolean remoteCreated = false;
-        if (currentRemote == null) {
-            // 首次推送：创建远程仓库 + 添加 remote
-            gitRemotePort.createRepository(groupId, repoName, true);
-            String pushUrl = gitRemotePort.buildPushUrl(groupId, repoName);
-            runGit(repoPath, "remote", "add", "origin", pushUrl);
-            currentRemote = pushUrl;
-            remoteCreated = true;
-        } else {
-            // 已有 remote，检查远程仓库是否仍然存在
-            if (!gitRemotePort.repositoryExists(groupId, repoName)) {
-                return new PushResult(false, "远程仓库已不存在", null, false, true);
-            }
+        RemoteOriginSetup remote = prepareRemoteOrigin(repoPath, groupId, repoName);
+        if (remote.remoteDeleted()) {
+            return new PushResult(false, "远程仓库已不存在", null, false, true);
         }
 
         String branch = getCurrentBranch(repoPath);
@@ -265,9 +348,323 @@ public class GitCommandService extends GitRepositoryOperations {
             }
         }
 
-        String displayUrl = gitRemotePort.buildDisplayUrl(groupId, repoName);
         publishPushedEvent(groupId, pushedBy, repoPath, beforeSha);
-        return new PushResult(true, "推送成功", displayUrl, remoteCreated, false);
+        return new PushResult(true, "推送成功", remote.displayUrl(), remote.remoteCreated(), false);
+    }
+
+    private PushResult pushCurrentFlowUnlocked(Long groupId, String flowPath, Long pushedBy) {
+        Path repoPath = repoPath(groupId);
+        ensureRepoExists(repoPath);
+        List<String> flowPathSpecs = resolveFlowPathSpecs(groupId, flowPath);
+
+        String headSha = tryRevParse(repoPath, "HEAD");
+        if (headSha == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前任务尚未提交，请先提交当前任务后再推送");
+        }
+
+        String repoName = "wb-data-" + groupId;
+        RemoteOriginSetup remote = prepareRemoteOrigin(repoPath, groupId, repoName);
+        if (remote.remoteDeleted()) {
+            return new PushResult(false, "远程仓库已不存在", null, false, true);
+        }
+
+        String branch = getCurrentBranch(repoPath);
+        String beforeSha = readOriginBranchSha(repoPath, branch);
+        if (beforeSha != null) {
+            runGit(repoPath, "fetch", "origin", "+refs/heads/" + branch + ":refs/remotes/origin/" + branch);
+            String fetchedSha = tryRevParse(repoPath, "refs/remotes/origin/" + branch);
+            if (fetchedSha != null) {
+                beforeSha = fetchedSha;
+            }
+        }
+
+        List<String> unpushedFlowPaths = beforeSha == null
+                ? listPathsInTree(repoPath, headSha, flowPathSpecs)
+                : listChangedPathsBetween(repoPath, beforeSha, headSha, flowPathSpecs);
+        if (unpushedFlowPaths.isEmpty()) {
+            if (hasFlowChangesUnlocked(groupId, flowPath)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前任务有未提交的修改，请先提交当前任务后再推送");
+            }
+            return new PushResult(true, "当前任务已是最新线上状态，无需重复推送", remote.displayUrl(), remote.remoteCreated(), false);
+        }
+
+        if (beforeSha == null) {
+            List<String> allHeadFiles = listPathsInTree(repoPath, headSha, List.of());
+            if (allHeadFiles.stream().allMatch(path -> pathBelongsToFlow(path, flowPathSpecs))) {
+                runGit(repoPath, "push", "-u", "origin", "HEAD");
+                publishPushedEvent(groupId, pushedBy, repoPath, null, headSha);
+                return new PushResult(true, "当前任务推送成功", remote.displayUrl(), remote.remoteCreated(), false);
+            }
+        } else if (isAncestor(repoPath, beforeSha, headSha)) {
+            List<String> allChangedPaths = listChangedPathsBetween(repoPath, beforeSha, headSha, List.of());
+            if (allChangedPaths.stream().allMatch(path -> pathBelongsToFlow(path, flowPathSpecs))) {
+                runGit(repoPath, "push", "-u", "origin", "HEAD");
+                publishPushedEvent(groupId, pushedBy, repoPath, beforeSha, headSha);
+                return new PushResult(true, "当前任务推送成功", remote.displayUrl(), remote.remoteCreated(), false);
+            }
+        }
+
+        String baseSha = resolvePushBase(repoPath, beforeSha, headSha, flowPathSpecs);
+        List<String> remoteChangedPaths = (beforeSha != null && baseSha != null && !beforeSha.equals(baseSha))
+                ? listChangedPathsBetween(repoPath, baseSha, beforeSha, List.of())
+                : List.of();
+        String pushedCommit = replaySingleFlowCommitsAndRebaseRemainder(
+                repoPath, branch, beforeSha, baseSha, headSha, flowPathSpecs, remoteChangedPaths);
+        publishPushedEvent(groupId, pushedBy, repoPath, beforeSha, pushedCommit);
+        return new PushResult(true, "当前任务推送成功", remote.displayUrl(), remote.remoteCreated(), false);
+    }
+
+    private String resolvePushBase(Path repoPath, String beforeSha, String headSha, List<String> flowPathSpecs) {
+        if (beforeSha == null) {
+            return null;
+        }
+        if (isAncestor(repoPath, beforeSha, headSha)) {
+            return beforeSha;
+        }
+        String baseSha = tryMergeBase(repoPath, beforeSha, headSha);
+        if (baseSha == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "远端分支与本地分支无共同祖先，请先同步仓库");
+        }
+        List<String> remoteChangedPaths = listChangedPathsBetween(repoPath, baseSha, beforeSha, List.of());
+        if (!remoteChangedPaths.isEmpty()) {
+            Set<String> localAndWorktree = new LinkedHashSet<>(listChangedPathsBetween(repoPath, baseSha, headSha, List.of()));
+            localAndWorktree.addAll(listWorkingTreePaths(repoPath));
+            for (String remotePath : remoteChangedPaths) {
+                if (pathBelongsToFlow(remotePath, flowPathSpecs)) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "远端分支上当前任务已有新提交，请先同步后再推送");
+                }
+                if (localAndWorktree.contains(remotePath)) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "远端分支存在未同步的冲突改动，请先同步仓库后再推送");
+                }
+            }
+        }
+        return baseSha;
+    }
+
+    private String replaySingleFlowCommitsAndRebaseRemainder(Path repoPath,
+                                                             String branch,
+                                                             String beforeSha,
+                                                             String baseSha,
+                                                             String headSha,
+                                                             List<String> flowPathSpecs,
+                                                             List<String> remoteChangedPaths) {
+        Path tempIndex;
+        try {
+            tempIndex = Files.createTempFile("wb-data-flow-push-", ".index");
+            Files.deleteIfExists(tempIndex);
+        } catch (IOException ex) {
+            throw new IllegalStateException("创建临时 Git 索引失败", ex);
+        }
+
+        try {
+            Map<String, String> indexEnv = Map.of("GIT_INDEX_FILE", tempIndex.toString());
+            if (beforeSha != null) {
+                runGitWithEnv(repoPath, indexEnv, "read-tree", beforeSha);
+            } else {
+                runGitWithEnv(repoPath, indexEnv, "read-tree", "--empty");
+            }
+
+            String range = baseSha == null ? headSha : baseSha + ".." + headSha;
+            List<String> commits = runGit(repoPath, "rev-list", "--reverse", range).lines()
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .toList();
+
+            String currentCommit = beforeSha;
+            String currentTree = beforeSha == null
+                    ? runGitWithEnv(repoPath, indexEnv, "write-tree")
+                    : runGit(repoPath, "rev-parse", beforeSha + "^{tree}");
+
+            for (String commitSha : commits) {
+                List<String> matchingPaths = listCommitChangedPaths(repoPath, commitSha).stream()
+                        .filter(path -> pathBelongsToFlow(path, flowPathSpecs))
+                        .toList();
+                if (matchingPaths.isEmpty()) {
+                    continue;
+                }
+                applyPathsFromCommitToIndex(repoPath, indexEnv, commitSha, matchingPaths);
+                String nextTree = runGitWithEnv(repoPath, indexEnv, "write-tree");
+                if (!nextTree.equals(currentTree)) {
+                    currentCommit = createCommitFromMetadata(repoPath, commitSha, nextTree, currentCommit);
+                    currentTree = nextTree;
+                }
+            }
+
+            String pushedCommit = currentCommit;
+            if (pushedCommit == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前任务暂无可推送改动");
+            }
+            runGit(repoPath, "push", "origin", pushedCommit + ":refs/heads/" + branch);
+            runGit(repoPath, "update-ref", "refs/remotes/origin/" + branch, pushedCommit);
+            runGit(repoPath, "config", "branch." + branch + ".remote", "origin");
+            runGit(repoPath, "config", "branch." + branch + ".merge", "refs/heads/" + branch);
+
+            for (String commitSha : commits) {
+                List<String> otherPaths = listCommitChangedPaths(repoPath, commitSha).stream()
+                        .filter(path -> !pathBelongsToFlow(path, flowPathSpecs))
+                        .toList();
+                if (otherPaths.isEmpty()) {
+                    continue;
+                }
+                applyPathsFromCommitToIndex(repoPath, indexEnv, commitSha, otherPaths);
+                String nextTree = runGitWithEnv(repoPath, indexEnv, "write-tree");
+                if (!nextTree.equals(currentTree)) {
+                    currentCommit = createCommitFromMetadata(repoPath, commitSha, nextTree, currentCommit);
+                    currentTree = nextTree;
+                }
+            }
+
+            runGit(repoPath, "update-ref", "HEAD", currentCommit, headSha);
+            if (!remoteChangedPaths.isEmpty()) {
+                runGitWithPaths(repoPath, List.of("checkout", currentCommit), remoteChangedPaths);
+            }
+            return pushedCommit;
+        } finally {
+            try {
+                Files.deleteIfExists(tempIndex);
+            } catch (IOException ignored) {
+                // Best-effort temp index cleanup.
+            }
+        }
+    }
+
+    private List<String> listPathsInTree(Path repoPath, String revision, List<String> pathSpecs) {
+        List<String> args = List.of("-c", "core.quotepath=false", "ls-tree", "-r", "--name-only", revision);
+        String output = pathSpecs.isEmpty()
+                ? runGit(repoPath, args.toArray(String[]::new))
+                : runGitWithPaths(repoPath, args, pathSpecs);
+        return output.lines().map(String::trim).filter(s -> !s.isEmpty()).toList();
+    }
+
+    private List<String> listChangedPathsBetween(Path repoPath, String fromRev, String toRev, List<String> pathSpecs) {
+        List<String> args = List.of("-c", "core.quotepath=false", "diff", "--no-renames", "--name-only", fromRev, toRev);
+        String output = pathSpecs.isEmpty()
+                ? runGit(repoPath, args.toArray(String[]::new))
+                : runGitWithPaths(repoPath, args, pathSpecs);
+        return output.lines().map(String::trim).filter(s -> !s.isEmpty()).toList();
+    }
+
+    private List<String> listCommitChangedPaths(Path repoPath, String commitSha) {
+        String output = runGit(
+                repoPath,
+                "-c", "core.quotepath=false",
+                "diff-tree", "-m", "--first-parent", "--no-renames", "--no-commit-id", "--name-only", "-r", "--root",
+                commitSha
+        );
+        return output.lines().map(String::trim).filter(s -> !s.isEmpty()).distinct().toList();
+    }
+
+    private List<String> listWorkingTreePaths(Path repoPath) {
+        String status = runGit(repoPath, "-c", "core.quotepath=false", "status", "--porcelain", "-uall");
+        LinkedHashSet<String> paths = new LinkedHashSet<>();
+        for (String line : status.lines().toList()) {
+            if (line.length() <= 3) {
+                continue;
+            }
+            String entry = line.substring(3).trim();
+            int renameArrow = entry.indexOf(" -> ");
+            if (renameArrow >= 0) {
+                paths.add(entry.substring(0, renameArrow).trim());
+                paths.add(entry.substring(renameArrow + 4).trim());
+            } else {
+                paths.add(entry);
+            }
+        }
+        return List.copyOf(paths);
+    }
+
+    private void applyPathsFromCommitToIndex(Path repoPath,
+                                             Map<String, String> indexEnv,
+                                             String commitSha,
+                                             List<String> paths) {
+        if (paths.isEmpty()) {
+            return;
+        }
+        String treeOutput = runGitWithPaths(
+                repoPath,
+                List.of("-c", "core.quotepath=false", "ls-tree", "-r", commitSha),
+                paths
+        );
+        Set<String> presentPaths = new LinkedHashSet<>();
+        StringBuilder indexInfo = new StringBuilder();
+        for (String line : treeOutput.lines().toList()) {
+            if (line.isBlank()) {
+                continue;
+            }
+            int tabIdx = line.indexOf('\t');
+            if (tabIdx < 0) {
+                continue;
+            }
+            String meta = line.substring(0, tabIdx);
+            String filePath = line.substring(tabIdx + 1);
+            String[] parts = meta.trim().split("\\s+");
+            if (parts.length < 3 || !"blob".equals(parts[1])) {
+                continue;
+            }
+            presentPaths.add(filePath);
+            indexInfo.append(parts[0]).append(' ').append(parts[1]).append(' ').append(parts[2])
+                    .append('\t').append(filePath).append('\n');
+        }
+        if (indexInfo.length() > 0) {
+            runGitWithEnvAndInput(repoPath, indexEnv, indexInfo.toString(), "update-index", "--index-info");
+        }
+        List<String> deletedPaths = paths.stream()
+                .filter(path -> !presentPaths.contains(path))
+                .toList();
+        if (!deletedPaths.isEmpty()) {
+            List<String> rmCmd = new ArrayList<>(List.of("update-index", "--force-remove", "--"));
+            rmCmd.addAll(deletedPaths);
+            runGitWithEnv(repoPath, indexEnv, rmCmd.toArray(String[]::new));
+        }
+    }
+
+    private String createCommitFromMetadata(Path repoPath, String sourceCommitSha, String treeSha, String parentCommitSha) {
+        String meta = runGit(repoPath, "log", "-1", "--format=%an%x1f%ae%x1f%aI%x1f%cn%x1f%ce%x1f%cI", sourceCommitSha);
+        String[] parts = meta.split("\u001f", 6);
+        String message = runGit(repoPath, "log", "-1", "--format=%B", sourceCommitSha);
+        if (message.isBlank()) {
+            message = "update: sync offline changes";
+        }
+        Map<String, String> env = new java.util.LinkedHashMap<>();
+        if (parts.length == 6) {
+            env.put("GIT_AUTHOR_NAME", parts[0]);
+            env.put("GIT_AUTHOR_EMAIL", parts[1]);
+            env.put("GIT_AUTHOR_DATE", parts[2]);
+            env.put("GIT_COMMITTER_NAME", parts[3]);
+            env.put("GIT_COMMITTER_EMAIL", parts[4]);
+            env.put("GIT_COMMITTER_DATE", parts[5]);
+        }
+        if (parentCommitSha == null || parentCommitSha.isBlank()) {
+            return runGitWithEnvAndInput(repoPath, env, message + "\n", "commit-tree", treeSha, "-F", "-");
+        }
+        return runGitWithEnvAndInput(repoPath, env, message + "\n", "commit-tree", treeSha, "-p", parentCommitSha, "-F", "-");
+    }
+
+    private String tryRevParse(Path repoPath, String ref) {
+        try {
+            String value = runGit(repoPath, "rev-parse", "--verify", ref);
+            return value.isBlank() ? null : value;
+        } catch (GitException ex) {
+            return null;
+        }
+    }
+
+    private boolean isAncestor(Path repoPath, String ancestor, String descendant) {
+        try {
+            runGit(repoPath, "merge-base", "--is-ancestor", ancestor, descendant);
+            return true;
+        } catch (GitException ex) {
+            return false;
+        }
+    }
+
+    private String tryMergeBase(Path repoPath, String left, String right) {
+        try {
+            String base = runGit(repoPath, "merge-base", left, right);
+            return base.isBlank() ? null : base;
+        } catch (GitException ex) {
+            return null;
+        }
     }
 
     /**
@@ -330,8 +727,11 @@ public class GitCommandService extends GitRepositoryOperations {
     }
 
     private void publishPushedEvent(Long groupId, Long pushedBy, Path repoPath, String beforeSha) {
+        publishPushedEvent(groupId, pushedBy, repoPath, beforeSha, runGit(repoPath, "rev-parse", "HEAD"));
+    }
+
+    private void publishPushedEvent(Long groupId, Long pushedBy, Path repoPath, String beforeSha, String afterSha) {
         String branch = getCurrentBranch(repoPath);
-        String afterSha = runGit(repoPath, "rev-parse", "HEAD");
         String remoteAfterSha = readOriginBranchSha(repoPath, branch);
         if (!afterSha.equals(remoteAfterSha)) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,

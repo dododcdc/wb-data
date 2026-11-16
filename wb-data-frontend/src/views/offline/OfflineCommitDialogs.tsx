@@ -24,6 +24,7 @@ export interface OfflineCommitDialogsProps {
     onRepoCommitOpenChange: (open: boolean) => void;
     onCommitMessageChange: (message: string) => void;
     onCommitFlow: (mode: CommitMode) => void;
+    onCommitAndPushFlow?: (mode: CommitMode) => void;
     onCommitRepo: (mode: CommitMode) => void;
 }
 
@@ -38,6 +39,7 @@ interface CommitDialogShellProps {
     onOpenChange: (open: boolean) => void;
     onCommitMessageChange: (message: string) => void;
     onCommit: (mode: CommitMode) => void;
+    onCommitAndPush?: (mode: CommitMode) => void;
 }
 
 function CommitDialogShell(props: CommitDialogShellProps) {
@@ -52,9 +54,11 @@ function CommitDialogShell(props: CommitDialogShellProps) {
         onOpenChange,
         onCommitMessageChange,
         onCommit,
+        onCommitAndPush,
     } = props;
     const canCommit = !!commitMessage.trim() && !committing;
     const showSavedOnlyAction = draftDirty && savedDirty;
+    const primaryMode: CommitMode = draftDirty ? 'save-and-commit' : 'saved-only';
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -102,14 +106,26 @@ function CommitDialogShell(props: CommitDialogShellProps) {
                     )}
                     <Button
                         type="button"
-                        variant="default"
+                        variant={onCommitAndPush ? 'outline' : 'default'}
                         size="sm"
-                        onClick={() => onCommit(draftDirty ? 'save-and-commit' : 'saved-only')}
+                        onClick={() => onCommit(primaryMode)}
                         disabled={!canCommit}
                     >
                         {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
                         {committing ? '提交中…' : draftDirty ? '保存并提交' : '提交'}
                     </Button>
+                    {onCommitAndPush ? (
+                        <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            onClick={() => onCommitAndPush(primaryMode)}
+                            disabled={!canCommit}
+                        >
+                            {committing ? <LoaderCircle size={14} className="offline-spin" /> : null}
+                            {committing ? '提交并推送中…' : draftDirty ? '保存、提交并推送' : '提交并推送'}
+                        </Button>
+                    ) : null}
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -130,6 +146,7 @@ export function OfflineCommitDialogs(props: OfflineCommitDialogsProps) {
         onRepoCommitOpenChange,
         onCommitMessageChange,
         onCommitFlow,
+        onCommitAndPushFlow,
         onCommitRepo,
     } = props;
 
@@ -146,6 +163,7 @@ export function OfflineCommitDialogs(props: OfflineCommitDialogsProps) {
                 onOpenChange={onFlowCommitOpenChange}
                 onCommitMessageChange={onCommitMessageChange}
                 onCommit={onCommitFlow}
+                onCommitAndPush={onCommitAndPushFlow}
             />
             <CommitDialogShell
                 open={repoCommitOpen}

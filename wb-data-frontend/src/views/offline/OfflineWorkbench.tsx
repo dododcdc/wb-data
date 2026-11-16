@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, GitCompare, LoaderCircle, RotateCcw, X } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, GitCompare, LoaderCircle, RotateCcw, X } from 'lucide-react';
 import '../core/RouteSkeletons.css';
 import { Button } from '../../components/ui/button';
 import {
@@ -18,6 +18,7 @@ import {
 } from '../../components/ui/resizable';
 import {
     getOfflineRepoTree,
+    pushOfflineCurrentFlow,
     rollbackOfflineFlow,
     type FlowParameterBinding,
     type OfflineRepoTreeResponse,
@@ -102,6 +103,7 @@ export default function OfflineWorkbench() {
         };
     }, []);
     const [flowCommitDialogOpen, setFlowCommitDialogOpen] = useState(false);
+    const [flowPushDialogOpen, setFlowPushDialogOpen] = useState(false);
     const [repoCommitDialogOpen, setRepoCommitDialogOpen] = useState(false);
     const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
     const [versionCompare, setVersionCompare] = useState<{ base: VersionSelection; target: VersionSelection; open: boolean } | null>(null);
@@ -110,6 +112,7 @@ export default function OfflineWorkbench() {
     const [rollbackNodeIssues, setRollbackNodeIssues] = useState<Record<string, string>>({});
     const [commitMessage, setCommitMessage] = useState('');
     const [committing, setCommitting] = useState(false);
+    const [pushingFlow, setPushingFlow] = useState(false);
     const [parameterDialogOpen, setParameterDialogOpen] = useState(false);
     const [dependencyDialogOpen, setDependencyDialogOpen] = useState(false);
     const [canvasMode, setCanvasMode] = useState<CanvasMode>('dev');
@@ -162,6 +165,7 @@ export default function OfflineWorkbench() {
         nodeEditorOpen,
         nodeEditorContent,
         flowCommitDirty,
+        flowAhead,
         saveConflictState,
         isSaveConflictPending,
         flowDocument,
@@ -224,6 +228,7 @@ export default function OfflineWorkbench() {
         setOnlineScheduleDialogOpen(false);
         setOnlineDependencyDialogOpen(false);
         setOnlineParameterDialogOpen(false);
+        setFlowPushDialogOpen(false);
         setRollbackNodeIssues({});
         setRollbackTarget(null);
     }, [groupId, activeFlowPath]);
@@ -290,6 +295,11 @@ export default function OfflineWorkbench() {
         enabled: canvasMode === 'online',
     });
     refreshDeploymentRef.current = refreshDeployment;
+
+    useEffect(() => {
+        if (!groupId || !activeFlowPath) return;
+        void refreshFlowCommitStatus();
+    }, [activeFlowPath, groupId, refreshFlowCommitStatus, repoStatus?.ahead, repoStatus?.headCommitId]);
     const {
         executionDialogOpen,
         setExecutionDialogOpen,
@@ -777,6 +787,63 @@ export default function OfflineWorkbench() {
         }
     }, [activeNodeId, clearRollbackNodeIssue, nodeEditorContent, stageNodeEditorDraft]);
 
+    const handleConfirmPushCurrentFlow = useCallback(async () => {
+        if (!groupId || !activeFlowPath || pushingFlow) return;
+        const targetGroupId = groupId;
+        const targetFlowPath = activeFlowPath;
+        setPushingFlow(true);
+        try {
+            const result = await pushOfflineCurrentFlow(targetGroupId, targetFlowPath);
+            if (result.success) {
+                setFlowPushDialogOpen(false);
+                showFeedback({
+                    tone: 'success',
+                    title: '当前任务推送成功',
+                    detail: result.message && result.message !== '当前任务推送成功' ? result.message : '',
+                });
+                await Promise.all([
+                    refreshRemoteStatus(),
+                    refreshRepoStatus(),
+                    refreshFlowCommitStatus(),
+                ]);
+                refreshDeployment();
+            } else if (result.remoteDeleted) {
+                setFlowPushDialogOpen(false);
+                if (isGroupAdmin) {
+                    setRebuildDialogOpen(true);
+                } else {
+                    showFeedback({
+                        tone: 'error',
+                        title: '远程仓库已不存在',
+                        detail: '请联系项目组管理员在左侧仓库工具栏恢复远程仓库后再推送',
+                    });
+                }
+            } else {
+                showFeedback({
+                    tone: 'error',
+                    title: '当前任务推送失败',
+                    detail: result.message || '',
+                });
+            }
+        } catch (error) {
+            showError(error, '当前任务推送失败');
+        } finally {
+            setPushingFlow(false);
+        }
+    }, [
+        activeFlowPath,
+        groupId,
+        isGroupAdmin,
+        pushingFlow,
+        refreshDeployment,
+        refreshFlowCommitStatus,
+        refreshRemoteStatus,
+        refreshRepoStatus,
+        setRebuildDialogOpen,
+        showError,
+        showFeedback,
+    ]);
+
     const handleFlowCommit = useCallback(async (mode: 'save-and-commit' | 'saved-only') => {
         if (!groupId || !activeFlowPath) return;
         setCommitting(true);
@@ -790,6 +857,24 @@ export default function OfflineWorkbench() {
             setCommitting(false);
         }
     }, [activeFlowPath, commitCurrentFlow, commitMessage, groupId]);
+
+    const handleFlowCommitAndPush = useCallback(async (mode: 'save-and-commit' | 'saved-only') => {
+        if (!groupId || !activeFlowPath || committing || pushingFlow) return;
+        setCommitting(true);
+        let committed = false;
+        try {
+            committed = await commitCurrentFlow(commitMessage, mode);
+            if (committed) {
+                setFlowCommitDialogOpen(false);
+                setCommitMessage('');
+            }
+        } finally {
+            setCommitting(false);
+        }
+        if (committed) {
+            await handleConfirmPushCurrentFlow();
+        }
+    }, [activeFlowPath, commitCurrentFlow, commitMessage, committing, groupId, handleConfirmPushCurrentFlow, pushingFlow]);
 
     const handleOpenScheduleDialog = useCallback(() => {
         if (canvasMode === 'online') {
@@ -978,13 +1063,16 @@ export default function OfflineWorkbench() {
                         nodeStatuses={nodeStatuses}
                         dirty={isDirty}
                         commitDirty={flowCommitDirty}
+                        flowAhead={flowAhead}
                         committing={committing}
+                        pushingFlow={pushingFlow}
                         staleDraft={!!staleDraft}
                         draftSaveState={draftSaveState}
                         draftSavedAt={draftSavedAt}
                         draftSaveError={draftSaveError}
                         onSelectAllNodes={handleSelectAllNodes}
                         onOpenFlowCommitDialog={handleOpenFlowCommitDialog}
+                        onOpenFlowPushDialog={() => setFlowPushDialogOpen(true)}
                         onOpenScheduleDialog={handleOpenScheduleDialog}
                         onOpenDependencyDialog={handleOpenDependencyDialog}
                         onOpenParameterDialog={handleOpenParameterDialog}
@@ -1146,8 +1234,76 @@ export default function OfflineWorkbench() {
                 }}
                 onCommitMessageChange={setCommitMessage}
                 onCommitFlow={(mode) => void handleFlowCommit(mode)}
+                onCommitAndPushFlow={(mode) => void handleFlowCommitAndPush(mode)}
                 onCommitRepo={(mode) => void handleRepoCommit(mode)}
             />
+
+            <Dialog
+                open={flowPushDialogOpen}
+                onOpenChange={(open) => {
+                    if (!open && !pushingFlow) {
+                        setFlowPushDialogOpen(false);
+                    }
+                }}
+            >
+                <DialogContent style={{ maxWidth: '460px' }} hideClose>
+                    <div className="dialog-toolbar">
+                        <DialogHeader className="flex-1" style={{ padding: 0, borderBottom: 'none' }}>
+                            <DialogTitle className="flex items-center gap-2">
+                                <ArrowUpRight size={16} aria-hidden="true" />
+                                <span>推送当前任务</span>
+                            </DialogTitle>
+                            <DialogDescription>
+                                仅将当前任务「{flowDocument?.flowId ?? activeFlowPath ?? ''}」在分支「{branchLabel}」上已提交的改动推送到远程仓库，不会带入其他任务尚未推送的提交。
+                            </DialogDescription>
+                        </DialogHeader>
+                        <button
+                            type="button"
+                            data-slot="dialog-close"
+                            className="dialog-close-button"
+                            aria-label="关闭"
+                            onClick={() => setFlowPushDialogOpen(false)}
+                            disabled={pushingFlow}
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+
+                    {(isDirty || flowCommitDirty) ? (
+                        <div className="dialog-body">
+                            <div className="offline-conflict-copy" role="alert">
+                                <AlertTriangle size={16} />
+                                <div>
+                                    <strong>当前任务仍有未提交的工作区修改</strong>
+                                    <p>本次推送仅发送已提交的历史版本，不会发送未提交改动；如需一起提交，请在“提交当前任务”中使用“提交并推送”。</p>
+                                </div>
+                            </div>
+                        </div>
+                    ) : null}
+
+                    <DialogFooter className="dialog-footer">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setFlowPushDialogOpen(false)}
+                            disabled={pushingFlow}
+                        >
+                            取消
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            onClick={() => void handleConfirmPushCurrentFlow()}
+                            disabled={pushingFlow}
+                        >
+                            {pushingFlow ? <LoaderCircle size={14} className="offline-spin" aria-hidden="true" /> : null}
+                            <span>{pushingFlow ? '推送中…' : '确认推送'}</span>
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <OfflineRepositoryDialogs
                 pushDialogOpen={pushDialogOpen}

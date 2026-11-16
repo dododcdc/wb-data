@@ -343,6 +343,151 @@ class GitCommandServiceTest {
                 .contains("scripts/other/keep.sql");
     }
 
+    @Test
+    void pushCurrentFlow_isolatesSingleFlowWhenOtherFlowsHaveUnpushedCommitsAndPreservesDirtyWorktree() throws Exception {
+        OfflineProperties properties = new OfflineProperties();
+        properties.setRepoBaseDir(tempDir.toString());
+        properties.setRepoDirPrefix("wb-data-");
+        OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
+        OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
+        OfflinePublishRecordService publishRecordService = publishRecordService();
+        when(gitRemotePort.repositoryExists(1L, "wb-data-1")).thenReturn(true);
+        GitCommandService service = new GitCommandService(
+                properties, gitRemotePort, flowDocumentService, publishRecordService, new RepoLockManager());
+        List<Object> events = new ArrayList<>();
+        service.setApplicationEventPublisher(events::add);
+
+        Path repo = properties.resolveRepoPath(1L);
+        Path remote = tempDir.resolve("remote.git");
+        git(tempDir, "init", "--bare", remote.toString());
+        when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
+        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
+        initRepo(repo);
+        write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
+        write(repo, "scripts/example/n1.sh", "echo example-v1\n");
+        write(repo, "_flows/other/flow.yaml", "id: other\nnamespace: pg-1\ntasks: []\n");
+        write(repo, "scripts/other/o1.sh", "echo other-v1\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "init");
+        git(repo, "remote", "add", "origin", remote.toUri().toString());
+        git(repo, "push", "-u", "origin", "HEAD");
+        String initialSha = git(repo, "rev-parse", "HEAD");
+
+        // Another user commits 'other', then developer commits 'example', plus keeps dirty edits on 'other'
+        write(repo, "scripts/other/o1.sh", "echo other-v2-committed\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "feat: update other");
+
+        write(repo, "scripts/example/n1.sh", "echo example-v2-committed\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "feat: update example");
+
+        write(repo, "scripts/other/o1.sh", "echo other-v3-uncommitted\n");
+
+        when(flowDocumentService.resolveManagedFiles(1L, "_flows/example/flow.yaml"))
+                .thenReturn(List.of("_flows/example/flow.yaml", "scripts/example/n1.sh"));
+        when(flowDocumentService.resolveManagedFiles(1L, "_flows/other/flow.yaml"))
+                .thenReturn(List.of("_flows/other/flow.yaml", "scripts/other/o1.sh"));
+
+        GitCommandService.PushResult result = service.pushCurrentFlow(1L, "_flows/example/flow.yaml", 9L);
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.message()).isEqualTo("当前任务推送成功");
+
+        String remoteMainSha = git(repo, "ls-remote", "--heads", "origin", "refs/heads/main").split("\\s+")[0];
+        assertThat(git(repo, "show", remoteMainSha + ":scripts/example/n1.sh")).isEqualTo("echo example-v2-committed");
+        assertThat(git(repo, "show", remoteMainSha + ":scripts/other/o1.sh")).isEqualTo("echo other-v1");
+        assertThat(git(repo, "log", "-1", "--pretty=%s", remoteMainSha)).isEqualTo("feat: update example");
+
+        assertThat(service.hasUnpushedFlowChanges(1L, "_flows/example/flow.yaml")).isFalse();
+        assertThat(service.hasUnpushedFlowChanges(1L, "_flows/other/flow.yaml")).isTrue();
+        assertThat(git(repo, "show", "HEAD:scripts/other/o1.sh")).isEqualTo("echo other-v2-committed");
+        assertThat(Files.readString(repo.resolve("scripts/other/o1.sh"))).isEqualTo("echo other-v3-uncommitted\n");
+
+        Mockito.verify(publishRecordService).recordPush(
+                Mockito.eq(1L), Mockito.eq(9L), Mockito.eq("main"),
+                Mockito.eq(initialSha), Mockito.eq(remoteMainSha));
+        assertThat(events).hasSize(1);
+    }
+
+    @Test
+    void pushCurrentFlow_rejectsWhenFlowHasUncommittedChangesAndNoCommittedDiff() throws Exception {
+        OfflineProperties properties = new OfflineProperties();
+        properties.setRepoBaseDir(tempDir.toString());
+        properties.setRepoDirPrefix("wb-data-");
+        OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
+        OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
+        when(gitRemotePort.repositoryExists(1L, "wb-data-1")).thenReturn(true);
+        GitCommandService service = new GitCommandService(
+                properties, gitRemotePort, flowDocumentService, publishRecordService(), new RepoLockManager());
+
+        Path repo = properties.resolveRepoPath(1L);
+        Path remote = tempDir.resolve("remote.git");
+        git(tempDir, "init", "--bare", remote.toString());
+        when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
+        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
+        initRepo(repo);
+        write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
+        write(repo, "scripts/example/n1.sh", "echo v1\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "init");
+        git(repo, "remote", "add", "origin", remote.toUri().toString());
+        git(repo, "push", "-u", "origin", "HEAD");
+
+        write(repo, "scripts/example/n1.sh", "echo uncommitted\n");
+        when(flowDocumentService.resolveManagedFiles(1L, "_flows/example/flow.yaml"))
+                .thenReturn(List.of("_flows/example/flow.yaml", "scripts/example/n1.sh"));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> service.pushCurrentFlow(1L, "_flows/example/flow.yaml", 9L));
+
+        assertThat(ex.getReason()).contains("未提交");
+    }
+
+    @Test
+    void pushCurrentFlow_rejectsWhenRemoteBranchHasNewCommitToSameFlow() throws Exception {
+        OfflineProperties properties = new OfflineProperties();
+        properties.setRepoBaseDir(tempDir.toString());
+        properties.setRepoDirPrefix("wb-data-");
+        OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
+        OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
+        when(gitRemotePort.repositoryExists(1L, "wb-data-1")).thenReturn(true);
+        GitCommandService service = new GitCommandService(
+                properties, gitRemotePort, flowDocumentService, publishRecordService(), new RepoLockManager());
+
+        Path repo = properties.resolveRepoPath(1L);
+        Path remote = tempDir.resolve("remote.git");
+        Path otherClone = tempDir.resolve("other-clone");
+        git(tempDir, "init", "--bare", remote.toString());
+        when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
+        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
+        initRepo(repo);
+        write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "init");
+        git(repo, "remote", "add", "origin", remote.toUri().toString());
+        git(repo, "push", "-u", "origin", "HEAD");
+
+        git(tempDir, "clone", "--branch", "main", remote.toUri().toString(), otherClone.toString());
+        git(otherClone, "config", "user.name", "Remote Dev");
+        git(otherClone, "config", "user.email", "remote@example.com");
+        write(otherClone, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ndesc: remote\ntasks: []\n");
+        git(otherClone, "add", "-A");
+        git(otherClone, "commit", "-m", "remote example edit");
+        git(otherClone, "push");
+
+        write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ndesc: local\ntasks: []\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "local example edit");
+        when(flowDocumentService.resolveManagedFiles(1L, "_flows/example/flow.yaml"))
+                .thenReturn(List.of("_flows/example/flow.yaml"));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> service.pushCurrentFlow(1L, "_flows/example/flow.yaml", 9L));
+
+        assertThat(ex.getReason()).contains("当前任务已有新提交");
+    }
+
     private static OfflinePublishRecordService publishRecordService() {
         OfflinePublishRecordService service = Mockito.mock(OfflinePublishRecordService.class);
         when(service.recordPush(

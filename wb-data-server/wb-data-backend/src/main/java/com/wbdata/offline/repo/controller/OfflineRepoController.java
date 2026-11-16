@@ -18,6 +18,7 @@ import com.wbdata.offline.repo.dto.MergeBranchRequest;
 import com.wbdata.offline.dto.OfflineFlowCommitStatusResponse;
 import com.wbdata.offline.repo.dto.OfflineRepoStatusResponse;
 import com.wbdata.offline.repo.dto.OfflineRepoTreeResponse;
+import com.wbdata.offline.repo.dto.PushCurrentFlowRequest;
 import com.wbdata.offline.repo.dto.PushRequest;
 import com.wbdata.offline.repo.dto.PushResponse;
 import com.wbdata.offline.repo.dto.RemoteStatusResponse;
@@ -139,7 +140,28 @@ public class OfflineRepoController {
             @RequestParam String path
     ) {
         boolean dirty = gitCommandService.hasFlowChanges(context.groupId(), path);
-        return Result.success(new OfflineFlowCommitStatusResponse(context.groupId(), path, dirty));
+        boolean ahead = gitCommandService.hasUnpushedFlowChanges(context.groupId(), path);
+        return Result.success(new OfflineFlowCommitStatusResponse(context.groupId(), path, dirty, ahead));
+    }
+
+    @Operation(summary = "仅推送当前任务已提交改动到远程仓库")
+    @PostMapping("/repo/push/flow")
+    public Result<PushResponse> pushCurrentFlow(
+            @RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
+            @Valid @RequestBody PushCurrentFlowRequest request
+    ) {
+        GitCommandService.PushResult result = gitCommandService.pushCurrentFlow(
+                context.groupId(),
+                request.flowPath(),
+                context.user().id()
+        );
+        return Result.success(new PushResponse(
+                result.success(),
+                result.message(),
+                result.remoteUrl(),
+                result.remoteCreated(),
+                result.remoteDeleted()
+        ));
     }
 
     @Operation(summary = "提交仓库所有改动")
