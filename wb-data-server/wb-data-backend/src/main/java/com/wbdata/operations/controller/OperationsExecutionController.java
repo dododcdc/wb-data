@@ -74,4 +74,16 @@ public class OperationsExecutionController {
                 request.reuseManualOverrides()
         ));
     }
+
+    @PostMapping("/{executionId}/stop")
+    public Result<Void> stop(
+            @RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
+            @PathVariable String executionId) {
+        operationsExecutionService.stopExecution(
+                context.groupId(),
+                context.user().id(),
+                executionId
+        );
+        return Result.success(null);
+    }
 }

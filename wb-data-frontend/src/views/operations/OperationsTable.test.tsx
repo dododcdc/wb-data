@@ -98,4 +98,36 @@ describe('OperationsTable', () => {
         fireEvent.click(screen.getByRole('button', { name: '重试' }));
         expect(props.onRetry).toHaveBeenCalledOnce();
     });
+
+    it('renders stop action only on active rows when permitted and triggers onStop without opening detail', () => {
+        const activeExecution: OperationsExecutionListItem = {
+            ...execution,
+            id: 'exec-run',
+            flowId: 'hourly_sync',
+            status: 'RUNNING',
+            endDate: null,
+            durationMs: null,
+            rerunnable: false,
+            stoppable: true,
+        };
+        const { props, rerender } = renderTable({
+            rows: [activeExecution, execution],
+            canStop: true,
+            onStop: vi.fn(),
+        });
+
+        const stopButton = screen.getByRole('button', { name: '停止 hourly_sync' });
+        expect(screen.queryByRole('button', { name: '停止 daily_policy' })).toBeNull();
+
+        fireEvent.click(stopButton);
+        expect(props.onStop).toHaveBeenCalledWith(activeExecution);
+        expect(props.onOpenDetail).not.toHaveBeenCalled();
+
+        rerender(
+            <TooltipProvider>
+                <OperationsTable {...props} rows={[activeExecution, execution]} canStop={false} />
+            </TooltipProvider>
+        );
+        expect(screen.queryByRole('button', { name: '停止 hourly_sync' })).toBeNull();
+    });
 });

@@ -16,7 +16,9 @@ import './OperationsTimeFilter.css';
 export interface OperationsTimeFilterProps {
     from: string;
     to: string;
+    rollingWindowMs?: number | null;
     onChange: (from: string, to: string) => void;
+    onRollingWindowChange?: (windowMs: number | null) => void;
 }
 
 type FilterMode = 'quick' | 'custom';
@@ -90,7 +92,13 @@ function useNarrowViewport() {
     return narrow;
 }
 
-export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilterProps) {
+export function OperationsTimeFilter({
+    from,
+    to,
+    rollingWindowMs,
+    onChange,
+    onRollingWindowChange,
+}: OperationsTimeFilterProps) {
     const titleId = React.useId();
     const narrowViewport = useNarrowViewport();
     const [open, setOpen] = React.useState(false);
@@ -98,6 +106,7 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
     const [draftStart, setDraftStart] = React.useState<Date | null>(null);
     const [draftEnd, setDraftEnd] = React.useState<Date | null>(null);
     const [activePreset, setActivePreset] = React.useState<string | null>(null);
+    const [activePresetMs, setActivePresetMs] = React.useState<number | null>(null);
     const [visibleMonth, setVisibleMonth] = React.useState(() => new Date());
     const [selectingEnd, setSelectingEnd] = React.useState(false);
     const [startDateText, setStartDateText] = React.useState('');
@@ -107,17 +116,21 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
 
     const initializeDraft = React.useCallback(() => {
         const applied = appliedDates(from, to);
+        const matchedPreset = rollingWindowMs != null
+            ? PRESETS.find((preset) => preset.milliseconds === rollingWindowMs) ?? null
+            : null;
         setDraftStart(applied.start);
         setDraftEnd(applied.end);
         setMode('quick');
-        setActivePreset(null);
+        setActivePreset(matchedPreset?.label ?? null);
+        setActivePresetMs(matchedPreset?.milliseconds ?? null);
         setVisibleMonth(new Date(applied.start.getFullYear(), applied.start.getMonth(), 1));
         setSelectingEnd(false);
         setStartDateText(dateText(applied.start));
         setStartTimeText(timeText(applied.start));
         setEndDateText(dateText(applied.end));
         setEndTimeText(timeText(applied.end));
-    }, [from, to]);
+    }, [from, rollingWindowMs, to]);
 
     const handleOpenChange = (nextOpen: boolean) => {
         if (nextOpen) initializeDraft();
@@ -134,6 +147,7 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
         setEndDateText(dateText(end));
         setEndTimeText(timeText(end));
         setActivePreset(label);
+        setActivePresetMs(milliseconds);
     };
 
     const validationMessage = !draftStart
@@ -147,6 +161,7 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
     const handleApply = () => {
         if (validationMessage || !draftStart || !draftEnd) return;
         onChange(formatLocalDateTime(draftStart), formatLocalDateTime(draftEnd));
+        onRollingWindowChange?.(activePresetMs);
         setOpen(false);
     };
 
@@ -157,6 +172,7 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
         setDraftStart(next);
         if (next) setVisibleMonth(new Date(next.getFullYear(), next.getMonth(), 1));
         setActivePreset(null);
+        setActivePresetMs(null);
     };
 
     const updateEnd = (nextDateText: string, nextTimeText: string) => {
@@ -164,10 +180,12 @@ export function OperationsTimeFilter({ from, to, onChange }: OperationsTimeFilte
         setEndTimeText(nextTimeText);
         setDraftEnd(parseLocalDateTime(`${nextDateText} ${nextTimeText}`));
         setActivePreset(null);
+        setActivePresetMs(null);
     };
 
     const handleDayClick = (day: Date) => {
         setActivePreset(null);
+        setActivePresetMs(null);
         if (!selectingEnd || !draftStart) {
             const timeSource = draftStart ?? new Date(day.getFullYear(), day.getMonth(), day.getDate());
             const nextStart = withDate(timeSource, day);

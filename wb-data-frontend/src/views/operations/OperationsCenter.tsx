@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -6,11 +6,15 @@ import { getOfflineRepoStatus } from '../../api/offline';
 import {
     listOperationsExecutions,
     rerunOperationsExecution,
+    stopOperationsExecution,
     type OperationsExecutionListItem,
     type OperationsExecutionListQuery,
+    type OperationsExecutionStatusCounts,
 } from '../../api/operations';
 import { SimpleSelect } from '../../components/SimpleSelect';
+import { isActiveStatus } from '../../components/execution/executionPresentation';
 import { Button } from '../../components/ui/button';
+import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import { ListPagination } from '../../components/ui/list/ListPagination';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
@@ -26,9 +30,11 @@ const ALL_STATUSES = '__all_statuses__';
 const DEFAULT_PAGE_SIZE = 50;
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
 const PAGE_SIZE_STORAGE_KEY = 'wb-data.operations.pageSize';
+const DEFAULT_ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const STATUS_OPTIONS = [
     { value: ALL_STATUSES, label: '全部状态' },
+    { value: 'ACTIVE', label: '进行中' },
     { value: 'SUCCESS', label: '成功' },
     { value: 'FAILED', label: '失败' },
     { value: 'RUNNING', label: '执行中' },
@@ -81,31 +87,37 @@ export default function OperationsCenter() {
     const permissions = useAuthStore((state) => state.permissions);
     const systemAdmin = useAuthStore((state) => state.systemAdmin);
     const groupId = currentGroup?.id ?? null;
-    const canRerun = systemAdmin || permissions.includes('offline.write');
+    const canOperate = systemAdmin || permissions.includes('offline.write');
 
     const [branchFilter, setBranchFilter] = useState('');
     const [flowFilter, setFlowFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState(ALL_STATUSES);
+    const [rollingWindowMs, setRollingWindowMs] = useState<number | null>(DEFAULT_ROLLING_WINDOW_MS);
     const [fromFilter, setFromFilter] = useState(() => (
-        formatLocalDateTime(new Date(Date.now() - 24 * 60 * 60 * 1000))
+        formatLocalDateTime(new Date(Date.now() - DEFAULT_ROLLING_WINDOW_MS))
     ));
     const [toFilter, setToFilter] = useState(() => formatLocalDateTime(new Date(Date.now())));
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(readStoredPageSize);
     const [branchInitializedGroupId, setBranchInitializedGroupId] = useState<number | null>(null);
+    const [autoRefresh, setAutoRefresh] = useState(true);
     const [pendingRerunId, setPendingRerunId] = useState<string | null>(null);
     const [rerunTarget, setRerunTarget] = useState<OperationsExecutionListItem | null>(null);
+    const [pendingStopId, setPendingStopId] = useState<string | null>(null);
+    const [stopTarget, setStopTarget] = useState<OperationsExecutionListItem | null>(null);
 
     useEffect(() => {
-        const now = new Date(Date.now());
+        const now = Date.now();
         setBranchFilter('');
         setFlowFilter('');
         setStatusFilter(ALL_STATUSES);
-        setFromFilter(formatLocalDateTime(new Date(now.getTime() - 24 * 60 * 60 * 1000)));
-        setToFilter(formatLocalDateTime(now));
+        setRollingWindowMs(DEFAULT_ROLLING_WINDOW_MS);
+        setFromFilter(formatLocalDateTime(new Date(now - DEFAULT_ROLLING_WINDOW_MS)));
+        setToFilter(formatLocalDateTime(new Date(now)));
         setCurrentPage(1);
         setBranchInitializedGroupId(null);
         setRerunTarget(null);
+        setStopTarget(null);
     }, [groupId]);
 
     const repoStatusQuery = useQuery({
@@ -140,7 +152,29 @@ export default function OperationsCenter() {
         queryFn: () => listOperationsExecutions(listQueryPayload!),
         enabled: listQueryPayload != null && branchInitializedGroupId === groupId,
         placeholderData: (previousData) => previousData,
+        refetchInterval: (query) => {
+            if (!autoRefresh || rollingWindowMs != null) return false;
+            const data = query.state.data;
+            if (!data) return false;
+            const hasActive = (data.statusCounts?.active ?? 0) > 0
+                || data.executions.some((row) => isActiveStatus(row.status));
+            return hasActive ? 5_000 : false;
+        },
     });
+
+    const refreshExecutions = useCallback(() => {
+        if (rollingWindowMs != null) {
+            const now = Date.now();
+            const nextFrom = formatLocalDateTime(new Date(now - rollingWindowMs));
+            const nextTo = formatLocalDateTime(new Date(now));
+            if (nextFrom !== fromFilter || nextTo !== toFilter) {
+                setFromFilter(nextFrom);
+                setToFilter(nextTo);
+                return;
+            }
+        }
+        void queryClient.invalidateQueries({ queryKey: ['operations-executions'] });
+    }, [fromFilter, queryClient, rollingWindowMs, toFilter]);
 
     const branchOptions = useMemo(
         () => buildBranchOptions(executionsQuery.data?.branches ?? [], repoStatusQuery.data?.branch, branchFilter),
@@ -161,7 +195,7 @@ export default function OperationsCenter() {
         onSuccess: () => {
             setRerunTarget(null);
             showSuccess('已触发重跑');
-            void queryClient.invalidateQueries({ queryKey: ['operations-executions'] });
+            refreshExecutions();
         },
         onError: (error) => {
             showError(error, '重跑触发失败');
@@ -171,20 +205,71 @@ export default function OperationsCenter() {
         },
     });
 
-    const rows = executionsQuery.data?.executions ?? [];
+    const stopMutation = useMutation({
+        mutationFn: (executionId: string) => {
+            if (groupId == null) throw new Error('missing group');
+            return stopOperationsExecution(groupId, executionId);
+        },
+        onMutate: (executionId) => {
+            setPendingStopId(executionId);
+        },
+        onSuccess: () => {
+            setStopTarget(null);
+            showSuccess('已发送停止请求');
+            refreshExecutions();
+        },
+        onError: (error) => {
+            showError(error, '停止任务失败');
+        },
+        onSettled: () => {
+            setPendingStopId(null);
+        },
+    });
+
+    const rows = useMemo(() => executionsQuery.data?.executions ?? [], [executionsQuery.data?.executions]);
     const total = executionsQuery.data?.total ?? rows.length;
     const displayPage = executionsQuery.data?.page ?? currentPage;
     const branchReady = groupId != null && branchInitializedGroupId === groupId;
     const isInitialLoading = repoStatusQuery.isLoading || !branchReady || executionsQuery.isLoading;
     const isRefreshing = useDelayedBusy(executionsQuery.isFetching && rows.length > 0, { delayMs: 140, minVisibleMs: 320 });
 
+    const statusCounts = useMemo<OperationsExecutionStatusCounts>(() => {
+        if (executionsQuery.data?.statusCounts) return executionsQuery.data.statusCounts;
+        return {
+            total,
+            success: rows.filter((row) => row.status === 'SUCCESS').length,
+            failed: rows.filter((row) => row.status === 'FAILED').length,
+            active: rows.filter((row) => isActiveStatus(row.status)).length,
+            stopped: rows.filter((row) => row.status === 'KILLED' || row.status === 'CANCELLED').length,
+        };
+    }, [executionsQuery.data?.statusCounts, rows, total]);
+    const hasActiveExecutions = statusCounts.active > 0 || rows.some((row) => isActiveStatus(row.status));
+
+    useEffect(() => {
+        if (!autoRefresh || !hasActiveExecutions || !branchReady || rollingWindowMs == null) return undefined;
+        const timer = window.setInterval(() => {
+            refreshExecutions();
+        }, 5_000);
+        return () => window.clearInterval(timer);
+    }, [autoRefresh, branchReady, hasActiveExecutions, refreshExecutions, rollingWindowMs]);
+
     const handleResetFilters = () => {
-        const now = new Date(Date.now());
+        const now = Date.now();
         setFlowFilter('');
         setStatusFilter(ALL_STATUSES);
-        setFromFilter(formatLocalDateTime(new Date(now.getTime() - 24 * 60 * 60 * 1000)));
-        setToFilter(formatLocalDateTime(now));
+        setRollingWindowMs(DEFAULT_ROLLING_WINDOW_MS);
+        setFromFilter(formatLocalDateTime(new Date(now - DEFAULT_ROLLING_WINDOW_MS)));
+        setToFilter(formatLocalDateTime(new Date(now)));
         setBranchFilter(repoStatusQuery.data?.branch ?? '');
+        setCurrentPage(1);
+    };
+
+    const handleSummaryFilter = (nextStatus: string) => {
+        setStatusFilter((current) => (
+            nextStatus === ALL_STATUSES
+                ? ALL_STATUSES
+                : current === nextStatus ? ALL_STATUSES : nextStatus
+        ));
         setCurrentPage(1);
     };
 
@@ -259,11 +344,14 @@ export default function OperationsCenter() {
                         <OperationsTimeFilter
                             from={fromFilter}
                             to={toFilter}
+                            rollingWindowMs={rollingWindowMs}
                             onChange={(from, to) => {
                                 setFromFilter(from);
                                 setToFilter(to);
+                                setRollingWindowMs(null);
                                 setCurrentPage(1);
                             }}
+                            onRollingWindowChange={setRollingWindowMs}
                         />
                     </div>
 
@@ -277,7 +365,7 @@ export default function OperationsCenter() {
                             size="icon"
                             aria-label="刷新运行记录"
                             title="刷新运行记录"
-                            onClick={() => void queryClient.invalidateQueries({ queryKey: ['operations-executions'] })}
+                            onClick={refreshExecutions}
                             disabled={executionsQuery.isFetching}
                         >
                             <RefreshCw size={15} className={isRefreshing ? 'operations-spin' : ''} />
@@ -285,18 +373,90 @@ export default function OperationsCenter() {
                     </div>
                 </section>
 
+                <section className="operations-summary-bar" aria-label="状态速览与自动刷新">
+                    <div className="operations-summary-pills" role="group" aria-label="状态速览">
+                        <button
+                            type="button"
+                            className={`operations-summary-pill${statusFilter === ALL_STATUSES ? ' is-active' : ''}`}
+                            aria-pressed={statusFilter === ALL_STATUSES}
+                            onClick={() => handleSummaryFilter(ALL_STATUSES)}
+                        >
+                            <span>全部</span>
+                            <span className="operations-summary-pill__count">
+                                {isInitialLoading ? '—' : statusCounts.total}
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            className={`operations-summary-pill operations-summary-pill--failed${statusCounts.failed > 0 ? ' has-count' : ''}${statusFilter === 'FAILED' ? ' is-active' : ''}`}
+                            aria-pressed={statusFilter === 'FAILED'}
+                            onClick={() => handleSummaryFilter('FAILED')}
+                        >
+                            <span>失败</span>
+                            <span className="operations-summary-pill__count">
+                                {isInitialLoading ? '—' : statusCounts.failed}
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            className={`operations-summary-pill operations-summary-pill--active${statusCounts.active > 0 ? ' has-count' : ''}${statusFilter === 'ACTIVE' ? ' is-active' : ''}`}
+                            aria-pressed={statusFilter === 'ACTIVE'}
+                            onClick={() => handleSummaryFilter('ACTIVE')}
+                        >
+                            {statusCounts.active > 0 ? (
+                                <span className="operations-summary-pill__dot is-live" aria-hidden="true" />
+                            ) : null}
+                            <span>进行中</span>
+                            <span className="operations-summary-pill__count">
+                                {isInitialLoading ? '—' : statusCounts.active}
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            className={`operations-summary-pill operations-summary-pill--success${statusCounts.success > 0 ? ' has-count' : ''}${statusFilter === 'SUCCESS' ? ' is-active' : ''}`}
+                            aria-pressed={statusFilter === 'SUCCESS'}
+                            onClick={() => handleSummaryFilter('SUCCESS')}
+                        >
+                            <span>成功</span>
+                            <span className="operations-summary-pill__count">
+                                {isInitialLoading ? '—' : statusCounts.success}
+                            </span>
+                        </button>
+                    </div>
+
+                    <button
+                        type="button"
+                        className={`operations-auto-refresh${autoRefresh && hasActiveExecutions ? ' is-polling' : !autoRefresh ? ' is-off' : ''}`}
+                        aria-pressed={autoRefresh}
+                        title="存在进行中任务时每 5 秒自动刷新"
+                        onClick={() => setAutoRefresh((current) => !current)}
+                    >
+                        <span className="operations-auto-refresh__dot" aria-hidden="true" />
+                        <span>
+                            {!autoRefresh
+                                ? '自动刷新已关闭'
+                                : hasActiveExecutions
+                                    ? '自动刷新 5s'
+                                    : '自动刷新'}
+                        </span>
+                    </button>
+                </section>
+
                 <OperationsTable
                     rows={rows}
-                    canRerun={canRerun}
+                    canRerun={canOperate}
+                    canStop={canOperate}
                     errorMessage={executionsQuery.error instanceof Error ? executionsQuery.error.message : ''}
                     hasFooter={total > 0}
                     isLoading={isInitialLoading}
                     isRefreshing={isRefreshing}
                     pendingRerunId={pendingRerunId}
+                    pendingStopId={pendingStopId}
                     onOpenDetail={openExecutionDetail}
                     onRerun={setRerunTarget}
+                    onStop={setStopTarget}
                     onResetFilters={handleResetFilters}
-                    onRetry={() => void executionsQuery.refetch()}
+                    onRetry={refreshExecutions}
                 />
                 <ListPagination
                     total={total}
@@ -321,6 +481,23 @@ export default function OperationsCenter() {
                 onConfirm={(reuseManualOverrides) => {
                     if (!rerunTarget) return;
                     rerunMutation.mutate({ executionId: rerunTarget.id, reuseManualOverrides });
+                }}
+            />
+            <ConfirmDialog
+                open={stopTarget != null}
+                onOpenChange={(open) => {
+                    if (!open && !stopMutation.isPending) setStopTarget(null);
+                }}
+                title="确认停止任务"
+                description={stopTarget
+                    ? `将向 Kestra 发送停止指令，中断任务「${stopTarget.flowId}」的当前执行。已执行完成的节点不会自动回滚。`
+                    : undefined}
+                confirmText="确认停止"
+                variant="destructive"
+                icon="warning"
+                isLoading={stopMutation.isPending}
+                onConfirm={() => {
+                    if (stopTarget) stopMutation.mutate(stopTarget.id);
                 }}
             />
         </main>

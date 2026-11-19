@@ -18,6 +18,7 @@ public record OperationsExecutionDetailResponse(
         Instant endDate,
         Long durationMs,
         boolean rerunnable,
+        boolean stoppable,
         List<ExecutionTaskRun> taskRuns,
         Map<String, String> inputs,
         Map<String, String> labels,

@@ -8,6 +8,7 @@ import {
     getOperationsExecutionLogs,
     getOperationsInstanceDiagnosis,
     rerunOperationsExecution,
+    stopOperationsExecution,
     type OperationsInstanceDiagnosis,
 } from '../../api/operations';
 import { formatLocalDateTime } from '../../lib/dateTime';
@@ -29,6 +30,7 @@ vi.mock('../../api/operations', () => ({
     getOperationsExecutionLogs: vi.fn(),
     getOperationsInstanceDiagnosis: vi.fn(),
     rerunOperationsExecution: vi.fn(),
+    stopOperationsExecution: vi.fn(),
 }));
 
 vi.mock('../../hooks/useOperationFeedback', () => ({
@@ -48,6 +50,7 @@ const getOperationsExecutionMock = vi.mocked(getOperationsExecution);
 const getOperationsExecutionLogsMock = vi.mocked(getOperationsExecutionLogs);
 const getOperationsInstanceDiagnosisMock = vi.mocked(getOperationsInstanceDiagnosis);
 const rerunOperationsExecutionMock = vi.mocked(rerunOperationsExecution);
+const stopOperationsExecutionMock = vi.mocked(stopOperationsExecution);
 
 function buildDiagnosis(overrides: Partial<OperationsInstanceDiagnosis> = {}): OperationsInstanceDiagnosis {
     return {
@@ -408,5 +411,192 @@ describe('OperationsInstancePage', () => {
             executionId: 'exec-1',
         }));
         expect(await screen.findByText('daily_policy')).toBeTruthy();
+    });
+
+    it('displays execution parameters tab and returns to logs when selecting a node', async () => {
+        getOperationsExecutionMock.mockResolvedValue({
+            id: 'exec-1',
+            namespace: 'g4-feature-policy-review',
+            flowId: 'daily_policy',
+            branch: 'feature/policy-review',
+            status: 'FAILED',
+            plannedAt: '2026-06-07T00:00:00Z',
+            createdAt: '2026-06-07T01:00:00Z',
+            startDate: '2026-06-07T01:00:02Z',
+            endDate: '2026-06-07T01:03:12Z',
+            durationMs: 190000,
+            rerunnable: true,
+            stoppable: false,
+            taskRuns: [
+                {
+                    taskId: 'load_policy',
+                    status: 'FAILED',
+                    startDate: '2026-06-07T01:01:02Z',
+                    endDate: '2026-06-07T01:03:10Z',
+                    durationMs: 128000,
+                },
+            ],
+            inputs: { bizDate: '2026-06-07' },
+            labels: { owner: 'policy', wbdataParameterOverrideKeys: 'bizDate' },
+            parameterResolutionStatus: 'AVAILABLE',
+            parameterSnapshotChanged: true,
+            parameters: [
+                {
+                    key: 'bizDate',
+                    dataType: 'DATE',
+                    value: '2026-06-07',
+                    source: 'MANUAL_OVERRIDE',
+                },
+                {
+                    key: 'envTag',
+                    dataType: 'STRING',
+                    value: 'prod',
+                    source: 'CONSTANT',
+                },
+            ],
+        });
+        renderPage();
+
+        const paramsTab = await screen.findByRole('tab', { name: /运行参数/ });
+        expect(paramsTab.textContent).toContain('2');
+        fireEvent.click(paramsTab);
+
+        const panel = await screen.findByRole('tabpanel', { name: '运行参数' });
+        expect(within(panel).getByText('原执行之后任务的参数定义已更新，下方展示本次执行时的实际解析值。')).toBeTruthy();
+        expect(within(panel).getByText('bizDate')).toBeTruthy();
+        expect(within(panel).getByText('2026-06-07')).toBeTruthy();
+        expect(within(panel).getByText('手动覆盖')).toBeTruthy();
+        expect(within(panel).getByText('固定值')).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('button', { name: '查看 load_policy 日志' }));
+        expect(await screen.findByRole('tabpanel', { name: '执行日志' })).toBeTruthy();
+    });
+
+    it('renders NONE and UNAVAILABLE fallback states in parameters tab', async () => {
+        getOperationsExecutionMock.mockResolvedValue({
+            id: 'exec-1',
+            namespace: 'g4-feature-policy-review',
+            flowId: 'daily_policy',
+            branch: 'feature/policy-review',
+            status: 'SUCCESS',
+            plannedAt: '2026-06-07T00:00:00Z',
+            createdAt: '2026-06-07T01:00:00Z',
+            startDate: '2026-06-07T01:00:02Z',
+            endDate: '2026-06-07T01:01:00Z',
+            durationMs: 58000,
+            rerunnable: false,
+            stoppable: false,
+            taskRuns: [],
+            inputs: {},
+            labels: {},
+            parameterResolutionStatus: 'NONE',
+            parameters: [],
+        });
+        renderPage();
+
+        fireEvent.click(await screen.findByRole('tab', { name: /运行参数/ }));
+        expect(await screen.findByText('本次执行未配置参数。')).toBeTruthy();
+
+        cleanup();
+        getOperationsExecutionMock.mockResolvedValue({
+            id: 'exec-1',
+            namespace: 'g4-feature-policy-review',
+            flowId: 'daily_policy',
+            branch: 'feature/policy-review',
+            status: 'SUCCESS',
+            plannedAt: '2026-06-07T00:00:00Z',
+            createdAt: '2026-06-07T01:00:00Z',
+            startDate: '2026-06-07T01:00:02Z',
+            endDate: '2026-06-07T01:01:00Z',
+            durationMs: 58000,
+            rerunnable: false,
+            stoppable: false,
+            taskRuns: [],
+            inputs: { customParam: 'abc' },
+            labels: {},
+            parameterResolutionStatus: 'UNAVAILABLE',
+            parameters: [],
+        });
+        renderPage();
+
+        const paramsTab = await screen.findByRole('tab', { name: /运行参数/ });
+        expect(paramsTab.textContent).toContain('1');
+        fireEvent.click(paramsTab);
+
+        const panel = await screen.findByRole('tabpanel', { name: '运行参数' });
+        expect(within(panel).getByText('原执行的参数快照不可用，无法还原完整解析来源；以下为原始输入参数。')).toBeTruthy();
+        expect(within(panel).getByText('customParam')).toBeTruthy();
+        expect(within(panel).getByText('abc')).toBeTruthy();
+    });
+
+    it('focuses active task, toggles live refresh, and stops running execution', async () => {
+        stopOperationsExecutionMock.mockResolvedValue(undefined);
+        getOperationsInstanceDiagnosisMock.mockResolvedValue(buildDiagnosis({
+            state: 'RUNNING',
+            executions: [
+                {
+                    id: 'exec-1',
+                    status: 'RUNNING',
+                    plannedAt: '2026-06-07T00:00:00Z',
+                    createdAt: '2026-06-07T01:00:00Z',
+                    startDate: '2026-06-07T01:00:02Z',
+                    endDate: null,
+                    durationMs: null,
+                    rerun: false,
+                },
+            ],
+        }));
+        getOperationsExecutionMock.mockResolvedValue({
+            id: 'exec-1',
+            namespace: 'g4-feature-policy-review',
+            flowId: 'daily_policy',
+            branch: 'feature/policy-review',
+            status: 'RUNNING',
+            plannedAt: '2026-06-07T00:00:00Z',
+            createdAt: '2026-06-07T01:00:00Z',
+            startDate: '2026-06-07T01:00:02Z',
+            endDate: null,
+            durationMs: null,
+            rerunnable: false,
+            stoppable: true,
+            taskRuns: [
+                {
+                    taskId: 'extract_policy',
+                    status: 'SUCCESS',
+                    startDate: '2026-06-07T01:00:03Z',
+                    endDate: '2026-06-07T01:01:00Z',
+                    durationMs: 57000,
+                },
+                {
+                    taskId: 'load_policy',
+                    status: 'RUNNING',
+                    startDate: '2026-06-07T01:01:02Z',
+                    endDate: null,
+                    durationMs: null,
+                },
+            ],
+            inputs: {},
+            labels: {},
+            parameterResolutionStatus: 'NONE',
+            parameters: [],
+        });
+        renderPage();
+
+        await waitFor(() => expect(getOperationsExecutionLogsMock).toHaveBeenCalledWith(4, 'exec-1', 'load_policy'));
+
+        const liveToggle = await screen.findByRole('button', { name: '自动刷新 5s' });
+        expect(liveToggle.getAttribute('aria-pressed')).toBe('true');
+        fireEvent.click(liveToggle);
+        expect(liveToggle.getAttribute('aria-pressed')).toBe('false');
+        expect(liveToggle.textContent).toContain('自动刷新已暂停');
+
+        fireEvent.click(screen.getByRole('button', { name: '停止任务' }));
+        expect(await screen.findByRole('heading', { name: '确认停止任务' })).toBeTruthy();
+        expect(stopOperationsExecutionMock).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('button', { name: '确认停止' }));
+
+        await waitFor(() => expect(stopOperationsExecutionMock).toHaveBeenCalledWith(4, 'exec-1'));
+        expect(showSuccess).toHaveBeenCalledWith('已发送停止请求');
     });
 });

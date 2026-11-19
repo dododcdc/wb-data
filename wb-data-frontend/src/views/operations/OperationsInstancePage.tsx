@@ -9,6 +9,10 @@ import {
     RefreshCw,
     RotateCcw,
     Search,
+    SlidersHorizontal,
+    Square,
+    Terminal,
+    TriangleAlert,
     X,
 } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -18,6 +22,7 @@ import {
     getOperationsExecutionLogs,
     getOperationsInstanceDiagnosis,
     rerunOperationsExecution,
+    stopOperationsExecution,
     type OperationsExecutionLogEntry,
     type OperationsExecutionTaskRun,
     type OperationsInstanceDiagnosis,
@@ -32,10 +37,13 @@ import {
     getExecutionPresentation,
     getExecutionStatusLabel,
     getTaskStatusIcon,
+    isActiveStatus,
     isRunningStatus,
+    isStoppable,
     isUserTaskId,
 } from '../../components/execution/executionPresentation';
 import LogViewer, { type LogViewerItem } from '../../components/execution/LogViewer';
+import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import { ListShell } from '../../components/ui/list/ListShell';
 import {
     getInstanceStateLabel,
@@ -48,6 +56,14 @@ import { OperationsRerunDialog } from './OperationsRerunDialog';
 
 const LEVELS = ['ERROR', 'WARN', 'INFO'] as const;
 const EMPTY_LOGS: OperationsExecutionLogEntry[] = [];
+
+const PARAMETER_SOURCE_LABEL: Record<string, { label: string; tone: string }> = {
+    MANUAL_OVERRIDE: { label: '手动覆盖', tone: 'warning' },
+    SYSTEM_TIME: { label: '系统时间', tone: 'info' },
+    EXPLICIT_INPUT: { label: '外部传入', tone: 'info' },
+    RERUN: { label: '重跑沿用', tone: 'neutral' },
+    CONSTANT: { label: '固定值', tone: 'neutral' },
+};
 
 interface TrailEntry {
     group: number;
@@ -70,7 +86,9 @@ function formatDuration(durationMs: number | null | undefined) {
 
 function pickDefaultTaskId(taskRuns: OperationsExecutionTaskRun[]) {
     const failedTask = taskRuns.find((task) => getExecutionPresentation(task.status).dotTone === 'failed');
-    return failedTask?.taskId ?? taskRuns[0]?.taskId ?? undefined;
+    if (failedTask) return failedTask.taskId;
+    const activeTask = taskRuns.find((task) => isActiveStatus(task.status));
+    return activeTask?.taskId ?? taskRuns[0]?.taskId ?? undefined;
 }
 
 function StatusPill({ state, label }: { state: string | null | undefined; label?: string }) {
@@ -119,7 +137,10 @@ export default function OperationsInstancePage() {
     const [selectedTaskId, setSelectedTaskId] = useState<string | undefined>(undefined);
     const [activeLevels, setActiveLevels] = useState<Set<string>>(new Set());
     const [searchText, setSearchText] = useState('');
+    const [autoRefresh, setAutoRefresh] = useState(true);
+    const [rightTab, setRightTab] = useState<'logs' | 'parameters'>('logs');
     const [rerunDialogOpen, setRerunDialogOpen] = useState(false);
+    const [stopDialogOpen, setStopDialogOpen] = useState(false);
 
     const locateQuery = useQuery({
         queryKey: ['operations-instance-locate', groupId, locatorExecutionId],
@@ -146,7 +167,7 @@ export default function OperationsInstancePage() {
         queryFn: () => getOperationsInstanceDiagnosis(groupId ?? 0, {
             branch, flowId, scheduleKey: period,
         }),
-        refetchInterval: (query) => (isActiveInstanceState(query.state.data?.state) ? 10_000 : false),
+        refetchInterval: (query) => (autoRefresh && isActiveInstanceState(query.state.data?.state) ? 5_000 : false),
     });
 
     const diagnosis: OperationsInstanceDiagnosis | null = diagnosisQuery.data
@@ -156,6 +177,7 @@ export default function OperationsInstancePage() {
             && locateQuery.data.scheduleKey === period
             ? locateQuery.data
             : null);
+    const isDiagnosisActive = isActiveInstanceState(diagnosis?.state);
 
     const executions = useMemo(() => diagnosis?.executions ?? [], [diagnosis]);
     const selectedExecutionId = useMemo(() => {
@@ -168,8 +190,13 @@ export default function OperationsInstancePage() {
         queryKey: ['operations-execution', groupId, selectedExecutionId],
         enabled: groupId != null && Boolean(selectedExecutionId),
         queryFn: () => getOperationsExecution(groupId ?? 0, selectedExecutionId ?? ''),
+        refetchInterval: (query) => (
+            autoRefresh && (isActiveStatus(query.state.data?.status) || isDiagnosisActive) ? 5_000 : false
+        ),
     });
     const detail = detailQuery.data ?? null;
+    const isExecutionActive = isActiveStatus(detail?.status);
+    const isLivePolling = isDiagnosisActive || isExecutionActive;
 
     const visibleTaskRuns = useMemo(
         () => detail?.taskRuns.filter((task) => isUserTaskId(task.taskId)) ?? [],
@@ -193,8 +220,9 @@ export default function OperationsInstancePage() {
 
     const logsQuery = useQuery({
         queryKey: ['operations-execution-logs', groupId, selectedExecutionId, selectedTaskId],
-        enabled: groupId != null && Boolean(detail) && selectedTaskId !== undefined,
+        enabled: groupId != null && Boolean(detail) && selectedTaskId !== undefined && rightTab === 'logs',
         queryFn: () => getOperationsExecutionLogs(groupId ?? 0, selectedExecutionId ?? '', selectedTaskId ?? ''),
+        refetchInterval: autoRefresh && isExecutionActive && rightTab === 'logs' ? 5_000 : false,
     });
 
     const rerunMutation = useMutation({
@@ -214,6 +242,20 @@ export default function OperationsInstancePage() {
         },
     });
 
+    const stopMutation = useMutation({
+        mutationFn: () => stopOperationsExecution(groupId ?? 0, selectedExecutionId ?? ''),
+        onSuccess: () => {
+            setStopDialogOpen(false);
+            showSuccess('已发送停止请求');
+            void queryClient.invalidateQueries({ queryKey: ['operations-instance-diagnosis'] });
+            void queryClient.invalidateQueries({ queryKey: ['operations-execution', groupId, selectedExecutionId] });
+            void queryClient.invalidateQueries({ queryKey: ['operations-execution-logs', groupId, selectedExecutionId] });
+        },
+        onError: (error) => {
+            showError(error, '停止任务失败');
+        },
+    });
+
     const logs = logsQuery.data ?? EMPTY_LOGS;
     const levelCounts = useMemo(() => computeLogLevelCounts(logs), [logs]);
     const logItems = useMemo<LogViewerItem[]>(() => logs
@@ -229,12 +271,24 @@ export default function OperationsInstancePage() {
             index,
         })), [activeLevels, logs]);
 
-    const canRerun = Boolean(detail?.rerunnable && (systemAdmin || permissions.includes('offline.write')));
+    const canOperate = systemAdmin || permissions.includes('offline.write');
+    const canStop = Boolean(detail && (detail.stoppable ?? isStoppable(detail.status)) && canOperate);
+    const canRerun = Boolean(detail?.rerunnable && canOperate);
+    const rawInputsEntries = detail ? Object.entries(detail.inputs ?? {}) : [];
+    const parameterCount = detail
+        ? (detail.parameters.length > 0
+            ? detail.parameters.length
+            : detail.parameterResolutionStatus === 'UNAVAILABLE'
+                ? rawInputsEntries.length
+                : 0)
+        : 0;
     const isRefreshing = diagnosisQuery.isRefetching || detailQuery.isRefetching || logsQuery.isRefetching;
     const refreshAll = () => {
         void diagnosisQuery.refetch();
         void detailQuery.refetch();
-        void logsQuery.refetch();
+        if (selectedTaskId !== undefined && rightTab === 'logs') {
+            void logsQuery.refetch();
+        }
     };
 
     const navigatePeriod = (scheduleKey: string | null) => {
@@ -403,6 +457,18 @@ export default function OperationsInstancePage() {
                         <GitBranch size={15} />
                         上游实例{diagnosis.upstreams.length > 0 ? ` (${diagnosis.upstreams.length})` : ''}
                     </button>
+                    {isLivePolling && (
+                        <button
+                            type="button"
+                            className={`operations-execution-live-toggle${autoRefresh ? ' is-active' : ''}`}
+                            aria-pressed={autoRefresh}
+                            title={autoRefresh ? '每 5 秒自动刷新运行状态和日志，点击暂停' : '自动刷新已暂停，点击恢复'}
+                            onClick={() => setAutoRefresh((current) => !current)}
+                        >
+                            <span className="operations-execution-live-toggle__dot" aria-hidden="true" />
+                            {autoRefresh ? '自动刷新 5s' : '自动刷新已暂停'}
+                        </button>
+                    )}
                     <button
                         type="button"
                         className="operations-execution-icon-button"
@@ -412,6 +478,17 @@ export default function OperationsInstancePage() {
                     >
                         <RefreshCw size={15} className={isRefreshing ? 'operations-execution-spin' : undefined} />
                     </button>
+                    {canStop && (
+                        <button
+                            type="button"
+                            className="operations-execution-stop"
+                            onClick={() => setStopDialogOpen(true)}
+                            disabled={stopMutation.isPending}
+                        >
+                            <Square size={14} />
+                            停止任务
+                        </button>
+                    )}
                     {canRerun && (
                         <button
                             type="button"
@@ -511,7 +588,10 @@ export default function OperationsInstancePage() {
                                                     key={task.taskId}
                                                     type="button"
                                                     className={`operations-execution-task${selectedTaskId === task.taskId ? ' is-active' : ''}`}
-                                                    onClick={() => setSelectedTaskId(task.taskId)}
+                                                    onClick={() => {
+                                                        setSelectedTaskId(task.taskId);
+                                                        setRightTab('logs');
+                                                    }}
                                                     aria-label={`查看 ${task.taskId} 日志`}
                                                 >
                                                     <span className="operations-execution-task__main">
@@ -532,67 +612,181 @@ export default function OperationsInstancePage() {
                                 </ListShell>
                             </aside>
 
-                            <section className="operations-execution-logs" aria-label="执行日志">
-                                <div className="operations-execution-log-tools">
-                                    <div className="operations-execution-levels" aria-label="日志级别">
-                                        {LEVELS.map((level) => {
-                                            const active = activeLevels.has(level);
-                                            const dimmed = activeLevels.size > 0 && !active;
-                                            return (
-                                                <button
-                                                    key={level}
-                                                    type="button"
-                                                    className={`operations-execution-level operations-execution-level--${level.toLowerCase()}${dimmed ? ' is-dimmed' : ''}${active ? ' is-active' : ''}`}
-                                                    onClick={() => {
-                                                        setActiveLevels((previous) => {
-                                                            const next = new Set(previous);
-                                                            if (next.has(level)) {
-                                                                next.delete(level);
-                                                            } else {
-                                                                next.add(level);
-                                                            }
-                                                            return next.size === LEVELS.length ? new Set() : next;
-                                                        });
-                                                    }}
-                                                >
-                                                    {level} {levelCounts[level] ?? 0}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-
-                                    <div className="operations-execution-log-actions">
-                                        <label className="operations-execution-log-search">
-                                            <Search size={14} />
-                                            <input
-                                                type="search"
-                                                value={searchText}
-                                                onChange={(event) => setSearchText(event.target.value)}
-                                                placeholder="搜索日志"
-                                            />
-                                        </label>
-                                    </div>
+                            <div className="operations-execution-right">
+                                <div className="operations-execution-panel-tabs" role="tablist" aria-label="执行详情视图">
+                                    <button
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={rightTab === 'logs'}
+                                        className={`operations-execution-panel-tab${rightTab === 'logs' ? ' is-active' : ''}`}
+                                        onClick={() => setRightTab('logs')}
+                                    >
+                                        <Terminal size={14} />
+                                        执行日志
+                                    </button>
+                                    <button
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={rightTab === 'parameters'}
+                                        className={`operations-execution-panel-tab${rightTab === 'parameters' ? ' is-active' : ''}`}
+                                        onClick={() => setRightTab('parameters')}
+                                    >
+                                        <SlidersHorizontal size={14} />
+                                        运行参数
+                                        {parameterCount > 0 ? (
+                                            <span className="operations-execution-panel-tab__badge">{parameterCount}</span>
+                                        ) : null}
+                                    </button>
                                 </div>
 
-                                {logsQuery.isLoading || selectedTaskId === undefined ? (
-                                    <div className="operations-execution-log-loading" role="status">
-                                        {Array.from({ length: 8 }).map((_, index) => (
-                                            <span key={index} />
-                                        ))}
-                                    </div>
-                                ) : logsQuery.isError ? (
-                                    <div className="operations-execution-log-error" role="alert">
-                                        <span>日志加载失败。</span>
-                                        <button type="button" onClick={() => void logsQuery.refetch()}>重试</button>
-                                    </div>
+                                {rightTab === 'logs' ? (
+                                    <section className="operations-execution-logs" role="tabpanel" aria-label="执行日志">
+                                        <div className="operations-execution-log-tools">
+                                            <div className="operations-execution-levels" aria-label="日志级别">
+                                                {LEVELS.map((level) => {
+                                                    const active = activeLevels.has(level);
+                                                    const dimmed = activeLevels.size > 0 && !active;
+                                                    return (
+                                                        <button
+                                                            key={level}
+                                                            type="button"
+                                                            className={`operations-execution-level operations-execution-level--${level.toLowerCase()}${dimmed ? ' is-dimmed' : ''}${active ? ' is-active' : ''}`}
+                                                            onClick={() => {
+                                                                setActiveLevels((previous) => {
+                                                                    const next = new Set(previous);
+                                                                    if (next.has(level)) {
+                                                                        next.delete(level);
+                                                                    } else {
+                                                                        next.add(level);
+                                                                    }
+                                                                    return next.size === LEVELS.length ? new Set() : next;
+                                                                });
+                                                            }}
+                                                        >
+                                                            {level} {levelCounts[level] ?? 0}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            <div className="operations-execution-log-actions">
+                                                <label className="operations-execution-log-search">
+                                                    <Search size={14} />
+                                                    <input
+                                                        type="search"
+                                                        value={searchText}
+                                                        onChange={(event) => setSearchText(event.target.value)}
+                                                        placeholder="搜索日志"
+                                                    />
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        {logsQuery.isLoading || selectedTaskId === undefined ? (
+                                            <div className="operations-execution-log-loading" role="status">
+                                                {Array.from({ length: 8 }).map((_, index) => (
+                                                    <span key={index} />
+                                                ))}
+                                            </div>
+                                        ) : logsQuery.isError ? (
+                                            <div className="operations-execution-log-error" role="alert">
+                                                <span>日志加载失败。</span>
+                                                <button type="button" onClick={() => void logsQuery.refetch()}>重试</button>
+                                            </div>
+                                        ) : (
+                                            <LogViewer
+                                                items={logItems}
+                                                searchQuery={searchText}
+                                                currentMatchPosition={-1}
+                                            />
+                                        )}
+                                    </section>
                                 ) : (
-                                    <LogViewer
-                                        items={logItems}
-                                        searchQuery={searchText}
-                                        currentMatchPosition={-1}
-                                    />
+                                    <section className="operations-execution-params" role="tabpanel" aria-label="运行参数">
+                                        {detail.parameterSnapshotChanged === true ? (
+                                            <div className="operations-execution-params__notice" role="alert">
+                                                <TriangleAlert size={15} className="mt-0.5 shrink-0" />
+                                                <span>原执行之后任务的参数定义已更新，下方展示本次执行时的实际解析值。</span>
+                                            </div>
+                                        ) : null}
+
+                                        {detail.parameterResolutionStatus === 'NONE' ? (
+                                            <div className="operations-execution-params__empty">本次执行未配置参数。</div>
+                                        ) : detail.parameterResolutionStatus === 'PENDING' ? (
+                                            <div className="operations-execution-params__empty">参数尚未解析完成，任务启动后将自动更新。</div>
+                                        ) : detail.parameterResolutionStatus === 'UNAVAILABLE' ? (
+                                            <>
+                                                <div className="operations-execution-params__notice" role="alert">
+                                                    <TriangleAlert size={15} className="mt-0.5 shrink-0" />
+                                                    <span>原执行的参数快照不可用，无法还原完整解析来源；以下为原始输入参数。</span>
+                                                </div>
+                                                {rawInputsEntries.length > 0 ? (
+                                                    <div className="operations-execution-params__table-wrap">
+                                                        <table className="operations-params-table">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>参数名</th>
+                                                                    <th>原始输入值</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {rawInputsEntries.map(([key, value]) => (
+                                                                    <tr key={key}>
+                                                                        <td><code>{key}</code></td>
+                                                                        <td><code>{value}</code></td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                ) : (
+                                                    <div className="operations-execution-params__empty">无原始输入参数。</div>
+                                                )}
+                                            </>
+                                        ) : detail.parameters.length === 0 ? (
+                                            <div className="operations-execution-params__empty">本次执行未配置参数。</div>
+                                        ) : (
+                                            <div className="operations-execution-params__table-wrap">
+                                                <table className="operations-params-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>参数名</th>
+                                                            <th>类型</th>
+                                                            <th>实际解析值</th>
+                                                            <th>来源</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {detail.parameters.map((param) => {
+                                                            const sourceMeta = PARAMETER_SOURCE_LABEL[param.source] ?? {
+                                                                label: param.source,
+                                                                tone: 'neutral',
+                                                            };
+                                                            const displayValue = param.value === null
+                                                                ? '—'
+                                                                : param.value === ''
+                                                                    ? '""'
+                                                                    : param.value;
+                                                            return (
+                                                                <tr key={param.key}>
+                                                                    <td><code>{param.key}</code></td>
+                                                                    <td><code>{param.dataType}</code></td>
+                                                                    <td><code>{displayValue}</code></td>
+                                                                    <td>
+                                                                        <span className={`operations-param-source operations-param-source--${sourceMeta.tone}`}>
+                                                                            {sourceMeta.label}
+                                                                        </span>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </section>
                                 )}
-                            </section>
+                            </div>
                         </section>
                     </>
                 )}
@@ -667,6 +861,19 @@ export default function OperationsInstancePage() {
                 pending={rerunMutation.isPending}
                 onOpenChange={setRerunDialogOpen}
                 onConfirm={(reuseManualOverrides) => rerunMutation.mutate(reuseManualOverrides)}
+            />
+            <ConfirmDialog
+                open={stopDialogOpen}
+                onOpenChange={(open) => {
+                    if (!open && !stopMutation.isPending) setStopDialogOpen(false);
+                }}
+                title="确认停止任务"
+                description={`将向 Kestra 发送停止指令，中断任务「${diagnosis.flowId}」的当前执行。已执行完成的节点不会自动回滚。`}
+                confirmText="确认停止"
+                variant="destructive"
+                icon="warning"
+                isLoading={stopMutation.isPending}
+                onConfirm={() => stopMutation.mutate()}
             />
         </div>
     );

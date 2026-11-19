@@ -13,6 +13,7 @@ import {
     getOperationsExecution,
     listOperationsExecutions,
     rerunOperationsExecution,
+    stopOperationsExecution,
 } from './operations';
 
 describe('operations API group-scoped routes', () => {
@@ -43,5 +44,11 @@ describe('operations API group-scoped routes', () => {
             '/api/v1/groups/4/operations/executions/exec-1/rerun',
             { reuseManualOverrides: false },
         );
+    });
+
+    it('uses group-scoped route for stopping an execution', async () => {
+        await stopOperationsExecution(4, 'exec-1');
+
+        expect(requestMock.post).toHaveBeenCalledWith('/api/v1/groups/4/operations/executions/exec-1/stop');
     });
 });

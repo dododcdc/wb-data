@@ -20,9 +20,11 @@ import com.wbdata.operations.dto.OperationsExecutionListItem;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
 import com.wbdata.operations.dto.OperationsExecutionQuery;
 import com.wbdata.operations.dto.OperationsExecutionRerunResponse;
+import com.wbdata.operations.dto.OperationsExecutionStatusCounts;
 import com.wbdata.operations.entity.WbOperationExecutionAction;
 import com.wbdata.operations.mapper.WbOperationExecutionActionMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -41,6 +43,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.LinkedHashSet;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OperationsExecutionService {
@@ -69,6 +72,11 @@ public class OperationsExecutionService {
         LinkedHashMap<String, String> namespaceToBranch = scopedNamespaces(groupId);
         List<String> targetNamespaces = targetNamespaces(namespaceToBranch, blankToNull(effectiveQuery.branch()));
 
+        int totalCount = 0;
+        int successCount = 0;
+        int failedCount = 0;
+        int activeCount = 0;
+        int stoppedCount = 0;
         List<OperationsExecutionListItem> executions = new ArrayList<>();
         for (String namespace : targetNamespaces) {
             List<KestraExecutionSnapshot> snapshots = kestraClient.searchExecutions(buildExecutionSearchFilters(namespace, from, to));
@@ -80,7 +88,21 @@ public class OperationsExecutionService {
                     continue;
                 }
                 String branch = namespaceToBranch.get(execution.namespace());
-                if (!matchesFilters(execution, branch, effectiveQuery, from, to)) {
+                if (!matchesBaseFilters(execution, branch, effectiveQuery, from, to)) {
+                    continue;
+                }
+                totalCount++;
+                String normalizedStatus = execution.status() == null ? "" : execution.status().toUpperCase(Locale.ROOT);
+                if ("SUCCESS".equals(normalizedStatus)) {
+                    successCount++;
+                } else if ("FAILED".equals(normalizedStatus)) {
+                    failedCount++;
+                } else if (stoppable(normalizedStatus)) {
+                    activeCount++;
+                } else if ("KILLED".equals(normalizedStatus) || "CANCELLED".equals(normalizedStatus)) {
+                    stoppedCount++;
+                }
+                if (!matchesStatusFilter(execution.status(), effectiveQuery.status())) {
                     continue;
                 }
                 executions.add(toListItem(execution, branch));
@@ -101,7 +123,7 @@ public class OperationsExecutionService {
                 .map(item -> new OperationsExecutionListItem(
                         item.id(), item.namespace(), item.flowId(), item.branch(), item.status(),
                         item.plannedAt(), item.createdAt(), item.startDate(), item.endDate(),
-                        item.durationMs(), item.rerunnable(), rerunIds.contains(item.id())))
+                        item.durationMs(), item.rerunnable(), item.stoppable(), rerunIds.contains(item.id())))
                 .toList();
 
         return new OperationsExecutionListResponse(
@@ -113,7 +135,8 @@ public class OperationsExecutionService {
                 pageSize,
                 total,
                 totalPages,
-                pageExecutions
+                pageExecutions,
+                new OperationsExecutionStatusCounts(totalCount, successCount, failedCount, activeCount, stoppedCount)
         );
     }
 
@@ -176,6 +199,30 @@ public class OperationsExecutionService {
                 rerun.status(),
                 rerun.createdAt()
         );
+    }
+
+    public void stopExecution(Long groupId, Long requestedBy, String executionId) {
+        Scope scope = loadScope(groupId);
+        KestraExecutionSnapshot execution = requireAccessibleExecution(scope, executionId);
+        if (!stoppable(execution.status())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前状态不支持停止");
+        }
+        kestraClient.killExecution(execution.id());
+
+        WbOperationExecutionAction action = new WbOperationExecutionAction();
+        action.setGroupId(groupId);
+        action.setActionType("STOP");
+        action.setOriginalExecutionId(execution.id());
+        action.setNewExecutionId(null);
+        action.setNamespace(execution.namespace());
+        action.setFlowId(execution.flowId());
+        action.setRequestedBy(requestedBy);
+        action.setRequestedAt(LocalDateTime.now());
+        try {
+            actionMapper.insert(action);
+        } catch (RuntimeException ex) {
+            log.warn("停止执行 {} 成功，但写入操作审计记录失败", execution.id(), ex);
+        }
     }
 
     private Map<String, String> resolveRerunInputs(Long groupId,
@@ -312,11 +359,11 @@ public class OperationsExecutionService {
         return !execution.flowId().startsWith("sync-flows-");
     }
 
-    private boolean matchesFilters(KestraExecutionSnapshot execution,
-                                   String branch,
-                                   OperationsExecutionQuery query,
-                                   Instant from,
-                                   Instant to) {
+    private boolean matchesBaseFilters(KestraExecutionSnapshot execution,
+                                       String branch,
+                                       OperationsExecutionQuery query,
+                                       Instant from,
+                                       Instant to) {
         String branchFilter = blankToNull(query.branch());
         if (branchFilter != null && !branchFilter.equals(branch)) {
             return false;
@@ -325,12 +372,19 @@ public class OperationsExecutionService {
         if (flowFilter != null && !containsIgnoreCase(execution.flowId(), flowFilter)) {
             return false;
         }
-        String statusFilter = blankToNull(query.status());
-        if (statusFilter != null && (execution.status() == null || !execution.status().equalsIgnoreCase(statusFilter))) {
-            return false;
-        }
         Instant executionTime = execution.createdAt() == null ? execution.startDate() : execution.createdAt();
         return executionTime != null && !executionTime.isBefore(from) && !executionTime.isAfter(to);
+    }
+
+    private boolean matchesStatusFilter(String status, String requestedStatus) {
+        String statusFilter = blankToNull(requestedStatus);
+        if (statusFilter == null) {
+            return true;
+        }
+        if ("ACTIVE".equalsIgnoreCase(statusFilter)) {
+            return stoppable(status);
+        }
+        return status != null && status.equalsIgnoreCase(statusFilter);
     }
 
     private OperationsExecutionListItem toListItem(KestraExecutionSnapshot execution, String branch) {
@@ -346,6 +400,7 @@ public class OperationsExecutionService {
                 execution.endDate(),
                 durationMs(execution.startDate(), execution.endDate()),
                 rerunnable(execution.status()),
+                stoppable(execution.status()),
                 false
         );
     }
@@ -390,6 +445,7 @@ public class OperationsExecutionService {
                 execution.endDate(),
                 durationMs(execution.startDate(), execution.endDate()),
                 rerunnable(execution.status()),
+                stoppable(execution.status()),
                 taskRuns,
                 execution.inputs() == null ? Map.of() : execution.inputs(),
                 execution.labels() == null ? Map.of() : execution.labels(),
@@ -546,6 +602,18 @@ public class OperationsExecutionService {
         }
         String normalized = status.toUpperCase(Locale.ROOT);
         return "FAILED".equals(normalized) || "CANCELLED".equals(normalized) || "KILLED".equals(normalized);
+    }
+
+    private boolean stoppable(String status) {
+        if (status == null) {
+            return false;
+        }
+        String normalized = status.toUpperCase(Locale.ROOT);
+        return "CREATED".equals(normalized)
+                || "QUEUED".equals(normalized)
+                || "RUNNING".equals(normalized)
+                || "PAUSED".equals(normalized)
+                || "RETRYING".equals(normalized);
     }
 
     private boolean containsIgnoreCase(String value, String expected) {

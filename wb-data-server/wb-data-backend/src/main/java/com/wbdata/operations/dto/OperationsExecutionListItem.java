@@ -14,6 +14,7 @@ public record OperationsExecutionListItem(
         Instant endDate,
         Long durationMs,
         boolean rerunnable,
+        boolean stoppable,
         boolean rerun
 ) {
 }

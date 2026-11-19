@@ -15,6 +15,7 @@ import com.wbdata.operations.dto.OperationsExecutionListItem;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
 import com.wbdata.operations.dto.OperationsExecutionQuery;
 import com.wbdata.operations.dto.OperationsExecutionRerunResponse;
+import com.wbdata.operations.dto.OperationsExecutionStatusCounts;
 import com.wbdata.operations.entity.WbOperationExecutionAction;
 import com.wbdata.operations.mapper.WbOperationExecutionActionMapper;
 import org.junit.jupiter.api.Test;
@@ -46,21 +47,22 @@ class OperationsExecutionServiceTest {
                 .map(component -> component.getName()))
                 .containsExactly(
                         "id", "namespace", "flowId", "branch", "status",
-                        "plannedAt", "createdAt", "startDate", "endDate", "durationMs", "rerunnable", "rerun"
+                        "plannedAt", "createdAt", "startDate", "endDate", "durationMs",
+                        "rerunnable", "stoppable", "rerun"
                 );
         assertThat(Arrays.stream(OperationsExecutionDetailResponse.class.getRecordComponents())
                 .map(component -> component.getName()))
                 .containsExactly(
                         "id", "namespace", "flowId", "branch", "status",
-                        "plannedAt", "createdAt", "startDate", "endDate", "durationMs", "rerunnable",
-                        "taskRuns", "inputs", "labels", "parameterResolutionStatus", "parameters",
-                        "parameterSnapshotChanged"
+                        "plannedAt", "createdAt", "startDate", "endDate", "durationMs",
+                        "rerunnable", "stoppable", "taskRuns", "inputs", "labels",
+                        "parameterResolutionStatus", "parameters", "parameterSnapshotChanged"
                 );
         assertThat(Arrays.stream(OperationsExecutionListResponse.class.getRecordComponents())
                 .map(component -> component.getName()))
                 .containsExactly(
                         "branches", "selectedBranch", "from", "to",
-                        "page", "pageSize", "total", "totalPages", "executions"
+                        "page", "pageSize", "total", "totalPages", "executions", "statusCounts"
                 );
     }
 
@@ -786,6 +788,117 @@ class OperationsExecutionServiceTest {
                 });
 
         verify(kestraClient).killExecution("rerun-1");
+    }
+
+    @Test
+    void listExecutions_computesStatusCountsBeforeStatusFilterAndSupportsActiveStatus() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        when(kestraClient.searchExecutions(searchFilter("g4-main"))).thenReturn(List.of(
+                execution("e-success", "g4-main", "job_a", "SUCCESS", "2026-06-07T01:05:00Z"),
+                execution("e-failed", "g4-main", "job_b", "FAILED", "2026-06-07T01:04:00Z"),
+                execution("e-running", "g4-main", "job_c", "RUNNING", "2026-06-07T01:03:00Z"),
+                execution("e-queued", "g4-main", "job_d", "QUEUED", "2026-06-07T01:02:00Z"),
+                execution("e-created", "g4-main", "job_e", "CREATED", "2026-06-07T01:01:00Z"),
+                execution("e-retrying", "g4-main", "job_f", "RETRYING", "2026-06-07T01:00:30Z"),
+                execution("e-paused", "g4-main", "job_g", "PAUSED", "2026-06-07T01:00:15Z"),
+                execution("e-killed", "g4-main", "job_h", "KILLED", "2026-06-07T01:00:10Z"),
+                execution("e-cancelled", "g4-main", "job_i", "CANCELLED", "2026-06-07T01:00:05Z")
+        ));
+
+        OperationsExecutionListResponse failedOnly = service.listExecutions(4L, listQuery(
+                "main", null, "FAILED", FROM, TO));
+        assertThat(failedOnly.executions()).extracting("id").containsExactly("e-failed");
+        assertThat(failedOnly.statusCounts()).isEqualTo(new OperationsExecutionStatusCounts(9, 1, 1, 5, 2));
+
+        OperationsExecutionListResponse activeOnly = service.listExecutions(4L, listQuery(
+                "main", null, "ACTIVE", FROM, TO));
+        assertThat(activeOnly.executions()).extracting("id")
+                .containsExactly("e-running", "e-queued", "e-created", "e-retrying", "e-paused");
+        assertThat(activeOnly.executions()).allSatisfy(item -> assertThat(item.stoppable()).isTrue());
+    }
+
+    @Test
+    void stopExecution_killsActiveExecutionAndWritesStopAudit() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        WbOperationExecutionActionMapper actionMapper = Mockito.mock(WbOperationExecutionActionMapper.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient, actionMapper);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        when(kestraClient.getExecution("exec-run"))
+                .thenReturn(execution("exec-run", "g4-main", "daily_job", "RUNNING", "2026-06-07T01:00:00Z"));
+        when(actionMapper.insert(Mockito.any())).thenReturn(1);
+
+        service.stopExecution(4L, 9L, "exec-run");
+
+        verify(kestraClient).killExecution("exec-run");
+        ArgumentCaptor<WbOperationExecutionAction> actionCaptor = ArgumentCaptor.forClass(WbOperationExecutionAction.class);
+        verify(actionMapper).insert(actionCaptor.capture());
+        WbOperationExecutionAction recorded = actionCaptor.getValue();
+        assertThat(recorded.getGroupId()).isEqualTo(4L);
+        assertThat(recorded.getActionType()).isEqualTo("STOP");
+        assertThat(recorded.getOriginalExecutionId()).isEqualTo("exec-run");
+        assertThat(recorded.getNewExecutionId()).isNull();
+        assertThat(recorded.getNamespace()).isEqualTo("g4-main");
+        assertThat(recorded.getFlowId()).isEqualTo("daily_job");
+        assertThat(recorded.getRequestedBy()).isEqualTo(9L);
+    }
+
+    @Test
+    void stopExecution_rejectsTerminalStatuses() {
+        for (String status : List.of("SUCCESS", "FAILED", "KILLED", "CANCELLED")) {
+            GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+            KestraClient kestraClient = Mockito.mock(KestraClient.class);
+            WbOperationExecutionActionMapper actionMapper = Mockito.mock(WbOperationExecutionActionMapper.class);
+            OperationsExecutionService service = service(gitSyncConfigService, kestraClient, actionMapper);
+            when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+            when(kestraClient.getExecution("exec-term"))
+                    .thenReturn(execution("exec-term", "g4-main", "daily_job", status, "2026-06-07T01:00:00Z"));
+
+            assertThatThrownBy(() -> service.stopExecution(4L, 9L, "exec-term"))
+                    .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                        assertThat(exception.getReason()).isEqualTo("当前状态不支持停止");
+                    });
+
+            verify(kestraClient, never()).killExecution(Mockito.anyString());
+            verify(actionMapper, never()).insert(Mockito.any());
+        }
+    }
+
+    @Test
+    void stopExecution_rejectsExecutionOutsideGroupScope() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        WbOperationExecutionActionMapper actionMapper = Mockito.mock(WbOperationExecutionActionMapper.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient, actionMapper);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        when(kestraClient.getExecution("exec-other"))
+                .thenReturn(execution("exec-other", "g9-main", "other_job", "RUNNING", "2026-06-07T01:00:00Z"));
+
+        assertThatThrownBy(() -> service.stopExecution(4L, 9L, "exec-other"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+
+        verify(kestraClient, never()).killExecution(Mockito.anyString());
+    }
+
+    @Test
+    void stopExecution_succeedsWhenAuditInsertFailsAfterKill() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        WbOperationExecutionActionMapper actionMapper = Mockito.mock(WbOperationExecutionActionMapper.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient, actionMapper);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        when(kestraClient.getExecution("exec-queued"))
+                .thenReturn(execution("exec-queued", "g4-main", "daily_job", "QUEUED", "2026-06-07T01:00:00Z"));
+        when(actionMapper.insert(Mockito.any())).thenThrow(new IllegalStateException("audit error"));
+
+        service.stopExecution(4L, 9L, "exec-queued");
+
+        verify(kestraClient).killExecution("exec-queued");
     }
 
     private static OperationsExecutionService service(GitSyncConfigService gitSyncConfigService,

@@ -1,6 +1,6 @@
-import { Activity, ExternalLink, RotateCcw } from 'lucide-react';
+import { Activity, ExternalLink, RotateCcw, Square } from 'lucide-react';
 import type { OperationsExecutionListItem } from '../../api/operations';
-import { getExecutionPresentation, getExecutionStatusLabel } from '../../components/execution/executionPresentation';
+import { getExecutionPresentation, getExecutionStatusLabel, isStoppable } from '../../components/execution/executionPresentation';
 import { Button } from '../../components/ui/button';
 import { DataList, type DataListColumn } from '../../components/ui/list/DataList';
 import { RowActions, type RowActionItem } from '../../components/ui/list/RowActions';
@@ -10,13 +10,16 @@ import { formatBrowserDateTime } from '../../lib/dateTime';
 interface OperationsTableProps {
     rows: OperationsExecutionListItem[];
     canRerun: boolean;
+    canStop?: boolean;
     isLoading: boolean;
     isRefreshing: boolean;
     errorMessage: string;
     hasFooter: boolean;
     pendingRerunId: string | null;
+    pendingStopId?: string | null;
     onOpenDetail: (executionId: string) => void;
     onRerun: (row: OperationsExecutionListItem) => void;
+    onStop?: (row: OperationsExecutionListItem) => void;
     onResetFilters: () => void;
     onRetry: () => void;
 }
@@ -42,13 +45,16 @@ export function OperationsTable(props: OperationsTableProps) {
     const {
         rows,
         canRerun,
+        canStop = false,
         isLoading,
         isRefreshing,
         errorMessage,
         hasFooter,
         pendingRerunId,
+        pendingStopId = null,
         onOpenDetail,
         onRerun,
+        onStop,
         onResetFilters,
         onRetry,
     } = props;
@@ -62,6 +68,16 @@ export function OperationsTable(props: OperationsTableProps) {
                 onClick: () => onOpenDetail(row.id),
             },
         ];
+        if ((row.stoppable ?? isStoppable(row.status)) && canStop && onStop) {
+            actions.push({
+                key: 'stop',
+                label: `停止 ${row.flowId}`,
+                icon: Square,
+                tone: 'danger',
+                pending: pendingStopId === row.id,
+                onClick: () => onStop(row),
+            });
+        }
         if (row.rerunnable && canRerun) {
             actions.push({
                 key: 'rerun',

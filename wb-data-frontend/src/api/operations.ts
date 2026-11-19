@@ -25,7 +25,16 @@ export interface OperationsExecutionListItem {
     endDate: string | null;
     durationMs: number | null;
     rerunnable: boolean;
+    stoppable?: boolean;
     rerun: boolean;
+}
+
+export interface OperationsExecutionStatusCounts {
+    total: number;
+    success: number;
+    failed: number;
+    active: number;
+    stopped: number;
 }
 
 export interface OperationsExecutionListResponse {
@@ -38,6 +47,7 @@ export interface OperationsExecutionListResponse {
     total: number;
     totalPages: number;
     executions: OperationsExecutionListItem[];
+    statusCounts?: OperationsExecutionStatusCounts;
 }
 
 export interface OperationsExecutionTaskRun {
@@ -60,6 +70,7 @@ export interface OperationsExecutionDetail {
     endDate: string | null;
     durationMs: number | null;
     rerunnable: boolean;
+    stoppable?: boolean;
     taskRuns: OperationsExecutionTaskRun[];
     inputs: Record<string, string>;
     labels: Record<string, string>;
@@ -203,5 +214,14 @@ export const rerunOperationsExecution = (
     return request.post<unknown, OperationsExecutionRerunResponse>(
         groupScopedPath(groupId, `/operations/executions/${encodeURIComponent(executionId)}/rerun`),
         payload
+    );
+};
+
+export const stopOperationsExecution = (
+    groupId: number,
+    executionId: string,
+) => {
+    return request.post<unknown, void>(
+        groupScopedPath(groupId, `/operations/executions/${encodeURIComponent(executionId)}/stop`)
     );
 };

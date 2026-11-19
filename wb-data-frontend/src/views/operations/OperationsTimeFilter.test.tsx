@@ -144,4 +144,36 @@ describe('OperationsTimeFilter', () => {
 
         expect(screen.getAllByRole('grid')).toHaveLength(1);
     });
+
+    it('reports rolling window duration for presets and clears it for custom ranges', async () => {
+        vi.spyOn(Date, 'now').mockReturnValue(new Date(2026, 5, 21, 12, 0, 0).getTime());
+        const onChange = vi.fn();
+        const onRollingWindowChange = vi.fn();
+        render(
+            <OperationsTimeFilter
+                from="2026-06-20 12:00:00"
+                to="2026-06-21 12:00:00"
+                rollingWindowMs={24 * 60 * 60 * 1000}
+                onChange={onChange}
+                onRollingWindowChange={onRollingWindowChange}
+            />
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: /2026-06-20 12:00:00/ }));
+        const last24hButton = await screen.findByRole('button', { name: '最近 24 小时' });
+        expect(last24hButton.getAttribute('aria-pressed')).toBe('true');
+
+        fireEvent.click(screen.getByRole('button', { name: '最近 7 天' }));
+        fireEvent.click(screen.getByRole('button', { name: '应用' }));
+
+        expect(onChange).toHaveBeenCalledWith('2026-06-14 12:00:00', '2026-06-21 12:00:00');
+        expect(onRollingWindowChange).toHaveBeenCalledWith(7 * 24 * 60 * 60 * 1000);
+
+        fireEvent.click(screen.getByRole('button', { name: /2026-06-20 12:00:00/ }));
+        fireEvent.click(await screen.findByRole('tab', { name: '自定义范围' }));
+        fireEvent.change(screen.getByLabelText('结束时间'), { target: { value: '12:30:00' } });
+        fireEvent.click(screen.getByRole('button', { name: '应用' }));
+
+        expect(onRollingWindowChange).toHaveBeenLastCalledWith(null);
+    });
 });

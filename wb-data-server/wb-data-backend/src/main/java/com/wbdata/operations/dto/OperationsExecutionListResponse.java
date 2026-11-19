@@ -12,6 +12,7 @@ public record OperationsExecutionListResponse(
         int pageSize,
         int total,
         int totalPages,
-        List<OperationsExecutionListItem> executions
+        List<OperationsExecutionListItem> executions,
+        OperationsExecutionStatusCounts statusCounts
 ) {
 }

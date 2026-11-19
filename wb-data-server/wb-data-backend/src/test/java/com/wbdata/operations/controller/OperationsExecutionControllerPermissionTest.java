@@ -31,11 +31,13 @@ class OperationsExecutionControllerPermissionTest {
         Method logs = OperationsExecutionController.class.getMethod("getLogs", GroupAuthContext.class, String.class, String.class);
         Method rerun = OperationsExecutionController.class.getMethod(
                 "rerun", GroupAuthContext.class, String.class, OperationsExecutionRerunRequest.class);
+        Method stop = OperationsExecutionController.class.getMethod("stop", GroupAuthContext.class, String.class);
 
         assertThat(auth(list).value()).isEqualTo(Permission.OFFLINE_READ);
         assertThat(auth(detail).value()).isEqualTo(Permission.OFFLINE_READ);
         assertThat(auth(logs).value()).isEqualTo(Permission.OFFLINE_READ);
         assertThat(auth(rerun).value()).isEqualTo(Permission.OFFLINE_WRITE);
+        assertThat(auth(stop).value()).isEqualTo(Permission.OFFLINE_WRITE);
     }
 
     private RequireGroupAuth auth(Method method) {
