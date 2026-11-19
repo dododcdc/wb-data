@@ -124,8 +124,8 @@ public class GitSyncConfigService {
     public GitSyncConfigResponse setEnabled(Long groupId, Long id, boolean enabled) {
         WbGitSyncConfig config = requireConfig(groupId, id);
         config.setEnabled(enabled);
-        syncConfigMapper.updateById(config);
         upsertSyncFlow(config, gitConfigService.requireDecryptedConfig(groupId));
+        syncConfigMapper.updateById(config);
         return toResponse(config);
     }
 

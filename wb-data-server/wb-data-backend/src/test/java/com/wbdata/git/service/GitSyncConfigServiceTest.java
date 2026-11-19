@@ -14,6 +14,7 @@ import com.wbdata.offline.repo.service.GitCommandService;
 import com.wbdata.offline.kestra.KestraClient;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mockito;
 
 import java.util.List;
@@ -23,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -163,6 +165,51 @@ class GitSyncConfigServiceTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("Kestra rejected flow");
         verify(mapper, never()).insert(any(WbGitSyncConfig.class));
+    }
+
+    @Test
+    void setEnabled_upsertsSyncFlowBeforeUpdatingDatabase() {
+        WbGitSyncConfigMapper mapper = Mockito.mock(WbGitSyncConfigMapper.class);
+        GitConfigService gitConfigService = Mockito.mock(GitConfigService.class);
+        GitCommandService gitCommandService = Mockito.mock(GitCommandService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        GitSyncConfigService service = service(mapper, gitConfigService, gitCommandService, kestraClient);
+
+        WbGitSyncConfig config = existing("feature/policy-review");
+        when(mapper.selectById(10L)).thenReturn(config);
+        when(gitConfigService.requireDecryptedConfig(4L)).thenReturn(gitConfig(99L));
+
+        GitSyncConfigResponse response = service.setEnabled(4L, 10L, false);
+
+        assertThat(response.enabled()).isFalse();
+        WbGitSyncConfig disabledConfig = existing("feature/policy-review");
+        disabledConfig.setEnabled(false);
+        String expectedSource = GitSyncFlowSourceBuilder.buildSyncFlowSource(
+                gitConfig(99L),
+                disabledConfig,
+                "*/5 * * * *"
+        );
+        InOrder order = inOrder(kestraClient, mapper);
+        order.verify(kestraClient).upsertFlow(expectedSource);
+        order.verify(mapper).updateById(config);
+    }
+
+    @Test
+    void setEnabled_doesNotUpdateConfigWhenKestraUpsertFails() {
+        WbGitSyncConfigMapper mapper = Mockito.mock(WbGitSyncConfigMapper.class);
+        GitConfigService gitConfigService = Mockito.mock(GitConfigService.class);
+        GitCommandService gitCommandService = Mockito.mock(GitCommandService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        GitSyncConfigService service = service(mapper, gitConfigService, gitCommandService, kestraClient);
+
+        when(mapper.selectById(10L)).thenReturn(existing("feature/policy-review"));
+        when(gitConfigService.requireDecryptedConfig(4L)).thenReturn(gitConfig(99L));
+        doThrow(new RuntimeException("Kestra rejected flow")).when(kestraClient).upsertFlow(any(String.class));
+
+        assertThatThrownBy(() -> service.setEnabled(4L, 10L, false))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Kestra rejected flow");
+        verify(mapper, never()).updateById(any(WbGitSyncConfig.class));
     }
 
     private GitSyncConfigService service() {
