@@ -103,4 +103,31 @@ describe('Login Component', () => {
         expect(await screen.findByText('用户名或密码错误')).toBeTruthy();
         expect(useAuthStore.getState().token).toBeNull();
     });
+
+    it('toggles password visibility without submitting the form', () => {
+        renderLogin();
+
+        const passwordInput = screen.getByLabelText('密码') as HTMLInputElement;
+        expect(passwordInput.type).toBe('password');
+
+        const showButton = screen.getByRole('button', { name: '显示密码' });
+        expect(showButton.getAttribute('aria-pressed')).toBe('false');
+
+        fireEvent.click(showButton);
+        expect(passwordInput.type).toBe('text');
+
+        const hideButton = screen.getByRole('button', { name: '隐藏密码' });
+        expect(hideButton.getAttribute('aria-pressed')).toBe('true');
+
+        fireEvent.click(hideButton);
+        expect(passwordInput.type).toBe('password');
+        expect(login).not.toHaveBeenCalled();
+    });
+
+    it('keeps form inputs unfocused on initial render', () => {
+        renderLogin();
+
+        expect(document.activeElement).not.toBe(screen.getByLabelText('用户名'));
+        expect(document.activeElement).not.toBe(screen.getByLabelText('密码'));
+    });
 });
