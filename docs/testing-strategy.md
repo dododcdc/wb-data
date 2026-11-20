@@ -1,6 +1,6 @@
 # 测试策略
 
-本文档记录 WB-Data 当前的测试分层、每层的运行方式和决策理由。环境搭建细节见 [本地开发](local-development.md) 与 [数据传输集成验证](local-integration-testing.md)。
+本文档记录 WB-Data 当前的测试分层、每层的运行方式和决策理由。环境搭建与后端启动变量见 [本地开发](local-development.md)。
 
 ## 分层现状
 
@@ -33,6 +33,21 @@ L0 与 L3 之间目前没有自动化集成层（无 `@SpringBootTest`、无 Tes
 每个传输场景断言目标库的实际行数/分区数据。脚本在 `_flows/smoke_it/` 下保存测试 flow（未提交状态，重复执行会原地更新，不需要时可在界面删除）。
 
 边界：verify 走 debug 执行接口（`wb-debug-*` 命名空间），按设计不进运维中心列表——运维中心只扫 git sync 配置的业务命名空间。因此 commit/push → Kestra 同步链路、调度触发、运维中心的记录可见性仍需手动验证，后续可将 push 链路补成场景（依赖组内 Git 凭据，目前仅 `policy` 组已配置）。
+
+### L3 前置条件与清理
+
+- **前置条件**：
+  - 按 [本地开发](local-development.md) 准备好插件（`bash scripts/prepare-plugins.sh`）并启动 MySQL、Kestra 与后端；跑 `--transfer` 时后端需带 [本地开发 · 离线任务怎么连库](local-development.md#离线任务怎么连库) 里的传输环境变量。
+  - `wb_data` 库中需已存在用户 `admin` 与项目组 `policy`；Kestra Docker runner 需开启 `volume-enabled: true`（仓库 `docker/docker-compose.kestra.yml` 已默认开启）。
+  - 后端不在 `8080` 端口时，同步调整 `SERVER_PORT`、`WB_DATA_TRANSFER_INTERNAL_BASE_URL` 和 `WB_DATA_TRANSFER_BACKEND_HOST_PORT`；需要跳过重编 SeaTunnel 镜像（`wb-data-seatunnel:2.3.13`）时可传 `SKIP_SEATUNNEL_BUILD=1`。
+  - 测试表初始化脚本：`scripts/dev/init/transfer/mysql/001_schema.sql`、`scripts/dev/init/transfer/hive/001_schema.sql`。
+- **清理 Hive 测试数据卷**：
+
+```bash
+docker compose -f docker/docker-compose.hive.yml down -v
+```
+
+不要对 `docker/docker-compose.mysql.yml` 执行 `down -v`，那会清掉元数据库 `wb_data`。
 
 ### 手动验证清单（L3 覆盖不到的链路）
 

@@ -55,7 +55,7 @@ WB Data 不是把重型企业数据套件或零散的单一工具（数据库客
 
 ## Evidence on Hand
 
-- 可运行的前后端源码（`wb-data-frontend/`、`wb-data-server/`）、数据源插件（MySQL、PostgreSQL、Hive、ClickHouse）、Kestra 扩展插件（`wb-data-kestra-plugin/`）、Docker Compose 环境（`docker/`），以及工程和验证文档（`docs/local-development.md`、`docs/local-integration-testing.md`、`docs/parameter-groups.md`、`docs/testing-strategy.md`）。
+- 可运行的前后端源码（`wb-data-frontend/`、`wb-data-server/`）、数据源插件（MySQL、PostgreSQL、Hive、ClickHouse）、Kestra 扩展插件（`wb-data-kestra-plugin/`）、Docker Compose 环境（`docker/`），以及工程和验证文档（`docs/local-development.md`、`docs/testing-strategy.md`）。
 - **不存在、不得虚构的内容**：没有外部客户 logo、用户评价、商业定价或 SLA 承诺、第三方性能对比数据，也没有合规认证。
 
 ## Product Principles

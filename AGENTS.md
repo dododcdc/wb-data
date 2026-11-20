@@ -1,6 +1,6 @@
 # WB-Data Agent 开发指南
 
-项目能力、技术栈和启动入口以 [README.md](README.md) 为准。日常环境配置见 [本地开发](docs/local-development.md)，数据传输验证见 [数据传输集成验证](docs/local-integration-testing.md)。
+项目能力、技术栈和启动入口以 [README.md](README.md) 为准。日常环境配置见 [本地开发](docs/local-development.md)，测试分层与冒烟验证见 [测试策略](docs/testing-strategy.md)。
 
 ## 本地离线执行（必读）
 

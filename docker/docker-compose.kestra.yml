@@ -20,8 +20,8 @@ services:
       - kestra-postgres-data:/var/lib/postgresql/data
 
   kestra:
-    # This exact version is the WB-Data compatibility baseline. Upgrade it only
-    # together with the capability matrix in docs/research/.
+    # This exact version is the WB-Data compatibility baseline. Upgrade only
+    # after verifying Kestra plugin, parameter, and schedule compatibility.
     image: wb-data/kestra:v1.3.7-sql-template
     build:
       context: ../wb-data-server/wb-data-kestra-plugin

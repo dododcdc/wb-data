@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 与后端 OfflineScheduleKeysTest 共用测试向量，保证两侧 scheduleKey 语义一致。
- * 另覆盖 Pebble date 过滤器算错的 ISO 周跨年边界（见 docs/research/kestra-cross-flow-dependency-research.md）。
+ * 另覆盖 Pebble date 过滤器算错的 ISO 周跨年边界（JVM locale 周规则与 ISO-8601 周的差异）。
  */
 class ScheduleKeysTest {
 

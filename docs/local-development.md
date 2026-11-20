@@ -1,6 +1,6 @@
 # 本地开发
 
-日常开发：前端和后端跑在宿主机。MySQL、Kestra、Hive、ClickHouse 用仓库里的 Compose 起。数据传输冒烟步骤见 [数据传输集成验证](local-integration-testing.md)。
+日常开发：前端和后端跑在宿主机。MySQL、Kestra、Hive、ClickHouse 用仓库里的 Compose 起。测试分层与冒烟验证见 [测试策略](testing-strategy.md)。
 
 ## 前置依赖
 
@@ -152,7 +152,7 @@ docker compose -f docker/docker-compose.kestra.yml up -d --build
 
 启动后地址 `http://omarchy.local:8090`（本机 Docker 则为 `http://localhost:8090`）。后端使用相同的 `WB_DATA_KESTRA_USERNAME` 和 `WB_DATA_KESTRA_PASSWORD`。真实密码只通过环境变量提供，不要写入 Compose 或提交到 Git。
 
-升级时必须改 Compose 里的精确 `vX.Y.Z`，并重跑 [Kestra 参数能力研究](research/kestra-parameter-capabilities.md) 的阶段 0 矩阵。
+升级时必须改 Compose 里的精确 `vX.Y.Z`，并重新验证 Kestra 插件、参数解析与调度触发兼容性。
 
 ## 可选：Hive
 
