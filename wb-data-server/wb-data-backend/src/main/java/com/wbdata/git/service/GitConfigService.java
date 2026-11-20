@@ -25,7 +25,7 @@ public class GitConfigService {
     private final GitHubRemoteProvider githubProvider;
     private final GitLabRemoteProvider gitlabProvider;
 
-    private static final String AES_KEY_ENV = "WB_DATA_GIT_TOKEN_KEY";
+    private static final String TOKEN_KEY_ENV = "WB_DATA_GIT_TOKEN_KEY";
 
     /** 内存缓存当前 provider 实例，按 groupId 区分 */
     private final Map<Long, GitRemoteProvider> currentProviderCache = new ConcurrentHashMap<>();
@@ -196,17 +196,20 @@ public class GitConfigService {
         };
     }
 
-    /** 简单 AES 加密（token 存 DB 时使用） */
+    /** 按 WB_DATA_GIT_TOKEN_KEY 做 SHA-256 异或 + Base64（未配置密钥时仅 Base64） */
     private String encryptToken(String token) {
+        return encryptToken(token, System.getenv(TOKEN_KEY_ENV));
+    }
+
+    static String encryptToken(String token, String key) {
         try {
-            String key = System.getenv(AES_KEY_ENV);
             if (key == null || key.isBlank()) {
                 return Base64.getEncoder().encodeToString(token.getBytes(StandardCharsets.UTF_8));
             }
             MessageDigest sha = MessageDigest.getInstance("SHA-256");
             byte[] keyBytes = sha.digest(key.getBytes(StandardCharsets.UTF_8));
-            byte[] cipher = new byte[keyBytes.length];
             byte[] input = token.getBytes(StandardCharsets.UTF_8);
+            byte[] cipher = new byte[input.length];
             for (int i = 0; i < input.length; i++) {
                 cipher[i] = (byte) (input[i] ^ keyBytes[i % keyBytes.length]);
             }
@@ -217,8 +220,11 @@ public class GitConfigService {
     }
 
     private String decryptToken(String encrypted) {
+        return decryptToken(encrypted, System.getenv(TOKEN_KEY_ENV));
+    }
+
+    static String decryptToken(String encrypted, String key) {
         try {
-            String key = System.getenv(AES_KEY_ENV);
             if (key == null || key.isBlank()) {
                 return new String(Base64.getDecoder().decode(encrypted), StandardCharsets.UTF_8);
             }
