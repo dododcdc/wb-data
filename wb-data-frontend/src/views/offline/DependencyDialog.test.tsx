@@ -88,7 +88,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('DependencyDialog', () => {
-    it('opens on mount, stages defaults locally and explains configuration versus runtime behavior', async () => {
+    it('opens on mount, stages defaults locally and shows draft publish notice', async () => {
         const { props } = renderDialog();
         expect(screen.getByRole('dialog', { name: '依赖配置' })).toBeTruthy();
         expect(stageButton().disabled).toBe(true);
@@ -97,7 +97,7 @@ describe('DependencyDialog', () => {
         expect((screen.getByRole('radio', { name: '继续调度' }) as HTMLInputElement).checked).toBe(true);
         expect(crossGroupSwitch().getAttribute('aria-checked')).toBe('true');
         const footer = stageButton().closest('.offline-schedule-footer') as HTMLElement;
-        expect(within(footer).getByText('暂存后自动保存草稿；运行等待机制将在后续版本接入。')).toBeTruthy();
+        expect(within(footer).getByText('暂存后自动保存草稿，提交并推送、同步成功后生效')).toBeTruthy();
         fireEvent.click(stageButton());
         expect(props.onStage).toHaveBeenCalledWith({ dependencies: [], failurePolicy: 'CONTINUE', crossGroupDependency: 'ALLOW' });
         expect(props.onClose).toHaveBeenCalledOnce();

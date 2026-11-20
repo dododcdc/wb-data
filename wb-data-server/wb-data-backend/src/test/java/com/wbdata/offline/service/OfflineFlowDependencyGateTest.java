@@ -186,6 +186,119 @@ class OfflineFlowDependencyGateTest {
                 .containsExactly("biz_date", "wbdata_planned_time", "wbdata_bypass_gate");
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void applyDependencyConfig_injectsGateWhenNoDependenciesButPausePolicy() {
+        String source = pauseOnlySource();
+
+        Map<String, Object> root = yaml.load(source);
+        List<Map<String, Object>> tasks = (List<Map<String, Object>>) root.get("tasks");
+        assertThat(tasks).hasSize(2);
+        Map<String, Object> gate = tasks.getFirst();
+        assertThat(gate.get("id")).isEqualTo("wb_upstream_gate");
+        assertThat(gate.get("type")).isEqualTo("io.wbdata.kestra.core.WaitUpstream");
+        assertThat(gate.get("selfGroupId")).isEqualTo("4");
+        assertThat((List<?>) gate.get("upstreams")).isEmpty();
+        assertThat(gate.get("period")).isEqualTo("DAILY");
+        assertThat(gate.get("cron")).isEqualTo("0 2 * * *");
+        assertThat(gate.get("timezone")).isEqualTo("Asia/Shanghai");
+        assertThat(gate.get("plannedTime")).isEqualTo("{{ inputs.wbdata_planned_time ?? trigger.date }}");
+        assertThat(gate.get("failurePolicy")).isEqualTo("PAUSE");
+        assertThat(gate.get("bypass")).isEqualTo("{{ inputs.wbdata_bypass_gate ?? false }}");
+        assertThat(tasks.get(1).get("id")).isEqualTo("flow_dag");
+
+        List<Map<String, Object>> inputs = (List<Map<String, Object>>) root.get("inputs");
+        assertThat(inputs).anySatisfy(input -> assertThat(input.get("id")).isEqualTo("wbdata_planned_time"));
+        assertThat(inputs).anySatisfy(input -> assertThat(input.get("id")).isEqualTo("wbdata_bypass_gate"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void applyDependencyConfig_keepsGateWhenDependenciesClearedButPauseRemains() {
+        String pauseOnly = support.applyDependencyConfig(
+                gatedSource(), List.of(), OfflineFailurePolicy.PAUSE, OfflineCrossGroupDependency.ALLOW);
+
+        Map<String, Object> pauseRoot = yaml.load(pauseOnly);
+        List<Map<String, Object>> pauseTasks = (List<Map<String, Object>>) pauseRoot.get("tasks");
+        assertThat(pauseTasks.stream().map(task -> task.get("id")))
+                .containsExactly("wb_upstream_gate", "flow_dag");
+        assertThat((List<?>) pauseTasks.getFirst().get("upstreams")).isEmpty();
+        assertThat(pauseTasks.getFirst().get("failurePolicy")).isEqualTo("PAUSE");
+
+        String continued = support.applyDependencyConfig(
+                pauseOnly, List.of(), OfflineFailurePolicy.CONTINUE, OfflineCrossGroupDependency.ALLOW);
+        Map<String, Object> continuedRoot = yaml.load(continued);
+        List<Map<String, Object>> continuedTasks = (List<Map<String, Object>>) continuedRoot.get("tasks");
+        assertThat(continuedTasks.stream().map(task -> task.get("id"))).containsExactly("flow_dag");
+        assertThat((List<Map<String, Object>>) continuedRoot.get("inputs"))
+                .noneSatisfy(input -> assertThat(input.get("id")).isEqualTo("wbdata_bypass_gate"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void applyDependencyGate_skipsPauseOnlyGateWithoutStandardScheduleAndInjectsOnceScheduled() {
+        String base = support.buildEmptyFlowYaml("orders", "pg-4");
+        base = support.compileGraph(
+                base,
+                List.of(new OfflineFlowNode("task_a", "SHELL", "scripts/task_a.sh", null, null, null)),
+                List.of(),
+                Map.of());
+
+        String unscheduledPause = support.applyDependencyConfig(
+                base, List.of(), OfflineFailurePolicy.PAUSE, OfflineCrossGroupDependency.ALLOW);
+        List<Map<String, Object>> unscheduledTasks =
+                (List<Map<String, Object>>) yaml.<Map<String, Object>>load(unscheduledPause).get("tasks");
+        assertThat(unscheduledTasks.stream().map(task -> task.get("id"))).containsExactly("flow_dag");
+
+        String customCronPause = """
+                id: orders
+                namespace: pg-4
+                labels:
+                  wbdataFailurePolicy: PAUSE
+                triggers:
+                  - id: schedule
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "*/5 * * * *"
+                tasks: []
+                """;
+        List<Map<String, Object>> customTasks = (List<Map<String, Object>>) yaml
+                .<Map<String, Object>>load(support.applyDependencyGate(customCronPause))
+                .get("tasks");
+        assertThat(customTasks).isEmpty();
+
+        String scheduledPause = support.applySchedule(
+                unscheduledPause,
+                new OfflineFlowSchedule("0 2 * * *", "Asia/Shanghai", true, OfflineSchedulePeriod.DAILY));
+        List<Map<String, Object>> scheduledTasks =
+                (List<Map<String, Object>>) yaml.<Map<String, Object>>load(scheduledPause).get("tasks");
+        assertThat(scheduledTasks.stream().map(task -> task.get("id")))
+                .containsExactly("wb_upstream_gate", "flow_dag");
+        assertThat((List<?>) scheduledTasks.getFirst().get("upstreams")).isEmpty();
+        assertThat(scheduledTasks.getFirst().get("failurePolicy")).isEqualTo("PAUSE");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void buildDebugFlow_stripsPauseOnlyGate() {
+        String debug = support.buildDebugFlow(
+                pauseOnlySource(),
+                "wb-debug-g4-bmain-u1",
+                "_flows/orders/flow.yaml",
+                4L,
+                1L,
+                "main",
+                "revision",
+                "ALL",
+                List.of());
+
+        Map<String, Object> root = yaml.load(debug);
+        List<Map<String, Object>> tasks = (List<Map<String, Object>>) root.get("tasks");
+        assertThat(tasks.stream().map(task -> task.get("id"))).containsExactly("flow_dag");
+        assertThat((List<Map<String, Object>>) root.get("inputs"))
+                .noneSatisfy(input -> assertThat(input.get("id")).isEqualTo("wbdata_bypass_gate"));
+        assertThat(root.get("triggers")).isNull();
+    }
+
     /** 含两个前置、PAUSE 策略、上海时区天调度的完整任务 YAML（闸门已由链式调用注入）。 */
     private String gatedSource() {
         String source = support.buildEmptyFlowYaml("orders", "pg-4");
@@ -198,6 +311,21 @@ class OfflineFlowDependencyGateTest {
                 new OfflineFlowSchedule("0 2 * * *", "Asia/Shanghai", true, OfflineSchedulePeriod.DAILY));
         return support.applyDependencyConfig(source,
                 List.of(new OfflineFlowDependencyRef(3L, "ods_user"), new OfflineFlowDependencyRef(5L, "ods_order")),
+                OfflineFailurePolicy.PAUSE, OfflineCrossGroupDependency.ALLOW);
+    }
+
+    /** 无前置、PAUSE 策略、上海时区天调度的完整任务 YAML（闸门已由链式调用注入）。 */
+    private String pauseOnlySource() {
+        String source = support.buildEmptyFlowYaml("orders", "pg-4");
+        source = support.compileGraph(
+                source,
+                List.of(new OfflineFlowNode("task_a", "SHELL", "scripts/task_a.sh", null, null, null)),
+                List.of(),
+                Map.of());
+        source = support.applySchedule(source,
+                new OfflineFlowSchedule("0 2 * * *", "Asia/Shanghai", true, OfflineSchedulePeriod.DAILY));
+        return support.applyDependencyConfig(source,
+                List.of(),
                 OfflineFailurePolicy.PAUSE, OfflineCrossGroupDependency.ALLOW);
     }
 }

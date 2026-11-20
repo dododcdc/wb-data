@@ -406,7 +406,7 @@ function DependencyDialogSession({
                         </>
                     ) : (
                         <>
-                            <p className="offline-schedule-publish-note">暂存后自动保存草稿；运行等待机制将在后续版本接入。</p>
+                            <p className="offline-schedule-publish-note">暂存后自动保存草稿，提交并推送、同步成功后生效</p>
                             <div className="offline-schedule-actions">
                                 <Button type="button" variant="outline" onClick={onClose}>取消</Button>
                                 <Button type="button" disabled={stageDisabled} onClick={() => {

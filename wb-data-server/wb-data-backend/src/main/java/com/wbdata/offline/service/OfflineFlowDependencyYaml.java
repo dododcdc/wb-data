@@ -19,7 +19,7 @@ import java.util.Map;
  * 前置依赖 labels 与依赖闸门（WaitUpstream task + 旁路/计划时间 input）的编译。
  * 闸门内容完全由 YAML 自身推导（namespace 的 pg-N、依赖/策略 labels、调度 trigger），
  * 所有改动调度或依赖的编译路径在收尾时调用一次 {@link #applyDependencyGate} 即可保持一致；
- * 无依赖时自动剥除；debug 旁路用 {@link #stripDependencyGate}。
+ * 无依赖且上一期失败策略不为 PAUSE 时自动剥除；debug 旁路用 {@link #stripDependencyGate}。
  */
 final class OfflineFlowDependencyYaml {
 
@@ -151,14 +151,24 @@ final class OfflineFlowDependencyYaml {
         removeGateInputs(root);
 
         List<OfflineFlowDependencyRef> dependencies = readDependencies(source);
-        if (dependencies.isEmpty()) {
+        OfflineFailurePolicy failurePolicy = readFailurePolicy(source);
+        boolean hasDependencies = !dependencies.isEmpty();
+        boolean needsPauseGate = failurePolicy == OfflineFailurePolicy.PAUSE;
+        if (!hasDependencies && !needsPauseGate) {
             root.put("tasks", tasks);
             return yaml.dump(root);
         }
 
         OfflineFlowYamlSupport.ScheduleData schedule = scheduleYaml.readSchedule(source);
-        if (schedule == null || schedule.period() == null || schedule.period() == OfflineSchedulePeriod.CUSTOM) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "配置前置依赖需要先配置标准调度频率");
+        boolean hasStandardSchedule = schedule != null
+                && schedule.period() != null
+                && schedule.period() != OfflineSchedulePeriod.CUSTOM;
+        if (!hasStandardSchedule) {
+            if (hasDependencies) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "配置前置依赖需要先配置标准调度频率");
+            }
+            root.put("tasks", tasks);
+            return yaml.dump(root);
         }
         java.util.regex.Matcher namespaceMatcher = REPO_NAMESPACE_PATTERN
                 .matcher(yaml.requiredString(root, "namespace"));
@@ -184,7 +194,7 @@ final class OfflineFlowDependencyYaml {
             gate.put("timezone", schedule.timezone());
         }
         gate.put("plannedTime", "{{ inputs.wbdata_planned_time ?? trigger.date }}");
-        gate.put("failurePolicy", readFailurePolicy(source).name());
+        gate.put("failurePolicy", failurePolicy.name());
         gate.put("bypass", "{{ inputs.wbdata_bypass_gate ?? false }}");
         tasks.add(0, gate);
         root.put("tasks", tasks);
@@ -193,7 +203,7 @@ final class OfflineFlowDependencyYaml {
         return yaml.dump(root);
     }
 
-    /** debug 执行旁路依赖闸门（已拍板）：剥除闸门 task 与旁路 input 声明。 */
+    /** debug 执行旁路依赖闸门：剥除闸门 task 与旁路 input 声明。 */
     void stripDependencyGate(Map<String, Object> root) {
         if (root.get("tasks") instanceof List<?> rawTasks) {
             List<Map<String, Object>> retained = new ArrayList<>();
