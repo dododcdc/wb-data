@@ -106,19 +106,6 @@
     width: min(420px, 100%);
 }
 
-.datasource-error,
-.datasource-empty {
-    /* Styles removed, moved to data-table-shell.css */
-}
-
-.datasource-table-shell {
-    /* Styles removed, moved to data-table-shell.css */
-}
-
-.datasource-table-scroll {
-    /* Handled by .dt-scroll now */
-}
-
 .datasource-skeleton-toolbar {
     position: relative;
 }

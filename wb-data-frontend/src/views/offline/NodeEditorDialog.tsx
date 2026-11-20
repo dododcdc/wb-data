@@ -32,10 +32,7 @@ import {
     isSqlEditorNodeKind,
 } from './offlineNodeKinds';
 
-/**
- * Lazy-loaded Monaco Editor for non-SQL nodes (Shell scripts).
- * SQL/HiveSQL nodes use the shared SqlEditor component instead.
- */
+/** Lazy-loaded Monaco Editor for Shell nodes (SQL-family nodes use SqlEditor). */
 const LazyEditor = lazy(() => loadSqlEditorModule());
 
 const SQL_FORMAT_OPTIONS_BY_KIND: Partial<Record<OfflineFlowNodeKind, SqlFormatOptions>> = {
@@ -183,7 +180,7 @@ export function NodeEditorDialog({
     }, [open, activeNode?.taskId]);
 
     /**
-     * onMount for shared SqlEditor (SQL/HiveSQL nodes).
+     * onMount for shared SqlEditor (SQL-family nodes).
      * The shared core handles theme + format action automatically;
      * we just need a reference for focus management.
      */

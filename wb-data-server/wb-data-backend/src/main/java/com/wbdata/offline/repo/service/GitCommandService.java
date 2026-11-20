@@ -22,9 +22,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Git 仓库操作的唯一入口：持有仓库锁，分支管理委托 {@link GitBranchOperations}，
- * 脏工作树检测委托 {@link GitWorkingTreeStatus}，本类保留任务级/仓库级提交与推送。
- * 协作类自身不加锁。
+ * 持有仓库锁的 Git 操作入口：负责任务级/仓库级提交、推送与历史文件读取，
+ * 分支管理委托 {@link GitBranchOperations}（协作类自身不加锁）。
  */
 @Service
 public class GitCommandService extends GitRepositoryOperations {
@@ -34,7 +33,6 @@ public class GitCommandService extends GitRepositoryOperations {
     private final OfflinePublishRecordService publishRecordService;
     private final RepoLockManager repoLockManager;
     private final GitBranchOperations branchOperations;
-    private final GitWorkingTreeStatus workingTreeStatus;
     private ApplicationEventPublisher applicationEventPublisher = event -> {};
 
     public record PushResult(boolean success, String message, String remoteUrl, boolean remoteCreated, boolean remoteDeleted) {}
@@ -51,7 +49,6 @@ public class GitCommandService extends GitRepositoryOperations {
         this.publishRecordService = publishRecordService;
         this.repoLockManager = repoLockManager;
         this.branchOperations = new GitBranchOperations(offlineProperties);
-        this.workingTreeStatus = new GitWorkingTreeStatus();
     }
 
     public BranchListResponse listBranches(Long groupId) {

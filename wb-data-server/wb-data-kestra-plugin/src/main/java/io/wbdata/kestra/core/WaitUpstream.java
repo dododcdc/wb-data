@@ -48,7 +48,7 @@ import java.util.Set;
 /**
  * wb-data 任务依赖闸门：等待所有前置任务在「同一计划业务期」达到 SUCCESS 才放行。
  *
- * <p>语义（docs/proposals/task-level-dependencies-v1.md §3/§6）：
+ * <p>语义：
  * <ul>
  *   <li>对齐键 scheduleKey 由计划执行时间按各自任务的时区计算，本类用 Java 计算（Pebble 周格式非 ISO）。</li>
  *   <li>启动时刻 = max(自己计划时间, 前置同期完成时间)：本 task 由 Schedule 到点点火，前置未齐则在此等待。</li>
@@ -73,7 +73,7 @@ public class WaitUpstream extends Task implements RunnableTask<WaitUpstream.Wait
             State.Type.SUCCESS, State.Type.WARNING, State.Type.FAILED, State.Type.KILLED, State.Type.CANCELLED);
     private static final int HEARTBEAT_POLLS = 20;
 
-    @Schema(title = "前置任务列表", description = "仅允许相同调度频率；留空表示无前置，闸门直接通过")
+    @Schema(title = "前置任务列表", description = "仅允许相同调度频率；留空表示无需等待前置任务（仍按 failurePolicy 校验上一期状态）")
     @Builder.Default
     private List<Upstream> upstreams = List.of();
 
@@ -93,7 +93,7 @@ public class WaitUpstream extends Task implements RunnableTask<WaitUpstream.Wait
     private Property<String> timezone;
 
     @NotNull
-    @Schema(title = "本期计划执行时间", description = "取 {{ trigger.date ?? inputs.wbdata_planned_time }}")
+    @Schema(title = "本期计划执行时间", description = "取 {{ inputs.wbdata_planned_time ?? trigger.date }}")
     private Property<String> plannedTime;
 
     @Schema(title = "上一期失败策略", description = "CONTINUE（默认）| PAUSE；只影响自身下一期，不影响下游")

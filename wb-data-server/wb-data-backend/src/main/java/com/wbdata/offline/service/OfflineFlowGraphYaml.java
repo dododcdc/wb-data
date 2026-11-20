@@ -151,11 +151,8 @@ final class OfflineFlowGraphYaml {
     }
 
     /**
-     * Compile a DAG (nodes + edges) back into a Kestra-compatible tasks list YAML.
-     * Algorithm:
-     * 1. Topological sort the nodes
-     * 2. Group consecutive nodes that share identical predecessor sets AND successor sets → Parallel
-     * 3. Single nodes become plain tasks
+     * 将画布图（nodes + edges）拓扑排序后编译为单个 flow_dag（io.kestra.plugin.core.flow.Dag）task，
+     * 按前驱关系写入 dependsOn，并在收尾统一重生成依赖闸门。
      */
     String compileGraph(String existingSource,
                         List<OfflineFlowNode> nodes,

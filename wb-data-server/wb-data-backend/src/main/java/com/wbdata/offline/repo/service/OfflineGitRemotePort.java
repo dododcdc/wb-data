@@ -2,7 +2,7 @@ package com.wbdata.offline.repo.service;
 
 /**
  * offline 域对 git 远程能力的端口：工作树推送/关联远程仓库所需的最小操作集。
- * 由 git 包实现（GitRemoteAccessAdapter），使 offline 不反向依赖 git 包。
+ * 由 git 包的 GitRemoteAccessAdapter 实现，隔离远程平台 Provider 与 GitConfigService 访问。
  */
 public interface OfflineGitRemotePort {
 

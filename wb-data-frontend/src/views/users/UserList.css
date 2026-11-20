@@ -71,20 +71,6 @@
     flex-direction: column;
 }
 
-.user-error,
-.user-empty {
-    /* Styles removed, moved to data-table-shell.css */
-}
-
-.user-table-shell {
-    /* Styles removed, moved to data-table-shell.css */
-}
-
-.user-table-scroll {
-    /* Handled by .dt-scroll now */
-}
-
-
 /* User form content and layout (internal) */
 .user-form-content {
     padding: 0;

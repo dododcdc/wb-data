@@ -17,7 +17,7 @@ public class WbGitConfig {
     /** 所属项目组 ID */
     private Long projectGroupId;
 
-    /** github | gitlab | gitea */
+    /** github | gitlab */
     private String provider;
 
     private String username;

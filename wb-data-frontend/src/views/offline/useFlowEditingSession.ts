@@ -711,7 +711,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             const currentSession = draftSessionRef.current;
             const pendingDraft = pendingNodeEditorDraftRef.current;
             const pendingDraftChanged = hasPendingNodeEditorDraftChanges(currentSession, pendingDraft);
-            // 提交前校验数据源/Transfer 完整性（不校验连通性，见提案 D2）
+            // 提交前校验数据源/Transfer 完整性（不校验连通性）
             if (!validateDocumentForAction()) {
                 return false;
             }

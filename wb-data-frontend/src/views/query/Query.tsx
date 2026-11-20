@@ -144,11 +144,6 @@ export default function Query() {
 
     const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
     const queryEditorActionsDisposeRef = useRef<(() => void) | null>(null);
-    // No longer need manual resizing logic for Allotment
-
-
-
-
 
     useKeyboardShortcuts({
         onToggleSidebar: handleToggleSidebar,

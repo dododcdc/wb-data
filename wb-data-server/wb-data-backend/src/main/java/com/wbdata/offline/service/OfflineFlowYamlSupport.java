@@ -20,9 +20,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Flow YAML 操作的统一入口：组合调度、依赖闸门、图编译三个协作类，
+ * Flow YAML 操作的统一入口：组合调度、依赖闸门、图编译、debug 执行流编译四个协作类，
  * 并持有「调度/依赖/图变更 → 闸门统一重生成」的链式收尾不变量。
- * 各领域实现见 {@link OfflineFlowScheduleYaml} / {@link OfflineFlowDependencyYaml} / {@link OfflineFlowGraphYaml}，
+ * 各领域实现见 {@link OfflineFlowScheduleYaml} / {@link OfflineFlowDependencyYaml} /
+ * {@link OfflineFlowGraphYaml} / {@link OfflineFlowDebugYaml}，
  * 结构读写原语见 {@link FlowYamlCodec}。
  */
 final class OfflineFlowYamlSupport {

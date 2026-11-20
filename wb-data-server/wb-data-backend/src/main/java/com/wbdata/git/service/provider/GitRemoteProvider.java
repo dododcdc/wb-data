@@ -20,7 +20,7 @@ public interface GitRemoteProvider {
     /** 创建远程仓库 */
     void createRepository(String repoName, boolean isPrivate);
 
-    /** 构建 push 用的 remote URL（不含 token，明文显示） */
+    /** 构建展示用的 remote URL（不含 token） */
     String buildDisplayUrl(String repoName);
 
     /** 构建带 token 的 remote URL */

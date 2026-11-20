@@ -350,7 +350,6 @@ public class OfflineFlowDocumentService {
             parameterBindingAssembler.applyParameterSnapshotUpdate(repoPath, request.path(), parameterUpdate);
             kestraFlowFileService.syncFlowFile(repoPath, request.path());
 
-            // Save layout.json if provided
             if (request.layout() != null && !request.layout().isEmpty()) {
                 saveLayout(request.groupId(), request.path(), request.layout());
             }
@@ -965,7 +964,6 @@ public class OfflineFlowDocumentService {
                 .map(e -> new OfflineFlowEdgeResponse(e.source(), e.target()))
                 .toList();
 
-        // Read layout.json if it exists
         Map<String, NodePosition> layout = readLayout(groupId, path, fileAccess);
 
         String runtimeTimezone = yamlSupport.readLabel(flowContent, "wbdataRuntimeTimezone");

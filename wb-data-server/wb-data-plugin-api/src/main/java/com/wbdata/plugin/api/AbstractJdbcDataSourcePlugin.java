@@ -28,11 +28,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * 默认情况下，各方法通过 {@link DriverManager} 创建原生 JDBC 连接。
  * 如需启用连接池，请通过 {@link #setConnectionSupplier(ConnectionSupplier)}
  * 注入一个 {@link ConnectionSupplier}——通常由后端的
- * {@code DataSourceConnectionPoolManager} 在插件加载完成后执行。
+ * {@code DataSourcePluginRegistry} 在插件加载完成后执行。
  *
  * <ul>
- * <li>{@code testConnection} 始终绕过连接池（必须验证新的连通性）。</li>
- * <li>{@code getDatabases}、{@code getTables}、{@code executeQuery} 在有连接池时使用连接池。</li>
+ * <li>{@code testConnectionDetailed}、{@code executeStatements} 始终绕过连接池，走直连 JDBC。</li>
+ * <li>{@code getDatabases}、{@code getTables}、{@code getColumns}、{@code getTableDetail}、{@code executeQuery} 在有连接池时使用连接池。</li>
  * </ul>
  */
 public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {

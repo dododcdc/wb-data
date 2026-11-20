@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * git 进程执行与仓库级原语（存在性检查、当前分支/remote 读取、分支名校验），
- * 供 GitCommandService（提交/推送）与 GitBranchOperations（分支管理）共用。
+ * 供 GitCommandService（提交/推送）、GitBranchOperations（分支管理）与 OfflineFlowVersionService（版本历史查询）共用。
  */
 abstract class GitRepositoryOperations {
 

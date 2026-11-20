@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * debug 执行流编译：改写命名空间、写 debug labels、剥除依赖闸门与触发器（已拍板旁路），
+ * debug 执行流编译：改写命名空间、写 debug labels、剥除依赖闸门与触发器，
  * SELECTED 模式下未选中的节点置 disabled 并裁剪指向它们的 dependsOn。
  */
 final class OfflineFlowDebugYaml {

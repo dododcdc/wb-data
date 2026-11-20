@@ -160,9 +160,6 @@ vi.mock('./queryEditorActions', () => ({
     setupQueryEditorActions: setupQueryEditorActionsMock,
 }));
 
-// Allotment is no longer used, removing its mock.
-
-
 vi.mock('./components/QuerySidebar', () => ({
     QuerySidebar: () => <div data-testid="query-sidebar" />,
 }));

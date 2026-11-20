@@ -111,7 +111,6 @@ public class DataSourceConnectionPoolManager {
         config.setIdleTimeout(600_000);          // 10 分钟
         config.setMaxLifetime(1_800_000);        // 30 分钟
         config.setPoolName("wb-pool-ds-" + ds.getId());
-        // 禁用自动提交以实现查询隔离；插件将管理事务
         config.setAutoCommit(true);
         return new HikariDataSource(config);
     }

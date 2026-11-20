@@ -25,9 +25,8 @@ const ResizablePanelGroup = ({
   />
 );
 
-// Convert numeric minSize/maxSize/collapsedSize to percentage strings.
-// react-resizable-panels v4 treats numbers as px, but this project's
-// legacy allotment API used numbers as percentages (0–100).
+// Convert numeric minSize/maxSize/collapsedSize (0–100) to percentage strings;
+// react-resizable-panels v4 treats plain numbers as px.
 type ResizablePanelProps = React.ComponentProps<typeof ResizablePrimitive.Panel> & {
   order?: number;
 };

@@ -64,7 +64,6 @@ public class GroupSettingsController {
     public Result<PageResult<AvailableUserResponse>> listAvailableUsers(
             @RequireGroupAuth(Permission.MEMBER_MANAGE) GroupAuthContext context,
             @Validated PageQuery query) {
-        // 由于前端可能需要更大的分页大小，我们可以在此设置默认值或让前端传
         return Result.success(groupSettingsService.listAvailableUsers(
                 context.groupId(), query));
     }

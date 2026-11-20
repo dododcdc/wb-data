@@ -815,7 +815,7 @@ describe('OfflineWorkbench commit UI', () => {
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
         expect(offlineApi.saveOfflineFlowDocument).not.toHaveBeenCalled();
 
-        // 自动保存触发后业务错误进入状态指示而不是 toast 打断（D3）
+        // 自动保存触发后业务错误进入状态指示而不是 toast 打断
         await waitFor(() => {
             expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledWith(expect.objectContaining({
                 dependencyConfig: { dependencies: [], failurePolicy: 'CONTINUE', crossGroupDependency: 'DENY' },

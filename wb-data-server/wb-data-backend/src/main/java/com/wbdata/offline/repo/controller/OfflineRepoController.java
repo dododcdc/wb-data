@@ -177,7 +177,7 @@ public class OfflineRepoController {
         return Result.success(new CommitResponse(result.success(), result.message()));
     }
 
-    @Operation(summary = "推送本地仓库到 GitHub")
+    @Operation(summary = "推送本地仓库到远程仓库")
     @PostMapping("/repo/push")
     public Result<PushResponse> push(
             @RequireGroupAuth(Permission.GROUP_SETTINGS) GroupAuthContext context,

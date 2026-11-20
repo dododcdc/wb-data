@@ -49,7 +49,7 @@ export function getStoredLastDatabaseByDataSource(): Record<string, string> {
     }
 }
 
-// ==================== Platform Detection ====================
+// ==================== Navigation Detection ====================
 
 export function shouldPreferDefaultDataSourceOnMount(): boolean {
     if (typeof window === 'undefined') {

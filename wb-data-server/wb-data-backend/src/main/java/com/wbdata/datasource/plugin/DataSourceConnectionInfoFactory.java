@@ -7,8 +7,7 @@ import org.springframework.stereotype.Component;
 /**
  * 后端 DataSource 实体到插件 DataSourceConnectionInfo 的唯一组装点。
  *
- * <p>测试连接必须绕过连接池：dataSourceId 是连接池缓存键，传 null 强制走直连，
- * 验证的是"此刻这份配置能否连通"而非池中旧连接是否存活。</p>
+ * <p>测试连接通过 {@link #bypassingPool(DataSource)} 省略 dataSourceId，实际直连绕过连接池由 {@code AbstractJdbcDataSourcePlugin.testConnectionDetailed} 保证。</p>
  */
 @Component
 public final class DataSourceConnectionInfoFactory {
@@ -18,7 +17,7 @@ public final class DataSourceConnectionInfoFactory {
         return build(dataSource, dataSource.getId());
     }
 
-    /** 测试连接路径：dataSourceId 传 null，绕过连接池直连验证。 */
+    /** 测试连接路径：省略 dataSourceId，配合插件 testConnectionDetailed 直连验证。 */
     public DataSourceConnectionInfo bypassingPool(DataSource dataSource) {
         return build(dataSource, null);
     }

@@ -225,20 +225,6 @@
     padding: 0 18px 16px;
 }
 
-.gs-error,
-.gs-empty {
-    /* Styles removed, moved to data-table-shell.css */
-}
-
-.gs-table-shell {
-    /* Styles removed, moved to data-table-shell.css */
-}
-
-.gs-table-scroll {
-    /* Handled by .dt-scroll now */
-}
-
-
 .gs-dialog-content {
     display: flex;
     flex-direction: column;

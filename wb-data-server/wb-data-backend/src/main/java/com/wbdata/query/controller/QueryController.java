@@ -52,10 +52,7 @@ public class QueryController {
         return Result.success(metadataService.getDatabases(dataSourceId));
     }
 
-    /**
-     * 获取数据库下的表结构信息
-     */
-    @Operation(summary = "获取数据库下的表结构")
+    @Operation(summary = "分页获取数据库下的表列表")
     @GetMapping("/metadata/{dataSourceId}/{databaseName}/tables")
     public Result<PageResult<TableSummary>> getTables(@PathVariable Long dataSourceId,
                                                        @PathVariable String databaseName,
