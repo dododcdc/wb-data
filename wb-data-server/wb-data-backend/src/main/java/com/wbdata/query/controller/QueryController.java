@@ -48,7 +48,7 @@ public class QueryController {
     @Operation(summary = "获取数据源下的所有数据库")
     @GetMapping("/metadata/{dataSourceId}/databases")
     public Result<List<String>> getDatabases(@PathVariable Long dataSourceId) {
-        authorizedDataSourceService.requireDataSource(dataSourceId, Permission.QUERY_USE);
+        authorizedDataSourceService.requireEnabledDataSource(dataSourceId, Permission.QUERY_USE);
         return Result.success(metadataService.getDatabases(dataSourceId));
     }
 
@@ -59,7 +59,7 @@ public class QueryController {
                                                        @RequestParam(required = false) String keyword,
                                                        @RequestParam(defaultValue = "1") int page,
                                                        @RequestParam(defaultValue = "200") int size) {
-        authorizedDataSourceService.requireDataSource(dataSourceId, Permission.QUERY_USE);
+        authorizedDataSourceService.requireEnabledDataSource(dataSourceId, Permission.QUERY_USE);
         return Result.success(metadataService.getTables(dataSourceId, databaseName, keyword, page, size));
     }
 
@@ -68,7 +68,7 @@ public class QueryController {
     public Result<List<ColumnMetadata>> getColumns(@PathVariable Long dataSourceId,
                                                     @PathVariable String databaseName,
                                                     @PathVariable String tableName) {
-        authorizedDataSourceService.requireDataSource(dataSourceId, Permission.QUERY_USE);
+        authorizedDataSourceService.requireEnabledDataSource(dataSourceId, Permission.QUERY_USE);
         return Result.success(metadataService.getColumns(dataSourceId, databaseName, tableName));
     }
 
@@ -79,7 +79,7 @@ public class QueryController {
     @PostMapping("/execute/{dataSourceId}")
     public Result<QueryResult> execute(@PathVariable Long dataSourceId,
                                        @Valid @RequestBody QueryRequest request) {
-        authorizedDataSourceService.requireDataSource(dataSourceId, Permission.QUERY_USE);
+        authorizedDataSourceService.requireEnabledDataSource(dataSourceId, Permission.QUERY_USE);
         return Result.success(queryService.executeQuery(dataSourceId, request.sql(), request.database()));
     }
 
@@ -120,7 +120,7 @@ public class QueryController {
     @Operation(summary = "获取数据源的SQL智能提示语言特性")
     @GetMapping("/metadata/{dataSourceId}/dialect")
     public Result<com.wbdata.plugin.api.DialectMetadata> getDialectMetadata(@PathVariable Long dataSourceId) {
-        authorizedDataSourceService.requireDataSource(dataSourceId, Permission.QUERY_USE);
+        authorizedDataSourceService.requireEnabledDataSource(dataSourceId, Permission.QUERY_USE);
         return Result.success(metadataService.getDialectMetadata(dataSourceId));
     }
 }

@@ -26,4 +26,12 @@ public class AuthorizedDataSourceService {
         authorizationService.requireGroup(session, dataSource.getGroupId(), permission);
         return dataSource;
     }
+
+    public DataSource requireEnabledDataSource(Long dataSourceId, Permission permission) {
+        DataSource dataSource = requireDataSource(dataSourceId, permission);
+        if ("DISABLED".equalsIgnoreCase(dataSource.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "数据源已禁用");
+        }
+        return dataSource;
+    }
 }

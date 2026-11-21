@@ -65,6 +65,9 @@ public class TransferMetadataService {
         if (dataSource == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "数据源不存在");
         }
+        if ("DISABLED".equalsIgnoreCase(dataSource.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "数据源已禁用");
+        }
         if (!SUPPORTED_TYPES.contains(dataSource.getType())) {
             throw unsupportedType(dataSource.getType());
         }

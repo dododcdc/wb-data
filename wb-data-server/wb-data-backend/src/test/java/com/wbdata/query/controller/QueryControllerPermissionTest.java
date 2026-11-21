@@ -34,7 +34,7 @@ class QueryControllerPermissionTest {
         when(queryService.executeQuery(1L, "select 1", "db")).thenReturn(result);
 
         assertThat(controller.execute(1L, new QueryRequest("select 1", "db")).getData()).isSameAs(result);
-        verify(authorizedDataSourceService).requireDataSource(1L, Permission.QUERY_USE);
+        verify(authorizedDataSourceService).requireEnabledDataSource(1L, Permission.QUERY_USE);
     }
 
     @Test
@@ -45,7 +45,7 @@ class QueryControllerPermissionTest {
         controller.getDialectMetadata(4L);
 
         for (long dataSourceId = 1; dataSourceId <= 4; dataSourceId++) {
-            verify(authorizedDataSourceService).requireDataSource(dataSourceId, Permission.QUERY_USE);
+            verify(authorizedDataSourceService).requireEnabledDataSource(dataSourceId, Permission.QUERY_USE);
         }
     }
 

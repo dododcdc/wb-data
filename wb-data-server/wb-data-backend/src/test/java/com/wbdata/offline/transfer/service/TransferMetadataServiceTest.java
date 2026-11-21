@@ -49,6 +49,19 @@ class TransferMetadataServiceTest {
     }
 
     @Test
+    void rejectsDisabledDatasource() {
+        DataSourceService dataSourceService = mock(DataSourceService.class);
+        DataSourcePluginRegistry pluginRegistry = mock(DataSourcePluginRegistry.class);
+        DataSource disabled = dataSource(13L, "MYSQL");
+        disabled.setStatus("DISABLED");
+        when(dataSourceService.getById(13L)).thenReturn(disabled);
+        TransferMetadataService service = new TransferMetadataService(dataSourceService, pluginRegistry, new DataSourceConnectionInfoFactory());
+
+        assertThatThrownBy(() -> service.requireSupportedDataSource(13L))
+                .hasMessageContaining("数据源已禁用");
+    }
+
+    @Test
     void hivePartitionedTargetReturnsDetectedPartitionsAndPartitionWriteMode() {
         DataSourceService dataSourceService = mock(DataSourceService.class);
         DataSourcePluginRegistry pluginRegistry = mock(DataSourcePluginRegistry.class);

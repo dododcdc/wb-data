@@ -97,4 +97,26 @@ class AuthorizedDataSourceServiceTest {
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         exception -> assertThat(exception.getStatusCode()).isEqualTo(status));
     }
+
+    @Test
+    void requireEnabledDataSourceRejectsDisabledDataSourceAndAllowsEnabledOrUnset() {
+        allowMember();
+        assertThat(service.requireEnabledDataSource(20L, Permission.QUERY_USE)).isSameAs(dataSource);
+
+        dataSource.setStatus("ENABLED");
+        assertThat(service.requireEnabledDataSource(20L, Permission.QUERY_USE)).isSameAs(dataSource);
+
+        dataSource.setStatus("DISABLED");
+        assertThatThrownBy(() -> service.requireEnabledDataSource(20L, Permission.QUERY_USE))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void requireEnabledDataSourceChecksGroupPermissionBeforeStatus() {
+        dataSource.setStatus("DISABLED");
+        assertThatThrownBy(() -> service.requireEnabledDataSource(20L, Permission.QUERY_USE))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN));
+    }
 }

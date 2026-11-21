@@ -58,7 +58,7 @@ public class QueryExportServiceImpl implements QueryExportService {
     @Override
     public QueryExportTaskResponse createExportTask(Long dataSourceId, String sql, String database, String format) {
         Long ownerId = AuthContext.require().id();
-        DataSource dataSource = authorizedDataSourceService.requireDataSource(dataSourceId, Permission.QUERY_EXPORT);
+        DataSource dataSource = authorizedDataSourceService.requireEnabledDataSource(dataSourceId, Permission.QUERY_EXPORT);
         evictExpiredTasks();
         String normalizedFormat = normalizeFormat(format);
         String taskId = UUID.randomUUID().toString();

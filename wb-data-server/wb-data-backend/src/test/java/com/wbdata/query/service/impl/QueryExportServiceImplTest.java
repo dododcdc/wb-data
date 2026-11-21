@@ -173,6 +173,15 @@ class QueryExportServiceImplTest {
     }
 
     @Test
+    void disabledDataSourceCannotCreateExportTask() {
+        dataSource.setStatus("DISABLED");
+
+        assertStatus(HttpStatus.BAD_REQUEST, () -> service.createExportTask(1L, "select 1", "db", "csv"));
+        assertThat(service.listTasks()).isEmpty();
+        verifyNoInteractions(queryService);
+    }
+
+    @Test
     void revokedMembershipBlocksOwnerDetailsAndBothDownloadInterfaces() {
         String taskId = completedExport();
         revokeMembership(1L);
