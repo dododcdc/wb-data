@@ -6,11 +6,27 @@ import com.wbdata.plugin.api.DataSourcePluginDescriptor;
 import com.wbdata.plugin.api.PluginFieldDescriptor;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * MySQL 数据源插件
  */
 public final class MySqlDataSourcePlugin extends AbstractJdbcDataSourcePlugin {
+
+    private static final Set<String> ALLOWED_JDBC_PARAMS = Set.of(
+            "usessl",
+            "sslmode",
+            "allowpublickeyretrieval",
+            "servertimezone",
+            "characterencoding",
+            "useunicode",
+            "connecttimeout",
+            "sockettimeout",
+            "zerodatetimebehavior",
+            "tinyint1isbit",
+            "useinformationschema",
+            "rewritebatchedstatements"
+    );
 
     private static final DataSourcePluginDescriptor DESCRIPTOR = new DataSourcePluginDescriptor(
             "MYSQL",
@@ -39,13 +55,16 @@ public final class MySqlDataSourcePlugin extends AbstractJdbcDataSourcePlugin {
 
     @Override
     protected String buildJdbcUrl(DataSourceConnectionInfo connectionInfo) {
-        String jdbcParams = connectionParam(connectionInfo.connectionParams(), "jdbcParams");
+        String jdbcParams = validateAndNormalizeJdbcParams(
+                connectionParam(connectionInfo.connectionParams(), "jdbcParams"),
+                ALLOWED_JDBC_PARAMS
+        );
         String suffix = jdbcParams == null ? "useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" : jdbcParams;
         return String.format(
                 "jdbc:mysql://%s:%s/%s?%s",
-                connectionInfo.host(),
-                defaultPort(connectionInfo.port(), "3306"),
-                defaultDatabase(connectionInfo.databaseName(), "mysql"),
+                validateHost(connectionInfo.host()),
+                validatePort(connectionInfo.port(), "3306"),
+                validateDatabaseName(connectionInfo.databaseName(), "mysql"),
                 suffix
         );
     }

@@ -1,13 +1,30 @@
 package com.wbdata.plugin.hive;
 
+import com.wbdata.plugin.api.DataSourceConnectionInfo;
+import com.wbdata.plugin.api.DataSourceException;
 import com.wbdata.plugin.api.TableDetail;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class HiveDataSourcePluginTest {
+
+    @Test
+    void buildJdbcUrlValidatesHostAndDatabaseName() {
+        HiveDataSourcePlugin plugin = new HiveDataSourcePlugin();
+
+        assertThat(plugin.buildJdbcUrl(new DataSourceConnectionInfo(
+                1L, "HIVE", "hive.internal", 10000, "analytics", "hive", "", Map.of())))
+                .isEqualTo("jdbc:hive2://hive.internal:10000/analytics");
+
+        assertThatThrownBy(() -> plugin.validateConnectionInfo(new DataSourceConnectionInfo(
+                1L, "HIVE", "hive.internal", 10000, "default;initFile=/etc/passwd", "hive", "", Map.of())))
+                .isInstanceOf(DataSourceException.class);
+    }
 
     @Test
     void descriptorExposesHiveMetastoreUriConnectionParam() {

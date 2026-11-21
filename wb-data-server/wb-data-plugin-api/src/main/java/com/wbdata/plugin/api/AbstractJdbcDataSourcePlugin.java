@@ -10,6 +10,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -20,6 +21,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 /**
  * 基于 JDBC 的数据源插件抽象基类
@@ -37,6 +39,11 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     protected static final int DEFAULT_QUERY_ROW_LIMIT = 500;
+    protected static final int DEFAULT_QUERY_TIMEOUT_SECONDS = 60;
+
+    private static final Pattern HOST_PATTERN = Pattern.compile("^[A-Za-z0-9._:\\[\\]-]+$");
+    private static final Pattern DATABASE_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9_.$-]+$");
+    private static final Pattern JDBC_PARAM_VALUE_PATTERN = Pattern.compile("^[A-Za-z0-9_./:+\\-,%]+$");
 
     private static final Set<String> REGISTERED_DRIVERS = ConcurrentHashMap.newKeySet();
 
@@ -115,6 +122,11 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
         } catch (Exception e) {
             return ConnectionTestResult.failure(extractConnectionErrorMessage(e));
         }
+    }
+
+    @Override
+    public void validateConnectionInfo(DataSourceConnectionInfo connectionInfo) {
+        buildJdbcUrl(connectionInfo);
     }
 
     @Override
@@ -212,16 +224,25 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
         long startTime = System.currentTimeMillis();
         DataSourceConnectionInfo connInfo = request.connectionInfo();
         int rowLimit = resolveRowLimit(request.rowLimit());
+        int timeoutSeconds = resolveQueryTimeoutSeconds(request.timeoutSeconds());
         try (Connection connection = getConnection(connInfo)) {
+            String previousCatalog = null;
+            boolean catalogChanged = false;
             if (connInfo.databaseName() != null && !connInfo.databaseName().isEmpty()) {
                 try {
-                    connection.setCatalog(connInfo.databaseName());
+                    previousCatalog = readCatalogQuietly(connection);
+                    if (!connInfo.databaseName().equals(previousCatalog)) {
+                        connection.setCatalog(connInfo.databaseName());
+                        catalogChanged = true;
+                    }
                 } catch (Exception ignored) {
                     // 某些驱动不支持 setCatalog
                 }
             }
             try (Statement statement = connection.createStatement()) {
-                statement.setMaxRows(rowLimit);
+                applyQueryTimeout(statement, timeoutSeconds);
+                int fetchRowLimit = rowLimit < Integer.MAX_VALUE ? rowLimit + 1 : rowLimit;
+                statement.setMaxRows(fetchRowLimit);
                 boolean hasResultSet = statement.execute(request.sql());
                 if (hasResultSet) {
                     return buildQueryResult(statement, startTime, rowLimit);
@@ -234,6 +255,10 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                             "Affected rows: " + updateCount,
                             false,
                             rowLimit);
+                }
+            } finally {
+                if (catalogChanged && previousCatalog != null && !previousCatalog.equals(connInfo.databaseName())) {
+                    restoreCatalogQuietly(connection, previousCatalog);
                 }
             }
         } catch (Exception e) {
@@ -293,10 +318,11 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
             ResultSetMetaData rsMeta = rs.getMetaData();
             int colCount = rsMeta.getColumnCount();
 
-            List<ColumnMetadata> columns = new ArrayList<>();
+            List<String> columnKeys = resolveColumnKeys(rsMeta, colCount);
+            List<ColumnMetadata> columns = new ArrayList<>(colCount);
             for (int i = 1; i <= colCount; i++) {
                 columns.add(new ColumnMetadata(
-                        rsMeta.getColumnName(i),
+                        columnKeys.get(i - 1),
                         rsMeta.getColumnTypeName(i),
                         rsMeta.getPrecision(i),
                         rsMeta.isNullable(i) == ResultSetMetaData.columnNullable,
@@ -312,7 +338,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                 }
                 Map<String, Object> row = new LinkedHashMap<>();
                 for (int i = 1; i <= colCount; i++) {
-                    row.put(rsMeta.getColumnName(i), rs.getObject(i));
+                    row.put(columnKeys.get(i - 1), rs.getObject(i));
                 }
                 rows.add(row);
             }
@@ -329,11 +355,73 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
         }
     }
 
+    private static List<String> resolveColumnKeys(ResultSetMetaData rsMeta, int colCount) throws SQLException {
+        List<String> keys = new ArrayList<>(colCount);
+        Set<String> usedKeys = new HashSet<>();
+        for (int i = 1; i <= colCount; i++) {
+            String label = rsMeta.getColumnLabel(i);
+            String rawName = (label != null && !label.isBlank()) ? label : rsMeta.getColumnName(i);
+            String base = (rawName != null && !rawName.isBlank()) ? rawName : "column_" + i;
+            String uniqueKey = base;
+            int suffix = 2;
+            while (!usedKeys.add(uniqueKey)) {
+                uniqueKey = base + "_" + suffix++;
+            }
+            keys.add(uniqueKey);
+        }
+        return keys;
+    }
+
     private int resolveRowLimit(Integer requestedRowLimit) {
         if (requestedRowLimit == null || requestedRowLimit <= 0) {
             return DEFAULT_QUERY_ROW_LIMIT;
         }
         return requestedRowLimit;
+    }
+
+    private int resolveQueryTimeoutSeconds(Integer requestedTimeoutSeconds) {
+        if (requestedTimeoutSeconds == null || requestedTimeoutSeconds <= 0) {
+            return DEFAULT_QUERY_TIMEOUT_SECONDS;
+        }
+        return requestedTimeoutSeconds;
+    }
+
+    private void applyQueryTimeout(Statement statement, int timeoutSeconds) throws SQLException {
+        try {
+            statement.setQueryTimeout(timeoutSeconds);
+        } catch (SQLFeatureNotSupportedException | UnsupportedOperationException | AbstractMethodError ignored) {
+            // 驱动不支持 setQueryTimeout 时忽略
+        } catch (SQLException e) {
+            if (isUnsupportedTimeoutException(e)) {
+                return;
+            }
+            throw e;
+        }
+    }
+
+    private boolean isUnsupportedTimeoutException(SQLException exception) {
+        String message = exception.getMessage();
+        if (message == null) {
+            return false;
+        }
+        String lower = message.toLowerCase(Locale.ROOT);
+        return lower.contains("not supported") || lower.contains("unsupported");
+    }
+
+    private String readCatalogQuietly(Connection connection) {
+        try {
+            return connection.getCatalog();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void restoreCatalogQuietly(Connection connection, String previousCatalog) {
+        try {
+            connection.setCatalog(previousCatalog);
+        } catch (Exception ignored) {
+            // 驱动不支持或连接已关闭时忽略
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -467,6 +555,70 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
         if (identifier != null && !identifier.matches("[a-zA-Z0-9_]+")) {
             throw new DataSourceException("数据库标识符包含非法字符: " + identifier);
         }
+    }
+
+    protected static String validateHost(String host) {
+        if (host == null || host.isBlank()) {
+            throw new DataSourceException("主机地址不能为空");
+        }
+        String trimmed = host.trim();
+        if (!HOST_PATTERN.matcher(trimmed).matches()) {
+            throw new DataSourceException("主机地址包含非法字符: " + host);
+        }
+        return trimmed;
+    }
+
+    protected static String validatePort(Integer port, String fallback) {
+        if (port == null) {
+            return fallback;
+        }
+        if (port < 1 || port > 65535) {
+            throw new DataSourceException("端口号必须在 1 到 65535 之间");
+        }
+        return String.valueOf(port);
+    }
+
+    protected static String validateDatabaseName(String databaseName, String fallback) {
+        if (databaseName == null || databaseName.isBlank()) {
+            return fallback;
+        }
+        String trimmed = databaseName.trim();
+        if (!DATABASE_NAME_PATTERN.matcher(trimmed).matches()) {
+            throw new DataSourceException("数据库名称包含非法字符: " + databaseName);
+        }
+        return trimmed;
+    }
+
+    protected static String validateAndNormalizeJdbcParams(String rawParams, Set<String> allowedKeysLowerCase) {
+        if (rawParams == null || rawParams.isBlank()) {
+            return null;
+        }
+        String trimmed = rawParams.trim();
+        if (trimmed.startsWith("?")
+                || trimmed.indexOf('#') >= 0
+                || trimmed.indexOf(';') >= 0
+                || trimmed.indexOf('\0') >= 0
+                || trimmed.chars().anyMatch(Character::isWhitespace)) {
+            throw new DataSourceException("JDBC 连接参数包含非法字符");
+        }
+        String[] parts = trimmed.split("&", -1);
+        List<String> normalizedParts = new ArrayList<>(parts.length);
+        for (String part : parts) {
+            int eq = part.indexOf('=');
+            if (eq <= 0 || eq >= part.length() - 1) {
+                throw new DataSourceException("JDBC 连接参数格式应为 key=value: " + part);
+            }
+            String key = part.substring(0, eq).trim();
+            String value = part.substring(eq + 1).trim();
+            if (!allowedKeysLowerCase.contains(key.toLowerCase(Locale.ROOT))) {
+                throw new DataSourceException("不允许的 JDBC 连接参数: " + key);
+            }
+            if (!JDBC_PARAM_VALUE_PATTERN.matcher(value).matches()) {
+                throw new DataSourceException("JDBC 连接参数值包含非法字符: " + key);
+            }
+            normalizedParts.add(key + "=" + value);
+        }
+        return String.join("&", normalizedParts);
     }
 
     protected String connectionParam(Map<String, Object> params, String key) {

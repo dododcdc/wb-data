@@ -16,6 +16,9 @@ import com.wbdata.datasource.plugin.DataSourceConnectionPoolManager;
 import com.wbdata.datasource.plugin.DataSourcePluginRegistry;
 import com.wbdata.datasource.service.DataSourceService;
 import com.wbdata.plugin.api.ConnectionTestResult;
+import com.wbdata.plugin.api.DataSourceConnectionInfo;
+import com.wbdata.plugin.api.DataSourceException;
+import com.wbdata.plugin.api.DataSourcePlugin;
 import com.wbdata.plugin.api.DataSourcePluginDescriptor;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -69,7 +72,7 @@ public class DataSourceController {
     @PostMapping
     public Result<Boolean> save(@RequireGroupAuth(Permission.DATASOURCE_WRITE) GroupAuthContext context,
                                 @Validated @RequestBody DataSourceSaveDTO dto) {
-        validatePluginType(dto.getType());
+        DataSourcePlugin plugin = requireSupportedPlugin(dto.getType());
         DataSource dataSource = new DataSource();
         dataSource.setGroupId(context.groupId());
         dataSource.setName(dto.getName());
@@ -84,6 +87,7 @@ public class DataSourceController {
         dataSource.setOwner(context.user().username());
         dataSource.setCreatedBy(context.user().id());
         dataSource.setUpdatedBy(context.user().id());
+        validateConnectionConfig(plugin, dataSource);
         return Result.success(dataSourceService.save(dataSource));
     }
 
@@ -93,7 +97,7 @@ public class DataSourceController {
                                   @PathVariable Long id,
                                   @Validated @RequestBody DataSourceSaveDTO dto) {
         DataSource existing = requireDataSourceInCurrentGroup(context, id, Permission.DATASOURCE_WRITE);
-        validatePluginType(dto.getType());
+        DataSourcePlugin plugin = requireSupportedPlugin(dto.getType());
         DataSource dataSource = new DataSource();
         dataSource.setId(id);
         dataSource.setGroupId(existing.getGroupId());
@@ -110,6 +114,7 @@ public class DataSourceController {
         dataSource.setConnectionParams(dto.getConnectionParams());
         dataSource.setOwner(existing.getOwner());
         dataSource.setUpdatedBy(context.user().id());
+        validateConnectionConfig(plugin, dataSource);
         boolean updated = dataSourceService.updateById(dataSource);
         poolManager.invalidate(id);   // evict stale pool for this data source
         return Result.success(updated);
@@ -169,9 +174,25 @@ public class DataSourceController {
         return authorizedDataSourceService.requireDataSource(dataSourceId, permission);
     }
 
-    private void validatePluginType(String type) {
-        if (!pluginRegistry.supports(type)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "暂不支持的数据源类型: " + type);
+    private DataSourcePlugin requireSupportedPlugin(String type) {
+        return pluginRegistry.getPlugin(type)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "暂不支持的数据源类型: " + type));
+    }
+
+    private void validateConnectionConfig(DataSourcePlugin plugin, DataSource dataSource) {
+        try {
+            plugin.validateConnectionInfo(new DataSourceConnectionInfo(
+                    dataSource.getId(),
+                    dataSource.getType(),
+                    dataSource.getHost(),
+                    dataSource.getPort(),
+                    dataSource.getDatabaseName(),
+                    dataSource.getUsername(),
+                    dataSource.getPassword(),
+                    dataSource.getConnectionParams()
+            ));
+        } catch (DataSourceException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
         }
     }
 }

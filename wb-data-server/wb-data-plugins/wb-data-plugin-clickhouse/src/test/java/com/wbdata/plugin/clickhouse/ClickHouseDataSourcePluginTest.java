@@ -1,20 +1,21 @@
 package com.wbdata.plugin.clickhouse;
 
 import com.wbdata.plugin.api.DataSourceConnectionInfo;
+import com.wbdata.plugin.api.DataSourceException;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Method;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ClickHouseDataSourcePluginTest {
 
     @Test
-    void buildJdbcUrlUsesHttpInterfaceAndDefaultDatabase() throws Exception {
+    void buildJdbcUrlUsesHttpInterfaceAndDefaultDatabase() {
         ClickHouseDataSourcePlugin plugin = new ClickHouseDataSourcePlugin();
 
-        String jdbcUrl = buildJdbcUrl(plugin, new DataSourceConnectionInfo(
+        String jdbcUrl = plugin.buildJdbcUrl(new DataSourceConnectionInfo(
                 1L,
                 "CLICKHOUSE",
                 "localhost",
@@ -29,10 +30,10 @@ class ClickHouseDataSourcePluginTest {
     }
 
     @Test
-    void buildJdbcUrlUsesCustomJdbcParamsWhenProvided() throws Exception {
+    void buildJdbcUrlUsesAllowedCustomJdbcParamsWhenProvided() {
         ClickHouseDataSourcePlugin plugin = new ClickHouseDataSourcePlugin();
 
-        String jdbcUrl = buildJdbcUrl(plugin, new DataSourceConnectionInfo(
+        String jdbcUrl = plugin.buildJdbcUrl(new DataSourceConnectionInfo(
                 1L,
                 "CLICKHOUSE",
                 "localhost",
@@ -46,10 +47,17 @@ class ClickHouseDataSourcePluginTest {
         assertThat(jdbcUrl).isEqualTo("jdbc:clickhouse://localhost:8123/analytics?ssl=false");
     }
 
-    private static String buildJdbcUrl(ClickHouseDataSourcePlugin plugin, DataSourceConnectionInfo connectionInfo)
-            throws Exception {
-        Method method = ClickHouseDataSourcePlugin.class.getDeclaredMethod("buildJdbcUrl", DataSourceConnectionInfo.class);
-        method.setAccessible(true);
-        return (String) method.invoke(plugin, connectionInfo);
+    @Test
+    void rejectsDisallowedJdbcParamsAndInjectedDatabase() {
+        ClickHouseDataSourcePlugin plugin = new ClickHouseDataSourcePlugin();
+
+        assertThatThrownBy(() -> plugin.validateConnectionInfo(new DataSourceConnectionInfo(
+                1L, "CLICKHOUSE", "localhost", 8123, "analytics", "wbdata", "wbdata123",
+                Map.of("jdbcParams", "custom_http_params=evil"))))
+                .isInstanceOf(DataSourceException.class);
+
+        assertThatThrownBy(() -> plugin.validateConnectionInfo(new DataSourceConnectionInfo(
+                1L, "CLICKHOUSE", "localhost", 8123, "default?ssl=false", "wbdata", "wbdata123", Map.of())))
+                .isInstanceOf(DataSourceException.class);
     }
 }

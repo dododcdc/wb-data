@@ -10,6 +10,9 @@ public interface DataSourcePlugin {
 
     ConnectionTestResult testConnectionDetailed(DataSourceConnectionInfo connectionInfo);
 
+    default void validateConnectionInfo(DataSourceConnectionInfo connectionInfo) {
+    }
+
     java.util.List<String> getDatabases(DataSourceConnectionInfo connectionInfo);
 
     default PageResult<TableSummary> getTables(DataSourceConnectionInfo connectionInfo, String databaseName) {

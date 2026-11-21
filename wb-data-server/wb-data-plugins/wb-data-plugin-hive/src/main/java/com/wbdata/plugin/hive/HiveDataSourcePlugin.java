@@ -50,9 +50,9 @@ public final class HiveDataSourcePlugin extends AbstractJdbcDataSourcePlugin {
     protected String buildJdbcUrl(DataSourceConnectionInfo connectionInfo) {
         return String.format(
                 "jdbc:hive2://%s:%s/%s",
-                connectionInfo.host(),
-                defaultPort(connectionInfo.port(), "10000"),
-                defaultDatabase(connectionInfo.databaseName(), "default")
+                validateHost(connectionInfo.host()),
+                validatePort(connectionInfo.port(), "10000"),
+                validateDatabaseName(connectionInfo.databaseName(), "default")
         );
     }
 

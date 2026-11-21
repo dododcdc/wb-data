@@ -6,8 +6,23 @@ import com.wbdata.plugin.api.DataSourcePluginDescriptor;
 import com.wbdata.plugin.api.PluginFieldDescriptor;
 
 import java.util.List;
+import java.util.Set;
 
 public final class PostgreSqlDataSourcePlugin extends AbstractJdbcDataSourcePlugin {
+
+    private static final Set<String> ALLOWED_JDBC_PARAMS = Set.of(
+            "ssl",
+            "sslmode",
+            "currentschema",
+            "connecttimeout",
+            "sockettimeout",
+            "logintimeout",
+            "tcpkeepalive",
+            "applicationname",
+            "preparethreshold",
+            "rewritebatchedinserts",
+            "stringtype"
+    );
 
     private static final DataSourcePluginDescriptor DESCRIPTOR = new DataSourcePluginDescriptor(
             "POSTGRESQL",
@@ -36,13 +51,16 @@ public final class PostgreSqlDataSourcePlugin extends AbstractJdbcDataSourcePlug
 
     @Override
     protected String buildJdbcUrl(DataSourceConnectionInfo connectionInfo) {
-        String jdbcParams = connectionParam(connectionInfo.connectionParams(), "jdbcParams");
+        String jdbcParams = validateAndNormalizeJdbcParams(
+                connectionParam(connectionInfo.connectionParams(), "jdbcParams"),
+                ALLOWED_JDBC_PARAMS
+        );
         String suffix = jdbcParams == null ? "" : "?" + jdbcParams;
         return String.format(
                 "jdbc:postgresql://%s:%s/%s%s",
-                connectionInfo.host(),
-                defaultPort(connectionInfo.port(), "5432"),
-                defaultDatabase(connectionInfo.databaseName(), "postgres"),
+                validateHost(connectionInfo.host()),
+                validatePort(connectionInfo.port(), "5432"),
+                validateDatabaseName(connectionInfo.databaseName(), "postgres"),
                 suffix
         );
     }

@@ -6,8 +6,23 @@ import com.wbdata.plugin.api.DataSourcePluginDescriptor;
 import com.wbdata.plugin.api.PluginFieldDescriptor;
 
 import java.util.List;
+import java.util.Set;
 
 public final class ClickHouseDataSourcePlugin extends AbstractJdbcDataSourcePlugin {
+
+    private static final Set<String> ALLOWED_JDBC_PARAMS = Set.of(
+            "ssl",
+            "sslmode",
+            "connect_timeout",
+            "socket_timeout",
+            "compress",
+            "decompress",
+            "client_name",
+            "use_server_time_zone",
+            "use_time_zone",
+            "max_execution_time",
+            "max_result_rows"
+    );
 
     private static final DataSourcePluginDescriptor DESCRIPTOR = new DataSourcePluginDescriptor(
             "CLICKHOUSE",
@@ -36,13 +51,16 @@ public final class ClickHouseDataSourcePlugin extends AbstractJdbcDataSourcePlug
 
     @Override
     protected String buildJdbcUrl(DataSourceConnectionInfo connectionInfo) {
-        String jdbcParams = connectionParam(connectionInfo.connectionParams(), "jdbcParams");
+        String jdbcParams = validateAndNormalizeJdbcParams(
+                connectionParam(connectionInfo.connectionParams(), "jdbcParams"),
+                ALLOWED_JDBC_PARAMS
+        );
         String suffix = jdbcParams == null ? "" : "?" + jdbcParams;
         return String.format(
                 "jdbc:clickhouse://%s:%s/%s%s",
-                connectionInfo.host(),
-                defaultPort(connectionInfo.port(), "8123"),
-                defaultDatabase(connectionInfo.databaseName(), "default"),
+                validateHost(connectionInfo.host()),
+                validatePort(connectionInfo.port(), "8123"),
+                validateDatabaseName(connectionInfo.databaseName(), "default"),
                 suffix
         );
     }

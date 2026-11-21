@@ -1,20 +1,23 @@
 package com.wbdata.plugin.mysql;
 
 import com.wbdata.plugin.api.DataSourceConnectionInfo;
+import com.wbdata.plugin.api.DataSourceException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
-import java.lang.reflect.Method;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MySqlDataSourcePluginTest {
 
     @Test
-    void buildJdbcUrlAllowsPublicKeyRetrievalByDefault() throws Exception {
+    void buildJdbcUrlAllowsPublicKeyRetrievalByDefault() {
         MySqlDataSourcePlugin plugin = new MySqlDataSourcePlugin();
 
-        String jdbcUrl = buildJdbcUrl(plugin, new DataSourceConnectionInfo(
+        String jdbcUrl = plugin.buildJdbcUrl(new DataSourceConnectionInfo(
                 1L,
                 "MYSQL",
                 "localhost",
@@ -30,10 +33,10 @@ class MySqlDataSourcePluginTest {
     }
 
     @Test
-    void buildJdbcUrlUsesCustomJdbcParamsWhenProvided() throws Exception {
+    void buildJdbcUrlUsesAllowedCustomJdbcParamsWhenProvided() {
         MySqlDataSourcePlugin plugin = new MySqlDataSourcePlugin();
 
-        String jdbcUrl = buildJdbcUrl(plugin, new DataSourceConnectionInfo(
+        String jdbcUrl = plugin.buildJdbcUrl(new DataSourceConnectionInfo(
                 1L,
                 "MYSQL",
                 "localhost",
@@ -48,10 +51,35 @@ class MySqlDataSourcePluginTest {
                 .isEqualTo("jdbc:mysql://localhost:3306/demo?useSSL=true&serverTimezone=Asia/Shanghai");
     }
 
-    private static String buildJdbcUrl(MySqlDataSourcePlugin plugin, DataSourceConnectionInfo connectionInfo)
-            throws Exception {
-        Method method = MySqlDataSourcePlugin.class.getDeclaredMethod("buildJdbcUrl", DataSourceConnectionInfo.class);
-        method.setAccessible(true);
-        return (String) method.invoke(plugin, connectionInfo);
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "allowLoadLocalInfile=true",
+            "autoDeserialize=true",
+            "queryInterceptors=com.evil.Interceptor",
+            "useSSL=false&allowLoadLocalInfile=true",
+            "?useSSL=false",
+            "useSSL=false#evil",
+            "useSSL=false;evil=1"
+    })
+    void rejectsDisallowedOrMalformedJdbcParams(String jdbcParams) {
+        MySqlDataSourcePlugin plugin = new MySqlDataSourcePlugin();
+        DataSourceConnectionInfo info = new DataSourceConnectionInfo(
+                1L, "MYSQL", "localhost", 3306, "demo", "root", "root", Map.of("jdbcParams", jdbcParams));
+
+        assertThatThrownBy(() -> plugin.validateConnectionInfo(info))
+                .isInstanceOf(DataSourceException.class);
+    }
+
+    @Test
+    void rejectsInjectedHostOrDatabaseName() {
+        MySqlDataSourcePlugin plugin = new MySqlDataSourcePlugin();
+
+        assertThatThrownBy(() -> plugin.validateConnectionInfo(new DataSourceConnectionInfo(
+                1L, "MYSQL", "127.0.0.1:3306/db?autoDeserialize=true#", 3306, "demo", "root", "root", Map.of())))
+                .isInstanceOf(DataSourceException.class);
+
+        assertThatThrownBy(() -> plugin.validateConnectionInfo(new DataSourceConnectionInfo(
+                1L, "MYSQL", "localhost", 3306, "demo?autoDeserialize=true", "root", "root", Map.of())))
+                .isInstanceOf(DataSourceException.class);
     }
 }
