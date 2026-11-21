@@ -71,8 +71,12 @@ class GitSyncConfigServiceTest {
         GitSyncConfigResponse response = service.create(4L, "feature/policy-review");
 
         assertThat(response.branch()).isEqualTo("feature/policy-review");
-        assertThat(response.namespace()).isEqualTo("g4-feature-policy-review");
-        assertThat(response.syncFlowId()).isEqualTo("sync-flows-g4-feature-policy-review");
+        assertThat(response.namespace())
+                .isEqualTo(GitSyncFlowSourceBuilder.buildKestraNamespace(4L, "feature/policy-review"))
+                .matches("g4-feature-policy-review-[a-f0-9]{8}");
+        assertThat(response.syncFlowId())
+                .isEqualTo(GitSyncFlowSourceBuilder.buildSyncFlowId(4L, "feature/policy-review"))
+                .matches("sync-flows-g4-feature-policy-review-[a-f0-9]{8}");
 
         ArgumentCaptor<String> source = ArgumentCaptor.forClass(String.class);
         verify(kestraClient).upsertFlow(source.capture());
@@ -130,7 +134,8 @@ class GitSyncConfigServiceTest {
 
         assertThat(configs).extracting(GitSyncConfigResponse::branch)
                 .containsExactly("feature/policy-review");
-        assertThat(configs.get(0).namespace()).isEqualTo("g4-feature-policy-review");
+        assertThat(configs.get(0).namespace())
+                .isEqualTo(GitSyncFlowSourceBuilder.buildKestraNamespace(4L, "feature/policy-review"));
         @SuppressWarnings({"rawtypes", "unchecked"})
         ArgumentCaptor<LambdaQueryWrapper<WbGitSyncConfig>> query = ArgumentCaptor.forClass((Class) LambdaQueryWrapper.class);
         verify(mapper).selectList(query.capture());

@@ -1,8 +1,14 @@
 package com.wbdata.git.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.wbdata.git.entity.WbGitConfig;
+import com.wbdata.git.mapper.WbGitConfigMapper;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 class GitConfigServiceTest {
 
@@ -29,5 +35,24 @@ class GitConfigServiceTest {
             String encrypted = GitConfigService.encryptToken(token, blankKey);
             assertThat(GitConfigService.decryptToken(encrypted, blankKey)).isEqualTo(token);
         }
+    }
+
+    @Test
+    void getConfigMasksShortAndLongTokens() {
+        WbGitConfigMapper mapper = Mockito.mock(WbGitConfigMapper.class);
+        GitConfigService service = new GitConfigService(mapper, null, null);
+        String envKey = System.getenv("WB_DATA_GIT_TOKEN_KEY");
+
+        WbGitConfig shortCfg = new WbGitConfig();
+        shortCfg.setProjectGroupId(1L);
+        shortCfg.setToken(GitConfigService.encryptToken("ab12", envKey));
+        when(mapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(shortCfg);
+        assertThat(service.getConfig(1L).getToken()).isEqualTo("****");
+
+        WbGitConfig longCfg = new WbGitConfig();
+        longCfg.setProjectGroupId(1L);
+        longCfg.setToken(GitConfigService.encryptToken("ghp_123456", envKey));
+        when(mapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(longCfg);
+        assertThat(service.getConfig(1L).getToken()).isEqualTo("ghp_****");
     }
 }

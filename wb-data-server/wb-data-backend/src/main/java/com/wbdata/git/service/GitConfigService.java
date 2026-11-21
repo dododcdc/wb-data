@@ -75,7 +75,7 @@ public class GitConfigService {
         if (config == null) {
             return null;
         }
-        if (config.getToken() != null && config.getToken().length() > 4) {
+        if (config.getToken() != null && !config.getToken().isEmpty()) {
             config.setToken(maskToken(config.getToken()));
         }
         return config;

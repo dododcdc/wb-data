@@ -71,6 +71,7 @@ public class GitSyncConfigService {
             return toResponse(existing);
         }
 
+        ensureNoIdentifierCollision(groupId, normalizedBranch, syncConfigMapper.selectList(groupQuery(groupId)));
         WbGitSyncConfig config = new WbGitSyncConfig();
         config.setGroupId(groupId);
         config.setGitConfigId(gitConfig.getId());
@@ -84,7 +85,8 @@ public class GitSyncConfigService {
     public AddAllGitSyncConfigsResponse createAllKnownBranches(Long groupId) {
         WbGitConfig gitConfig = gitConfigService.requireDecryptedConfig(groupId);
         Set<String> branches = knownBranches(groupId);
-        Map<String, WbGitSyncConfig> existingByBranch = syncConfigMapper.selectList(groupQuery(groupId)).stream()
+        List<WbGitSyncConfig> currentConfigs = syncConfigMapper.selectList(groupQuery(groupId));
+        Map<String, WbGitSyncConfig> existingByBranch = currentConfigs.stream()
                 .collect(java.util.stream.Collectors.toMap(
                         WbGitSyncConfig::getBranch,
                         Function.identity(),
@@ -94,6 +96,7 @@ public class GitSyncConfigService {
 
         int created = 0;
         int existing = 0;
+        List<WbGitSyncConfig> accumulatedConfigs = new java.util.ArrayList<>(currentConfigs);
         for (String branch : branches) {
             WbGitSyncConfig config = existingByBranch.get(branch);
             if (config != null) {
@@ -103,6 +106,7 @@ public class GitSyncConfigService {
                 syncConfigMapper.updateById(config);
                 continue;
             }
+            ensureNoIdentifierCollision(groupId, branch, accumulatedConfigs);
             config = new WbGitSyncConfig();
             config.setGroupId(groupId);
             config.setGitConfigId(gitConfig.getId());
@@ -110,6 +114,7 @@ public class GitSyncConfigService {
             config.setEnabled(true);
             upsertSyncFlow(config, gitConfig);
             syncConfigMapper.insert(config);
+            accumulatedConfigs.add(config);
             created++;
         }
 
@@ -203,6 +208,27 @@ public class GitSyncConfigService {
     private void ensureKnownBranch(Long groupId, String branch) {
         if (!knownBranches(groupId).contains(branch)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "分支不存在: " + branch);
+        }
+    }
+
+    private void ensureNoIdentifierCollision(Long groupId, String branch, List<WbGitSyncConfig> existingConfigs) {
+        if (existingConfigs == null || existingConfigs.isEmpty()) {
+            return;
+        }
+        String targetNamespace = GitSyncFlowSourceBuilder.buildKestraNamespace(groupId, branch);
+        String targetSyncFlowId = GitSyncFlowSourceBuilder.buildSyncFlowId(groupId, branch);
+        for (WbGitSyncConfig other : existingConfigs) {
+            if (branch.equals(other.getBranch())) {
+                continue;
+            }
+            String otherNamespace = GitSyncFlowSourceBuilder.buildKestraNamespace(groupId, other.getBranch());
+            String otherSyncFlowId = GitSyncFlowSourceBuilder.buildSyncFlowId(groupId, other.getBranch());
+            if (targetNamespace.equals(otherNamespace) || targetSyncFlowId.equals(otherSyncFlowId)) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "分支 " + branch + " 与已有同步分支 " + other.getBranch() + " 映射到相同的 Kestra 命名空间或同步任务 ID"
+                );
+            }
         }
     }
 

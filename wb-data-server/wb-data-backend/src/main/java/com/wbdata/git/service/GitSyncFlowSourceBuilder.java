@@ -57,13 +57,13 @@ public final class GitSyncFlowSourceBuilder {
                   - id: resolve_start
                     type: io.wbdata.kestra.core.GitRemoteRevision
                     url: "%s"
-                    branch: %s
+                    branch: "%s"
                     username: "{{ inputs.git_username }}"
                     password: "{{ inputs.git_token }}"
                   - id: sync_flows
                     type: io.kestra.plugin.git.SyncFlows
                     url: "%s"
-                    branch: %s
+                    branch: "%s"
                     username: "{{ inputs.git_username }}"
                     password: "{{ inputs.git_token }}"
                     targetNamespace: %s
@@ -72,7 +72,7 @@ public final class GitSyncFlowSourceBuilder {
                   - id: sync_files
                     type: io.kestra.plugin.git.SyncNamespaceFiles
                     url: "%s"
-                    branch: %s
+                    branch: "%s"
                     username: "{{ inputs.git_username }}"
                     password: "{{ inputs.git_token }}"
                     namespace: %s
@@ -81,7 +81,7 @@ public final class GitSyncFlowSourceBuilder {
                   - id: resolve_end
                     type: io.wbdata.kestra.core.GitRemoteRevision
                     url: "%s"
-                    branch: %s
+                    branch: "%s"
                     username: "{{ inputs.git_username }}"
                     password: "{{ inputs.git_token }}"
                 outputs:
@@ -100,24 +100,26 @@ public final class GitSyncFlowSourceBuilder {
                 yamlDoubleQuoted(syncCron),
                 disabled,
                 yamlDoubleQuoted(repositoryUrl),
-                branch,
+                yamlDoubleQuoted(branch),
                 yamlDoubleQuoted(repositoryUrl),
-                branch,
+                yamlDoubleQuoted(branch),
                 namespace,
                 yamlDoubleQuoted(repositoryUrl),
-                branch,
+                yamlDoubleQuoted(branch),
                 namespace,
                 yamlDoubleQuoted(repositoryUrl),
-                branch
+                yamlDoubleQuoted(branch)
         );
     }
 
     private static String boundedIdentifier(String prefix, String branch) {
-        String slug = slugBranch(branch);
-        if ((prefix + slug).length() <= KESTRA_IDENTIFIER_MAX_LENGTH) {
+        String rawBranch = branch == null ? "" : branch;
+        String slug = slugBranch(rawBranch);
+        boolean lossySlug = !slug.equals(rawBranch);
+        if (!lossySlug && (prefix + slug).length() <= KESTRA_IDENTIFIER_MAX_LENGTH) {
             return prefix + slug;
         }
-        String hash = sha256Hex(branch).substring(0, 8);
+        String hash = sha256Hex(rawBranch).substring(0, 8);
         int slugMaxLength = KESTRA_IDENTIFIER_MAX_LENGTH - prefix.length() - hash.length() - 1;
         if (slugMaxLength <= 0) {
             throw new IllegalStateException("Kestra 标识前缀过长");
@@ -153,6 +155,11 @@ public final class GitSyncFlowSourceBuilder {
     }
 
     private static String yamlDoubleQuoted(String value) {
-        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
+        return value == null ? "" : value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
     }
 }

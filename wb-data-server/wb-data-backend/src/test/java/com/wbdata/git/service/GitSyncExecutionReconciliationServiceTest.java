@@ -95,13 +95,34 @@ class GitSyncExecutionReconciliationServiceTest {
         WbGitSyncConfig other = new WbGitSyncConfig();
         other.setId(8L);
         other.setGroupId(4L);
-        other.setBranch("feature-a");
+        other.setBranch("feature/a");
         when(syncConfigMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(other));
 
         service.reconcileExecution(config, execution("SUCCESS", Map.of("start_sha", SHA, "end_sha", SHA)));
 
         assertThat(config.getDeploymentEvidence()).isEqualTo("UNKNOWN");
         verify(gitCommandService, never()).listFlowFilesAtRevision(Mockito.anyLong(), Mockito.anyString());
+    }
+
+    @Test
+    void doesNotTreatSlashAndHyphenBranchesAsColliding() {
+        WbGitSyncConfig config = config();
+        config.setBranch("feature/a");
+        WbGitSyncConfig other = new WbGitSyncConfig();
+        other.setId(8L);
+        other.setGroupId(4L);
+        other.setBranch("feature-a");
+        String namespace = GitSyncFlowSourceBuilder.buildKestraNamespace(4L, "feature/a");
+        when(syncConfigMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(other));
+        when(gitCommandService.listFlowFilesAtRevision(4L, SHA))
+                .thenReturn(List.of(".wb-data/kestra-flows/daily.yaml"));
+        when(gitCommandService.readFlowFileAtRevision(4L, SHA, ".wb-data/kestra-flows/daily.yaml"))
+                .thenReturn(flowSource("pg-4"));
+        when(kestraClient.getFlowSource(namespace, "daily")).thenReturn(flowSource(namespace));
+
+        service.reconcileExecution(config, execution("SUCCESS", Map.of("start_sha", SHA, "end_sha", SHA)));
+
+        assertThat(config.getDeploymentEvidence()).isEqualTo("CONFIRMED");
     }
 
     @Test

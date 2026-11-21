@@ -9,11 +9,28 @@ import static org.assertj.core.api.Assertions.assertThat;
 class GitSyncFlowSourceBuilderTest {
 
     @Test
-    void buildIdentifiers_useReadableBranchSlugForNormalBranch() {
-        assertThat(GitSyncFlowSourceBuilder.buildKestraNamespace(4L, "feature/policy-review"))
-                .isEqualTo("g4-feature-policy-review");
+    void buildIdentifiers_keepReadableSlugOnlyForCanonicalSlugBranches() {
+        assertThat(GitSyncFlowSourceBuilder.buildKestraNamespace(4L, "main"))
+                .isEqualTo("g4-main");
+        assertThat(GitSyncFlowSourceBuilder.buildSyncFlowId(4L, "release-1"))
+                .isEqualTo("sync-flows-g4-release-1");
+    }
+
+    @Test
+    void buildIdentifiers_disambiguateLossyBranchSlugsWithHashSuffix() {
+        String slash = GitSyncFlowSourceBuilder.buildKestraNamespace(4L, "feature/policy-review");
+        String hyphen = GitSyncFlowSourceBuilder.buildKestraNamespace(4L, "feature-policy-review");
+        String underscore = GitSyncFlowSourceBuilder.buildKestraNamespace(4L, "feature_policy_review");
+        String uppercase = GitSyncFlowSourceBuilder.buildKestraNamespace(4L, "Feature/policy-review");
+
+        assertThat(slash).matches("g4-feature-policy-review-[a-f0-9]{8}");
+        assertThat(hyphen).isEqualTo("g4-feature-policy-review");
+        assertThat(underscore).matches("g4-feature-policy-review-[a-f0-9]{8}");
+        assertThat(uppercase).matches("g4-feature-policy-review-[a-f0-9]{8}");
+        assertThat(java.util.Set.of(slash, hyphen, underscore, uppercase)).hasSize(4);
+
         assertThat(GitSyncFlowSourceBuilder.buildSyncFlowId(4L, "feature/policy-review"))
-                .isEqualTo("sync-flows-g4-feature-policy-review");
+                .matches("sync-flows-g4-feature-policy-review-[a-f0-9]{8}");
     }
 
     @Test
@@ -34,9 +51,11 @@ class GitSyncFlowSourceBuilderTest {
                 syncConfig("feature/policy-review", true),
                 "*/5 * * * *"
         );
+        String expectedNamespace = GitSyncFlowSourceBuilder.buildKestraNamespace(4L, "feature/policy-review");
+        String expectedSyncFlowId = GitSyncFlowSourceBuilder.buildSyncFlowId(4L, "feature/policy-review");
 
         assertThat(source)
-                .contains("id: sync-flows-g4-feature-policy-review")
+                .contains("id: " + expectedSyncFlowId)
                 .contains("namespace: system")
                 .contains("concurrency:\n  limit: 1\n  behavior: QUEUE")
                 .contains("type: io.wbdata.kestra.core.GitRemoteRevision")
@@ -45,9 +64,9 @@ class GitSyncFlowSourceBuilderTest {
                 .containsSubsequence("resolve_start", "sync_flows", "sync_files", "resolve_end", "start_sha", "end_sha")
                 .contains("value: \"{{ outputs.resolve_start.sha }}\"")
                 .contains("value: \"{{ outputs.resolve_end.sha }}\"")
-                .contains("branch: feature/policy-review")
-                .contains("targetNamespace: g4-feature-policy-review")
-                .contains("namespace: g4-feature-policy-review")
+                .contains("branch: \"feature/policy-review\"")
+                .contains("targetNamespace: " + expectedNamespace)
+                .contains("namespace: " + expectedNamespace)
                 .contains("gitDirectory: .wb-data/kestra-flows")
                 .contains("gitDirectory: .\n    delete: true")
                 .contains("cron: \"*/5 * * * *\"")
@@ -61,19 +80,20 @@ class GitSyncFlowSourceBuilderTest {
     void buildSyncFlowSource_escapesDoubleQuotedYamlValues() {
         WbGitConfig gitConfig = gitConfig();
         gitConfig.setUsername("ali\\ce");
-        gitConfig.setToken("ghp_\"secret\"");
+        gitConfig.setToken("ghp_\"secret\"\nline2");
         gitConfig.setBaseUrl("https://git.example.com/");
 
         String source = GitSyncFlowSourceBuilder.buildSyncFlowSource(
                 gitConfig,
-                syncConfig("release/main", false),
+                syncConfig("release/1.0:\"hotfix\"\n", false),
                 "0 0 * * *"
         );
 
         assertThat(source)
                 .contains("disabled: true")
                 .contains("defaults: \"ali\\\\ce\"")
-                .contains("defaults: \"ghp_\\\"secret\\\"\"")
+                .contains("defaults: \"ghp_\\\"secret\\\"\\nline2\"")
+                .contains("branch: \"release/1.0:\\\"hotfix\\\"\\n\"")
                 .contains("url: \"https://git.example.com/ali\\\\ce/wb-data-4.git\"");
     }
 
