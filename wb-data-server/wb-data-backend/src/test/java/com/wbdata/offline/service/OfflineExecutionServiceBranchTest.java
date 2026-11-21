@@ -4,6 +4,7 @@ import com.wbdata.offline.parameter.service.ExecutionParameterSnapshotRegistry;
 import com.wbdata.offline.parameter.service.ExecutionTimeContext;
 import com.wbdata.offline.parameter.service.FlowParameterSnapshotStore;
 import com.wbdata.offline.repo.service.OfflineRepoStatusService;
+import com.wbdata.offline.repo.service.RepoLockManager;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.offline.config.OfflineKestraProperties;
@@ -26,13 +27,16 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -372,6 +376,101 @@ class OfflineExecutionServiceBranchTest {
                 Map.entry(ExecutionTimeContext.PLANNED_TIME_INPUT, "2025-12-31T18:00:00Z"));
     }
 
+    @Test
+    void localRepoReadsHoldRepoLockAndReleaseBeforeCallingKestra() throws Exception {
+        AtomicBoolean lockActive = new AtomicBoolean(false);
+        AtomicBoolean branchReadLocked = new AtomicBoolean(false);
+        AtomicBoolean kestraCalledUnderLock = new AtomicBoolean(false);
+        RepoLockManager trackingLockManager = new RepoLockManager() {
+            @Override
+            public <T> T withLock(Long groupId, java.util.function.Supplier<T> action) {
+                return super.withLock(groupId, () -> {
+                    lockActive.set(true);
+                    try {
+                        return action.get();
+                    } finally {
+                        lockActive.set(false);
+                    }
+                });
+            }
+        };
+
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OfflineRepoStatusService repoStatusService = Mockito.mock(OfflineRepoStatusService.class);
+        when(repoStatusService.getRepoStatus(1L)).thenAnswer(inv -> {
+            branchReadLocked.set(lockActive.get());
+            return new OfflineRepoStatusResponse(
+                    1L, "/tmp/repo", true, true, false, false, true, true,
+                    "main", "abc123", "init", Instant.parse("2026-05-19T00:00:00Z"));
+        });
+        doAnswer(inv -> {
+            if (lockActive.get()) {
+                kestraCalledUnderLock.set(true);
+            }
+            return null;
+        }).when(kestraClient).upsertNamespaceFile(any(), any(), any());
+        doAnswer(inv -> {
+            if (lockActive.get()) {
+                kestraCalledUnderLock.set(true);
+            }
+            return null;
+        }).when(kestraClient).upsertFlow(any());
+        when(kestraClient.createExecution(any(), any())).thenAnswer(inv -> {
+            if (lockActive.get()) {
+                kestraCalledUnderLock.set(true);
+            }
+            return execution("exec-lock", "wb-debug-g1-bmain-0d6e4079-u7", "example", "RUNNING", Map.of());
+        });
+
+        OfflineProperties properties = offlineProperties();
+        Path repoPath = properties.resolveRepoPath(1L);
+        Files.createDirectories(repoPath.resolve("scripts"));
+        Files.writeString(repoPath.resolve("scripts/run.sh"), "echo ok\n");
+
+        OfflineExecutionService service = new OfflineExecutionService(
+                kestraClient,
+                new OfflineKestraProperties(),
+                properties,
+                repoStatusService,
+                new FlowParameterSnapshotStore(new ObjectMapper()),
+                Mockito.mock(ExecutionParameterSnapshotRegistry.class),
+                new OfflineTransferProperties(),
+                trackingLockManager
+        );
+        DebugExecutionRequest shellRequest = new DebugExecutionRequest(
+                1L,
+                "_flows/example/flow.yaml",
+                """
+                        id: example
+                        namespace: pg-1
+                        tasks:
+                          - id: run_sh
+                            type: io.kestra.plugin.scripts.shell.Commands
+                            namespaceFiles:
+                              enabled: true
+                              include:
+                                - scripts/run.sh
+                        """,
+                List.of("run_sh"),
+                "SELECTED"
+        );
+
+        service.createDebugExecution(shellRequest, 7L);
+        assertThat(branchReadLocked).isTrue();
+        assertThat(kestraCalledUnderLock).isFalse();
+
+        branchReadLocked.set(false);
+        when(kestraClient.searchExecutions(any())).thenAnswer(inv -> {
+            if (lockActive.get()) {
+                kestraCalledUnderLock.set(true);
+            }
+            return List.of();
+        });
+        service.listExecutions(1L, "_flows/example/flow.yaml", 7L);
+        assertThat(branchReadLocked).isTrue();
+        assertThat(kestraCalledUnderLock).isFalse();
+    }
+
     private static OfflineExecutionService service(KestraClient kestraClient, OfflineRepoStatusService repoStatusService) {
         OfflineProperties offlineProperties = new OfflineProperties();
         return service(
@@ -434,7 +533,8 @@ class OfflineExecutionServiceBranchTest {
                 repoStatusService,
                 snapshotStore,
                 snapshotRegistry,
-                transferProperties
+                transferProperties,
+                new RepoLockManager()
         );
     }
 

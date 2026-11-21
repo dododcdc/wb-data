@@ -5,6 +5,7 @@ import com.wbdata.offline.parameter.service.ExecutionParameterSnapshotRegistry;
 import com.wbdata.offline.parameter.service.ExecutionTimeContext;
 import com.wbdata.offline.parameter.service.FlowParameterSnapshotStore;
 import com.wbdata.offline.repo.service.OfflineRepoStatusService;
+import com.wbdata.offline.repo.service.RepoLockManager;
 
 import com.wbdata.offline.config.OfflineKestraProperties;
 import com.wbdata.offline.config.OfflineProperties;
@@ -56,6 +57,7 @@ public class OfflineExecutionService {
     private final FlowParameterSnapshotStore parameterSnapshotStore;
     private final ExecutionParameterSnapshotRegistry executionParameterSnapshotRegistry;
     private final OfflineTransferProperties transferProperties;
+    private final RepoLockManager repoLockManager;
     private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
     private final ExecutionParameterResolver parameterResolver = new ExecutionParameterResolver();
 
@@ -66,13 +68,23 @@ public class OfflineExecutionService {
     public OfflineExecutionResponse createDebugExecution(DebugExecutionRequest request,
                                                          Map<String, String> namespaceFileOverrides,
                                                          Long requestedBy) {
-        FlowParameterSnapshot parameterSnapshot = resolveParameterSnapshot(request);
+        String snapshotId = yamlSupport.readLabel(
+                request.content(), ExecutionParameterSnapshotRegistry.LABEL_KEY);
+        LocalDebugContext localContext = repoLockManager.withLock(request.groupId(), () -> new LocalDebugContext(
+                readCurrentBranchUnlocked(request.groupId()),
+                snapshotId != null ? null : readParameterSnapshotFromRepoUnlocked(request)
+        ));
+        FlowParameterSnapshot parameterSnapshot = snapshotId != null
+                ? executionParameterSnapshotRegistry.find(request.groupId(), snapshotId)
+                        .orElseThrow(() -> new ResponseStatusException(
+                                HttpStatus.BAD_REQUEST, "任务引用的执行参数快照不存在"))
+                : localContext.parameterSnapshot();
         Map<String, String> overrides = parameterResolver.resolveOverrides(
                 parameterSnapshot, request.parameterOverrides());
         Set<String> actualSelectedTaskIds = getActualSelectedTaskIds(request);
         validateSelectedTaskTypes(request, actualSelectedTaskIds);
         String sourceRevision = yamlSupport.sha256Hex(request.content());
-        String branch = readCurrentBranch(request.groupId());
+        String branch = localContext.branch();
         String debugNamespace = offlineKestraProperties.buildDebugNamespace(request.groupId(), requestedBy, branch);
         OfflineFlowYamlSupport.FlowIdentity identity = yamlSupport.parseIdentity(request.content());
         String debugFlow = yamlSupport.buildDebugFlow(
@@ -105,14 +117,7 @@ public class OfflineExecutionService {
         );
     }
 
-    private FlowParameterSnapshot resolveParameterSnapshot(DebugExecutionRequest request) {
-        String snapshotId = yamlSupport.readLabel(
-                request.content(), ExecutionParameterSnapshotRegistry.LABEL_KEY);
-        if (snapshotId != null) {
-            return executionParameterSnapshotRegistry.find(request.groupId(), snapshotId)
-                    .orElseThrow(() -> new ResponseStatusException(
-                            HttpStatus.BAD_REQUEST, "任务引用的执行参数快照不存在"));
-        }
+    private FlowParameterSnapshot readParameterSnapshotFromRepoUnlocked(DebugExecutionRequest request) {
         Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
         try {
             return parameterSnapshotStore.read(repoPath, request.flowPath())
@@ -121,6 +126,9 @@ public class OfflineExecutionService {
         } catch (IOException ex) {
             throw new IllegalStateException("读取任务参数快照失败", ex);
         }
+    }
+
+    private record LocalDebugContext(String branch, FlowParameterSnapshot parameterSnapshot) {
     }
 
     private Map<String, String> buildExecutionInputs(DebugExecutionRequest request,
@@ -383,23 +391,36 @@ public class OfflineExecutionService {
             return;
         }
 
-        Path repoPath = offlineProperties.resolveRepoPath(groupId);
+        List<String> diskFilesToRead = namespaceFiles.stream()
+                .filter(file -> !namespaceFileOverrides.containsKey(file))
+                .toList();
+        Map<String, String> diskContents = diskFilesToRead.isEmpty()
+                ? Collections.emptyMap()
+                : repoLockManager.withLock(groupId, () -> readNamespaceFilesUnlocked(groupId, diskFilesToRead));
+
         for (String file : namespaceFiles) {
-            String overriddenContent = namespaceFileOverrides.get(file);
-            if (overriddenContent != null) {
-                kestraClient.upsertNamespaceFile(debugNamespace, ensureLeadingSlash(file), overriddenContent);
-                continue;
-            }
+            String content = namespaceFileOverrides.containsKey(file)
+                    ? namespaceFileOverrides.get(file)
+                    : diskContents.get(file);
+            kestraClient.upsertNamespaceFile(debugNamespace, ensureLeadingSlash(file), content);
+        }
+    }
+
+    private Map<String, String> readNamespaceFilesUnlocked(Long groupId, List<String> files) {
+        Path repoPath = offlineProperties.resolveRepoPath(groupId);
+        Map<String, String> contents = new LinkedHashMap<>();
+        for (String file : files) {
             Path resolvedPath = resolveRepoFile(repoPath, file);
             if (!Files.isRegularFile(resolvedPath)) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "脚本文件不存在: " + file);
             }
             try {
-                kestraClient.upsertNamespaceFile(debugNamespace, ensureLeadingSlash(file), Files.readString(resolvedPath, StandardCharsets.UTF_8));
+                contents.put(file, Files.readString(resolvedPath, StandardCharsets.UTF_8));
             } catch (IOException ex) {
                 throw new IllegalStateException("读取脚本文件失败", ex);
             }
         }
+        return contents;
     }
 
     private Path resolveRepoFile(Path repoPath, String path) {
@@ -514,6 +535,10 @@ public class OfflineExecutionService {
     }
 
     private String readCurrentBranch(Long groupId) {
+        return repoLockManager.withLock(groupId, () -> readCurrentBranchUnlocked(groupId));
+    }
+
+    private String readCurrentBranchUnlocked(Long groupId) {
         String branch = offlineRepoStatusService.getRepoStatus(groupId).branch();
         return branch == null || branch.isBlank() ? "main" : branch;
     }
