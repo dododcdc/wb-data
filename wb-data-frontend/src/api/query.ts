@@ -75,11 +75,15 @@ export const getMetadataTables = (dataSourceId: number, databaseName: string, ke
     if (page !== undefined) params.set('page', String(page));
     if (size !== undefined) params.set('size', String(size));
     const qs = params.toString();
-    return request.get<unknown, PageResult<TableSummary>>(`/api/v1/query/metadata/${dataSourceId}/${databaseName}/tables${qs ? '?' + qs : ''}`);
+    return request.get<unknown, PageResult<TableSummary>>(
+        `/api/v1/query/metadata/${dataSourceId}/${encodeURIComponent(databaseName)}/tables${qs ? '?' + qs : ''}`,
+    );
 };
 
 export const getMetadataColumns = (dataSourceId: number, databaseName: string, tableName: string) => {
-    return request.get<unknown, ColumnMetadata[]>(`/api/v1/query/metadata/${dataSourceId}/${databaseName}/tables/${encodeURIComponent(tableName)}/columns`);
+    return request.get<unknown, ColumnMetadata[]>(
+        `/api/v1/query/metadata/${dataSourceId}/${encodeURIComponent(databaseName)}/tables/${encodeURIComponent(tableName)}/columns`,
+    );
 };
 
 export const executeQuery = (dataSourceId: number, sql: string, database?: string) => {
@@ -87,6 +91,7 @@ export const executeQuery = (dataSourceId: number, sql: string, database?: strin
         sql,
         database
     }, {
+        timeout: 65_000,
         headers: {
             'Content-Type': 'application/json',
         },
