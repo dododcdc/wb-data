@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend Build & Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: wb-data-server/**/pom.xml
+
+      - name: Build and verify Maven modules
+        working-directory: wb-data-server
+        run: mvn -B clean verify
+
+  frontend:
+    name: Frontend Lint, Test & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: wb-data-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: wb-data-frontend
+        run: npm ci
+
+      - name: Run lint, unit tests, and production build
+        working-directory: wb-data-frontend
+        run: |
+          npm run lint
+          npm run test
+          npm run build
