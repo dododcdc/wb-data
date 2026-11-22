@@ -316,6 +316,10 @@ class OfflineFlowDependencyServiceTest {
                 .containsExactlyInAnyOrder("local_downstream", "cross_downstream");
         assertThat(dependents).extracting(OfflineDependentItemResponse::groupName)
                 .containsExactlyInAnyOrder("group-1", "group-2");
+        assertThat(dependents).extracting(OfflineDependentItemResponse::period)
+                .containsOnly(OfflineSchedulePeriod.DAILY);
+        assertThat(dependents).extracting(OfflineDependentItemResponse::cron)
+                .containsExactlyInAnyOrder("0 3 * * *", "0 2 * * *");
     }
 
     @Test
@@ -357,6 +361,64 @@ class OfflineFlowDependencyServiceTest {
                         ex -> assertThat(ex.getStatusCode().value()).isEqualTo(422))
                 .hasMessageContaining("不能修改调度频率")
                 .hasMessageContaining("downstream");
+    }
+
+    @Test
+    void hourlyDependenciesRequireUpstreamHoursToCoverDownstreamHours() throws Exception {
+        Fixture fixture = new Fixture();
+        fixture.writeFlow(1L, "up_all", fixture.scheduledFlow("up_all", 1L, "0 * * * *", "HOURLY", Map.of()));
+        fixture.writeFlow(1L, "up_even", fixture.scheduledFlow("up_even", 1L, "0 8-22/2 * * *", "HOURLY", Map.of()));
+        fixture.writeFlow(1L, "down_subset", fixture.scheduledFlow("down_subset", 1L, "10 8,10,14 * * *", "HOURLY", Map.of()));
+        fixture.writeFlow(1L, "down_extra", fixture.scheduledFlow("down_extra", 1L, "10 1,8,14 * * *", "HOURLY", Map.of()));
+
+        // 全天 24 小时及覆盖偶数小时均允许依赖
+        fixture.service().updateConfig(
+                fixture.request(1L, "_flows/down_subset/flow.yaml",
+                        List.of(new OfflineFlowDependencyRef(1L, "up_all"), new OfflineFlowDependencyRef(1L, "up_even")),
+                        OfflineFailurePolicy.CONTINUE, OfflineCrossGroupDependency.ALLOW),
+                fixture.groups(1L));
+
+        // 缺少 01 时被拒绝，且报错指明缺少小时
+        assertThatThrownBy(() -> fixture.service().updateConfig(
+                fixture.request(1L, "_flows/down_extra/flow.yaml",
+                        List.of(new OfflineFlowDependencyRef(1L, "up_even")),
+                        OfflineFailurePolicy.CONTINUE, OfflineCrossGroupDependency.ALLOW),
+                fixture.groups(1L)))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        ex -> assertThat(ex.getStatusCode().value()).isEqualTo(422))
+                .hasMessageContaining("调度小时未覆盖本任务")
+                .hasMessageContaining("01 时");
+    }
+
+    @Test
+    void assertScheduleChangeAllowedGuardsDownstreamHourlySubsetWithoutLeakingHiddenDependents() throws Exception {
+        Fixture fixture = new Fixture();
+        fixture.writeFlow(1L, "upstream", fixture.scheduledFlow("upstream", 1L, "0 * * * *", "HOURLY", Map.of()));
+        fixture.writeFlow(1L, "visible_down", fixture.scheduledFlow("visible_down", 1L, "15 1,3,14 * * *", "HOURLY",
+                Map.of("wbdataDependencies", "\"1:upstream\"")));
+        fixture.writeFlow(2L, "secret_down", fixture.scheduledFlow("secret_down", 2L, "15 1,3,20 * * *", "HOURLY",
+                Map.of("wbdataDependencies", "\"1:upstream\"")));
+
+        // 上游收窄为 1,3,14,20 仍覆盖所有下游：允许
+        fixture.service().assertScheduleChangeAllowed(
+                1L, "_flows/upstream/flow.yaml", OfflineSchedulePeriod.HOURLY, "5 1,3,14,20 * * *", fixture.groups(1L, 2L));
+
+        // 缺少可见下游所需 14 时：拒绝并点名 visible_down
+        assertThatThrownBy(() -> fixture.service().assertScheduleChangeAllowed(
+                1L, "_flows/upstream/flow.yaml", OfflineSchedulePeriod.HOURLY, "0 1,3,20 * * *", fixture.groups(1L, 2L)))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        ex -> assertThat(ex.getStatusCode().value()).isEqualTo(422))
+                .hasMessageContaining("调度小时超出当前配置")
+                .hasMessageContaining("visible_down");
+
+        // 缺少无权查看的跨组下游所需 20 时：拒绝但脱敏不泄露 secret_down
+        assertThatThrownBy(() -> fixture.service().assertScheduleChangeAllowed(
+                1L, "_flows/upstream/flow.yaml", OfflineSchedulePeriod.HOURLY, "0 1,3,14 * * *", fixture.groups(1L)))
+                .isInstanceOfSatisfying(ResponseStatusException.class, ex -> {
+                    assertThat(ex.getStatusCode().value()).isEqualTo(422);
+                    assertThat(ex.getReason()).contains("无权查看的下游任务");
+                    assertThat(ex.getReason()).doesNotContain("secret_down", "group-2");
+                });
     }
 
     @Test

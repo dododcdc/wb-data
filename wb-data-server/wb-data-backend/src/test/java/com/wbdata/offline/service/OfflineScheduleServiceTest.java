@@ -9,11 +9,13 @@ import com.wbdata.offline.schedule.dto.UpdateOfflineScheduleStatusRequest;
 import com.wbdata.offline.enums.OfflineSchedulePeriod;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class OfflineScheduleServiceTest {
 
@@ -114,6 +116,53 @@ class OfflineScheduleServiceTest {
         var schedule = scheduleService.getSchedule(1L, "_flows/legacy/flow.yaml");
 
         assertThat(schedule.period()).isEqualTo(OfflineSchedulePeriod.DAILY);
+    }
+
+    @Test
+    void updateSchedule_supportsContinuousRangeStepAndDiscreteHourlyAndRejectsInvalidHourly() {
+        OfflineProperties properties = offlineProperties();
+        RepoLockManager repoLockManager = new RepoLockManager();
+        OfflineFlowContentService contentService = new OfflineFlowContentService(
+                properties, repoLockManager, new OfflineKestraFlowFileService(properties));
+        OfflineScheduleService scheduleService = new OfflineScheduleService(contentService);
+
+        var initial = contentService.saveFlowContent(new SaveOfflineFlowRequest(
+                1L,
+                "_flows/hourly/flow.yaml",
+                """
+                        id: hourly
+                        namespace: pg-1
+                        labels:
+                          wbdataRuntimeTimezone: Asia/Shanghai
+                        tasks: []
+                        """,
+                null,
+                0L
+        ));
+
+        var rangeStep = scheduleService.updateSchedule(new UpdateOfflineScheduleRequest(
+                1L, "_flows/hourly/flow.yaml", "15 8-22/2 * * *",
+                OfflineSchedulePeriod.HOURLY, initial.contentHash(), initial.fileUpdatedAt()));
+        assertThat(rangeStep.period()).isEqualTo(OfflineSchedulePeriod.HOURLY);
+        assertThat(rangeStep.cron()).isEqualTo("15 8-22/2 * * *");
+
+        var discrete = scheduleService.updateSchedule(new UpdateOfflineScheduleRequest(
+                1L, "_flows/hourly/flow.yaml", "15 1,3,14 * * *",
+                OfflineSchedulePeriod.HOURLY, rangeStep.contentHash(), rangeStep.fileUpdatedAt()));
+        assertThat(discrete.period()).isEqualTo(OfflineSchedulePeriod.HOURLY);
+        assertThat(discrete.cron()).isEqualTo("15 1,3,14 * * *");
+
+        assertThatThrownBy(() -> scheduleService.updateSchedule(new UpdateOfflineScheduleRequest(
+                1L, "_flows/hourly/flow.yaml", "0 14 * * *",
+                OfflineSchedulePeriod.HOURLY, discrete.contentHash(), discrete.fileUpdatedAt())))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        ex -> assertThat(ex.getReason()).contains("小时调度 Cron 不合法"));
+
+        assertThatThrownBy(() -> scheduleService.updateSchedule(new UpdateOfflineScheduleRequest(
+                1L, "_flows/hourly/flow.yaml", "0 22-6 * * *",
+                OfflineSchedulePeriod.HOURLY, discrete.contentHash(), discrete.fileUpdatedAt())))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        ex -> assertThat(ex.getReason()).contains("小时调度 Cron 不合法"));
     }
 
     private OfflineProperties offlineProperties() {

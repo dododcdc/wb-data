@@ -19,6 +19,7 @@ import com.wbdata.offline.dto.SaveOfflineFlowRequest;
 import com.wbdata.offline.schedule.dto.UpdateOfflineDependenciesRequest;
 import com.wbdata.offline.enums.OfflineCrossGroupDependency;
 import com.wbdata.offline.enums.OfflineSchedulePeriod;
+import com.wbdata.schedule.HourlyCronHours;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -135,11 +136,19 @@ public class OfflineFlowDependencyService {
             if (existing != null && !Path.of(existing.path()).normalize().equals(relative)) {
                 throw invalid("任务标识已存在，请使用其他任务名称");
             }
+            boolean hourlyHoursChanged = existingSchedule != null
+                    && targetSchedule != null
+                    && existingSchedule.period() == OfflineSchedulePeriod.HOURLY
+                    && targetSchedule.period() == OfflineSchedulePeriod.HOURLY
+                    && !Objects.equals(
+                            HourlyCronHours.parseHourlyCronHours(existingSchedule.cron()),
+                            HourlyCronHours.parseHourlyCronHours(targetSchedule.cron()));
             boolean validateUpstreamStrictly = !existsOnDisk
                     || !Objects.equals(existingSettings.dependencies(), settings.dependencies())
                     || !Objects.equals(
                             existingSchedule == null ? null : existingSchedule.period(),
-                            targetSchedule == null ? null : targetSchedule.period());
+                            targetSchedule == null ? null : targetSchedule.period())
+                    || hourlyHoursChanged;
             validateConfig(self, targetSchedule, settings, accessibleGroups, snapshots, validateUpstreamStrictly);
             return save.get();
         });
@@ -252,6 +261,19 @@ public class OfflineFlowDependencyService {
             throw invalid("存在下游任务依赖，不能修改调度频率: "
                     + formatDependents(incompatible, accessibleGroups) + "，请先解除依赖");
         }
+        if (schedule != null && schedule.period() == OfflineSchedulePeriod.HOURLY) {
+            List<FlowDependencySnapshot> incompatibleHours = dependents.stream()
+                    .filter(item -> item.period() == OfflineSchedulePeriod.HOURLY)
+                    .filter(item -> HourlyCronHours.parseHourlyCronHours(schedule.cron()).isEmpty()
+                            || HourlyCronHours.missingHours(item.cron(), schedule.cron())
+                                    .map(missing -> !missing.isEmpty())
+                                    .orElse(true))
+                    .toList();
+            if (!incompatibleHours.isEmpty()) {
+                throw invalid("存在下游任务依赖的调度小时超出当前配置: "
+                        + formatDependents(incompatibleHours, accessibleGroups) + "，请先调整下游或解除依赖");
+            }
+        }
     }
 
     private List<String> collectUpstreamIssues(OfflineFlowDependencyRef self,
@@ -282,6 +304,22 @@ public class OfflineFlowDependencyService {
             if (selfHasStandardPeriod && upstream.period() != schedule.period()) {
                 issues.add("仅支持相同调度频率的任务依赖: " + ref.flowId());
                 continue;
+            }
+            if (selfHasStandardPeriod && schedule.period() == OfflineSchedulePeriod.HOURLY) {
+                if (HourlyCronHours.parseHourlyCronHours(schedule.cron()).isEmpty()) {
+                    issues.add("本任务的小时调度配置不合法");
+                    continue;
+                }
+                if (HourlyCronHours.parseHourlyCronHours(upstream.cron()).isEmpty()) {
+                    issues.add("前置任务 " + ref.flowId() + " 的小时调度配置不合法，无法依赖");
+                    continue;
+                }
+                List<Integer> missingHours = HourlyCronHours.missingHours(schedule.cron(), upstream.cron()).orElse(List.of());
+                if (!missingHours.isEmpty()) {
+                    issues.add("前置任务 " + ref.flowId() + " 的调度小时未覆盖本任务（缺少 "
+                            + HourlyCronHours.formatHours(missingHours) + "）");
+                    continue;
+                }
             }
             if (!ref.groupId().equals(self.groupId())
                     && upstream.crossGroupDependency() == OfflineCrossGroupDependency.DENY) {
@@ -320,7 +358,8 @@ public class OfflineFlowDependencyService {
         OfflineFlowDependencyRef self = resolveSelfRef(groupId, path);
         Map<Long, String> groupNames = groupNames(accessibleGroups);
         return findDependentsIn(scanAccessible(accessibleGroups).values(), self).stream()
-                .map(item -> new OfflineDependentItemResponse(item.groupId(), groupNames.get(item.groupId()), item.flowId(), item.path()))
+                .map(item -> new OfflineDependentItemResponse(item.groupId(), groupNames.get(item.groupId()),
+                        item.flowId(), item.path(), item.period(), item.cron()))
                 .toList();
     }
 
@@ -336,10 +375,16 @@ public class OfflineFlowDependencyService {
 
     public void assertPeriodChangeAllowed(Long groupId, String path, OfflineSchedulePeriod newPeriod,
                                           List<ProjectGroupContextItem> accessibleGroups) {
+        assertScheduleChangeAllowed(groupId, path, newPeriod, null, accessibleGroups);
+    }
+
+    public void assertScheduleChangeAllowed(Long groupId, String path, OfflineSchedulePeriod newPeriod, String newCron,
+                                            List<ProjectGroupContextItem> accessibleGroups) {
         withDependencyGraphLock(() -> {
             OfflineFlowContentResponse flow = offlineFlowContentService.getFlowContent(groupId, path);
             OfflineFlowYamlSupport.ScheduleData schedule = yamlSupport.readSchedule(flow.content());
-            var proposed = new OfflineFlowYamlSupport.ScheduleData("schedule", schedule == null ? "" : schedule.cron(),
+            String targetCron = newCron != null ? newCron : (schedule == null ? "" : schedule.cron());
+            var proposed = new OfflineFlowYamlSupport.ScheduleData("schedule", targetCron,
                     schedule == null ? null : schedule.timezone(), schedule != null && schedule.enabled(), newPeriod);
             validateConfig(new OfflineFlowDependencyRef(groupId, yamlSupport.parseIdentity(flow.content()).flowId()),
                     proposed, yamlSupport.readDependencyConfig(flow.content()), accessibleGroups, scanAll(), true);

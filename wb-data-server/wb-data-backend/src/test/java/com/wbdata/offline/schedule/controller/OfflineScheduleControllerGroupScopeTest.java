@@ -51,8 +51,8 @@ class OfflineScheduleControllerGroupScopeTest {
         ArgumentCaptor<UpdateOfflineScheduleRequest> captor = ArgumentCaptor.forClass(UpdateOfflineScheduleRequest.class);
         verify(service).updateSchedule(captor.capture());
         assertThat(captor.getValue().groupId()).isEqualTo(4L);
-        verify(dependencies).assertPeriodChangeAllowed(
-                4L, "_flows/jack/test/flow.yaml", OfflineSchedulePeriod.CUSTOM, accessibleGroups);
+        verify(dependencies).assertScheduleChangeAllowed(
+                4L, "_flows/jack/test/flow.yaml", OfflineSchedulePeriod.CUSTOM, "* * * * *", accessibleGroups);
     }
 
     @Test

@@ -123,4 +123,38 @@ class ScheduleKeysTest {
         assertThat(ScheduleKeys.nextFire("not a cron", planned)).isEmpty();
         assertThat(ScheduleKeys.nextFire(null, planned)).isEmpty();
     }
+
+    @Test
+    void lastFire_andPreviousPeriodKey_handleDiscreteAndRangeHourlySchedules() {
+        ZonedDateTime discreteThreeAm = ZonedDateTime.parse("2026-01-02T03:15:00+08:00[Asia/Shanghai]");
+        assertThat(ScheduleKeys.lastFire("15 1,3,14 * * *", discreteThreeAm.minusSeconds(1)))
+                .contains(ZonedDateTime.parse("2026-01-02T01:15:00+08:00[Asia/Shanghai]"));
+        assertThat(ScheduleKeys.previousPeriodKey(SchedulePeriod.HOURLY, "15 1,3,14 * * *", discreteThreeAm))
+                .isEqualTo("2026-01-02T01");
+
+        // 01:15 的上一期应跨越午夜回溯到前一天 14:15
+        ZonedDateTime discreteOneAm = ZonedDateTime.parse("2026-01-02T01:15:00+08:00[Asia/Shanghai]");
+        assertThat(ScheduleKeys.previousPeriodKey(SchedulePeriod.HOURLY, "15 1,3,14 * * *", discreteOneAm))
+                .isEqualTo("2026-01-01T14");
+
+        // 区间步长 08–22/2：08:00 的上一期为前一天 22:00，10:00 的上一期为当天 08:00
+        ZonedDateTime rangeStart = ZonedDateTime.parse("2026-01-02T08:00:00+08:00[Asia/Shanghai]");
+        ZonedDateTime rangeTenAm = ZonedDateTime.parse("2026-01-02T10:00:00+08:00[Asia/Shanghai]");
+        assertThat(ScheduleKeys.previousPeriodKey(SchedulePeriod.HOURLY, "0 8-22/2 * * *", rangeStart))
+                .isEqualTo("2026-01-01T22");
+        assertThat(ScheduleKeys.previousPeriodKey(SchedulePeriod.HOURLY, "0 8-22/2 * * *", rangeTenAm))
+                .isEqualTo("2026-01-02T08");
+
+        // 全天小时与天调度
+        assertThat(ScheduleKeys.previousPeriodKey(SchedulePeriod.HOURLY, "30 * * * *", rangeTenAm.plusMinutes(30)))
+                .isEqualTo("2026-01-02T09");
+        assertThat(ScheduleKeys.previousPeriodKey(SchedulePeriod.DAILY, "0 2 * * *",
+                ZonedDateTime.parse("2026-01-02T02:00:00+08:00[Asia/Shanghai]")))
+                .isEqualTo("2026-01-01");
+
+        // 非法 Cron 回退到自然周期平移
+        assertThat(ScheduleKeys.lastFire("not a cron", discreteThreeAm)).isEmpty();
+        assertThat(ScheduleKeys.previousPeriodKey(SchedulePeriod.HOURLY, "not a cron", discreteThreeAm))
+                .isEqualTo("2026-01-02T02");
+    }
 }

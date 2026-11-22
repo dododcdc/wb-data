@@ -202,6 +202,36 @@ class OperationsInstanceDiagnosisServiceTest {
     }
 
     @Test
+    void pausedByPolicy_discreteHourlyFollowsActualPreviousCronFire() {
+        Fixture fixture = new Fixture(Instant.parse("2026-10-06T03:00:00Z"));
+        fixture.stubOwnFlow("""
+                id: task_a
+                namespace: g4-main
+                labels:
+                  wbdataSchedulePeriod: HOURLY
+                  wbdataFailurePolicy: PAUSE
+                triggers:
+                  - id: schedule
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 1,3,14 * * *"
+                tasks: []
+                """);
+        fixture.stubExecutions("g4-main", "task_a", List.of(
+                execution("exec-cur", "g4-main", "task_a", "FAILED", "2026-10-06T01:00:00Z",
+                        "2026-10-06T01:00:05Z", List.of(taskRun("wb_upstream_gate", "FAILED")), Map.of()),
+                execution("exec-prev", "g4-main", "task_a", "FAILED", "2026-10-05T14:00:00Z",
+                        "2026-10-05T14:00:05Z", List.of(), Map.of())));
+
+        OperationsInstanceDiagnosisResponse response = fixture.service.diagnose(
+                4L, "main", "task_a", "2026-10-06T01", fixture.accessibleGroups());
+
+        assertThat(response.state()).isEqualTo(OperationsInstanceDiagnosisService.STATE_PAUSED_BY_POLICY);
+        assertThat(response.reason()).contains("2026-10-05T14").contains("PAUSE");
+        assertThat(response.prevScheduleKey()).isEqualTo("2026-10-05T14");
+        assertThat(response.nextScheduleKey()).isEqualTo("2026-10-06T03");
+    }
+
+    @Test
     void executionsMarkedRerun_andSortedByCreatedAtDesc() {
         Fixture fixture = new Fixture();
         fixture.stubOwnFlow(dailyFlowYaml(null, null, false));
