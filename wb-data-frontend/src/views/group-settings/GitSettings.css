@@ -11,7 +11,7 @@
 
 .kestra-sync-settings-page {
     display: flex;
-    width: min(100%, 760px);
+    width: 100%;
     flex: 1;
     min-height: 0;
     flex-direction: column;
