@@ -27,38 +27,38 @@ import {
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { useAuthStore } from '../../utils/auth';
 import { getErrorMessage } from '../../utils/error';
-import { NodeEditorDialog } from './NodeEditorDialog';
+import { NodeEditorDialog } from './editor/NodeEditorDialog';
 import type { TransferConfig } from './transfer/transferTypes';
 import type { TransferNodeDraftState } from './transfer/TransferNodeDialog';
-import { DependencyAwareScheduleDialog } from './DependencyAwareScheduleDialog';
-import { DependencyDialog } from './DependencyDialog';
-import { FlowParameterDialog } from './FlowParameterDialog';
-import { ScheduleDialog } from './ScheduleDialog';
+import { DependencyAwareScheduleDialog } from './schedule/DependencyAwareScheduleDialog';
+import { DependencyDialog } from './schedule/DependencyDialog';
+import { FlowParameterDialog } from './schedule/FlowParameterDialog';
+import { ScheduleDialog } from './schedule/ScheduleDialog';
 import {
     flattenFlowDocumentNodes,
     resolveFlowSelectedTaskIds,
-} from './flowDocumentMutations';
+} from './draft/flowDocumentMutations';
 import {
     validateSqlNodeDataSourceRequirement,
-} from './nodeEditorDataSourceRules';
-import { SaveConflictDialog } from './SaveConflictDialog';
-import { OfflineCommitDialogs } from './OfflineCommitDialogs';
+} from './editor/nodeEditorDataSourceRules';
+import { SaveConflictDialog } from './draft/SaveConflictDialog';
+import { OfflineCommitDialogs } from './repo/OfflineCommitDialogs';
 import { OfflineWorkbenchSidebar } from './OfflineWorkbenchSidebar';
-import { OfflineTreeActionDialogs } from './OfflineTreeActionDialogs';
-import { OfflineExecutionDialog } from './OfflineExecutionDialog';
-import { ExecutionTimeContextDialog } from './ExecutionTimeContextDialog';
-import { OfflineRepositoryDialogs } from './OfflineRepositoryDialogs';
-import { OfflineVersionHistoryDrawer } from './OfflineVersionHistoryDrawer';
-import { OfflineVersionCompareDialog, type VersionSelection } from './OfflineVersionCompareDialog';
-import { buildWorktreeVersionSelection, formatRevisionTag } from './versionComparePresentation';
+import { OfflineTreeActionDialogs } from './repo/OfflineTreeActionDialogs';
+import { OfflineExecutionDialog } from './execution/OfflineExecutionDialog';
+import { ExecutionTimeContextDialog } from './execution/ExecutionTimeContextDialog';
+import { OfflineRepositoryDialogs } from './repo/OfflineRepositoryDialogs';
+import { OfflineVersionHistoryDrawer } from './version/OfflineVersionHistoryDrawer';
+import { OfflineVersionCompareDialog, type VersionSelection } from './version/OfflineVersionCompareDialog';
+import { buildWorktreeVersionSelection, formatRevisionTag } from './version/versionComparePresentation';
 import { OfflineWorkbenchMainPanel } from './OfflineWorkbenchMainPanel';
 import { preloadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
-import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
-import { useOfflineTreeMutations } from './useOfflineTreeMutations';
-import { indexNodesByTreePath, prependRecentFlowPath, updateRepoTreeFlowStatus } from './repoTreePaths';
-import { prefetchNodeEditorDataSources } from './useNodeEditorDataSources';
-import { useFlowExecutionAndSchedule } from './useFlowExecutionAndSchedule';
-import { useFlowEditingSession } from './useFlowEditingSession';
+import { useOfflineRepositoryWorkflow } from './repo/useOfflineRepositoryWorkflow';
+import { useOfflineTreeMutations } from './repo/useOfflineTreeMutations';
+import { indexNodesByTreePath, prependRecentFlowPath, updateRepoTreeFlowStatus } from './repo/repoTreePaths';
+import { prefetchNodeEditorDataSources } from './editor/useNodeEditorDataSources';
+import { useFlowExecutionAndSchedule } from './execution/useFlowExecutionAndSchedule';
+import { useFlowEditingSession } from './draft/useFlowEditingSession';
 import { useOfflineWorkbenchNavigation } from './useOfflineWorkbenchNavigation';
 import {
     useOfflineWorkbenchBeforeUnloadLeave,
@@ -67,8 +67,8 @@ import {
     useOfflineWorkbenchNewFlowShortcut,
     useOfflineWorkbenchUrlRestore,
 } from './OfflineWorkbenchLifecycle';
-import { updateFlowDependencyDraft, updateFlowParameterBindingDraft } from './flowDraftController';
-import { useOnlineFlowSnapshot, type CanvasMode } from './useOnlineFlowSnapshot';
+import { updateFlowDependencyDraft, updateFlowParameterBindingDraft } from './draft/flowDraftController';
+import { useOnlineFlowSnapshot, type CanvasMode } from './version/useOnlineFlowSnapshot';
 
 import './OfflineWorkbench.css';
 

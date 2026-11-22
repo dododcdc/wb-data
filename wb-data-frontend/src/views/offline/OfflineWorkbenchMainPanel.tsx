@@ -4,11 +4,11 @@ import { AlertCircle, AlertTriangle, GitCommitHorizontal, LoaderCircle, RotateCc
 import type { GitSyncConfig } from '../../api/gitSettings';
 import type { OfflineFlowDocument } from '../../api/offline';
 import { Button } from '../../components/ui/button';
-import { resolveDeploymentStatus } from './deploymentStatus';
-import FlowCanvas from './FlowCanvas';
-import { OfflineCanvasToolbar } from './OfflineCanvasToolbar';
-import { OfflineNodePalette } from './OfflineNodePalette';
-import type { CanvasMode, OnlineSnapshotStatus } from './useOnlineFlowSnapshot';
+import { resolveDeploymentStatus } from './version/deploymentStatus';
+import FlowCanvas from './canvas/FlowCanvas';
+import { OfflineCanvasToolbar } from './canvas/OfflineCanvasToolbar';
+import { OfflineNodePalette } from './canvas/OfflineNodePalette';
+import type { CanvasMode, OnlineSnapshotStatus } from './version/useOnlineFlowSnapshot';
 
 const NOOP = () => undefined;
 

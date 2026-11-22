@@ -22,10 +22,10 @@ import type {
     OfflineRepoTreeResponse,
 } from '../../api/offline';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
-import { OfflineRepoTree, type OfflineRepoTreeHandle } from './OfflineRepoTree';
-import { SCHEDULE_BADGE_SPRITE, renderScheduleBadge } from './offlineTreeBadges';
-import { flowApiPathToTreePath, indexNodesByTreePath } from './repoTreePaths';
-import type { BranchDirtyState } from './useOfflineRepositoryWorkflow';
+import { OfflineRepoTree, type OfflineRepoTreeHandle } from './repo/OfflineRepoTree';
+import { SCHEDULE_BADGE_SPRITE, renderScheduleBadge } from './repo/offlineTreeBadges';
+import { flowApiPathToTreePath, indexNodesByTreePath } from './repo/repoTreePaths';
+import type { BranchDirtyState } from './repo/useOfflineRepositoryWorkflow';
 
 interface BranchControls {
     label: string;

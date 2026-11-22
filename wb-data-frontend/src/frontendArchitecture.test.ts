@@ -170,4 +170,10 @@ describe('frontend architecture boundaries', () => {
 
         expect(cycles).toEqual([]);
     });
+
+    it('keeps src/views/offline root directory modular and bounded', () => {
+        const offlineDir = resolve(SRC_ROOT, 'views/offline');
+        const rootFiles = readdirSync(offlineDir, { withFileTypes: true }).filter((entry) => entry.isFile());
+        expect(rootFiles.length).toBeLessThanOrEqual(20);
+    });
 });

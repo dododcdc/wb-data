@@ -1,0 +1,409 @@
+import { AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import { describe, expect, it } from 'vitest';
+
+import type { OfflineFlowDocument } from '../../../api/offline';
+import {
+    buildSaveFlowDocumentRequest,
+    findFirstNodeWithInvalidTransferEditorDraft,
+    hasPendingNodeEditorDraftChanges,
+    isSaveConflictError,
+    prepareFlowSessionForSave,
+} from './flowSaveTransaction';
+import { createFlowDraftSession, flushNodeEditorDraft, type PendingNodeEditorDraft } from './flowDraftController';
+
+function makeFlowDocument(overrides?: Partial<OfflineFlowDocument>): OfflineFlowDocument {
+    return {
+        groupId: 1,
+        path: '_flows/jack/demo/flow.yaml',
+        flowId: 'demo',
+        namespace: 'jack.demo',
+        documentHash: 'server-hash',
+        documentUpdatedAt: 10,
+        runtimeTimezone: 'Asia/Shanghai',
+        stages: [
+            {
+                stageId: 'main',
+                parallel: false,
+                nodes: [
+                    {
+                        taskId: 'shell_node_1',
+                        kind: 'SHELL',
+                        scriptPath: 'scripts/jack/demo/shell_node_1.sh',
+                        scriptContent: 'server content',
+                    },
+                ],
+            },
+        ],
+        edges: [{ source: 'shell_node_1', target: 'shell_node_2' }],
+        layout: {
+            shell_node_1: { x: 0, y: 0 },
+        },
+        schedule: {
+            cron: '0 2 * * *',
+            timezone: 'Asia/Shanghai',
+            enabled: true,
+            period: 'DAILY',
+        },
+        ...overrides,
+    };
+}
+
+function makeSession(document = makeFlowDocument()) {
+    return createFlowDraftSession({
+        path: '_flows/jack/demo/flow.yaml',
+        serverDocument: document,
+        snapshot: null,
+    });
+}
+
+describe('flowSaveTransaction', () => {
+    it('builds a save request from the draft while preserving base document version fields', () => {
+        const session = makeSession(makeFlowDocument({
+            documentHash: 'base-hash',
+            documentUpdatedAt: 20,
+            stages: [
+                {
+                    stageId: 'main',
+                    parallel: false,
+                    nodes: [
+                        {
+                            taskId: 'sql_node_1',
+                            kind: 'SQL',
+                            scriptPath: 'scripts/jack/demo/sql_node_1.sql',
+                            scriptContent: 'select 1',
+                            dataSourceId: 42,
+                            dataSourceType: 'MYSQL',
+                        },
+                    ],
+                },
+            ],
+        }));
+
+        const request = buildSaveFlowDocumentRequest(1, session);
+
+        expect(request).toEqual({
+            groupId: 1,
+            path: '_flows/jack/demo/flow.yaml',
+            documentHash: 'base-hash',
+            documentUpdatedAt: 20,
+            stages: [
+                {
+                    stageId: 'main',
+                    nodes: [
+                        {
+                            taskId: 'sql_node_1',
+                            kind: 'SQL',
+                            scriptPath: 'scripts/jack/demo/sql_node_1.sql',
+                            scriptContent: 'select 1',
+                            dataSourceId: 42,
+                            dataSourceType: 'MYSQL',
+                        },
+                    ],
+                },
+            ],
+            edges: [{ source: 'shell_node_1', target: 'shell_node_2' }],
+            layout: {
+                shell_node_1: { x: 0, y: 0 },
+            },
+            schedule: {
+                cron: '0 2 * * *',
+                timezone: 'Asia/Shanghai',
+                enabled: true,
+                period: 'DAILY',
+            },
+            runtimeTimezone: 'Asia/Shanghai',
+        });
+    });
+
+    it('saves dependency settings with canvas edits using the base version', () => {
+        const session = makeSession();
+        session.workingDraft.stages[0].nodes[0].scriptContent = 'draft script';
+        session.workingDraft.dependencyConfig = {
+            dependencies: [{ groupId: 2, flowId: 'upstream' }],
+            failurePolicy: 'PAUSE',
+            crossGroupDependency: 'DENY',
+        };
+        const request = buildSaveFlowDocumentRequest(1, session);
+        expect(request.dependencyConfig).toEqual(session.workingDraft.dependencyConfig);
+        expect(request.stages[0].nodes[0].scriptContent).toBe('draft script');
+        expect(request.documentHash).toBe('server-hash');
+    });
+
+    it('does not offer version overwrite for dependency business conflicts', () => {
+        const error = new AxiosError('存在下游任务依赖');
+        error.response = { status: 422, statusText: 'Unprocessable Entity', data: {}, headers: {}, config: {} as InternalAxiosRequestConfig };
+        expect(isSaveConflictError(error)).toBe(false);
+    });
+
+    it('rejects saving when the Flow runtime timezone is missing', () => {
+        const session = makeSession(makeFlowDocument({ runtimeTimezone: null }));
+
+        expect(() => buildSaveFlowDocumentRequest(1, session))
+            .toThrow('任务运行时区不能为空');
+    });
+
+    it('serializes a newly staged parameter group binding', () => {
+        const session = makeSession();
+        session.workingDraft.parameterBinding = {
+            parameterGroupId: 8,
+            code: 'daily_common',
+            name: '日常公共参数',
+            boundVersion: 3,
+            currentVersion: 3,
+            status: 'CURRENT',
+            definitions: [],
+        };
+
+        expect(buildSaveFlowDocumentRequest(1, session).parameterBinding).toEqual({
+            parameterGroupId: 8,
+            expectedVersion: 3,
+        });
+    });
+
+    it('serializes an explicit unbind while omitting an unchanged binding', () => {
+        const boundDocument = makeFlowDocument({
+            parameterBinding: {
+                parameterGroupId: 8,
+                code: 'daily_common',
+                name: '日常公共参数',
+                boundVersion: 2,
+                currentVersion: 3,
+                status: 'OUTDATED',
+                definitions: [],
+            },
+        });
+        const unchanged = makeSession(boundDocument);
+        const unbound = makeSession(boundDocument);
+        unbound.workingDraft.parameterBinding = null;
+
+        expect(buildSaveFlowDocumentRequest(1, unchanged)).not.toHaveProperty('parameterBinding');
+        expect(buildSaveFlowDocumentRequest(1, unbound).parameterBinding).toEqual({});
+    });
+
+    it('preserves transfer configuration when serializing a transfer node', () => {
+        const transfer = {
+            source: {
+                dataSourceId: 11,
+                dataSourceType: 'MYSQL' as const,
+                table: 'orders',
+            },
+            target: {
+                dataSourceId: 12,
+                dataSourceType: 'HIVE' as const,
+                table: 'dwd_orders',
+                writeMode: 'overwrite_partition' as const,
+            },
+            fieldMappings: [
+                { target: 'order_id', kind: 'source_field' as const, source: 'id' },
+            ],
+            partitions: [
+                { target: 'dt', kind: 'static_value' as const, value: '2026-07-19' },
+            ],
+        };
+        const session = makeSession(makeFlowDocument({
+            stages: [{
+                stageId: 'main',
+                parallel: false,
+                nodes: [{ taskId: 'transfer_orders', kind: 'TRANSFER', transfer }],
+            }],
+        }));
+
+        const request = buildSaveFlowDocumentRequest(1, session);
+
+        expect(request.stages[0].nodes[0]).toMatchObject({
+            taskId: 'transfer_orders',
+            kind: 'TRANSFER',
+            transfer,
+        });
+    });
+
+    it('omits local transfer editor draft fields from the save request', () => {
+        const transfer = {
+            source: { dataSourceId: 11, dataSourceType: 'MYSQL' as const, table: 'orders' },
+            target: { dataSourceId: 12, dataSourceType: 'HIVE' as const, table: 'dwd_orders', writeMode: 'append' as const },
+            fieldMappings: [{ target: 'id', kind: 'source_field' as const, source: 'id' }],
+            partitions: [],
+        };
+        const transferDraft = {
+            ...transfer,
+            target: { ...transfer.target, table: 'dwd_payments' },
+            fieldMappings: [],
+        };
+        const session = makeSession(makeFlowDocument({
+            stages: [{
+                stageId: 'main',
+                parallel: false,
+                nodes: [{
+                    taskId: 'transfer_orders',
+                    kind: 'TRANSFER',
+                    transfer,
+                    transferDraft,
+                    transferDraftValid: false,
+                }],
+            }],
+        }));
+
+        const request = buildSaveFlowDocumentRequest(1, session);
+
+        expect(request.stages[0].nodes[0]).toEqual({
+            taskId: 'transfer_orders',
+            kind: 'TRANSFER',
+            transfer,
+        });
+        expect(request.stages[0].nodes[0]).not.toHaveProperty('transferDraft');
+        expect(request.stages[0].nodes[0]).not.toHaveProperty('transferDraftValid');
+    });
+
+    it('detects invalid local transfer editor drafts before save', () => {
+        const session = makeSession(makeFlowDocument({
+            stages: [{
+                stageId: 'main',
+                parallel: false,
+                nodes: [{ taskId: 'transfer_orders', kind: 'TRANSFER' }],
+            }],
+        }));
+        const nextSession = flushNodeEditorDraft(session, {
+            taskId: 'transfer_orders',
+            scriptContent: '',
+            transferDraft: {
+                source: { dataSourceId: 11, dataSourceType: 'MYSQL', table: 'orders' },
+                target: { dataSourceId: 12, dataSourceType: 'HIVE', table: 'dwd_orders', writeMode: 'append' },
+                fieldMappings: [],
+                partitions: [],
+            },
+            transferDraftValid: false,
+        });
+
+        expect(findFirstNodeWithInvalidTransferEditorDraft(nextSession.workingDraft)).toMatchObject({
+            taskId: 'transfer_orders',
+            kind: 'TRANSFER',
+        });
+        expect(buildSaveFlowDocumentRequest(1, nextSession).stages[0].nodes[0]).not.toHaveProperty('transferDraft');
+    });
+
+    it('detects unconfigured transfer nodes with neither transfer nor draft', () => {
+        const session = makeSession(makeFlowDocument({
+            stages: [{
+                stageId: 'main',
+                parallel: false,
+                nodes: [{ taskId: 'transfer_new', kind: 'TRANSFER' }],
+            }],
+        }));
+
+        expect(findFirstNodeWithInvalidTransferEditorDraft(session.workingDraft)).toMatchObject({
+            taskId: 'transfer_new',
+            kind: 'TRANSFER',
+        });
+    });
+
+    it('prepares a save session by flushing pending editor draft content', () => {
+        const pendingDraft: PendingNodeEditorDraft = {
+            taskId: 'shell_node_1',
+            scriptContent: 'edited content',
+            dataSourceId: 7,
+            dataSourceType: 'POSTGRESQL',
+        };
+
+        const prepared = prepareFlowSessionForSave({
+            session: makeSession(),
+            pendingDraft,
+        });
+
+        expect(prepared.nodeOverride).toEqual({
+            taskId: 'shell_node_1',
+            content: 'edited content',
+            dataSourceId: 7,
+            dataSourceType: 'POSTGRESQL',
+        });
+        expect(prepared.sessionForSave.workingDraft.stages[0].nodes[0]).toEqual(expect.objectContaining({
+            scriptContent: 'edited content',
+            dataSourceId: 7,
+            dataSourceType: 'POSTGRESQL',
+        }));
+    });
+
+    it('detects pending editor draft changes against the current draft document', () => {
+        const session = makeSession();
+
+        expect(hasPendingNodeEditorDraftChanges(session, {
+            taskId: 'shell_node_1',
+            scriptContent: 'server content',
+        })).toBe(false);
+        expect(hasPendingNodeEditorDraftChanges(session, {
+            taskId: 'shell_node_1',
+            scriptContent: 'edited content',
+        })).toBe(true);
+    });
+
+    it('flushes, persists, and detects clearing of hiveConf on HIVE_SQL nodes', () => {
+        const session = makeSession();
+        session.baseDocument.stages[0].nodes.push({
+            taskId: 'hive_node_1',
+            kind: 'HIVE_SQL',
+            scriptPath: 'scripts/demo/hive_node_1.sql',
+            scriptContent: 'SELECT 1;',
+            dataSourceId: 2,
+            dataSourceType: 'HIVE',
+            hiveConf: { 'hive.exec.dynamic.partition': 'true' },
+        });
+        session.workingDraft.stages[0].nodes.push({
+            taskId: 'hive_node_1',
+            kind: 'HIVE_SQL',
+            scriptPath: 'scripts/demo/hive_node_1.sql',
+            scriptContent: 'SELECT 1;',
+            dataSourceId: 2,
+            dataSourceType: 'HIVE',
+            hiveConf: { 'hive.exec.dynamic.partition': 'true' },
+        });
+
+        expect(hasPendingNodeEditorDraftChanges(session, {
+            taskId: 'hive_node_1',
+            scriptContent: 'SELECT 1;',
+            dataSourceId: 2,
+            dataSourceType: 'HIVE',
+            hiveConf: { 'hive.exec.dynamic.partition': 'true' },
+        })).toBe(false);
+
+        expect(hasPendingNodeEditorDraftChanges(session, {
+            taskId: 'hive_node_1',
+            scriptContent: 'SELECT 1;',
+            dataSourceId: 2,
+            dataSourceType: 'HIVE',
+            hiveConf: undefined,
+        })).toBe(true);
+
+        const updatedSession = flushNodeEditorDraft(session, {
+            taskId: 'hive_node_1',
+            scriptContent: 'SELECT 1;',
+            dataSourceId: 2,
+            dataSourceType: 'HIVE',
+            hiveConf: { 'hive.exec.dynamic.partition.mode': 'nonstrict' },
+        });
+        const request = buildSaveFlowDocumentRequest(1, updatedSession);
+        expect(request.stages[0].nodes[1].hiveConf).toEqual({
+            'hive.exec.dynamic.partition.mode': 'nonstrict',
+        });
+
+        const clearedSession = flushNodeEditorDraft(updatedSession, {
+            taskId: 'hive_node_1',
+            scriptContent: 'SELECT 1;',
+            dataSourceId: 2,
+            dataSourceType: 'HIVE',
+            hiveConf: undefined,
+        });
+        expect(clearedSession.workingDraft.stages[0].nodes[1].hiveConf).toBeUndefined();
+    });
+
+    it('recognizes HTTP 409 save conflicts', () => {
+        const conflict = new AxiosError('conflict', undefined, undefined, undefined, {
+            data: {},
+            status: 409,
+            statusText: 'Conflict',
+            headers: {},
+            config: { headers: {} } as InternalAxiosRequestConfig,
+        });
+
+        expect(isSaveConflictError(conflict)).toBe(true);
+        expect(isSaveConflictError(new Error('other'))).toBe(false);
+    });
+});

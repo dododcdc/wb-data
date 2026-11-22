@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import type { FlowDraftSession } from './flowDraftController';
-import type { OpenFlowDocumentOptions } from './useFlowEditingSession';
+import type { FlowDraftSession } from './draft/flowDraftController';
+import type { OpenFlowDocumentOptions } from './draft/useFlowEditingSession';
 
 interface GroupLifecycleParams {
     groupId: number | null;
