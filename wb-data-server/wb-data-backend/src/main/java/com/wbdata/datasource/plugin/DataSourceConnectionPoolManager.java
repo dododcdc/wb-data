@@ -8,6 +8,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.sql.Connection;
@@ -16,6 +17,8 @@ import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
+import java.util.List;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,9 +30,9 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>架构:
  * <pre>
- *   Caffeine Cache&lt;dsId, HikariDataSource&gt;
- *     dsId=1 → HikariCP 池 [conn1, conn2, ...]
- *     dsId=2 → HikariCP 池 [conn1, ...]
+ *   Caffeine Cache&lt;(dsId, jdbcUrl), HikariDataSource&gt;
+ *     (dsId=1, jdbc:.../db1) → HikariCP 池 [conn1, conn2, ...]
+ *     (dsId=1, jdbc:.../db2) → HikariCP 池 [conn1, ...]
  *     (30 分钟空闲 → 自动关闭和淘汰)
  * </pre>
  */
@@ -45,15 +48,30 @@ public class DataSourceConnectionPoolManager {
     /** 空闲多少分钟后淘汰连接池 */
     private static final long EXPIRE_AFTER_ACCESS_MINUTES = 30;
 
-    private final Cache<Long, HikariDataSource> poolCache;
+    private final PoolFactory poolFactory;
+    private final Cache<PoolKey, HikariDataSource> poolCache;
 
+    record PoolKey(Long dataSourceId, String jdbcUrl) {
+    }
+
+    @FunctionalInterface
+    interface PoolFactory {
+        HikariDataSource create(DataSource ds, String jdbcUrl, String driverClassName, ClassLoader driverClassLoader);
+    }
+
+    @Autowired
     public DataSourceConnectionPoolManager() {
+        this(null);
+    }
+
+    DataSourceConnectionPoolManager(PoolFactory poolFactory) {
+        this.poolFactory = poolFactory != null ? poolFactory : this::createPool;
         this.poolCache = Caffeine.newBuilder()
                 .maximumSize(MAX_POOL_COUNT)
                 .expireAfterAccess(EXPIRE_AFTER_ACCESS_MINUTES, TimeUnit.MINUTES)
                 .removalListener((key, pool, cause) -> {
                     if (pool != null && !((HikariDataSource) pool).isClosed()) {
-                        log.info("关闭数据源连接池, dataSourceId={}, 原因={}", key, cause);
+                        log.info("关闭数据源连接池, poolKey={}, 原因={}", key, cause);
                         ((HikariDataSource) pool).close();
                     }
                 })
@@ -71,21 +89,30 @@ public class DataSourceConnectionPoolManager {
      */
     public Connection getConnection(DataSource ds, String jdbcUrl, String driverClassName, ClassLoader driverClassLoader)
             throws SQLException {
-        HikariDataSource pool = poolCache.get(ds.getId(),
-                id -> createPool(ds, jdbcUrl, driverClassName, driverClassLoader));
+        PoolKey poolKey = new PoolKey(ds.getId(), jdbcUrl);
+        HikariDataSource pool = poolCache.get(poolKey,
+                key -> poolFactory.create(ds, jdbcUrl, driverClassName, driverClassLoader));
         return pool.getConnection();
     }
 
     /**
-     * 使给定数据源的连接池失效并关闭
+     * 使给定数据源的所有连接池（包括不同目标库对应的池）失效并关闭
      * 应在数据源更新或删除时调用
      */
     public void invalidate(Long dataSourceId) {
-        HikariDataSource pool = poolCache.getIfPresent(dataSourceId);
-        poolCache.invalidate(dataSourceId);
-        if (pool != null && !pool.isClosed()) {
-            log.info("使数据源连接池失效, dataSourceId={}", dataSourceId);
-            pool.close();
+        if (dataSourceId == null) {
+            return;
+        }
+        List<PoolKey> matchingKeys = poolCache.asMap().keySet().stream()
+                .filter(key -> Objects.equals(key.dataSourceId(), dataSourceId))
+                .toList();
+        for (PoolKey key : matchingKeys) {
+            HikariDataSource pool = poolCache.getIfPresent(key);
+            poolCache.invalidate(key);
+            if (pool != null && !pool.isClosed()) {
+                log.info("使数据源连接池失效, dataSourceId={}", dataSourceId);
+                pool.close();
+            }
         }
     }
 
@@ -110,7 +137,7 @@ public class DataSourceConnectionPoolManager {
         config.setConnectionTimeout(10_000);     // 10 秒
         config.setIdleTimeout(600_000);          // 10 分钟
         config.setMaxLifetime(1_800_000);        // 30 分钟
-        config.setPoolName("wb-pool-ds-" + ds.getId());
+        config.setPoolName("wb-pool-ds-" + ds.getId() + "-" + Integer.toHexString(jdbcUrl.hashCode()));
         config.setAutoCommit(true);
         return new HikariDataSource(config);
     }
