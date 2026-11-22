@@ -20,7 +20,7 @@ import type { FeedbackPayload } from '../../../hooks/useOperationFeedback';
 interface UseOfflineRepositoryWorkflowParams {
     groupId: number | null;
     canManageBranches: boolean;
-    hasUnsavedFlowDraft: boolean;
+    hasUnsavedFlowDraft?: boolean;
     showFeedback: (payload: FeedbackPayload) => void;
 }
 
@@ -86,7 +86,7 @@ function readDirtyWorkingTreeDetails(error: unknown): DirtyWorkingTreeResponse |
 export function useOfflineRepositoryWorkflow({
     groupId,
     canManageBranches,
-    hasUnsavedFlowDraft,
+    hasUnsavedFlowDraft = false,
     showFeedback,
 }: UseOfflineRepositoryWorkflowParams) {
     const [repoStatus, setRepoStatus] = useState<OfflineRepoStatus | null>(null);
