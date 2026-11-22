@@ -23,6 +23,9 @@ server:
   port: 8080
 
 wbdata:
+  security:
+    secret-key: ${WB_DATA_SECRET_KEY:${WB_DATA_GIT_TOKEN_KEY:}}
+    legacy-git-token-key: ${WB_DATA_GIT_TOKEN_KEY:}
   cors:
     allowed-origins: ${WB_DATA_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   plugins:

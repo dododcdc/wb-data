@@ -1,6 +1,7 @@
 package com.wbdata.git.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.wbdata.common.crypto.SecretCryptoService;
 import com.wbdata.git.entity.WbGitConfig;
 import com.wbdata.git.mapper.WbGitConfigMapper;
 import com.wbdata.git.service.provider.GitHubRemoteProvider;
@@ -11,9 +12,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -24,8 +22,7 @@ public class GitConfigService {
     private final WbGitConfigMapper gitConfigMapper;
     private final GitHubRemoteProvider githubProvider;
     private final GitLabRemoteProvider gitlabProvider;
-
-    private static final String TOKEN_KEY_ENV = "WB_DATA_GIT_TOKEN_KEY";
+    private final SecretCryptoService secretCryptoService;
 
     /** 内存缓存当前 provider 实例，按 groupId 区分 */
     private final Map<Long, GitRemoteProvider> currentProviderCache = new ConcurrentHashMap<>();
@@ -67,6 +64,10 @@ public class GitConfigService {
         return config;
     }
 
+    public WbGitConfig getDecryptedConfigIfConfigured(Long groupId) {
+        return loadConfig(groupId);
+    }
+
     /**
      * 获取当前配置（token 脱敏返回）
      */
@@ -93,24 +94,23 @@ public class GitConfigService {
     }
 
     /**
-     * 保存配置，token 为空时保留原值
+     * 保存配置，token 为空时保留原值（并将历史弱加密 token 自动升级为 enc:v1:）
      */
     public void saveConfig(Long groupId, String provider, String username, String token, String baseUrl, Long operatorId) {
-        // 先查加密态 token（loadConfig 会把它覆盖为解密值，所以先存起来）
-        WbGitConfig raw = gitConfigMapper.selectOne(new LambdaQueryWrapper<WbGitConfig>()
+        WbGitConfig existing = gitConfigMapper.selectOne(new LambdaQueryWrapper<WbGitConfig>()
                 .eq(WbGitConfig::getProjectGroupId, groupId));
-        String encryptedToken = raw != null ? raw.getToken() : null;
 
-        WbGitConfig existing = loadConfig(groupId);
         WbGitConfig config = new WbGitConfig();
         config.setProjectGroupId(groupId);
         config.setProvider(provider);
         config.setUsername(username);
         if (token != null && !token.isBlank()) {
-            config.setToken(encryptToken(token));
-        } else if (encryptedToken != null) {
-            // 保留原加密 token
-            config.setToken(encryptedToken);
+            config.setToken(secretCryptoService.encrypt(token));
+        } else if (existing != null && existing.getToken() != null && !existing.getToken().isBlank()) {
+            String existingToken = existing.getToken();
+            config.setToken(secretCryptoService.isEncrypted(existingToken)
+                    ? existingToken
+                    : secretCryptoService.encrypt(secretCryptoService.decryptGitToken(existingToken)));
         }
         config.setBaseUrl(normalizeBaseUrl(provider, baseUrl));
         config.setUpdatedBy(operatorId);
@@ -149,7 +149,7 @@ public class GitConfigService {
         WbGitConfig config = gitConfigMapper.selectOne(new LambdaQueryWrapper<WbGitConfig>()
                 .eq(WbGitConfig::getProjectGroupId, groupId));
         if (config != null && config.getToken() != null) {
-            config.setToken(decryptToken(config.getToken()));
+            config.setToken(secretCryptoService.decryptGitToken(config.getToken()));
         }
         return config;
     }
@@ -194,51 +194,6 @@ public class GitConfigService {
             case "gitlab" -> "https://gitlab.com";
             default -> "";
         };
-    }
-
-    /** 按 WB_DATA_GIT_TOKEN_KEY 做 SHA-256 异或 + Base64（未配置密钥时仅 Base64） */
-    private String encryptToken(String token) {
-        return encryptToken(token, System.getenv(TOKEN_KEY_ENV));
-    }
-
-    static String encryptToken(String token, String key) {
-        try {
-            if (key == null || key.isBlank()) {
-                return Base64.getEncoder().encodeToString(token.getBytes(StandardCharsets.UTF_8));
-            }
-            MessageDigest sha = MessageDigest.getInstance("SHA-256");
-            byte[] keyBytes = sha.digest(key.getBytes(StandardCharsets.UTF_8));
-            byte[] input = token.getBytes(StandardCharsets.UTF_8);
-            byte[] cipher = new byte[input.length];
-            for (int i = 0; i < input.length; i++) {
-                cipher[i] = (byte) (input[i] ^ keyBytes[i % keyBytes.length]);
-            }
-            return Base64.getEncoder().encodeToString(cipher);
-        } catch (Exception ex) {
-            throw new RuntimeException("加密 token 失败", ex);
-        }
-    }
-
-    private String decryptToken(String encrypted) {
-        return decryptToken(encrypted, System.getenv(TOKEN_KEY_ENV));
-    }
-
-    static String decryptToken(String encrypted, String key) {
-        try {
-            if (key == null || key.isBlank()) {
-                return new String(Base64.getDecoder().decode(encrypted), StandardCharsets.UTF_8);
-            }
-            MessageDigest sha = MessageDigest.getInstance("SHA-256");
-            byte[] keyBytes = sha.digest(key.getBytes(StandardCharsets.UTF_8));
-            byte[] cipher = Base64.getDecoder().decode(encrypted);
-            byte[] plain = new byte[cipher.length];
-            for (int i = 0; i < cipher.length; i++) {
-                plain[i] = (byte) (cipher[i] ^ keyBytes[i % keyBytes.length]);
-            }
-            return new String(plain, StandardCharsets.UTF_8);
-        } catch (Exception ex) {
-            throw new RuntimeException("解密 token 失败", ex);
-        }
     }
 
     private String maskToken(String token) {

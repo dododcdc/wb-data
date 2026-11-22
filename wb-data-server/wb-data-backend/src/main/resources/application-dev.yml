@@ -6,6 +6,9 @@ spring:
     password: ${DB_PASSWORD:1111}
 
 wbdata:
+  security:
+    # 仅限本地 dev profile 使用；生产部署务必通过 WB_DATA_SECRET_KEY 显式注入强密钥
+    secret-key: ${WB_DATA_SECRET_KEY:${WB_DATA_GIT_TOKEN_KEY:wb-data-local-dev-secret-key-do-not-use-in-prod}}
   plugins:
     dir: ${WB_DATA_PLUGIN_DIR:${user.dir}/../../plugins}
   offline:
