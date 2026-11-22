@@ -28,6 +28,14 @@ class AuthFilterTest {
         );
 
         assertThat(filter.shouldNotFilter(request)).isTrue();
+        assertThat(filter.shouldNotFilter(new MockHttpServletRequest(
+                "POST",
+                "/api/v1/internal/offline/credentials/datasource"
+        ))).isTrue();
+        assertThat(filter.shouldNotFilter(new MockHttpServletRequest(
+                "POST",
+                "/api/v1/internal/offline/credentials/git"
+        ))).isTrue();
     }
 
     @Test
