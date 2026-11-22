@@ -234,7 +234,6 @@ describe('OperationsInstancePage', () => {
 
         expect(await screen.findByText('daily_policy')).toBeTruthy();
         expect(screen.getByText('feature/policy-review')).toBeTruthy();
-        expect(screen.getByText('2026-06-07')).toBeTruthy();
         expect(screen.getByText('0 2 * * *')).toBeTruthy();
         expect(screen.getByText('Asia/Shanghai')).toBeTruthy();
         expect(screen.getByText('已启用')).toBeTruthy();
@@ -600,15 +599,14 @@ describe('OperationsInstancePage', () => {
         expect(showSuccess).toHaveBeenCalledWith('已发送停止请求');
     });
 
-    it('renders integrated period stepper, single-node logs without repeated taskId column, and quiet zero-count level pills', async () => {
+    it('omits the period stepper, hides repeated taskId columns in single-node logs, and quiets zero-count level pills', async () => {
         renderPage();
 
         expect(await screen.findByText('load failed on row 42')).toBeTruthy();
 
-        const periodStepper = screen.getByRole('group', { name: '业务期切换' });
-        expect(within(periodStepper).getByRole('button', { name: '上一期' })).toBeTruthy();
-        expect(within(periodStepper).getByText('2026-06-07')).toBeTruthy();
-        expect(within(periodStepper).getByRole('button', { name: '下一期' })).toBeTruthy();
+        expect(screen.queryByRole('group', { name: '业务期切换' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '上一期' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '下一期' })).toBeNull();
 
         expect(document.querySelector('.log-viewer--no-task')).toBeTruthy();
         expect(document.querySelector('.log-line-task')).toBeNull();

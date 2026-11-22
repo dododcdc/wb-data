@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     ArrowLeft,
-    ChevronLeft,
     ChevronRight,
     GitBranch,
     Info,
@@ -302,14 +301,6 @@ export default function OperationsInstancePage() {
         }
     };
 
-    const navigatePeriod = (scheduleKey: string | null) => {
-        if (!scheduleKey) return;
-        const next = new URLSearchParams(searchParams);
-        next.set('period', scheduleKey);
-        next.delete('execution');
-        setSearchParams(next, { replace: true });
-    };
-
     const drillToUpstream = (upstream: OperationsInstanceUpstreamItem) => {
         if (!upstream.accessible || groupId == null || !branch || !flowId || !period) return;
         setTrail((previous) => [...previous, { group: groupId, branch, flowId, period }]);
@@ -470,31 +461,6 @@ export default function OperationsInstancePage() {
                 </div>
 
                 <div className="operations-execution-detail-actions">
-                    <div className="operations-period-stepper" role="group" aria-label="业务期切换">
-                        <button
-                            type="button"
-                            className="operations-period-stepper__btn"
-                            onClick={() => navigatePeriod(diagnosis.prevScheduleKey)}
-                            disabled={!diagnosis.prevScheduleKey}
-                            aria-label="上一期"
-                            title="上一期"
-                        >
-                            <ChevronLeft size={15} />
-                        </button>
-                        <span className="operations-period-stepper__value" title="当前业务期">
-                            {diagnosis.scheduleKey ?? '—'}
-                        </span>
-                        <button
-                            type="button"
-                            className="operations-period-stepper__btn"
-                            onClick={() => navigatePeriod(diagnosis.nextScheduleKey)}
-                            disabled={!diagnosis.nextScheduleKey}
-                            aria-label="下一期"
-                            title="下一期"
-                        >
-                            <ChevronRight size={15} />
-                        </button>
-                    </div>
                     <button
                         type="button"
                         className="operations-instance-upstream-button"
@@ -881,7 +847,7 @@ export default function OperationsInstancePage() {
                         onClick={(event) => event.stopPropagation()}
                     >
                         <header className="operations-instance-drawer-header">
-                            <h2>上游实例 · {diagnosis.scheduleKey}</h2>
+                            <h2>上游实例</h2>
                             <button
                                 type="button"
                                 className="operations-execution-icon-button"
