@@ -22,7 +22,7 @@ import {
     DialogTitle,
 } from '../../components/ui/dialog';
 import { getErrorMessage } from '../../utils/error';
-import { TIMEZONES } from '../offline/ScheduleUtils';
+import { TIMEZONES } from '@/lib/timezones';
 import { ParameterPreviewGrid } from './ParameterPreviewGrid';
 
 interface ParameterPreviewDialogProps {

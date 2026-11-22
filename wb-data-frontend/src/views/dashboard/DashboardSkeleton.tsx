@@ -1,4 +1,4 @@
-import '../core/RouteSkeletons.css';
+import '@/components/loading/RouteSkeletons.css';
 
 export default function DashboardSkeleton() {
     return (

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ArrowUpRight, GitCompare, LoaderCircle, RotateCcw, X } from 'lucide-react';
-import '../core/RouteSkeletons.css';
+import '@/components/loading/RouteSkeletons.css';
 import { Button } from '../../components/ui/button';
 import {
     Dialog,

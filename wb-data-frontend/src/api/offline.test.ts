@@ -13,10 +13,12 @@ vi.mock('../utils/request', () => ({
 }));
 
 import {
+    buildExecutionListSearchParams,
     createBranch,
     createOfflineDocumentDebugExecution,
     getOfflineRepoStatus,
     listBranches,
+    listOfflineExecutions,
     mergeBranch,
     pushOfflineCurrentFlow,
     pushOfflineRepo,
@@ -223,6 +225,27 @@ describe('offline API group-scoped routes', () => {
                 timeout: 90_000,
                 headers: { 'Content-Type': 'application/json' },
             },
+        );
+    });
+
+    it('builds execution search params and list URL with optional requestedBy filter', async () => {
+        expect(buildExecutionListSearchParams('_flows/demo/flow.yaml').toString()).toBe(
+            'flowPath=_flows%2Fdemo%2Fflow.yaml',
+        );
+        expect(buildExecutionListSearchParams('_flows/demo/flow.yaml', 42).toString()).toBe(
+            'flowPath=_flows%2Fdemo%2Fflow.yaml&requestedBy=42',
+        );
+
+        await listOfflineExecutions(4, '_flows/demo/flow.yaml');
+        await listOfflineExecutions(4, '_flows/demo/flow.yaml', 42);
+
+        expect(requestMock.get).toHaveBeenNthCalledWith(
+            1,
+            '/api/v1/groups/4/offline/executions?flowPath=_flows%2Fdemo%2Fflow.yaml',
+        );
+        expect(requestMock.get).toHaveBeenNthCalledWith(
+            2,
+            '/api/v1/groups/4/offline/executions?flowPath=_flows%2Fdemo%2Fflow.yaml&requestedBy=42',
         );
     });
 });

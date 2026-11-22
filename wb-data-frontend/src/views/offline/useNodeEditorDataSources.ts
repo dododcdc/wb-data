@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getDataSourceById, getDataSourcePage, type DataSource, type PageResult } from '../../api/datasource';
 import type { OfflineFlowNodeKind } from '../../api/offline';
-import { DS_PAGE_SIZE } from '../query/queryConstants';
+import { DATASOURCE_SELECTOR_PAGE_SIZE as DS_PAGE_SIZE } from '@/constants/datasource';
 import { getAllowedDataSourceTypes, isSqlEditorNodeKind } from './offlineNodeKinds';
 
 export interface NodeEditorDataSourceOption {

@@ -1,6 +1,6 @@
 import type * as Monaco from 'monaco-editor';
 import { SqlEditor } from '../../../components/sql-editor/SqlEditor';
-import '../../core/RouteSkeletons.css';
+import '@/components/loading/RouteSkeletons.css';
 
 export interface QueryEditorProps {
     sql: string;

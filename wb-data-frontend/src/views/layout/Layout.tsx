@@ -9,7 +9,7 @@ import { logout } from '../../api/auth';
 import { selectAuthGroup } from '../../hooks/useAuthContext';
 import { getDataSourcePage } from '../../api/datasource';
 import { TopProgressBar } from '../../components/loading/TopProgressBar';
-import { buildDataSourcePageQueryKey, DEFAULT_PAGE_SIZE } from '../datasources/config';
+import { buildDataSourcePageQueryKey, DATASOURCE_LIST_DEFAULT_PAGE_SIZE as DEFAULT_PAGE_SIZE } from '@/constants/datasource';
 import {
     Select,
     SelectContent,

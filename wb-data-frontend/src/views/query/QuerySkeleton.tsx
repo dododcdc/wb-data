@@ -1,4 +1,4 @@
-import '../core/RouteSkeletons.css';
+import '@/components/loading/RouteSkeletons.css';
 import './Query.css';
 
 export default function QuerySkeleton() {

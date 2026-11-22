@@ -1,10 +1,12 @@
+import { DATASOURCE_SELECTOR_PAGE_SIZE } from '@/constants/datasource';
+
 /**
  * Query 页面常量
  */
 
 // ==================== 分页和限制 ====================
 
-export const DS_PAGE_SIZE = 50;
+export const DS_PAGE_SIZE = DATASOURCE_SELECTOR_PAGE_SIZE;
 export const TABLE_PAGE_SIZE = 200;
 
 // ==================== 执行配置 ====================
