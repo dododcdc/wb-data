@@ -22,3 +22,9 @@ wbdata:
       username: ${WB_DATA_KESTRA_USERNAME:admin@kestra.io}
       password: ${WB_DATA_KESTRA_PASSWORD:Admin1234!}
 
+springdoc:
+  api-docs:
+    enabled: ${WB_DATA_SWAGGER_ENABLED:true}
+  swagger-ui:
+    enabled: ${WB_DATA_SWAGGER_ENABLED:true}
+

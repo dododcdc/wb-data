@@ -55,6 +55,8 @@ wbdata:
 
 springdoc:
   api-docs:
+    enabled: ${WB_DATA_SWAGGER_ENABLED:false}
     path: /v3/api-docs
   swagger-ui:
+    enabled: ${WB_DATA_SWAGGER_ENABLED:false}
     path: /swagger-ui.html
