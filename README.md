@@ -67,6 +67,8 @@ bash scripts/prepare-plugins.sh
 
 #### 管理端与查询
 
+> `SPRING_PROFILES_ACTIVE=dev` 默认连接局域网基础设施主机 `WB_DATA_INFRA_HOST=omarchy.local`；如果用本机 Docker，启动后端与冒烟命令请附加 `WB_DATA_INFRA_HOST=localhost`。
+
 ```bash
 docker compose -f docker/docker-compose.mysql.yml up -d
 ```
@@ -87,7 +89,7 @@ npm install
 npm run dev
 ```
 
-默认地址：前端 `http://127.0.0.1:5173`，后端 `http://127.0.0.1:8080`，Swagger UI `http://127.0.0.1:8080/swagger-ui.html`。
+默认地址：前端 `http://127.0.0.1:5173`，后端 `http://127.0.0.1:8080`。Swagger UI（`http://127.0.0.1:8080/swagger-ui.html`）仅在 `dev` profile 默认开启，非 `dev` 环境默认关闭（可用 `WB_DATA_SWAGGER_ENABLED` 覆盖）。
 
 这组命令只覆盖管理端、自助查询、数据源「测试连接」。`wb_user` 已有数据时，`INIT_ADMIN_*` 不会新增或覆盖账号。
 
@@ -99,10 +101,13 @@ npm run dev
 WB_DATA_KESTRA_DB_PASSWORD=<postgres-password> \
 WB_DATA_KESTRA_USERNAME=<kestra-username> \
 WB_DATA_KESTRA_PASSWORD=<kestra-password> \
+WB_DATA_KESTRA_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
+WB_DATA_INTERNAL_TOKEN_B64="$(printf '%s' 'wb-data-local-dev-internal-token' | base64)" \
+WB_DATA_INTERNAL_BASE_URL="http://host.docker.internal:8080" \
 docker compose -f docker/docker-compose.kestra.yml up -d --build
 ```
 
-后端与 Kestra 使用同一组账号。启动后端时带上改写（`dev` 已有默认值）：
+后端与 Kestra 使用同一组账号与内部 Token（台式机远程跑 Docker 时，`WB_DATA_INTERNAL_BASE_URL` 填宿主机局域网 IP，如 `http://192.168.1.x:8080`）。Flow YAML 与 Git 同步流 YAML 不再存放明文数据源密码、JDBC URL、Git PAT 或内部 Token，而是由 Kestra 自定义插件在运行期凭 `{{ secret('WB_DATA_INTERNAL_TOKEN') }}` 回调后端实时解析。启动后端时带上改写（`dev` 已有默认值）：
 
 ```bash
 cd wb-data-server/wb-data-backend

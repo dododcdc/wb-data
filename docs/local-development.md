@@ -51,7 +51,7 @@ docker compose -f docker/docker-compose.mysql.yml up -d
 
 镜像用已有的 `mysql:8.0`，不要再拉其他 MySQL 版本。不要在宿主机再装 mysqld。
 
-不要对这个 Compose 使用 `down -v`，那会清掉 `wb_data`。重置传输测试表只重跑 `scripts/dev/init/transfer/mysql/001_schema.sql`，或再跑一次 `scripts/dev/transfer-smoke.sh`。
+不要对这个 Compose 使用 `down -v`，那会清掉 `wb_data`。重置传输测试表只重跑 `scripts/dev/init/transfer/mysql/001_schema.sql`，或再跑一次 `scripts/dev/smoke-verify.sh --prep-only`。
 
 若还有旧的本机 MySQL 数据要迁进来，用 `scripts/dev/migrate-host-mysql-to-docker.sh`，迁完后卸掉本机 MySQL。
 
@@ -72,6 +72,7 @@ dev profile 提供的本地默认值（可通过 `WB_DATA_INFRA_HOST=localhost` 
 | CORS 允许来源 | `http://localhost:5173`、`http://127.0.0.1:5173` |
 | `WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE` | `host.docker.internal`（仅 dev profile；生产主配置默认为空） |
 | `WB_DATA_TRANSFER_INTERNAL_TOKEN` | `wb-data-local-dev-internal-token`（仅 dev profile；用于 Kestra 插件 / 传输容器内部鉴权，生产主配置默认为空） |
+| Swagger UI (`WB_DATA_SWAGGER_ENABLED`) | `dev` profile 默认开启（`true`）；非 `dev` 默认关闭（`false`） |
 
 首次启动空库时创建第一个系统管理员：
 
@@ -86,10 +87,11 @@ java -jar target/wb-data-backend-0.0.1-SNAPSHOT.jar
 
 `wb_user` 已有数据时，`INIT_ADMIN_*` 不会新增或覆盖账号。不要把真实密码写入仓库文件。
 
-需要从其他来源（内网域名、Tailscale）访问前端时，用 `WB_DATA_CORS_ORIGINS` 整体替换允许来源，并连同本地地址一起提供：
+需要从其他来源（内网域名、Tailscale）访问前端时，用 `WB_DATA_CORS_ORIGINS` 整体替换后端允许来源，并在前端启动时通过 `VITE_DEV_ALLOWED_HOSTS` 允许 Vite Host（多个值逗号分隔）：
 
 ```bash
 WB_DATA_CORS_ORIGINS="http://localhost:5173,http://127.0.0.1:5173,https://your-domain.example.com"
+VITE_DEV_ALLOWED_HOSTS="your-domain.example.com"
 ```
 
 个人域名不要提交到仓库。
@@ -128,7 +130,7 @@ npm install
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-Vite 把 `/api` 代理到本地后端。访问地址 `http://127.0.0.1:5173`。
+如需通过自定义内网域名或 Tailscale Host 访问 Vite dev server，可在启动命令前传入 `VITE_DEV_ALLOWED_HOSTS=<host1>,<host2>`。Vite 把 `/api` 代理到本地后端，默认访问地址 `http://127.0.0.1:5173`。
 
 ## 可选：启动 Kestra
 
