@@ -5,7 +5,7 @@ import type { OfflineRepoTreeResponse } from '../../api/offline';
 import { TooltipProvider } from '../../components/ui/tooltip';
 import { OfflineWorkbenchSidebar } from './OfflineWorkbenchSidebar';
 
-vi.mock('./OfflineRepoTree', () => import('./offlineRepoTreeDouble'));
+vi.mock('./OfflineRepoTree', () => import('./offlineRepoTreeDouble.test-helper'));
 
 afterEach(cleanup);
 
