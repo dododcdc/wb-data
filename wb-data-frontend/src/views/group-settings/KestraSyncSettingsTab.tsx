@@ -208,7 +208,7 @@ function KestraSyncTable({ rows, canEdit, isLoading = false }: { rows: SyncBranc
         {
             key: 'autoSync',
             header: '自动同步',
-            width: 180,
+            width: 120,
             cell: (row) => {
                 const enabled = row.item?.enabled ?? false;
                 return canEdit ? (
@@ -223,14 +223,12 @@ function KestraSyncTable({ rows, canEdit, isLoading = false }: { rows: SyncBranc
                             />
                             <span className="git-sync-slider" />
                         </label>
-                        <span className="git-sync-toggle-label">
-                            {row.isToggling ? '更新中...' : enabled ? '自动同步中' : row.item ? '自动同步已暂停' : '未开启自动同步'}
-                        </span>
+                        {row.isToggling ? <span className="git-sync-toggle-label">更新中...</span> : null}
                     </div>
                 ) : (
-                    <span className={`git-sync-status-indicator ${enabled ? 'active' : 'inactive'}`}>
-                        {enabled ? '自动同步中' : row.item ? '自动同步已暂停' : '自动同步未开启'}
-                    </span>
+                    <StatusPill tone={enabled ? 'success' : 'neutral'} dot={false}>
+                        {enabled ? '已开启' : '未开启'}
+                    </StatusPill>
                 );
             },
         },
