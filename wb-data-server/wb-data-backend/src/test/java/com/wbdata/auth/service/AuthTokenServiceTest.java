@@ -7,9 +7,18 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.concurrent.atomic.AtomicReference;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -125,6 +134,43 @@ class AuthTokenServiceTest {
         AuthSession resolved = service.resolveToken(token);
         assertThat(resolved).isNotNull();
         assertThat(resolved.displayName()).isEqualTo("New name");
+    }
+
+    @Test
+    void activeSessionExpiresAtAbsoluteDeadlineWithoutExtendingTtl() {
+        AtomicReference<Instant> currentTime = new AtomicReference<>(Instant.parse("2026-11-22T00:00:00Z"));
+        Clock mutableClock = new Clock() {
+            @Override
+            public ZoneId getZone() {
+                return ZoneOffset.UTC;
+            }
+
+            @Override
+            public Clock withZone(ZoneId zone) {
+                return this;
+            }
+
+            @Override
+            public Instant instant() {
+                return currentTime.get();
+            }
+        };
+        AuthTokenService timedService = new AuthTokenService(userMapper, mutableClock);
+        WbUser user = user(1L, 0L);
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        LoginResponse login = timedService.issueToken(user);
+        assertThat(login.expiresAt()).isEqualTo(Instant.parse("2026-11-22T12:00:00Z"));
+
+        currentTime.set(currentTime.get().plus(Duration.ofHours(11)).plusSeconds(59 * 60 + 59));
+        assertThat(timedService.resolveToken(login.accessToken())).isNotNull();
+        verify(userMapper, times(1)).selectById(1L);
+
+        // Even with an access 1s earlier, reaching expiresAt rejects the token without querying DB
+        currentTime.set(Instant.parse("2026-11-22T12:00:00Z"));
+        assertThat(timedService.resolveToken(login.accessToken())).isNull();
+        assertThat(timedService.resolveToken(login.accessToken())).isNull();
+        verify(userMapper, times(1)).selectById(1L);
     }
 
     private static WbUser user(long id, long version) {

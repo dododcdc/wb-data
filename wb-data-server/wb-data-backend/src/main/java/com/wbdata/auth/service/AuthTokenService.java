@@ -6,29 +6,40 @@ import com.wbdata.auth.dto.CurrentUserResponse;
 import com.wbdata.auth.dto.LoginResponse;
 import com.wbdata.user.entity.WbUser;
 import com.wbdata.user.mapper.WbUserMapper;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class AuthTokenService {
     private static final Duration TOKEN_TTL = Duration.ofHours(12);
 
     private final WbUserMapper userMapper;
+    private final Clock clock;
     private final Cache<String, CachedSession> sessions = Caffeine.newBuilder()
-            .expireAfterAccess(TOKEN_TTL)
+            .expireAfterWrite(TOKEN_TTL)
             .maximumSize(10_000)
             .build();
 
+    @Autowired
+    public AuthTokenService(WbUserMapper userMapper) {
+        this(userMapper, Clock.systemUTC());
+    }
+
+    AuthTokenService(WbUserMapper userMapper, Clock clock) {
+        this.userMapper = userMapper;
+        this.clock = clock;
+    }
+
     public LoginResponse issueToken(WbUser user) {
         String token = UUID.randomUUID().toString();
-        Instant expiresAt = Instant.now().plus(TOKEN_TTL);
+        Instant expiresAt = Instant.now(clock).plus(TOKEN_TTL);
         AuthSession session = new AuthSession(
                 user.getId(),
                 user.getUsername(),
@@ -50,6 +61,10 @@ public class AuthTokenService {
         }
         CachedSession cached = sessions.getIfPresent(token);
         if (cached == null) {
+            return null;
+        }
+        if (!cached.session().expiresAt().isAfter(Instant.now(clock))) {
+            sessions.invalidate(token);
             return null;
         }
         WbUser user = userMapper.selectById(cached.session().id());
