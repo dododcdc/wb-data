@@ -1,11 +1,16 @@
-import { StrictMode } from 'react'
+import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import router from './router'
 import { isDynamicImportPreloadError, recoverFromVitePreloadError } from './utils/vitePreloadRecovery'
 import './index.css'
+
+const showReactQueryDevtools = import.meta.env.DEV && import.meta.env.VITE_ENABLE_QUERY_DEVTOOLS === 'true'
+
+const ReactQueryDevtools = showReactQueryDevtools
+  ? lazy(() => import('@tanstack/react-query-devtools').then((mod) => ({ default: mod.ReactQueryDevtools })))
+  : null
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,8 +23,6 @@ const queryClient = new QueryClient({
     },
   },
 })
-
-const showReactQueryDevtools = import.meta.env.DEV && import.meta.env.VITE_ENABLE_QUERY_DEVTOOLS === 'true'
 
 if (import.meta.env.DEV) {
   window.addEventListener('vite:preloadError', (event) => {
@@ -49,7 +52,11 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
-      {showReactQueryDevtools ? <ReactQueryDevtools initialIsOpen={false} /> : null}
+      {ReactQueryDevtools ? (
+        <Suspense fallback={null}>
+          <ReactQueryDevtools initialIsOpen={false} />
+        </Suspense>
+      ) : null}
     </QueryClientProvider>
   </StrictMode>,
 )
