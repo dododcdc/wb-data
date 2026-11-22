@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
-import type { FlowDraftSession } from './flowDraftController';
-import type { OpenFlowDocumentOptions } from './useFlowEditingSession';
+import type { FlowDraftSession } from './draft/flowDraftController';
+import type { OpenFlowDocumentOptions } from './draft/useFlowEditingSession';
 
 export interface UseOfflineWorkbenchNavigationParams {
     groupId: number | null;

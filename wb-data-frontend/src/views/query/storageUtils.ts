@@ -52,17 +52,18 @@ export function getStoredLastDatabaseByDataSource(): Record<string, string> {
 // ==================== Navigation Detection ====================
 
 export function shouldPreferDefaultDataSourceOnMount(): boolean {
-    if (typeof window === 'undefined') {
+    if (typeof window === 'undefined' || typeof performance === 'undefined') {
         return false;
     }
 
-    const navigationEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+    const navigationEntry = performance.getEntriesByType?.('navigation')[0] as PerformanceNavigationTiming | undefined;
     if (navigationEntry?.type) {
         return navigationEntry.type === 'reload';
     }
 
     // Fallback for older browsers.
-    return performance.navigation?.type === performance.navigation.TYPE_RELOAD;
+    return typeof performance.navigation?.type === 'number'
+        && performance.navigation.type === performance.navigation.TYPE_RELOAD;
 }
 
 // ==================== Database Utilities ====================

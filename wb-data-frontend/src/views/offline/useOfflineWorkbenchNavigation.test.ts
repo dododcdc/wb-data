@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { FlowDraftSession } from './flowDraftController';
+import type { FlowDraftSession } from './draft/flowDraftController';
 import { useOfflineWorkbenchNavigation } from './useOfflineWorkbenchNavigation';
 
 function makeDraftSession(path = '_flows/example/flow.yaml'): FlowDraftSession {

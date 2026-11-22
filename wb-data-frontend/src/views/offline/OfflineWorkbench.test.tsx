@@ -7,8 +7,8 @@ import type { OfflineRepoTreeNode } from '../../api/offline';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 import OfflineWorkbench from './OfflineWorkbench';
-import { OfflineCanvasToolbar } from './OfflineCanvasToolbar';
-import { removeRecoverySnapshot } from './recoverySnapshotStore';
+import { OfflineCanvasToolbar } from './canvas/OfflineCanvasToolbar';
+import { removeRecoverySnapshot } from './draft/recoverySnapshotStore';
 import type { OfflineFlowNodeKind } from '../../api/offline';
 
 const { authState, feedbackSpy, showSuccessSpy, showErrorSpy, flowCanvasRenderSpy } = vi.hoisted(() => ({
@@ -42,7 +42,7 @@ vi.mock('@xyflow/react', () => ({
     ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-vi.mock('./OfflineRepoTree', () => import('./offlineRepoTreeDouble.test-helper'));
+vi.mock('./repo/OfflineRepoTree', () => import('./repo/offlineRepoTreeDouble.test-helper'));
 
 vi.mock('../../components/ui/tooltip', () => ({
     TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -51,7 +51,7 @@ vi.mock('../../components/ui/tooltip', () => ({
     TooltipContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-vi.mock('./FlowCanvas', () => ({
+vi.mock('./canvas/FlowCanvas', () => ({
     default: ({
         flowDocument,
         readOnly,
@@ -161,7 +161,7 @@ vi.mock('./FlowCanvas', () => ({
     },
 }));
 
-vi.mock('./useNodeEditorDataSources', () => ({
+vi.mock('./editor/useNodeEditorDataSources', () => ({
     prefetchNodeEditorDataSources: vi.fn(() => Promise.resolve()),
     useNodeEditorDataSources: () => ({
         currentDataSourceId: undefined,

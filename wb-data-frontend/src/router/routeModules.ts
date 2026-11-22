@@ -3,7 +3,7 @@ export const loadDashboardModule = () => import('../views/dashboard/Dashboard');
 export const loadDataSourceListModule = () => import('../views/datasources/DataSourceList');
 export const loadQueryModule = () => import('../views/query/Query');
 export const loadOfflineWorkbenchModule = () => import('../views/offline/OfflineWorkbench');
-export const loadExecutionDetailPageModule = () => import('../views/offline/ExecutionDetailPage');
+export const loadExecutionDetailPageModule = () => import('../views/offline/execution/ExecutionDetailPage');
 export const loadOperationsCenterModule = () => import('../views/operations/OperationsCenter');
 export const loadOperationsInstancePageModule = () => import('../views/operations/OperationsInstancePage');
 export const loadParameterGroupPageModule = () => import('../views/parameters/ParameterGroupPage');

@@ -1,3 +1,4 @@
+import { DATASOURCE_LIST_DEFAULT_PAGE_SIZE, buildDataSourcePageQueryKey } from '@/constants/datasource';
 import { PAGE_SIZE_OPTIONS as SHARED_PAGE_SIZE_OPTIONS, parsePageSizeParam as parseSharedPageSizeParam } from '../../utils/pagination';
 
 export const STATUS_FILTER_OPTIONS = [
@@ -7,25 +8,12 @@ export const STATUS_FILTER_OPTIONS = [
 ];
 
 export const PAGE_SIZE_OPTIONS = SHARED_PAGE_SIZE_OPTIONS;
-export const DEFAULT_PAGE_SIZE = 10;
+export const DEFAULT_PAGE_SIZE = DATASOURCE_LIST_DEFAULT_PAGE_SIZE;
 
 export { parsePageParam, formatTimestamp } from '../../utils/pagination';
+export { buildDataSourcePageQueryKey };
 
 export const parsePageSizeParam = (value: string | null) => parseSharedPageSizeParam(value, PAGE_SIZE_OPTIONS);
-
-export function buildDataSourcePageQueryKey(params: {
-    currentPage: number;
-    pageSize: number;
-    keyword: string;
-    groupId?: number;
-}) {
-    return ['dataSources', {
-        currentPage: params.currentPage,
-        pageSize: params.pageSize,
-        keyword: params.keyword,
-        groupId: params.groupId,
-    }] as const;
-}
 
 export function parseTypeParam(value: string | null) {
     return value?.split(',').map((item) => item.trim()).filter(Boolean) ?? [];

@@ -9,6 +9,10 @@ import Layout from './Layout';
 import { useAuthStore } from '../../utils/auth';
 import { logout, selectGroupContext } from '../../api/auth';
 import { getOfflineRepoStatus, listBranches, switchBranch } from '../../api/offline';
+import {
+    loadGroupSettingsModule,
+    loadOfflineWorkbenchModule,
+} from '../../router/routeModules';
 
 const showFeedbackSpy = vi.fn();
 const showErrorSpy = vi.fn();
@@ -199,6 +203,43 @@ describe('Layout', () => {
         expect(selectGroupContext).toHaveBeenCalledWith(5);
         expect(useAuthStore.getState().currentGroup?.id).toBe(4);
         expect(screen.getByRole<HTMLSelectElement>('combobox', { name: '项目组' }).disabled).toBe(false);
+    });
+
+    it('swallows speculative route prefetch rejections on nav hover and focus', async () => {
+        useAuthStore.setState({ permissions: ['offline.read', 'offline.write', 'member.read'] });
+        vi.mocked(loadGroupSettingsModule).mockRejectedValueOnce(
+            new TypeError('Failed to fetch dynamically imported module: http://localhost:5173/src/views/group-settings/GroupSettingsPage.tsx'),
+        );
+        const unhandledSpy = vi.fn();
+        window.addEventListener('unhandledrejection', unhandledSpy);
+
+        try {
+            renderOfflineLayout();
+            const groupSettingsLink = await screen.findByRole('link', { name: /项目组设置/ });
+
+            fireEvent.mouseEnter(groupSettingsLink);
+            fireEvent.focus(groupSettingsLink);
+
+            await act(async () => {
+                await Promise.resolve();
+                await Promise.resolve();
+            });
+
+            expect(loadGroupSettingsModule).toHaveBeenCalledTimes(2);
+            expect(unhandledSpy).not.toHaveBeenCalled();
+        } finally {
+            window.removeEventListener('unhandledrejection', unhandledSpy);
+        }
+    });
+
+    it('skips redundant route prefetch when hovering or focusing the active nav link', async () => {
+        renderOfflineLayout();
+        const offlineLink = await screen.findByRole('link', { name: /离线开发/ });
+
+        fireEvent.mouseEnter(offlineLink);
+        fireEvent.focus(offlineLink);
+
+        expect(loadOfflineWorkbenchModule).not.toHaveBeenCalled();
     });
 
     describe('logout', () => {
