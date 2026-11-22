@@ -17,6 +17,7 @@ import {
     getGitConfig,
     getGitSyncConfigs,
     testGitConnection,
+    triggerGitSyncConfig,
     updateGitSyncConfigStatus,
 } from './gitSettings';
 
@@ -39,12 +40,16 @@ describe('git settings API group-scoped routes', () => {
         await getGitSyncConfigs(4);
         await createGitSyncConfig(4, 'main');
         await updateGitSyncConfigStatus(4, 7, true);
+        await triggerGitSyncConfig(4, 7);
 
         expect(requestMock.get).toHaveBeenCalledWith('/api/v1/groups/4/git/config');
         expect(requestMock.post).toHaveBeenCalledWith(
             '/api/v1/groups/4/git/config/test',
             payload,
-            { headers: { 'Content-Type': 'application/json' } },
+            {
+                timeout: 60_000,
+                headers: { 'Content-Type': 'application/json' },
+            },
         );
         expect(requestMock.delete).toHaveBeenCalledWith('/api/v1/groups/4/git/config');
         expect(requestMock.get).toHaveBeenCalledWith('/api/v1/groups/4/git/sync-config');
@@ -57,6 +62,11 @@ describe('git settings API group-scoped routes', () => {
             '/api/v1/groups/4/git/sync-config/7/status',
             { enabled: true },
             { headers: { 'Content-Type': 'application/json' } },
+        );
+        expect(requestMock.post).toHaveBeenCalledWith(
+            '/api/v1/groups/4/git/sync-config/7/trigger',
+            undefined,
+            { timeout: 60_000 },
         );
     });
 });

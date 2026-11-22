@@ -13,9 +13,17 @@ vi.mock('../utils/request', () => ({
 }));
 
 import {
+    createBranch,
     createOfflineDocumentDebugExecution,
     getOfflineRepoStatus,
+    listBranches,
+    mergeBranch,
+    pushOfflineCurrentFlow,
+    pushOfflineRepo,
+    rebuildOfflineRepo,
     saveOfflineFlowDocument,
+    switchBranch,
+    testGitHubConnection,
     updateOfflineScheduleStatus,
 } from './offline';
 
@@ -131,6 +139,90 @@ describe('offline API group-scoped routes', () => {
                 fileUpdatedAt: 100,
             },
             { headers: { 'Content-Type': 'application/json' } },
+        );
+    });
+
+    it('configures extended timeouts for remote Git operations', async () => {
+        await pushOfflineRepo(4);
+        await pushOfflineCurrentFlow(4, '_flows/demo/flow.yaml');
+        await rebuildOfflineRepo(4);
+        await testGitHubConnection(4, 'github', 'user', 'tok', 'https://github.com', 'owner');
+        await listBranches(4);
+        await createBranch(4, 'feature/test', 'main');
+        await switchBranch(4, 'feature/test');
+        await mergeBranch(4, 'feature/test', 'main');
+
+        expect(requestMock.post).toHaveBeenNthCalledWith(
+            1,
+            '/api/v1/groups/4/offline/repo/push',
+            {},
+            {
+                timeout: 90_000,
+                headers: { 'Content-Type': 'application/json' },
+            },
+        );
+        expect(requestMock.post).toHaveBeenNthCalledWith(
+            2,
+            '/api/v1/groups/4/offline/repo/push/flow',
+            { flowPath: '_flows/demo/flow.yaml' },
+            {
+                timeout: 90_000,
+                headers: { 'Content-Type': 'application/json' },
+            },
+        );
+        expect(requestMock.post).toHaveBeenNthCalledWith(
+            3,
+            '/api/v1/groups/4/offline/repo/push/rebuild',
+            {},
+            {
+                timeout: 90_000,
+                headers: { 'Content-Type': 'application/json' },
+            },
+        );
+        expect(requestMock.post).toHaveBeenNthCalledWith(
+            4,
+            '/api/v1/groups/4/git/config/test',
+            {
+                provider: 'github',
+                username: 'user',
+                token: 'tok',
+                baseUrl: 'https://github.com',
+                owner: 'owner',
+            },
+            {
+                timeout: 90_000,
+                headers: { 'Content-Type': 'application/json' },
+            },
+        );
+        expect(requestMock.get).toHaveBeenCalledWith(
+            '/api/v1/groups/4/offline/repo/branches',
+            { timeout: 90_000 },
+        );
+        expect(requestMock.post).toHaveBeenNthCalledWith(
+            5,
+            '/api/v1/groups/4/offline/repo/branch',
+            { name: 'feature/test', baseBranch: 'main' },
+            {
+                timeout: 90_000,
+                headers: { 'Content-Type': 'application/json' },
+            },
+        );
+        expect(requestMock.put).toHaveBeenCalledWith(
+            '/api/v1/groups/4/offline/repo/branch/switch',
+            { branch: 'feature/test' },
+            {
+                timeout: 90_000,
+                headers: { 'Content-Type': 'application/json' },
+            },
+        );
+        expect(requestMock.post).toHaveBeenNthCalledWith(
+            6,
+            '/api/v1/groups/4/offline/repo/branch/merge',
+            { source: 'feature/test', target: 'main' },
+            {
+                timeout: 90_000,
+                headers: { 'Content-Type': 'application/json' },
+            },
         );
     });
 });

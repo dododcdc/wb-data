@@ -457,6 +457,10 @@ export interface OfflineDependentItem {
     path: string;
 }
 
+// Backend GitRepositoryOperations allows 30s per remote git CLI command, and push/rebuild
+// may chain fetch/ls-remote + push + Kestra sync trigger.
+const REMOTE_GIT_REQUEST_TIMEOUT_MS = 90_000;
+
 export const getOfflineRepoStatus = (groupId: number) => {
     return request.get<unknown, OfflineRepoStatus>(offlinePath(groupId, '/repo/status'));
 };
@@ -491,6 +495,7 @@ export const commitOfflineRepo = (groupId: number, message: string) => {
 
 export const pushOfflineRepo = (groupId: number) => {
     return request.post<unknown, PushResult>(offlinePath(groupId, '/repo/push'), {}, {
+        timeout: REMOTE_GIT_REQUEST_TIMEOUT_MS,
         headers: { 'Content-Type': 'application/json' },
     });
 };
@@ -499,12 +504,16 @@ export const pushOfflineCurrentFlow = (groupId: number, flowPath: string) => {
     return request.post<unknown, PushResult>(
         offlinePath(groupId, '/repo/push/flow'),
         { flowPath },
-        { headers: { 'Content-Type': 'application/json' } }
+        {
+            timeout: REMOTE_GIT_REQUEST_TIMEOUT_MS,
+            headers: { 'Content-Type': 'application/json' },
+        }
     );
 };
 
 export const rebuildOfflineRepo = (groupId: number) => {
     return request.post<unknown, PushResult>(offlinePath(groupId, '/repo/push/rebuild'), {}, {
+        timeout: REMOTE_GIT_REQUEST_TIMEOUT_MS,
         headers: { 'Content-Type': 'application/json' },
     });
 };
@@ -517,6 +526,7 @@ export const createOfflineFolder = (groupId: number, path: string) => {
 
 export const testGitHubConnection = (groupId: number, provider: string, username: string, token: string, baseUrl: string, owner: string) => {
     return request.post<unknown, string>(groupScopedPath(groupId, '/git/config/test'), { provider, username, token, baseUrl, owner }, {
+        timeout: REMOTE_GIT_REQUEST_TIMEOUT_MS,
         headers: { 'Content-Type': 'application/json' },
     });
 };
@@ -763,23 +773,28 @@ export interface DirtyFlowChange {
 }
 
 export const listBranches = (groupId: number) => {
-    return request.get<unknown, BranchListResponse>(offlinePath(groupId, '/repo/branches'));
+    return request.get<unknown, BranchListResponse>(offlinePath(groupId, '/repo/branches'), {
+        timeout: REMOTE_GIT_REQUEST_TIMEOUT_MS,
+    });
 };
 
 export const createBranch = (groupId: number, name: string, baseBranch: string) => {
     return request.post<unknown, null>(offlinePath(groupId, '/repo/branch'), { name, baseBranch }, {
+        timeout: REMOTE_GIT_REQUEST_TIMEOUT_MS,
         headers: { 'Content-Type': 'application/json' },
     });
 };
 
 export const switchBranch = (groupId: number, branch: string) => {
     return request.put<unknown, null>(offlinePath(groupId, '/repo/branch/switch'), { branch }, {
+        timeout: REMOTE_GIT_REQUEST_TIMEOUT_MS,
         headers: { 'Content-Type': 'application/json' },
     });
 };
 
 export const mergeBranch = (groupId: number, source: string, target: string) => {
     return request.post<unknown, null>(offlinePath(groupId, '/repo/branch/merge'), { source, target }, {
+        timeout: REMOTE_GIT_REQUEST_TIMEOUT_MS,
         headers: { 'Content-Type': 'application/json' },
     });
 };

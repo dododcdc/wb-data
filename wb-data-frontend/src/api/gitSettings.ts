@@ -50,6 +50,8 @@ export interface TriggerGitSyncResponse {
     triggeredAt: string | null;
 }
 
+const GIT_REMOTE_REQUEST_TIMEOUT_MS = 60_000;
+
 export const getGitConfig = (groupId: number) => {
     return request.get<unknown, GitConfig | null>(groupScopedPath(groupId, '/git/config'));
 };
@@ -66,6 +68,7 @@ export const deleteGitConfig = (groupId: number) => {
 
 export const testGitConnection = (groupId: number, payload: SaveGitConfigPayload) => {
     return request.post<unknown, string>(groupScopedPath(groupId, '/git/config/test'), payload, {
+        timeout: GIT_REMOTE_REQUEST_TIMEOUT_MS,
         headers: { 'Content-Type': 'application/json' },
     });
 };
@@ -91,7 +94,11 @@ export const updateGitSyncConfigStatus = (groupId: number, id: number, enabled: 
 };
 
 export const triggerGitSyncConfig = (groupId: number, id: number) => {
-    return request.post<unknown, TriggerGitSyncResponse>(groupScopedPath(groupId, `/git/sync-config/${id}/trigger`));
+    return request.post<unknown, TriggerGitSyncResponse>(
+        groupScopedPath(groupId, `/git/sync-config/${id}/trigger`),
+        undefined,
+        { timeout: GIT_REMOTE_REQUEST_TIMEOUT_MS },
+    );
 };
 
 export const deleteGitSyncConfig = (groupId: number, id: number) => {

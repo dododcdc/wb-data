@@ -13,6 +13,9 @@ export function getErrorMessage(error: unknown, fallback: string): string {
         if (error.response?.status && error.response.status >= 500) {
             return fallback || '服务端异常，请稍后重试';
         }
+        if (error.code === 'ECONNABORTED' || error.message?.toLowerCase().includes('timeout')) {
+            return '请求超时，请稍后重试';
+        }
         if (!error.response) return '网络连接失败，请检查网络';
     }
     if (typeof error === 'object' && error !== null) {
