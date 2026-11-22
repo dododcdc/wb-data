@@ -191,14 +191,24 @@ export default function Layout() {
     }, [location.pathname]);
 
     const warmRoute = useMemo(() => {
+        const prefetchModule = (loader: () => Promise<unknown>) => {
+            try {
+                void Promise.resolve(loader()).catch(() => {
+                    // Ignore speculative prefetch failures; actual navigation handles module load errors.
+                });
+            } catch {
+                // Ignore synchronous loader errors during speculative prefetching.
+            }
+        };
+
         return (path: string) => {
             if (path === '/') {
-                void loadDashboardModule();
+                prefetchModule(loadDashboardModule);
                 return;
             }
 
             if (path === '/datasources') {
-                void loadDataSourceListModule();
+                prefetchModule(loadDataSourceListModule);
                 if (currentGroup?.id == null) {
                     return;
                 }
@@ -219,38 +229,38 @@ export default function Layout() {
             }
 
             if (path === '/query') {
-                void loadQueryModule();
-                void loadSqlEditorModule();
+                prefetchModule(loadQueryModule);
+                prefetchModule(loadSqlEditorModule);
                 return;
             }
 
             if (path === '/offline') {
-                void loadOfflineWorkbenchModule();
+                prefetchModule(loadOfflineWorkbenchModule);
                 return;
             }
 
             if (path === '/operations') {
-                void loadOperationsCenterModule();
+                prefetchModule(loadOperationsCenterModule);
                 return;
             }
 
             if (path === '/parameters') {
-                void loadParameterGroupPageModule();
+                prefetchModule(loadParameterGroupPageModule);
                 return;
             }
 
             if (path === '/group-settings') {
-                void loadGroupSettingsModule();
+                prefetchModule(loadGroupSettingsModule);
                 return;
             }
 
             if (path === '/users') {
-                void loadUserListModule();
+                prefetchModule(loadUserListModule);
                 return;
             }
 
             if (path === '/groups') {
-                void loadGroupListModule();
+                prefetchModule(loadGroupListModule);
             }
         };
     }, [currentGroup?.id, queryClient]);
@@ -271,8 +281,14 @@ export default function Layout() {
             warmRoute(path);
             setRouteIntent(path);
         },
-        onFocus: () => warmRoute(path),
-        onMouseEnter: () => warmRoute(path),
+        onFocus: () => {
+            if (path === location.pathname) return;
+            warmRoute(path);
+        },
+        onMouseEnter: () => {
+            if (path === location.pathname) return;
+            warmRoute(path);
+        },
     });
 
     const handleDropdownKeyDown = (e: React.KeyboardEvent, item: NavDropdownItem) => {
