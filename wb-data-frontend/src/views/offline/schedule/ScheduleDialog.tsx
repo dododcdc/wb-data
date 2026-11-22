@@ -19,9 +19,15 @@ import {
 } from '../../../components/ui/select';
 import { type OfflineSchedulePeriod, type OfflineScheduleResponse } from '../../../api/offline';
 import {
+    ALL_HOURS,
+    DEFAULT_HOURLY_SPEC,
     DEFAULT_PERIOD_PARTS,
+    expandHourlySpecHours,
     formatPreviewTime,
+    inferPeriodFromCron,
     parsePeriodPartsFromCron,
+    type HourlyScheduleMode,
+    type HourlyScheduleSpec,
     type SchedulePeriodParts,
 } from './ScheduleUtils';
 import './ScheduleDialog.css';
@@ -55,13 +61,29 @@ const PERIOD_OPTIONS: { value: OfflineSchedulePeriod; label: string }[] = [
 ];
 
 const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, i) => i);
-const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i);
+const HOUR_OPTIONS = ALL_HOURS;
+const START_HOUR_OPTIONS = Array.from({ length: 23 }, (_, i) => i);
+const BASE_HOURLY_STEP_OPTIONS = [1, 2, 3, 4, 6, 8, 12];
 const DAY_OF_MONTH_OPTIONS = Array.from({ length: 31 }, (_, i) => i + 1);
 const WEEK_DAY_OPTIONS = [1, 2, 3, 4, 5, 6, 7];
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 const WEEK_DAY_NAMES = ['一', '二', '三', '四', '五', '六', '日'];
+const DEFAULT_CONTINUOUS_RANGE = { startHour: 0, endHour: 23, step: 1 };
 
-function NumberSelect({ value, options, suffix, ariaLabel, disabled, popupContainer, formatLabel, onChange }: {
+function clampContinuousStep(startHour: number, endHour: number, step: number): number {
+    if (step <= 1 || startHour + step <= endHour) {
+        return Math.max(1, step);
+    }
+    const maxSpan = endHour - startHour;
+    const candidate = [...BASE_HOURLY_STEP_OPTIONS].reverse().find((s) => s <= maxSpan && startHour + s <= endHour);
+    return candidate ?? 1;
+}
+
+function pad2(hour: number): string {
+    return String(hour).padStart(2, '0');
+}
+
+function NumberSelect({ value, options, suffix, ariaLabel, disabled, popupContainer, formatLabel, className, onChange }: {
     value: number;
     options: number[];
     suffix?: string;
@@ -69,6 +91,7 @@ function NumberSelect({ value, options, suffix, ariaLabel, disabled, popupContai
     disabled?: boolean;
     popupContainer?: HTMLElement | null;
     formatLabel?: (value: number) => string;
+    className?: string;
     onChange: (value: number) => void;
 }) {
     const labelOf = (v: number) => formatLabel ? formatLabel(v) : `${v}${suffix ?? ''}`;
@@ -78,7 +101,10 @@ function NumberSelect({ value, options, suffix, ariaLabel, disabled, popupContai
             onValueChange={(next) => onChange(Number(next))}
             disabled={disabled}
         >
-            <SelectTrigger aria-label={ariaLabel} className="offline-schedule-period-select">
+            <SelectTrigger
+                aria-label={ariaLabel}
+                className={['offline-schedule-period-select', className].filter(Boolean).join(' ')}
+            >
                 <SelectValue>{(value: string) => labelOf(Number(value))}</SelectValue>
             </SelectTrigger>
             <SelectContent container={popupContainer}>
@@ -131,40 +157,206 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
         }
     }, [cron, timezone]);
 
-    const cronInvalid = preview.type === 'error';
-    const enabled = schedule?.enabled ?? false;
-    const effectiveDisabled = readOnly || saving;
-    // Allow turning OFF even with invalid cron; block turning ON.
-    const switchDisabled = effectiveDisabled || (cronInvalid && !enabled);
+    const legacyCustom = period === 'CUSTOM';
+    const effectivePeriod: Exclude<OfflineSchedulePeriod, 'CUSTOM'> = legacyCustom ? 'DAILY' : period;
+    const parsedParts = useMemo(
+        () => (!legacyCustom && inferPeriodFromCron(cron) === effectivePeriod ? parsePeriodPartsFromCron(cron) : null),
+        [cron, effectivePeriod, legacyCustom],
+    );
+    const periodParts = parsedParts ?? DEFAULT_PERIOD_PARTS;
+    const parsedHourlySpec: HourlyScheduleSpec =
+        effectivePeriod === 'HOURLY' ? (parsedParts?.hourly ?? DEFAULT_HOURLY_SPEC) : DEFAULT_HOURLY_SPEC;
+
     const [popupContainer, setPopupContainer] = useState<HTMLDivElement | null>(null);
     const [previewExpanded, setPreviewExpanded] = useState(false);
+    const [hourlyModeOverride, setHourlyModeOverride] = useState<HourlyScheduleMode | null>(null);
+    const [continuousDraft, setContinuousDraft] = useState(DEFAULT_CONTINUOUS_RANGE);
+    const [discreteHoursDraft, setDiscreteHoursDraft] = useState<number[] | null>(null);
+    const [discreteMinuteDraft, setDiscreteMinuteDraft] = useState<number | null>(null);
     const periodId = useId();
+    const hourlyModeId = useId();
     const previewId = useId();
 
     useEffect(() => {
         if (!open) setPreviewExpanded(false);
     }, [open]);
 
+    useEffect(() => {
+        if (!open || effectivePeriod !== 'HOURLY') {
+            setHourlyModeOverride(null);
+            setContinuousDraft(DEFAULT_CONTINUOUS_RANGE);
+            setDiscreteHoursDraft(null);
+            setDiscreteMinuteDraft(null);
+        }
+    }, [open, effectivePeriod, flowId]);
+
+    useEffect(() => {
+        if (!open || effectivePeriod !== 'HOURLY') return;
+        if (parsedHourlySpec.mode === 'CONTINUOUS') {
+            setContinuousDraft({
+                startHour: parsedHourlySpec.startHour,
+                endHour: parsedHourlySpec.endHour,
+                step: parsedHourlySpec.step,
+            });
+            setDiscreteHoursDraft((prev) =>
+                hourlyModeOverride === 'DISCRETE' && prev !== null && prev.length === 24 ? ALL_HOURS : null,
+            );
+            if (hourlyModeOverride !== 'DISCRETE') {
+                setDiscreteMinuteDraft(null);
+            }
+        } else {
+            setDiscreteHoursDraft(parsedHourlySpec.hours);
+            setDiscreteMinuteDraft(null);
+        }
+    }, [open, effectivePeriod, cron, parsedHourlySpec, hourlyModeOverride]);
+
+    const hourlyMode: HourlyScheduleMode = hourlyModeOverride ?? parsedHourlySpec.mode;
+    const currentMinute = discreteMinuteDraft ?? periodParts.minute;
+    const discreteHours = discreteHoursDraft ?? (parsedHourlySpec.mode === 'DISCRETE' ? parsedHourlySpec.hours : []);
+    const hourlyIncomplete = effectivePeriod === 'HOURLY' && hourlyMode === 'DISCRETE' && discreteHours.length < 2;
+
+    const cronInvalid = preview.type === 'error';
+    const enabled = schedule?.enabled ?? false;
+    const effectiveDisabled = readOnly || saving;
+    // Allow turning OFF even with invalid/incomplete cron; block turning ON.
+    const switchDisabled = effectiveDisabled || ((cronInvalid || hourlyIncomplete) && !enabled);
+
     const handleToggle = () => {
         if (readOnly) return;
         const next = !enabled;
-        if (next && cronInvalid) return;
+        if (next && (cronInvalid || hourlyIncomplete)) return;
         onToggle(next);
     };
 
     const showNoRemoteAlert = !readOnly && !hasRemote;
     const showDriftAlert = !readOnly && hasLocalOrUnpushedChanges;
 
-    // 存量非标准 cron：按“每天”展示编辑位，用户改动或选周期后才会标准化，之前禁止暂存
-    const legacyCustom = period === 'CUSTOM';
-    const effectivePeriod: Exclude<OfflineSchedulePeriod, 'CUSTOM'> = legacyCustom ? 'DAILY' : period;
+    const emitContinuousHourly = (nextContinuous: { startHour: number; endHour: number; step: number }, minute = currentMinute) => {
+        if (readOnly) return;
+        setContinuousDraft(nextContinuous);
+        setDiscreteMinuteDraft(null);
+        setDiscreteHoursDraft(null);
+        const hours = expandHourlySpecHours({ mode: 'CONTINUOUS', ...nextContinuous, hours: [] });
+        onPeriodChange('HOURLY', {
+            ...periodParts,
+            minute,
+            hourly: {
+                mode: 'CONTINUOUS',
+                startHour: nextContinuous.startHour,
+                endHour: nextContinuous.endHour,
+                step: nextContinuous.step,
+                hours,
+            },
+        });
+    };
 
-    const periodParts = parsePeriodPartsFromCron(cron) ?? DEFAULT_PERIOD_PARTS;
+    const emitDiscreteHourly = (nextHours: number[], minute = currentMinute) => {
+        if (readOnly) return;
+        const sorted = Array.from(new Set(nextHours)).sort((a, b) => a - b);
+        setDiscreteHoursDraft(sorted);
+        if (sorted.length < 2) {
+            setDiscreteMinuteDraft(minute);
+            return;
+        }
+        setDiscreteMinuteDraft(null);
+        onPeriodChange('HOURLY', {
+            ...periodParts,
+            minute,
+            hourly: {
+                mode: 'DISCRETE',
+                startHour: 0,
+                endHour: 23,
+                step: 1,
+                hours: sorted,
+            },
+        });
+    };
+
+    const handleHourlyModeChange = (nextMode: HourlyScheduleMode) => {
+        if (readOnly || nextMode === hourlyMode) return;
+        setHourlyModeOverride(nextMode);
+        if (nextMode === 'CONTINUOUS') {
+            emitContinuousHourly(continuousDraft, currentMinute);
+            return;
+        }
+        const isFullDay = continuousDraft.startHour === 0 && continuousDraft.endHour === 23 && continuousDraft.step === 1;
+        if (isFullDay) {
+            setDiscreteHoursDraft([]);
+            setDiscreteMinuteDraft(currentMinute);
+            return;
+        }
+        const expanded = expandHourlySpecHours({ mode: 'CONTINUOUS', ...continuousDraft, hours: [] });
+        emitDiscreteHourly(expanded, currentMinute);
+    };
+
+    const handleStartHourChange = (nextStart: number) => {
+        const clampedStart = Math.min(Math.max(nextStart, 0), 22);
+        const nextEnd = Math.max(continuousDraft.endHour, clampedStart + 1);
+        const nextStep = clampContinuousStep(clampedStart, nextEnd, continuousDraft.step);
+        emitContinuousHourly({ startHour: clampedStart, endHour: nextEnd, step: nextStep });
+    };
+
+    const handleEndHourChange = (nextEnd: number) => {
+        const clampedEnd = Math.min(Math.max(nextEnd, continuousDraft.startHour + 1), 23);
+        const nextStep = clampContinuousStep(continuousDraft.startHour, clampedEnd, continuousDraft.step);
+        emitContinuousHourly({ startHour: continuousDraft.startHour, endHour: clampedEnd, step: nextStep });
+    };
+
+    const handleStepChange = (nextStep: number) => {
+        const clampedStep = clampContinuousStep(continuousDraft.startHour, continuousDraft.endHour, nextStep);
+        emitContinuousHourly({ ...continuousDraft, step: clampedStep });
+    };
+
+    const handleHourlyMinuteChange = (nextMinute: number) => {
+        if (readOnly) return;
+        if (hourlyMode === 'DISCRETE') {
+            if (discreteHours.length < 2) {
+                setDiscreteMinuteDraft(nextMinute);
+                return;
+            }
+            emitDiscreteHourly(discreteHours, nextMinute);
+            return;
+        }
+        emitContinuousHourly(continuousDraft, nextMinute);
+    };
+
+    const handleToggleDiscreteHour = (hour: number) => {
+        if (readOnly) return;
+        const exists = discreteHours.includes(hour);
+        const nextHours = exists
+            ? discreteHours.filter((item) => item !== hour)
+            : [...discreteHours, hour].sort((a, b) => a - b);
+        emitDiscreteHourly(nextHours, currentMinute);
+    };
+
+    const handleClearDiscreteHours = () => {
+        if (readOnly) return;
+        setHourlyModeOverride('DISCRETE');
+        setDiscreteMinuteDraft(currentMinute);
+        setDiscreteHoursDraft([]);
+    };
 
     const updatePeriodParts = (patch: Partial<SchedulePeriodParts>) => {
         if (readOnly) return;
         onPeriodChange(effectivePeriod, { ...periodParts, ...patch });
     };
+
+    const continuousEndOptions = useMemo(
+        () => HOUR_OPTIONS.filter((h) => h > continuousDraft.startHour),
+        [continuousDraft.startHour],
+    );
+
+    const continuousStepOptions = useMemo(() => {
+        const base = BASE_HOURLY_STEP_OPTIONS.includes(continuousDraft.step)
+            ? BASE_HOURLY_STEP_OPTIONS
+            : [...BASE_HOURLY_STEP_OPTIONS, continuousDraft.step].sort((a, b) => a - b);
+        return base.filter((step) => step === 1 || continuousDraft.startHour + step <= continuousDraft.endHour);
+    }, [continuousDraft.startHour, continuousDraft.endHour, continuousDraft.step]);
+
+    const continuousExecutionCount = useMemo(
+        () => expandHourlySpecHours({ mode: 'CONTINUOUS', ...continuousDraft, hours: [] }).length,
+        [continuousDraft],
+    );
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -222,42 +414,175 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                     </div>
 
                     <div className="offline-schedule-time-group">
-                        <span className="offline-schedule-field-label">计划时间</span>
-                        <div className="offline-schedule-period-fields">
-                            {effectivePeriod === 'YEARLY' ? (
-                                <NumberSelect
-                                    value={periodParts.month}
-                                    options={MONTH_OPTIONS}
-                                    suffix="月"
-                                    ariaLabel="月份"
+                        <span className="offline-schedule-field-label offline-schedule-time-label">计划时间</span>
+                        {effectivePeriod === 'HOURLY' ? (
+                            <div className="offline-schedule-hourly-panel">
+                                <fieldset
+                                    className="offline-schedule-hourly-mode-group"
                                     disabled={effectiveDisabled}
-                                    popupContainer={popupContainer}
-                                    onChange={(month) => updatePeriodParts({ month })}
-                                />
-                            ) : null}
-                            {effectivePeriod === 'MONTHLY' || effectivePeriod === 'YEARLY' ? (
-                                <NumberSelect
-                                    value={periodParts.dayOfMonth}
-                                    options={DAY_OF_MONTH_OPTIONS}
-                                    suffix="日"
-                                    ariaLabel="第几日"
-                                    disabled={effectiveDisabled}
-                                    popupContainer={popupContainer}
-                                    onChange={(dayOfMonth) => updatePeriodParts({ dayOfMonth })}
-                                />
-                            ) : null}
-                            {effectivePeriod === 'WEEKLY' ? (
-                                <NumberSelect
-                                    value={periodParts.dayOfWeek}
-                                    options={WEEK_DAY_OPTIONS}
-                                    ariaLabel="星期几"
-                                    disabled={effectiveDisabled}
-                                    popupContainer={popupContainer}
-                                    formatLabel={(v) => `周${WEEK_DAY_NAMES[v - 1] ?? v}`}
-                                    onChange={(dayOfWeek) => updatePeriodParts({ dayOfWeek })}
-                                />
-                            ) : null}
-                            {effectivePeriod !== 'HOURLY' ? (
+                                >
+                                    <legend className="sr-only">执行方式</legend>
+                                    <div className="offline-schedule-hourly-mode-options">
+                                        {([
+                                            { value: 'CONTINUOUS', label: '连续时段' },
+                                            { value: 'DISCRETE', label: '指定小时' },
+                                        ] as const).map((option) => (
+                                            <label key={option.value} className="offline-schedule-hourly-mode-option">
+                                                <input
+                                                    type="radio"
+                                                    name={hourlyModeId}
+                                                    value={option.value}
+                                                    checked={hourlyMode === option.value}
+                                                    disabled={effectiveDisabled}
+                                                    onChange={() => handleHourlyModeChange(option.value)}
+                                                    className="sr-only"
+                                                />
+                                                <span>{option.label}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </fieldset>
+
+                                {hourlyMode === 'CONTINUOUS' ? (
+                                    <>
+                                        <div className="offline-schedule-hourly-continuous-row">
+                                            <span className="offline-schedule-hourly-range-sep">从</span>
+                                            <NumberSelect
+                                                value={continuousDraft.startHour}
+                                                options={START_HOUR_OPTIONS}
+                                                suffix="时"
+                                                ariaLabel="开始小时"
+                                                disabled={effectiveDisabled}
+                                                popupContainer={popupContainer}
+                                                className="offline-schedule-period-select--compact"
+                                                onChange={handleStartHourChange}
+                                            />
+                                            <span className="offline-schedule-hourly-range-sep">至</span>
+                                            <NumberSelect
+                                                value={continuousDraft.endHour}
+                                                options={continuousEndOptions}
+                                                suffix="时"
+                                                ariaLabel="结束小时"
+                                                disabled={effectiveDisabled}
+                                                popupContainer={popupContainer}
+                                                className="offline-schedule-period-select--compact"
+                                                onChange={handleEndHourChange}
+                                            />
+                                            <NumberSelect
+                                                value={continuousDraft.step}
+                                                options={continuousStepOptions}
+                                                ariaLabel="步长"
+                                                disabled={effectiveDisabled}
+                                                popupContainer={popupContainer}
+                                                formatLabel={(v) => `每 ${v} 小时`}
+                                                className="offline-schedule-period-select--step"
+                                                onChange={handleStepChange}
+                                            />
+                                            <NumberSelect
+                                                value={currentMinute}
+                                                options={MINUTE_OPTIONS}
+                                                suffix="分"
+                                                ariaLabel="分钟"
+                                                disabled={effectiveDisabled}
+                                                popupContainer={popupContainer}
+                                                className="offline-schedule-period-select--compact"
+                                                onChange={handleHourlyMinuteChange}
+                                            />
+                                        </div>
+                                        <p className="offline-schedule-hourly-summary">
+                                            每天 {pad2(continuousDraft.startHour)} 时至 {pad2(continuousDraft.endHour)} 时，
+                                            {continuousDraft.step === 1 ? '每小时' : `每 ${continuousDraft.step} 小时`}
+                                            在第 {currentMinute} 分执行（每天 {continuousExecutionCount} 次）
+                                        </p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="offline-schedule-hourly-discrete-bar">
+                                            <NumberSelect
+                                                value={currentMinute}
+                                                options={MINUTE_OPTIONS}
+                                                suffix="分"
+                                                ariaLabel="分钟"
+                                                disabled={effectiveDisabled}
+                                                popupContainer={popupContainer}
+                                                className="offline-schedule-period-select--compact"
+                                                onChange={handleHourlyMinuteChange}
+                                            />
+                                            <span className="offline-schedule-hourly-count">
+                                                已选 {discreteHours.length} 个小时
+                                            </span>
+                                            {!readOnly && discreteHours.length > 0 ? (
+                                                <button
+                                                    type="button"
+                                                    className="offline-schedule-hourly-clear"
+                                                    disabled={effectiveDisabled}
+                                                    onClick={handleClearDiscreteHours}
+                                                >
+                                                    清空
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                        <div className="offline-schedule-hour-grid" role="group" aria-label="选择执行小时">
+                                            {HOUR_OPTIONS.map((hour) => {
+                                                const selected = discreteHours.includes(hour);
+                                                return (
+                                                    <button
+                                                        key={hour}
+                                                        type="button"
+                                                        className="offline-schedule-hour-cell"
+                                                        aria-label={`${hour}时`}
+                                                        aria-pressed={selected}
+                                                        disabled={effectiveDisabled}
+                                                        onClick={() => handleToggleDiscreteHour(hour)}
+                                                    >
+                                                        {pad2(hour)}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        {hourlyIncomplete ? (
+                                            <p className="offline-schedule-hourly-hint" role="alert">
+                                                请至少选择 2 个执行小时；若每天仅执行 1 次，请选择「每天」调度。
+                                            </p>
+                                        ) : null}
+                                    </>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="offline-schedule-period-fields">
+                                {effectivePeriod === 'YEARLY' ? (
+                                    <NumberSelect
+                                        value={periodParts.month}
+                                        options={MONTH_OPTIONS}
+                                        suffix="月"
+                                        ariaLabel="月份"
+                                        disabled={effectiveDisabled}
+                                        popupContainer={popupContainer}
+                                        onChange={(month) => updatePeriodParts({ month })}
+                                    />
+                                ) : null}
+                                {effectivePeriod === 'MONTHLY' || effectivePeriod === 'YEARLY' ? (
+                                    <NumberSelect
+                                        value={periodParts.dayOfMonth}
+                                        options={DAY_OF_MONTH_OPTIONS}
+                                        suffix="日"
+                                        ariaLabel="第几日"
+                                        disabled={effectiveDisabled}
+                                        popupContainer={popupContainer}
+                                        onChange={(dayOfMonth) => updatePeriodParts({ dayOfMonth })}
+                                    />
+                                ) : null}
+                                {effectivePeriod === 'WEEKLY' ? (
+                                    <NumberSelect
+                                        value={periodParts.dayOfWeek}
+                                        options={WEEK_DAY_OPTIONS}
+                                        ariaLabel="星期几"
+                                        disabled={effectiveDisabled}
+                                        popupContainer={popupContainer}
+                                        formatLabel={(v) => `周${WEEK_DAY_NAMES[v - 1] ?? v}`}
+                                        onChange={(dayOfWeek) => updatePeriodParts({ dayOfWeek })}
+                                    />
+                                ) : null}
                                 <NumberSelect
                                     value={periodParts.hour}
                                     options={HOUR_OPTIONS}
@@ -267,17 +592,17 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                                     popupContainer={popupContainer}
                                     onChange={(hour) => updatePeriodParts({ hour })}
                                 />
-                            ) : null}
-                            <NumberSelect
-                                value={periodParts.minute}
-                                options={MINUTE_OPTIONS}
-                                suffix="分"
-                                ariaLabel="分钟"
-                                disabled={effectiveDisabled}
-                                popupContainer={popupContainer}
-                                onChange={(minute) => updatePeriodParts({ minute })}
-                            />
-                        </div>
+                                <NumberSelect
+                                    value={periodParts.minute}
+                                    options={MINUTE_OPTIONS}
+                                    suffix="分"
+                                    ariaLabel="分钟"
+                                    disabled={effectiveDisabled}
+                                    popupContainer={popupContainer}
+                                    onChange={(minute) => updatePeriodParts({ minute })}
+                                />
+                            </div>
+                        )}
                         <p className="offline-schedule-timezone-note">任务时区：{timezone}</p>
                     </div>
 
@@ -303,7 +628,9 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
 
                     <section className="offline-schedule-preview" aria-labelledby={`${previewId}-heading`}>
                         <h3 id={`${previewId}-heading`} className="offline-schedule-preview-heading">按当前配置预览</h3>
-                        {preview.type === 'error' ? (
+                        {hourlyIncomplete ? (
+                            <p className="offline-schedule-preview-empty">选择至少 2 个执行小时后预览计划时间</p>
+                        ) : preview.type === 'error' ? (
                             <p className="offline-schedule-preview-error" role="alert">无效的 Cron 表达式</p>
                         ) : (
                             <>
@@ -358,7 +685,7 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                                 <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
                                     取消
                                 </Button>
-                                <Button variant="default" onClick={onSave} disabled={saving || cronInvalid || legacyCustom}>
+                                <Button variant="default" onClick={onSave} disabled={saving || cronInvalid || legacyCustom || hourlyIncomplete}>
                                     {saving ? <LoaderCircle size={14} className="offline-spin" style={{ marginRight: 8 }} /> : null}
                                     {saving ? '正在暂存...' : '暂存配置'}
                                 </Button>

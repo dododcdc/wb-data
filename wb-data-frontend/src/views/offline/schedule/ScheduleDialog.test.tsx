@@ -248,4 +248,114 @@ describe('ScheduleDialog', () => {
         expect(screen.getByText(/当前线上版本未配置定时调度触发器/)).toBeTruthy();
         expect(screen.getByText('已关闭')).toBeTruthy();
     });
+
+    it('supports continuous hourly start, end and step controls with automatic step clamping', async () => {
+        const { props } = renderDialog({
+            period: 'HOURLY',
+            cron: '15 * * * *',
+            schedule: makeSchedule({ period: 'HOURLY', cron: '15 * * * *' }),
+        });
+        const dialog = screen.getByRole('dialog', { name: '调度配置' });
+        expect((within(dialog).getByRole('radio', { name: '连续时段' }) as HTMLInputElement).checked).toBe(true);
+        expect(within(dialog).getByText(/每天 00 时至 23 时，每小时在第 15 分执行（每天 24 次）/)).toBeTruthy();
+
+        fireEvent.click(within(dialog).getByRole('combobox', { name: '开始小时' }));
+        const start8 = await screen.findByRole('option', { name: '8时' });
+        fireEvent.mouseMove(start8);
+        fireEvent.click(start8);
+
+        expect(props.onPeriodChange).toHaveBeenLastCalledWith('HOURLY', expect.objectContaining({
+            minute: 15,
+            hourly: expect.objectContaining({ mode: 'CONTINUOUS', startHour: 8, endHour: 23, step: 1 }),
+        }));
+
+        fireEvent.click(within(dialog).getByRole('combobox', { name: '结束小时' }));
+        const end12 = await screen.findByRole('option', { name: '12时' });
+        fireEvent.mouseMove(end12);
+        fireEvent.click(end12);
+
+        fireEvent.click(within(dialog).getByRole('combobox', { name: '步长' }));
+        const step4 = await screen.findByRole('option', { name: '每 4 小时' });
+        fireEvent.mouseMove(step4);
+        fireEvent.click(step4);
+
+        expect(props.onPeriodChange).toHaveBeenLastCalledWith('HOURLY', expect.objectContaining({
+            hourly: expect.objectContaining({ mode: 'CONTINUOUS', startHour: 8, endHour: 12, step: 4, hours: [8, 12] }),
+        }));
+
+        // 把开始小时改为 10 后（跨度仅 2 小时），原步长 4 自动收敛为每 2 小时
+        fireEvent.click(within(dialog).getByRole('combobox', { name: '开始小时' }));
+        const start10 = await screen.findByRole('option', { name: '10时' });
+        fireEvent.mouseMove(start10);
+        fireEvent.click(start10);
+
+        expect(props.onPeriodChange).toHaveBeenLastCalledWith('HOURLY', expect.objectContaining({
+            hourly: expect.objectContaining({ mode: 'CONTINUOUS', startHour: 10, endHour: 12, step: 2, hours: [10, 12] }),
+        }));
+    });
+
+    it('switches to discrete hour grid, requires at least 2 hours, and supports clear & preview', () => {
+        const { props, rerender } = renderDialog({
+            period: 'HOURLY',
+            cron: '15 * * * *',
+            schedule: makeSchedule({ period: 'HOURLY', cron: '15 * * * *' }),
+        });
+        const dialog = screen.getByRole('dialog', { name: '调度配置' });
+
+        fireEvent.click(within(dialog).getByRole('radio', { name: '指定小时' }));
+        expect(within(dialog).getByText('已选 0 个小时')).toBeTruthy();
+        expect(within(dialog).getByRole('alert').textContent).toContain('请至少选择 2 个执行小时');
+        expect((within(dialog).getByRole('button', { name: '暂存配置' }) as HTMLButtonElement).disabled).toBe(true);
+        expect((within(dialog).getByRole('switch', { name: '启用调度' }) as HTMLButtonElement).disabled).toBe(true);
+        expect(within(dialog).getByText('选择至少 2 个执行小时后预览计划时间')).toBeTruthy();
+
+        fireEvent.click(within(dialog).getByRole('button', { name: '1时' }));
+        expect(within(dialog).getByText('已选 1 个小时')).toBeTruthy();
+        expect(props.onPeriodChange).not.toHaveBeenCalled();
+
+        fireEvent.click(within(dialog).getByRole('button', { name: '3时' }));
+        expect(props.onPeriodChange).toHaveBeenLastCalledWith('HOURLY', expect.objectContaining({
+            minute: 15,
+            hourly: expect.objectContaining({ mode: 'DISCRETE', hours: [1, 3] }),
+        }));
+
+        fireEvent.click(within(dialog).getByRole('button', { name: '14时' }));
+        expect(props.onPeriodChange).toHaveBeenLastCalledWith('HOURLY', expect.objectContaining({
+            minute: 15,
+            hourly: expect.objectContaining({ mode: 'DISCRETE', hours: [1, 3, 14] }),
+        }));
+
+        rerender(
+            <ScheduleDialog
+                {...props}
+                period="HOURLY"
+                cron="15 1,3,14 * * *"
+                schedule={makeSchedule({ period: 'HOURLY', cron: '15 1,3,14 * * *' })}
+            />,
+        );
+        expect((within(dialog).getByRole('button', { name: '暂存配置' }) as HTMLButtonElement).disabled).toBe(false);
+        expect((within(dialog).getByRole('switch', { name: '启用调度' }) as HTMLButtonElement).disabled).toBe(false);
+        expect(within(dialog).getByRole('button', { name: '1时' }).getAttribute('aria-pressed')).toBe('true');
+        expect(within(dialog).getByRole('button', { name: '3时' }).getAttribute('aria-pressed')).toBe('true');
+        expect(within(dialog).getByRole('button', { name: '14时' }).getAttribute('aria-pressed')).toBe('true');
+
+        fireEvent.click(within(dialog).getByRole('button', { name: '清空' }));
+        expect(within(dialog).getByText('已选 0 个小时')).toBeTruthy();
+        expect((within(dialog).getByRole('button', { name: '暂存配置' }) as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('echoes discrete hourly cron in read-only mode with disabled grid cells and no clear button', () => {
+        renderDialog({
+            readOnly: true,
+            period: 'HOURLY',
+            cron: '15 1,3,14 * * *',
+            schedule: makeSchedule({ period: 'HOURLY', cron: '15 1,3,14 * * *', enabled: true }),
+        });
+        const dialog = screen.getByRole('dialog', { name: '调度配置' });
+        expect((within(dialog).getByRole('radio', { name: '指定小时' }) as HTMLInputElement).checked).toBe(true);
+        expect(within(dialog).getByText('已选 3 个小时')).toBeTruthy();
+        expect(within(dialog).queryByRole('button', { name: '清空' })).toBeNull();
+        expect((within(dialog).getByRole('button', { name: '1时' }) as HTMLButtonElement).disabled).toBe(true);
+        expect(within(dialog).getByRole('button', { name: '14时' }).getAttribute('aria-pressed')).toBe('true');
+    });
 });

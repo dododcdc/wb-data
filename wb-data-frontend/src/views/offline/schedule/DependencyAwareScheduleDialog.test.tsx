@@ -317,4 +317,49 @@ describe('DependencyAwareScheduleDialog', () => {
         act(() => currentDialog().onPeriodChange('WEEKLY'));
         expect(props.onPeriodChange).not.toHaveBeenCalled();
     });
+
+    it('blocks staging when narrowed hourly hours uncover a downstream hourly dependent and unblocks once covered', async () => {
+        vi.mocked(getOfflineDependents).mockResolvedValue([
+            { ...dependent, flowId: 'hourly_child', period: 'HOURLY', cron: '15 1,3,14 * * *' },
+        ]);
+        const { props, rerender } = renderDialog({
+            savedPeriod: 'HOURLY',
+            period: 'HOURLY',
+            cron: '0 8-22 * * *',
+            schedule: {
+                groupId: 1, path: '_flows/example/flow.yaml', triggerId: 'schedule',
+                cron: '0 * * * *', period: 'HOURLY', timezone: 'Asia/Shanghai',
+                enabled: true, contentHash: 'hash', fileUpdatedAt: 1,
+            },
+        });
+
+        await screen.findByRole('list', { name: '下游任务' });
+        const alert = screen.getByRole('alert');
+        expect(alert.textContent).toContain('hourly_child');
+        expect(alert.textContent).toContain('缺少 01、03 时');
+
+        act(() => {
+            currentDialog().onSave();
+            currentDialog().onToggle(false);
+        });
+        expect(props.onSave).not.toHaveBeenCalled();
+        expect(props.onToggle).not.toHaveBeenCalled();
+
+        rerender(
+            <DependencyAwareScheduleDialog
+                {...props}
+                savedPeriod="HOURLY"
+                period="HOURLY"
+                cron="0 1,3,14,20 * * *"
+                schedule={{
+                    groupId: 1, path: '_flows/example/flow.yaml', triggerId: 'schedule',
+                    cron: '0 * * * *', period: 'HOURLY', timezone: 'Asia/Shanghai',
+                    enabled: true, contentHash: 'hash', fileUpdatedAt: 1,
+                }}
+            />,
+        );
+        expect(screen.queryByRole('alert')).toBeNull();
+        act(() => currentDialog().onSave());
+        expect(props.onSave).toHaveBeenCalledOnce();
+    });
 });

@@ -9,7 +9,12 @@ import { Button } from '../../../components/ui/button';
 import { ListShell } from '../../../components/ui/list/ListShell';
 import { getErrorMessage } from '../../../utils/error';
 import { ScheduleDialog } from './ScheduleDialog';
-import { DEFAULT_PERIOD_PARTS, parsePeriodPartsFromCron } from './ScheduleUtils';
+import {
+    DEFAULT_PERIOD_PARTS,
+    formatHourlyHoursLabel,
+    getMissingHourlyHours,
+    parsePeriodPartsFromCron,
+} from './ScheduleUtils';
 import './DependencyDialog.css';
 
 export type DependencyAwareScheduleDialogProps = ComponentProps<typeof ScheduleDialog> & {
@@ -64,6 +69,18 @@ function OpenScheduleDialog({
     const loading = hasTarget && dependents === null && loadError === null;
     const periodChangeDisabled = !hasTarget || dependents === null || hasUpstream || dependents.length > 0;
     const periodMismatch = periodChangeDisabled && props.period !== protectedPeriod;
+    const hourlyDependentConflicts = props.period === 'HOURLY' && dependents
+        ? dependents.flatMap((item) => {
+            if (item.period !== 'HOURLY') return [];
+            const missing = getMissingHourlyHours(item.cron, props.cron);
+            if (missing === null) {
+                return [{ item, reason: '下游小时调度时间不可用' }];
+            }
+            return missing.length > 0
+                ? [{ item, reason: `缺少 ${formatHourlyHoursLabel(missing)}` }]
+                : [];
+        })
+        : [];
 
     useEffect(() => {
         if (groupId === null || !path) return;
@@ -90,13 +107,17 @@ function OpenScheduleDialog({
             setBlocked(true);
             return;
         }
+        if (hourlyDependentConflicts.length > 0) {
+            return;
+        }
         setBlocked(false);
         action();
     };
 
-    const isQuietReady = !loading && hasTarget && !loadError && !hasUpstream && dependents?.length === 0 && !periodMismatch && !blocked;
+    const isQuietReady = !loading && hasTarget && !loadError && !hasUpstream && dependents?.length === 0
+        && !periodMismatch && hourlyDependentConflicts.length === 0 && !blocked;
     const hasLockNotice = Boolean(hasUpstream || (dependents && dependents.length > 0));
-    const hasAlert = Boolean(!hasTarget || loadError || periodMismatch || blocked);
+    const hasAlert = Boolean(!hasTarget || loadError || periodMismatch || hourlyDependentConflicts.length > 0 || blocked);
 
     const dependencyNotice = (
         <section
@@ -149,6 +170,15 @@ function OpenScheduleDialog({
                 </div>
             ) : null}
             {dependents?.length === 0 && !hasUpstream ? <p className="offline-schedule-dependency-ready-text">未发现下游依赖，可调整调度频率和计划时间。</p> : null}
+            {hourlyDependentConflicts.length > 0 ? (
+                <p role="alert" className="offline-schedule-dependency-alert-text">
+                    当前小时设置未覆盖以下下游任务：
+                    {hourlyDependentConflicts
+                        .map(({ item, reason }) => `${item.groupName || `项目组 ${item.groupId}`} / ${item.flowId}（${reason}）`)
+                        .join('；')}
+                    。请扩大执行小时范围或先在下游解除依赖。
+                </p>
+            ) : null}
             {periodMismatch ? (
                 <div className="offline-schedule-dependency-action-row">
                     <p role="alert" className="offline-schedule-dependency-alert-text">当前草稿频率与受保护频率「{PERIOD_LABELS[protectedPeriod]}」不同，暂不能暂存或切换自动调度。其他编辑已保留；请先恢复频率，或解除依赖后重新打开。</p>
@@ -167,7 +197,7 @@ function OpenScheduleDialog({
                         </Button>
                     ) : null}
                 </div>
-            ) : blocked ? <p role="alert" className="offline-schedule-dependency-alert-text">当前暂不能修改调度频率，仍可调整同频率的计划时间。其他编辑已保留。</p> : null}
+            ) : hourlyDependentConflicts.length > 0 ? null : blocked ? <p role="alert" className="offline-schedule-dependency-alert-text">当前暂不能修改调度频率，仍可调整同频率的计划时间。其他编辑已保留。</p> : null}
         </section>
     );
 

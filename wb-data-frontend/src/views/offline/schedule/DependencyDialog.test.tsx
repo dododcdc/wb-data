@@ -425,6 +425,10 @@ describe('DependencyDialog', () => {
 
     it.each([
         ['HOURLY', '17 * * * *', '每小时 · 17 分 · UTC'],
+        ['HOURLY', '15 */2 * * *', '每小时 · 每 2 小时 · 15 分 · UTC'],
+        ['HOURLY', '15 8-22 * * *', '每小时 · 08–22 时 · 15 分 · UTC'],
+        ['HOURLY', '15 8-22/2 * * *', '每小时 · 08–22 时（每 2 小时）· 15 分 · UTC'],
+        ['HOURLY', '15 1,3,14 * * *', '每小时 · 01、03、14 时 · 15 分 · UTC'],
         ['DAILY', '5 9 * * *', '每天 · 09:05 · UTC'],
         ['WEEKLY', '30 6 * * 0', '每周 · 周日 06:30 · UTC'],
         ['WEEKLY', '30 6 * * 7', '每周 · 周日 06:30 · UTC'],
@@ -483,5 +487,38 @@ describe('DependencyDialog', () => {
         fireEvent.click(within(dialog).getAllByRole('button', { name: '关闭' })[0]);
         expect(props.onStage).not.toHaveBeenCalled();
         expect(props.onClose).toHaveBeenCalledOnce();
+    });
+
+    it('enforces hourly coverage subset when selecting or validating hourly upstreams', async () => {
+        vi.mocked(searchOfflineDependencyCandidates).mockResolvedValue([
+            makeCandidate({ flowId: 'up_covered', period: 'HOURLY', cron: '0 * * * *' }),
+            makeCandidate({ flowId: 'up_partial', period: 'HOURLY', cron: '0 8-22 * * *' }),
+        ]);
+        const { props } = renderDialog({
+            document: makeDocument({
+                schedule: { period: 'HOURLY', cron: '15 1,3,14 * * *', timezone: 'UTC', enabled: true },
+                dependencyConfig: {
+                    dependencies: [{ groupId: 1, flowId: 'up_partial' }],
+                    failurePolicy: 'CONTINUE',
+                    crossGroupDependency: 'ALLOW',
+                },
+            }),
+        });
+        await loaded();
+
+        expect(addButton('数据平台', 'up_covered').disabled).toBe(false);
+        const selected = screen.getByRole('list', { name: '已选前置任务' });
+        expect(within(selected).getByText(/前置调度小时未覆盖当前任务（缺少 01、03 时）/)).toBeTruthy();
+        expect(stageButton().disabled).toBe(true);
+
+        fireEvent.click(screen.getByRole('button', { name: '移除 数据平台 / up_partial' }));
+        fireEvent.click(addButton('数据平台', 'up_covered'));
+        expect(stageButton().disabled).toBe(false);
+        fireEvent.click(stageButton());
+        expect(props.onStage).toHaveBeenCalledWith({
+            dependencies: [{ groupId: 1, flowId: 'up_covered' }],
+            failurePolicy: 'CONTINUE',
+            crossGroupDependency: 'ALLOW',
+        });
     });
 });

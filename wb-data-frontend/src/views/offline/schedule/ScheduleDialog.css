@@ -1,3 +1,4 @@
+.dialog-content.offline-schedule-dialog-standard,
 .offline-schedule-dialog-standard {
     max-width: 580px;
     max-height: calc(100dvh - 48px);
@@ -256,8 +257,198 @@
 .offline-schedule-time-group {
     display: grid;
     grid-template-columns: 80px minmax(0, 1fr);
-    gap: 6px 16px;
+    gap: 8px 16px;
+    align-items: start;
+}
+
+.offline-schedule-time-label {
+    padding-top: 8px;
+}
+
+.offline-schedule-hourly-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+.offline-schedule-hourly-mode-group {
+    min-inline-size: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
+}
+
+.offline-schedule-hourly-mode-options {
+    display: inline-grid;
+    grid-template-columns: repeat(2, minmax(96px, 1fr));
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid var(--color-border-subtle, var(--color-border));
+    border-radius: 8px;
+    background: var(--color-bg-secondary);
+}
+
+.offline-schedule-hourly-mode-option {
+    position: relative;
+    cursor: pointer;
+    user-select: none;
+}
+
+.offline-schedule-hourly-mode-option > span {
+    display: flex;
     align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: background-color 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+
+.offline-schedule-hourly-mode-group:not(:disabled) .offline-schedule-hourly-mode-option:hover > span {
+    color: var(--color-text-primary);
+    background: var(--color-bg-hover);
+}
+
+.offline-schedule-hourly-mode-option input:checked + span {
+    background: var(--color-bg-primary);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+    font-weight: 600;
+}
+
+.offline-schedule-hourly-mode-option input:focus-visible + span,
+.offline-schedule-hour-cell:focus-visible,
+.offline-schedule-hourly-clear:focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+}
+
+.offline-schedule-hourly-mode-group:disabled .offline-schedule-hourly-mode-option {
+    cursor: not-allowed;
+}
+
+.offline-schedule-hourly-mode-group:disabled .offline-schedule-hourly-mode-option input:not(:checked) + span {
+    opacity: 0.45;
+}
+
+.offline-schedule-hourly-continuous-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.offline-schedule-hourly-range-sep {
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.offline-schedule-period-select.offline-schedule-period-select--compact {
+    width: 78px;
+    padding-left: 10px;
+    padding-right: 6px;
+}
+
+.offline-schedule-period-select.offline-schedule-period-select--step {
+    width: 98px;
+    padding-left: 10px;
+    padding-right: 6px;
+}
+
+.offline-schedule-hourly-summary {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.5;
+}
+
+.offline-schedule-hourly-discrete-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.offline-schedule-hourly-count {
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.offline-schedule-hourly-clear {
+    margin-left: auto;
+    padding: 2px 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 0.14s ease, background-color 0.14s ease;
+}
+
+.offline-schedule-hourly-clear:hover:not(:disabled) {
+    color: var(--color-text-primary);
+    background: var(--color-bg-hover);
+}
+
+.offline-schedule-hourly-clear:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.offline-schedule-hour-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.offline-schedule-hour-cell {
+    height: 32px;
+    border: 1px solid var(--color-border-subtle, var(--color-border));
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--color-bg-primary) 35%, var(--card, #ffffff));
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+
+.offline-schedule-hour-cell:hover:not(:disabled) {
+    color: var(--color-text-primary);
+    border-color: var(--color-border);
+    background: var(--color-bg-hover);
+}
+
+.offline-schedule-hour-cell[aria-pressed="true"],
+.offline-schedule-hour-cell[aria-pressed="true"]:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--color-brand) 58%, transparent);
+    background: color-mix(in srgb, var(--color-brand) 14%, var(--card, #ffffff));
+    color: var(--color-accent-emphasis-strong, #9B5E38);
+    font-weight: 600;
+}
+
+.offline-schedule-hour-cell:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.offline-schedule-hourly-hint {
+    margin: 0;
+    color: var(--color-error);
+    font-size: 0.75rem;
+    line-height: 1.5;
 }
 
 .offline-schedule-timezone-note {
@@ -383,6 +574,14 @@
     grid-row: 2;
     margin: 0;
     color: var(--color-error);
+    font-size: 0.8125rem;
+}
+
+.offline-schedule-preview-empty {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin: 0;
+    color: var(--color-text-secondary);
     font-size: 0.8125rem;
 }
 
@@ -559,6 +758,10 @@
         grid-template-columns: minmax(0, 1fr);
     }
 
+    .offline-schedule-time-label {
+        padding-top: 0;
+    }
+
     .offline-schedule-timezone-note {
         grid-column: 1;
     }
@@ -568,8 +771,19 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .offline-schedule-period-select {
+    .offline-schedule-period-select,
+    .offline-schedule-period-select.offline-schedule-period-select--compact,
+    .offline-schedule-period-select.offline-schedule-period-select--step {
         width: 100%;
+    }
+
+    .offline-schedule-hourly-mode-options {
+        display: grid;
+        width: 100%;
+    }
+
+    .offline-schedule-hour-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
     .offline-schedule-toggle-row {
