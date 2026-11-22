@@ -129,9 +129,4 @@ public class GitHubRemoteProvider implements GitRemoteProvider {
     public String buildDisplayUrl(String repoName) {
         return baseUrl + "/" + username + "/" + repoName + ".git";
     }
-
-    @Override
-    public String buildPushUrl(String repoName) {
-        return "https://" + username + ":" + token + "@github.com/" + username + "/" + repoName + ".git";
-    }
 }

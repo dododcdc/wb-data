@@ -1,19 +1,31 @@
 package com.wbdata.offline.repo.service;
 
+import com.sun.net.httpserver.HttpServer;
 import com.wbdata.git.entity.WbOfflinePublishRecord;
 import com.wbdata.git.service.OfflinePublishRecordService;
-import com.wbdata.offline.service.OfflineFlowDocumentService;
-
 import com.wbdata.offline.config.OfflineProperties;
+import com.wbdata.offline.service.OfflineFlowDocumentService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+import java.util.zip.GZIPInputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -117,7 +129,6 @@ class GitCommandServiceTest {
         Path remote = tempDir.resolve("remote.git");
         git(tempDir, "init", "--bare", remote.toString());
         when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
-        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
         initRepo(repo);
         write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
         git(repo, "add", "-A");
@@ -150,7 +161,6 @@ class GitCommandServiceTest {
         Path remote = tempDir.resolve("remote.git");
         git(tempDir, "init", "--bare", remote.toString());
         when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
-        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
         initRepo(repo);
         write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
         git(repo, "add", "-A");
@@ -188,7 +198,6 @@ class GitCommandServiceTest {
         git(tempDir, "init", "--bare", oldRemote.toString());
         git(tempDir, "init", "--bare", newRemote.toString());
         when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(newRemote.toUri().toString());
-        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(newRemote.toUri().toString());
 
         initRepo(repo);
         write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
@@ -221,7 +230,6 @@ class GitCommandServiceTest {
         Path otherClone = tempDir.resolve("other-clone");
         git(tempDir, "init", "--bare", remote.toString());
         when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
-        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
         initRepo(repo);
         write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
         git(repo, "add", "-A");
@@ -268,7 +276,6 @@ class GitCommandServiceTest {
         Path otherClone = tempDir.resolve("other-clone");
         git(tempDir, "init", "--bare", remote.toString());
         when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
-        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
         initRepo(repo);
         write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
         git(repo, "add", "-A");
@@ -361,7 +368,6 @@ class GitCommandServiceTest {
         Path remote = tempDir.resolve("remote.git");
         git(tempDir, "init", "--bare", remote.toString());
         when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
-        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
         initRepo(repo);
         write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
         write(repo, "scripts/example/n1.sh", "echo example-v1\n");
@@ -425,7 +431,6 @@ class GitCommandServiceTest {
         Path remote = tempDir.resolve("remote.git");
         git(tempDir, "init", "--bare", remote.toString());
         when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
-        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
         initRepo(repo);
         write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
         write(repo, "scripts/example/n1.sh", "echo v1\n");
@@ -460,7 +465,6 @@ class GitCommandServiceTest {
         Path otherClone = tempDir.resolve("other-clone");
         git(tempDir, "init", "--bare", remote.toString());
         when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
-        when(gitRemotePort.buildPushUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
         initRepo(repo);
         write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
         git(repo, "add", "-A");
@@ -486,6 +490,209 @@ class GitCommandServiceTest {
                 () -> service.pushCurrentFlow(1L, "_flows/example/flow.yaml", 9L));
 
         assertThat(ex.getReason()).contains("当前任务已有新提交");
+    }
+
+    @Test
+    void push_storesCredentialFreeDisplayUrlAndScrubsLegacyCredentialOrigin() throws Exception {
+        OfflineProperties properties = new OfflineProperties();
+        properties.setRepoBaseDir(tempDir.toString());
+        properties.setRepoDirPrefix("wb-data-");
+        OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
+        when(gitRemotePort.repositoryExists(1L, "wb-data-1")).thenReturn(true);
+        GitCommandService service = new GitCommandService(
+                properties, gitRemotePort, Mockito.mock(OfflineFlowDocumentService.class), publishRecordService(), new RepoLockManager());
+
+        // Case A: initial push creates origin using clean displayUrl (no embedded token)
+        Path repoA = properties.resolveRepoPath(1L);
+        Path remote = tempDir.resolve("remote-clean.git");
+        git(tempDir, "init", "--bare", remote.toString());
+        when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(remote.toUri().toString());
+        initRepo(repoA);
+        write(repoA, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
+        git(repoA, "add", "-A");
+        git(repoA, "commit", "-m", "init");
+
+        service.push(1L, 9L);
+
+        assertThat(git(repoA, "remote", "get-url", "origin")).isEqualTo(remote.toUri().toString());
+        assertThat(Files.readString(repoA.resolve(".git/config"))).contains(remote.toUri().toString());
+
+        // Case B: legacy credential-embedded HTTP origin is scrubbed before remote command runs
+        String legacySecret = "ghp_legacy_embedded_token_123";
+        Path httpRemote = tempDir.resolve("http-scrub-remote.git");
+        git(tempDir, "init", "--bare", httpRemote.toString());
+        AtomicReference<String> capturedBasicAuth = new AtomicReference<>();
+        HttpServer server = startSmartHttpAuthServer(httpRemote, capturedBasicAuth);
+        try {
+            String cleanHttpUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/alice/wb-data-2.git";
+            String legacyHttpUrl = "http://alice:" + legacySecret + "@127.0.0.1:" + server.getAddress().getPort() + "/alice/wb-data-2.git";
+
+            OfflineGitRemotePort httpRemotePort = Mockito.mock(OfflineGitRemotePort.class);
+            when(httpRemotePort.repositoryExists(2L, "wb-data-2")).thenReturn(true);
+            when(httpRemotePort.buildDisplayUrl(2L, "wb-data-2")).thenReturn(cleanHttpUrl);
+            when(httpRemotePort.resolveCredentials(2L))
+                    .thenReturn(Optional.of(new OfflineGitRemotePort.GitRemoteCredentials("alice", "ghp_askpass_999")));
+            GitCommandService httpService = new GitCommandService(
+                    properties, httpRemotePort, Mockito.mock(OfflineFlowDocumentService.class), publishRecordService(), new RepoLockManager());
+
+            Path repoB = properties.resolveRepoPath(2L);
+            initRepo(repoB);
+            write(repoB, "_flows/example/flow.yaml", "id: example\nnamespace: pg-2\ntasks: []\n");
+            git(repoB, "add", "-A");
+            git(repoB, "commit", "-m", "init");
+            git(repoB, "remote", "add", "origin", legacyHttpUrl);
+
+            assertThrows(ResponseStatusException.class, () -> httpService.push(2L, 9L));
+
+            String gitConfig = Files.readString(repoB.resolve(".git/config"));
+            assertThat(git(repoB, "remote", "get-url", "origin")).isEqualTo(cleanHttpUrl);
+            assertThat(gitConfig)
+                    .doesNotContain(legacySecret)
+                    .doesNotContain("ghp_askpass_999");
+            assertThat(capturedBasicAuth.get()).isEqualTo("alice:ghp_askpass_999");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void runRemoteGit_authenticatesOverHttpViaAskPassAndCleansUpTempScript() throws Exception {
+        String specialSecret = "ghp_special$!'\"@token";
+        Path httpRemote = tempDir.resolve("http-askpass-remote.git");
+        git(tempDir, "init", "--bare", httpRemote.toString());
+
+        OfflineProperties properties = new OfflineProperties();
+        properties.setRepoBaseDir(tempDir.toString());
+        properties.setRepoDirPrefix("wb-data-");
+        Path repo = properties.resolveRepoPath(1L);
+        initRepo(repo);
+        write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "init");
+        git(repo, "remote", "add", "origin", httpRemote.toUri().toString());
+        git(repo, "push", "-u", "origin", "HEAD");
+        String expectedMainSha = git(repo, "rev-parse", "HEAD");
+
+        AtomicReference<String> capturedBasicAuth = new AtomicReference<>();
+        HttpServer server = startSmartHttpAuthServer(httpRemote, capturedBasicAuth);
+        Set<Path> askPassBefore = listTempAskPassScripts();
+        try {
+            String cleanHttpUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/alice/wb-data-1.git";
+            git(repo, "remote", "set-url", "origin", cleanHttpUrl);
+
+            OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
+            when(gitRemotePort.buildDisplayUrl(1L, "wb-data-1")).thenReturn(cleanHttpUrl);
+            when(gitRemotePort.resolveCredentials(1L))
+                    .thenReturn(Optional.of(new OfflineGitRemotePort.GitRemoteCredentials("alice", specialSecret)));
+
+            GitCommandService service = new GitCommandService(
+                    properties, gitRemotePort, Mockito.mock(OfflineFlowDocumentService.class), publishRecordService(), new RepoLockManager());
+
+            String sha = service.readRemoteBranchSha(1L, "main");
+            assertThat(sha).isEqualTo(expectedMainSha);
+            assertThat(capturedBasicAuth.get()).isEqualTo("alice:" + specialSecret);
+            assertThat(Files.readString(repo.resolve(".git/config"))).doesNotContain(specialSecret);
+            assertThat(listTempAskPassScripts()).isEqualTo(askPassBefore);
+
+            String sanitizedError = GitRepositoryOperations.sanitizeGitOutput(
+                    "fatal: remote https://alice:embedded_secret@github.com/org/repo.git failed with " + specialSecret,
+                    Map.of(GitRepositoryOperations.GIT_PASSWORD_ENV, specialSecret)
+            );
+            assertThat(sanitizedError)
+                    .doesNotContain("embedded_secret")
+                    .doesNotContain(specialSecret)
+                    .contains("https://***@github.com/org/repo.git")
+                    .contains("failed with ***");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private static HttpServer startSmartHttpAuthServer(Path bareRemote, AtomicReference<String> capturedBasicAuth) throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            String auth = exchange.getRequestHeaders().getFirst("Authorization");
+            if (auth == null || !auth.startsWith("Basic ")) {
+                exchange.getResponseHeaders().add("WWW-Authenticate", "Basic realm=\"wb-data\"");
+                exchange.sendResponseHeaders(401, -1);
+                exchange.close();
+                return;
+            }
+            String decoded = new String(
+                    Base64.getDecoder().decode(auth.substring("Basic ".length()).trim()),
+                    StandardCharsets.UTF_8);
+            capturedBasicAuth.set(decoded);
+
+            String path = exchange.getRequestURI().getPath();
+            String query = exchange.getRequestURI().getRawQuery();
+            try {
+                if (path.endsWith("/info/refs") && "service=git-upload-pack".equals(query)) {
+                    byte[] refs = runGitRpc(bareRemote, new byte[0], "--advertise-refs");
+                    ByteArrayOutputStream body = new ByteArrayOutputStream();
+                    body.write("001e# service=git-upload-pack\n0000".getBytes(StandardCharsets.UTF_8));
+                    body.write(refs);
+                    byte[] bytes = body.toByteArray();
+                    exchange.getResponseHeaders().set("Content-Type", "application/x-git-upload-pack-advertisement");
+                    exchange.sendResponseHeaders(200, bytes.length);
+                    exchange.getResponseBody().write(bytes);
+                    exchange.close();
+                    return;
+                }
+                if (path.endsWith("/git-upload-pack") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    String contentEncoding = exchange.getRequestHeaders().getFirst("Content-Encoding");
+                    byte[] reqBody;
+                    try (InputStream is = "gzip".equalsIgnoreCase(contentEncoding)
+                            ? new GZIPInputStream(exchange.getRequestBody())
+                            : exchange.getRequestBody()) {
+                        reqBody = is.readAllBytes();
+                    }
+                    byte[] rpcOut = runGitRpc(bareRemote, reqBody);
+                    exchange.getResponseHeaders().set("Content-Type", "application/x-git-upload-pack-result");
+                    exchange.sendResponseHeaders(200, rpcOut.length);
+                    exchange.getResponseBody().write(rpcOut);
+                    exchange.close();
+                    return;
+                }
+                exchange.sendResponseHeaders(403, -1);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                exchange.sendResponseHeaders(500, -1);
+            } finally {
+                exchange.close();
+            }
+        });
+        server.start();
+        return server;
+    }
+
+    private static byte[] runGitRpc(Path bareRemote, byte[] input, String... extraArgs) throws IOException, InterruptedException {
+        List<String> cmd = new ArrayList<>();
+        cmd.add("git");
+        cmd.add("upload-pack");
+        cmd.add("--stateless-rpc");
+        cmd.addAll(List.of(extraArgs));
+        cmd.add(bareRemote.toString());
+        Process process = new ProcessBuilder(cmd).start();
+        try (var out = process.getOutputStream()) {
+            if (input.length > 0) {
+                out.write(input);
+            }
+        }
+        byte[] stdout = process.getInputStream().readAllBytes();
+        int exit = process.waitFor();
+        if (exit != 0) {
+            throw new IOException("git upload-pack failed with exit code " + exit);
+        }
+        return stdout;
+    }
+
+    private static Set<Path> listTempAskPassScripts() throws IOException {
+        Path tmpDir = Path.of(System.getProperty("java.io.tmpdir"));
+        try (var stream = Files.list(tmpDir)) {
+            return stream
+                    .filter(p -> p.getFileName().toString().startsWith("wb-data-git-askpass-"))
+                    .collect(Collectors.toSet());
+        }
     }
 
     private static OfflinePublishRecordService publishRecordService() {

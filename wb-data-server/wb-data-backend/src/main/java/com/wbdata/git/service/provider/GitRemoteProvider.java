@@ -22,7 +22,4 @@ public interface GitRemoteProvider {
 
     /** 构建展示用的 remote URL（不含 token） */
     String buildDisplayUrl(String repoName);
-
-    /** 构建带 token 的 remote URL */
-    String buildPushUrl(String repoName);
 }

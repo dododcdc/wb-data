@@ -1,5 +1,6 @@
 package com.wbdata.offline.repo.service;
 
+import com.sun.net.httpserver.HttpServer;
 import com.wbdata.git.service.OfflinePublishRecordService;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
 
@@ -12,12 +13,22 @@ import org.mockito.Mockito;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.zip.GZIPInputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.when;
 
 class GitCommandServiceBranchTest {
 
@@ -78,6 +89,143 @@ class GitCommandServiceBranchTest {
         initRepo(repo);
 
         assertThat(service(properties).listRemoteBranchNames(1L)).isEmpty();
+    }
+
+    @Test
+    void listRemoteBranchNames_scrubsLegacyHttpOriginAndAuthenticatesViaAskPass() throws Exception {
+        OfflineProperties properties = properties();
+        Path repo = properties.resolveRepoPath(1L);
+        Path remote = tempDir.resolve("remote-http.git");
+        initRepoWithRemote(repo, remote);
+        createRemoteOnlyBranch(remote, "feature/remote-auth");
+
+        AtomicReference<String> capturedAuth = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            String auth = exchange.getRequestHeaders().getFirst("Authorization");
+            if (auth == null || !auth.startsWith("Basic ")) {
+                exchange.getResponseHeaders().add("WWW-Authenticate", "Basic realm=\"wb-data\"");
+                exchange.sendResponseHeaders(401, -1);
+                exchange.close();
+                return;
+            }
+            capturedAuth.set(new String(
+                    Base64.getDecoder().decode(auth.substring("Basic ".length()).trim()),
+                    StandardCharsets.UTF_8));
+            String path = exchange.getRequestURI().getPath();
+            String query = exchange.getRequestURI().getRawQuery();
+            try {
+                if (path.endsWith("/info/refs") && "service=git-upload-pack".equals(query)) {
+                    byte[] refs = runGitRpc(remote, new byte[0], "--advertise-refs");
+                    ByteArrayOutputStream body = new ByteArrayOutputStream();
+                    body.write("001e# service=git-upload-pack\n0000".getBytes(StandardCharsets.UTF_8));
+                    body.write(refs);
+                    byte[] bytes = body.toByteArray();
+                    exchange.getResponseHeaders().set("Content-Type", "application/x-git-upload-pack-advertisement");
+                    exchange.sendResponseHeaders(200, bytes.length);
+                    exchange.getResponseBody().write(bytes);
+                    return;
+                }
+                if (path.endsWith("/git-upload-pack") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    String contentEncoding = exchange.getRequestHeaders().getFirst("Content-Encoding");
+                    byte[] reqBody;
+                    try (InputStream is = "gzip".equalsIgnoreCase(contentEncoding)
+                            ? new GZIPInputStream(exchange.getRequestBody())
+                            : exchange.getRequestBody()) {
+                        reqBody = is.readAllBytes();
+                    }
+                    byte[] rpcOut = runGitRpc(remote, reqBody);
+                    exchange.getResponseHeaders().set("Content-Type", "application/x-git-upload-pack-result");
+                    exchange.sendResponseHeaders(200, rpcOut.length);
+                    exchange.getResponseBody().write(rpcOut);
+                    return;
+                }
+                exchange.sendResponseHeaders(404, -1);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                exchange.sendResponseHeaders(500, -1);
+            } finally {
+                exchange.close();
+            }
+        });
+        server.start();
+        try {
+            OfflineGitRemotePort remotePort = Mockito.mock(OfflineGitRemotePort.class);
+            when(remotePort.resolveCredentials(1L))
+                    .thenReturn(Optional.of(new OfflineGitRemotePort.GitRemoteCredentials("alice", "glpat_branch_secret")));
+            GitCommandService gitCommandService = new GitCommandService(
+                    properties,
+                    remotePort,
+                    Mockito.mock(OfflineFlowDocumentService.class),
+                    Mockito.mock(OfflinePublishRecordService.class),
+                    new RepoLockManager()
+            );
+
+            String legacyUrl = "http://alice:old_secret@127.0.0.1:" + server.getAddress().getPort() + "/wb-data-1.git";
+            String cleanUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/wb-data-1.git";
+            git(repo, "remote", "set-url", "origin", legacyUrl);
+
+            List<String> branches = gitCommandService.listRemoteBranchNames(1L);
+
+            assertThat(branches).containsExactly("feature/remote-auth", "main");
+            assertThat(capturedAuth.get()).isEqualTo("alice:glpat_branch_secret");
+            assertThat(git(repo, "remote", "get-url", "origin")).isEqualTo(cleanUrl);
+            assertThat(Files.readString(repo.resolve(".git/config")))
+                    .doesNotContain("old_secret")
+                    .doesNotContain("glpat_branch_secret");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void listRemoteBranchNames_fallsBackToCachedRemoteRefsWhenFetchFails() throws Exception {
+        OfflineProperties properties = properties();
+        Path repo = properties.resolveRepoPath(1L);
+        Path remote = tempDir.resolve("remote-cached.git");
+        initRepoWithRemote(repo, remote);
+        createRemoteOnlyBranch(remote, "feature/cached");
+        git(repo, "fetch", "origin");
+        git(repo, "remote", "set-url", "origin", "http://127.0.0.1:1/unreachable.git");
+
+        List<String> branches = service(properties).listRemoteBranchNames(1L);
+
+        assertThat(branches).containsExactly("feature/cached", "main");
+    }
+
+    @Test
+    void listRemoteBranchNames_throwsBadGatewayWhenFetchFailsWithoutCachedRefs() throws Exception {
+        OfflineProperties properties = properties();
+        Path repo = properties.resolveRepoPath(1L);
+        initRepo(repo);
+        git(repo, "remote", "add", "origin", "http://127.0.0.1:1/unreachable.git");
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> service(properties).listRemoteBranchNames(1L));
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        assertThat(ex.getReason()).contains("无法连接远程 Git 仓库");
+    }
+
+    private static byte[] runGitRpc(Path bareRemote, byte[] input, String... extraArgs) throws IOException, InterruptedException {
+        java.util.ArrayList<String> cmd = new java.util.ArrayList<>();
+        cmd.add("git");
+        cmd.add("upload-pack");
+        cmd.add("--stateless-rpc");
+        cmd.addAll(List.of(extraArgs));
+        cmd.add(bareRemote.toString());
+        Process process = new ProcessBuilder(cmd).start();
+        try (var out = process.getOutputStream()) {
+            if (input.length > 0) {
+                out.write(input);
+            }
+        }
+        byte[] stdout = process.getInputStream().readAllBytes();
+        int exit = process.waitFor();
+        if (exit != 0) {
+            throw new IOException("git upload-pack failed with exit code " + exit);
+        }
+        return stdout;
     }
 
     @Test

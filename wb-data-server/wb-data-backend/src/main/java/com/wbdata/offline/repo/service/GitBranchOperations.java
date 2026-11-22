@@ -3,29 +3,28 @@ package com.wbdata.offline.repo.service;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.repo.dto.BranchItemResponse;
 import com.wbdata.offline.repo.dto.BranchListResponse;
-import com.wbdata.offline.repo.dto.DirtyFlowChangeResponse;
-import com.wbdata.offline.repo.dto.DirtyWorkingTreeResponse;
-import com.wbdata.offline.exception.DirtyWorkingTreeException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * 分支管理实现：列表（本地+远程合并）、创建、切换、合并（含冲突回滚）、删除。
  * 方法不带锁；锁由入口 {@link GitCommandService} 在调用处获取。
  */
+@Slf4j
 class GitBranchOperations extends GitRepositoryOperations {
 
     private final GitWorkingTreeStatus workingTreeStatus = new GitWorkingTreeStatus();
+    private final OfflineGitRemotePort gitRemotePort;
 
-    GitBranchOperations(OfflineProperties offlineProperties) {
+    GitBranchOperations(OfflineProperties offlineProperties, OfflineGitRemotePort gitRemotePort) {
         super(offlineProperties);
+        this.gitRemotePort = gitRemotePort;
     }
 
     private void ensureClean(Path repoPath) {
@@ -38,7 +37,23 @@ class GitBranchOperations extends GitRepositoryOperations {
         if (getCurrentRemote(repoPath) == null) {
             return List.of();
         }
-        runGit(repoPath, "fetch", "--prune", "origin");
+        try {
+            runRemoteGit(repoPath, gitRemotePort, groupId, "fetch", "--prune", "origin");
+        } catch (GitException ex) {
+            List<String> cached = readCachedRemoteBranchNames(repoPath);
+            if (!cached.isEmpty()) {
+                log.warn("刷新远程分支失败，降级返回本地已缓存远端分支: groupId={}, message={}", groupId, ex.getMessage());
+                return cached;
+            }
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "无法连接远程 Git 仓库刷新分支列表，请稍后重试或检查网络与 Token 配置"
+            );
+        }
+        return readCachedRemoteBranchNames(repoPath);
+    }
+
+    private List<String> readCachedRemoteBranchNames(Path repoPath) {
         return runGit(repoPath, "for-each-ref", "--format=%(refname:short)", "--sort=refname", "refs/remotes/origin")
                 .lines()
                 .map(String::trim)
@@ -89,7 +104,7 @@ class GitBranchOperations extends GitRepositoryOperations {
         validateBranchName(repoPath, baseBranch);
         ensureClean(repoPath);
 
-        switchToExistingOrRemote(repoPath, baseBranch);
+        switchToExistingOrRemote(repoPath, groupId, baseBranch);
         runGit(repoPath, "switch", "-c", name);
         return name;
     }
@@ -100,7 +115,7 @@ class GitBranchOperations extends GitRepositoryOperations {
         validateBranchName(repoPath, branch);
         ensureClean(repoPath);
 
-        switchToExistingOrRemote(repoPath, branch);
+        switchToExistingOrRemote(repoPath, groupId, branch);
         return branch;
     }
 
@@ -112,12 +127,12 @@ class GitBranchOperations extends GitRepositoryOperations {
         ensureClean(repoPath);
 
         String originalBranch = getCurrentBranch(repoPath);
-        String sourceRef = resolveMergeSourceRef(repoPath, source);
+        String sourceRef = resolveMergeSourceRef(repoPath, groupId, source);
         try {
-            switchToExistingOrRemote(repoPath, target);
+            switchToExistingOrRemote(repoPath, groupId, target);
             runGit(repoPath, "merge", sourceRef);
             if (originalBranch != null && !originalBranch.isBlank() && !originalBranch.equals(target)) {
-                switchToExistingOrRemote(repoPath, originalBranch);
+                switchToExistingOrRemote(repoPath, groupId, originalBranch);
             }
             return target;
         } catch (GitException ex) {
@@ -137,12 +152,12 @@ class GitBranchOperations extends GitRepositoryOperations {
         }
     }
 
-    String resolveMergeSourceRef(Path repoPath, String source) {
+    String resolveMergeSourceRef(Path repoPath, Long groupId, String source) {
         if (localBranchExists(repoPath, source)) {
             return source;
         }
         try {
-            runGit(repoPath, "fetch", "origin", source + ":refs/remotes/origin/" + source);
+            runRemoteGit(repoPath, gitRemotePort, groupId, "fetch", "origin", source + ":refs/remotes/origin/" + source);
             return "origin/" + source;
         } catch (GitException ex) {
             if (remoteBranchExists(repoPath, source)) {
@@ -168,12 +183,12 @@ class GitBranchOperations extends GitRepositoryOperations {
         runGit(repoPath, "branch", force ? "-D" : "-d", branch);
     }
 
-    private void switchToExistingOrRemote(Path repoPath, String branch) {
+    private void switchToExistingOrRemote(Path repoPath, Long groupId, String branch) {
         if (localBranchExists(repoPath, branch)) {
             runGit(repoPath, "switch", branch);
             return;
         }
-        checkoutRemoteTrackingBranch(repoPath, branch);
+        checkoutRemoteTrackingBranch(repoPath, groupId, branch);
     }
 
     private boolean localBranchExists(Path repoPath, String branch) {
@@ -194,8 +209,8 @@ class GitBranchOperations extends GitRepositoryOperations {
         }
     }
 
-    private void checkoutRemoteTrackingBranch(Path repoPath, String branch) {
-        runGit(repoPath, "fetch", "origin", branch + ":refs/remotes/origin/" + branch);
+    private void checkoutRemoteTrackingBranch(Path repoPath, Long groupId, String branch) {
+        runRemoteGit(repoPath, gitRemotePort, groupId, "fetch", "origin", branch + ":refs/remotes/origin/" + branch);
         runGit(repoPath, "switch", "--track", "-c", branch, "origin/" + branch);
     }
 

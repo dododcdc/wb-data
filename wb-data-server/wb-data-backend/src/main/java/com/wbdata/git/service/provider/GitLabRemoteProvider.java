@@ -135,10 +135,4 @@ public class GitLabRemoteProvider implements GitRemoteProvider {
         String base = baseUrl.replaceFirst("/$", "");
         return base + "/" + username + "/" + repoName + ".git";
     }
-
-    @Override
-    public String buildPushUrl(String repoName) {
-        String base = baseUrl.replaceFirst("/$", "");
-        return "https://" + username + ":" + token + "@" + base.replaceFirst("https://", "") + "/" + username + "/" + repoName + ".git";
-    }
 }

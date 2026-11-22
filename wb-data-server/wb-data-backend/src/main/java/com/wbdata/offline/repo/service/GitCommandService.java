@@ -48,7 +48,7 @@ public class GitCommandService extends GitRepositoryOperations {
         this.offlineFlowDocumentService = offlineFlowDocumentService;
         this.publishRecordService = publishRecordService;
         this.repoLockManager = repoLockManager;
-        this.branchOperations = new GitBranchOperations(offlineProperties);
+        this.branchOperations = new GitBranchOperations(offlineProperties, gitRemotePort);
     }
 
     public BranchListResponse listBranches(Long groupId) {
@@ -304,19 +304,24 @@ public class GitCommandService extends GitRepositoryOperations {
     }
 
     private RemoteOriginSetup prepareRemoteOrigin(Path repoPath, Long groupId, String repoName) {
+        String displayUrl = gitRemotePort.buildDisplayUrl(groupId, repoName);
         String currentRemote = getCurrentRemote(repoPath);
         currentRemote = clearStaleRemote(repoPath, currentRemote, groupId, repoName);
 
         boolean remoteCreated = false;
         if (currentRemote == null) {
             gitRemotePort.createRepository(groupId, repoName, true);
-            String pushUrl = gitRemotePort.buildPushUrl(groupId, repoName);
-            runGit(repoPath, "remote", "add", "origin", pushUrl);
+            runGit(repoPath, "remote", "add", "origin", displayUrl);
             remoteCreated = true;
-        } else if (!gitRemotePort.repositoryExists(groupId, repoName)) {
-            return new RemoteOriginSetup(null, false, true);
+        } else {
+            if (!gitRemotePort.repositoryExists(groupId, repoName)) {
+                return new RemoteOriginSetup(null, false, true);
+            }
+            if (hasEmbeddedHttpCredentials(currentRemote)) {
+                runGit(repoPath, "remote", "set-url", "origin", displayUrl);
+            }
         }
-        return new RemoteOriginSetup(gitRemotePort.buildDisplayUrl(groupId, repoName), remoteCreated, false);
+        return new RemoteOriginSetup(displayUrl, remoteCreated, false);
     }
 
     private PushResult pushUnlocked(Long groupId, Long pushedBy) {
@@ -330,14 +335,14 @@ public class GitCommandService extends GitRepositoryOperations {
         }
 
         String branch = getCurrentBranch(repoPath);
-        String beforeSha = readOriginBranchSha(repoPath, branch);
+        String beforeSha = readOriginBranchSha(repoPath, groupId, branch);
         try {
-            runGit(repoPath, "push", "-u", "origin", "HEAD");
+            runRemoteGit(repoPath, gitRemotePort, groupId, "push", "-u", "origin", "HEAD");
         } catch (GitException ex) {
             try {
-                runGit(repoPath, "pull", "--rebase");
-                beforeSha = readOriginBranchSha(repoPath, branch);
-                runGit(repoPath, "push", "-u", "origin", "HEAD");
+                runRemoteGit(repoPath, gitRemotePort, groupId, "pull", "--rebase");
+                beforeSha = readOriginBranchSha(repoPath, groupId, branch);
+                runRemoteGit(repoPath, gitRemotePort, groupId, "push", "-u", "origin", "HEAD");
             } catch (GitException pullEx) {
                 abortRebase(repoPath);
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -366,9 +371,10 @@ public class GitCommandService extends GitRepositoryOperations {
         }
 
         String branch = getCurrentBranch(repoPath);
-        String beforeSha = readOriginBranchSha(repoPath, branch);
+        String beforeSha = readOriginBranchSha(repoPath, groupId, branch);
         if (beforeSha != null) {
-            runGit(repoPath, "fetch", "origin", "+refs/heads/" + branch + ":refs/remotes/origin/" + branch);
+            runRemoteGit(repoPath, gitRemotePort, groupId,
+                    "fetch", "origin", "+refs/heads/" + branch + ":refs/remotes/origin/" + branch);
             String fetchedSha = tryRevParse(repoPath, "refs/remotes/origin/" + branch);
             if (fetchedSha != null) {
                 beforeSha = fetchedSha;
@@ -388,14 +394,14 @@ public class GitCommandService extends GitRepositoryOperations {
         if (beforeSha == null) {
             List<String> allHeadFiles = listPathsInTree(repoPath, headSha, List.of());
             if (allHeadFiles.stream().allMatch(path -> pathBelongsToFlow(path, flowPathSpecs))) {
-                runGit(repoPath, "push", "-u", "origin", "HEAD");
+                runRemoteGit(repoPath, gitRemotePort, groupId, "push", "-u", "origin", "HEAD");
                 publishPushedEvent(groupId, pushedBy, repoPath, null, headSha);
                 return new PushResult(true, "当前任务推送成功", remote.displayUrl(), remote.remoteCreated(), false);
             }
         } else if (isAncestor(repoPath, beforeSha, headSha)) {
             List<String> allChangedPaths = listChangedPathsBetween(repoPath, beforeSha, headSha, List.of());
             if (allChangedPaths.stream().allMatch(path -> pathBelongsToFlow(path, flowPathSpecs))) {
-                runGit(repoPath, "push", "-u", "origin", "HEAD");
+                runRemoteGit(repoPath, gitRemotePort, groupId, "push", "-u", "origin", "HEAD");
                 publishPushedEvent(groupId, pushedBy, repoPath, beforeSha, headSha);
                 return new PushResult(true, "当前任务推送成功", remote.displayUrl(), remote.remoteCreated(), false);
             }
@@ -406,7 +412,7 @@ public class GitCommandService extends GitRepositoryOperations {
                 ? listChangedPathsBetween(repoPath, baseSha, beforeSha, List.of())
                 : List.of();
         String pushedCommit = replaySingleFlowCommitsAndRebaseRemainder(
-                repoPath, branch, beforeSha, baseSha, headSha, flowPathSpecs, remoteChangedPaths);
+                repoPath, groupId, branch, beforeSha, baseSha, headSha, flowPathSpecs, remoteChangedPaths);
         publishPushedEvent(groupId, pushedBy, repoPath, beforeSha, pushedCommit);
         return new PushResult(true, "当前任务推送成功", remote.displayUrl(), remote.remoteCreated(), false);
     }
@@ -439,6 +445,7 @@ public class GitCommandService extends GitRepositoryOperations {
     }
 
     private String replaySingleFlowCommitsAndRebaseRemainder(Path repoPath,
+                                                             Long groupId,
                                                              String branch,
                                                              String beforeSha,
                                                              String baseSha,
@@ -491,7 +498,7 @@ public class GitCommandService extends GitRepositoryOperations {
             if (pushedCommit == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前任务暂无可推送改动");
             }
-            runGit(repoPath, "push", "origin", pushedCommit + ":refs/heads/" + branch);
+            runRemoteGit(repoPath, gitRemotePort, groupId, "push", "origin", pushedCommit + ":refs/heads/" + branch);
             runGit(repoPath, "update-ref", "refs/remotes/origin/" + branch, pushedCommit);
             runGit(repoPath, "config", "branch." + branch + ".remote", "origin");
             runGit(repoPath, "config", "branch." + branch + ".merge", "refs/heads/" + branch);
@@ -685,13 +692,12 @@ public class GitCommandService extends GitRepositoryOperations {
 
         // 重建远程仓库
         gitRemotePort.createRepository(groupId, repoName, true);
-        String pushUrl = gitRemotePort.buildPushUrl(groupId, repoName);
-        runGit(repoPath, "remote", "add", "origin", pushUrl);
+        String displayUrl = gitRemotePort.buildDisplayUrl(groupId, repoName);
+        runGit(repoPath, "remote", "add", "origin", displayUrl);
 
         // git push
-        runGit(repoPath, "push", "-u", "origin", "HEAD");
+        runRemoteGit(repoPath, gitRemotePort, groupId, "push", "-u", "origin", "HEAD");
 
-        String displayUrl = gitRemotePort.buildDisplayUrl(groupId, repoName);
         publishPushedEvent(groupId, pushedBy, repoPath, null);
         return new PushResult(true, "推送成功", displayUrl, true, false);
     }
@@ -703,15 +709,16 @@ public class GitCommandService extends GitRepositoryOperations {
 
     public String readRemoteBranchSha(Long groupId, String branch) {
         return repoLockManager.withLock(groupId,
-                () -> readOriginBranchSha(repoPath(groupId), branch));
+                () -> readOriginBranchSha(repoPath(groupId), groupId, branch));
     }
 
-    private String readOriginBranchSha(Path repoPath, String branch) {
+    private String readOriginBranchSha(Path repoPath, Long groupId, String branch) {
         if (branch == null || branch.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前分支不能为空");
         }
         try {
-            String output = runGit(repoPath, "ls-remote", "--heads", "origin", "refs/heads/" + branch);
+            String output = runRemoteGit(repoPath, gitRemotePort, groupId,
+                    "ls-remote", "--heads", "origin", "refs/heads/" + branch);
             if (output.isBlank()) {
                 return null;
             }
@@ -729,7 +736,7 @@ public class GitCommandService extends GitRepositoryOperations {
 
     private void publishPushedEvent(Long groupId, Long pushedBy, Path repoPath, String beforeSha, String afterSha) {
         String branch = getCurrentBranch(repoPath);
-        String remoteAfterSha = readOriginBranchSha(repoPath, branch);
+        String remoteAfterSha = readOriginBranchSha(repoPath, groupId, branch);
         if (!afterSha.equals(remoteAfterSha)) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "推送后远端分支校验失败，发布记录未写入");
@@ -780,8 +787,7 @@ public class GitCommandService extends GitRepositoryOperations {
     private boolean isConfiguredRemote(String currentRemote, Long groupId, String repoName) {
         String current = canonicalRemoteUrl(currentRemote);
         return !current.isBlank()
-                && (current.equals(canonicalRemoteUrl(gitRemotePort.buildPushUrl(groupId, repoName)))
-                || current.equals(canonicalRemoteUrl(gitRemotePort.buildDisplayUrl(groupId, repoName))));
+                && current.equals(canonicalRemoteUrl(gitRemotePort.buildDisplayUrl(groupId, repoName)));
     }
 
     private String canonicalRemoteUrl(String remoteUrl) {
@@ -807,21 +813,6 @@ public class GitCommandService extends GitRepositoryOperations {
         } catch (Exception ex) {
             return remoteUrl.trim();
         }
-    }
-
-    private String stripCredentials(String remoteUrl) {
-        int schemeIndex = remoteUrl.indexOf("://");
-        if (schemeIndex < 0) {
-            return remoteUrl;
-        }
-        int authorityStart = schemeIndex + 3;
-        int pathStart = remoteUrl.indexOf('/', authorityStart);
-        int authorityEnd = pathStart < 0 ? remoteUrl.length() : pathStart;
-        int credentialEnd = remoteUrl.lastIndexOf('@', authorityEnd);
-        if (credentialEnd < authorityStart) {
-            return remoteUrl;
-        }
-        return remoteUrl.substring(0, authorityStart) + remoteUrl.substring(credentialEnd + 1);
     }
 
     private void abortRebase(Path repoPath) {
