@@ -14,6 +14,7 @@ import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -120,6 +121,48 @@ class AbstractJdbcDataSourcePluginQueryTest {
 
         plugin.executeQuery(new QueryRequest(connectionInfo("target_db"), "SELECT 1", 10));
 
+        assertEquals(List.of("target_db", "default_db"), stubState.catalogHistory);
+        assertEquals("default_db", stubState.currentCatalog);
+    }
+
+    @Test
+    void streamQueryEmitsRowsIncrementallyHonorsLimitWithNullValuesAndRestoresCatalog() {
+        stubState.initialCatalog = "default_db";
+        stubState.columns = List.of(
+                new StubColumn("id", "user_id", "BIGINT"),
+                new StubColumn("id", "id", "BIGINT"),
+                new StubColumn("id", "id", "BIGINT")
+        );
+        stubState.rows = List.of(
+                Arrays.asList(10L, null, 30L),
+                Arrays.asList(40L, 50L, 60L),
+                Arrays.asList(70L, 80L, 90L)
+        );
+
+        List<String> capturedColumns = new ArrayList<>();
+        List<List<Object>> streamedRows = new ArrayList<>();
+        QueryStreamSummary summary = plugin.streamQuery(
+                new QueryRequest(connectionInfo("target_db"), "SELECT id FROM t", 2, 30),
+                new QueryRowHandler() {
+                    @Override
+                    public void onColumns(List<ColumnMetadata> columns) {
+                        columns.forEach(c -> capturedColumns.add(c.name()));
+                    }
+
+                    @Override
+                    public void onRow(List<Object> values) {
+                        streamedRows.add(values);
+                    }
+                });
+
+        assertEquals(3, stubState.maxRowsSet);
+        assertEquals(30, stubState.timeoutSet);
+        assertEquals(List.of("user_id", "id", "id_2"), capturedColumns);
+        assertEquals(2, streamedRows.size());
+        assertEquals(Arrays.asList(10L, null, 30L), streamedRows.get(0));
+        assertEquals(Arrays.asList(40L, 50L, 60L), streamedRows.get(1));
+        assertEquals(2, summary.rowCount());
+        assertTrue(summary.truncated());
         assertEquals(List.of("target_db", "default_db"), stubState.catalogHistory);
         assertEquals("default_db", stubState.currentCatalog);
     }

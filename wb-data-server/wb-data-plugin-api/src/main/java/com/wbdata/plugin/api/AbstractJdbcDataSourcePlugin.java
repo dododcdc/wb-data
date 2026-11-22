@@ -222,8 +222,79 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     @Override
     public QueryResult executeQuery(QueryRequest request) {
         long startTime = System.currentTimeMillis();
-        DataSourceConnectionInfo connInfo = request.connectionInfo();
         int rowLimit = resolveRowLimit(request.rowLimit());
+        List<ColumnMetadata> capturedColumns = new ArrayList<>();
+        List<Map<String, Object>> rows = new ArrayList<>();
+
+        return runQueryStatement(request, rowLimit, (statement, hasResultSet) -> {
+            if (!hasResultSet) {
+                int updateCount = statement.getUpdateCount();
+                return new QueryResult(
+                        Collections.emptyList(),
+                        Collections.emptyList(),
+                        System.currentTimeMillis() - startTime,
+                        "Affected rows: " + updateCount,
+                        false,
+                        rowLimit);
+            }
+            StreamOutcome outcome = consumeResultSet(statement, rowLimit, new QueryRowHandler() {
+                @Override
+                public void onColumns(List<ColumnMetadata> columns) {
+                    capturedColumns.addAll(columns);
+                }
+
+                @Override
+                public void onRow(List<Object> values) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    for (int i = 0; i < capturedColumns.size(); i++) {
+                        row.put(capturedColumns.get(i).name(), values.get(i));
+                    }
+                    rows.add(row);
+                }
+            });
+            String message = outcome.truncated()
+                    ? "Result truncated. Showing the first " + rowLimit + " rows."
+                    : "Success";
+            return new QueryResult(
+                    capturedColumns,
+                    rows,
+                    System.currentTimeMillis() - startTime,
+                    message,
+                    outcome.truncated(),
+                    rowLimit);
+        });
+    }
+
+    @Override
+    public QueryStreamSummary streamQuery(QueryRequest request, QueryRowHandler rowHandler) {
+        if (rowHandler == null) {
+            throw new IllegalArgumentException("rowHandler 不能为空");
+        }
+        long startTime = System.currentTimeMillis();
+        int rowLimit = resolveRowLimit(request.rowLimit());
+        return runQueryStatement(request, rowLimit, (statement, hasResultSet) -> {
+            if (!hasResultSet) {
+                rowHandler.onColumns(Collections.emptyList());
+                return new QueryStreamSummary(0, false, System.currentTimeMillis() - startTime);
+            }
+            StreamOutcome outcome = consumeResultSet(statement, rowLimit, rowHandler);
+            return new QueryStreamSummary(
+                    outcome.rowCount(),
+                    outcome.truncated(),
+                    System.currentTimeMillis() - startTime);
+        });
+    }
+
+    @FunctionalInterface
+    private interface StatementResultHandler<T> {
+        T handle(Statement statement, boolean hasResultSet) throws Exception;
+    }
+
+    private record StreamOutcome(int rowCount, boolean truncated) {
+    }
+
+    private <T> T runQueryStatement(QueryRequest request, int rowLimit, StatementResultHandler<T> handler) {
+        DataSourceConnectionInfo connInfo = request.connectionInfo();
         int timeoutSeconds = resolveQueryTimeoutSeconds(request.timeoutSeconds());
         try (Connection connection = getConnection(connInfo)) {
             String previousCatalog = null;
@@ -244,18 +315,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                 int fetchRowLimit = rowLimit < Integer.MAX_VALUE ? rowLimit + 1 : rowLimit;
                 statement.setMaxRows(fetchRowLimit);
                 boolean hasResultSet = statement.execute(request.sql());
-                if (hasResultSet) {
-                    return buildQueryResult(statement, startTime, rowLimit);
-                } else {
-                    int updateCount = statement.getUpdateCount();
-                    return new QueryResult(
-                            Collections.emptyList(),
-                            Collections.emptyList(),
-                            System.currentTimeMillis() - startTime,
-                            "Affected rows: " + updateCount,
-                            false,
-                            rowLimit);
-                }
+                return handler.handle(statement, hasResultSet);
             } finally {
                 if (catalogChanged && previousCatalog != null && !previousCatalog.equals(connInfo.databaseName())) {
                     restoreCatalogQuietly(connection, previousCatalog);
@@ -310,10 +370,11 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     }
 
     /**
-     * 从 Statement 中读取 ResultSet，解析列信息和行数据，封装为 QueryResult。
+     * 从 Statement 中读取 ResultSet，逐行触发回调而不在内存中整批缓存。
      * 仅在 {@code statement.execute()} 返回 true（即有结果集）时调用。
      */
-    private QueryResult buildQueryResult(Statement statement, long startTime, int rowLimit) throws SQLException {
+    private StreamOutcome consumeResultSet(Statement statement, int rowLimit, QueryRowHandler rowHandler)
+            throws Exception {
         try (ResultSet rs = statement.getResultSet()) {
             ResultSetMetaData rsMeta = rs.getMetaData();
             int colCount = rsMeta.getColumnCount();
@@ -329,29 +390,23 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
                         "",
                         false));
             }
-            List<Map<String, Object>> rows = new ArrayList<>();
+            rowHandler.onColumns(Collections.unmodifiableList(columns));
+
+            int rowCount = 0;
             boolean truncated = false;
             while (rs.next()) {
-                if (rows.size() >= rowLimit) {
+                if (rowCount >= rowLimit) {
                     truncated = true;
                     break;
                 }
-                Map<String, Object> row = new LinkedHashMap<>();
+                List<Object> row = new ArrayList<>(colCount);
                 for (int i = 1; i <= colCount; i++) {
-                    row.put(columnKeys.get(i - 1), rs.getObject(i));
+                    row.add(rs.getObject(i));
                 }
-                rows.add(row);
+                rowHandler.onRow(Collections.unmodifiableList(row));
+                rowCount++;
             }
-            String message = truncated
-                    ? "Result truncated. Showing the first " + rowLimit + " rows."
-                    : "Success";
-            return new QueryResult(
-                    columns,
-                    rows,
-                    System.currentTimeMillis() - startTime,
-                    message,
-                    truncated,
-                    rowLimit);
+            return new StreamOutcome(rowCount, truncated);
         }
     }
 
@@ -648,7 +703,7 @@ public abstract class AbstractJdbcDataSourcePlugin implements DataSourcePlugin {
     }
 
     /** 内存分页：JDBC 元数据接口无原生分页，全量取回后切页。 */
-    private static <T> PageResult<T> paginate(List<T> allMatched, int page, int size) {
+    protected static <T> PageResult<T> paginate(List<T> allMatched, int page, int size) {
         int total = allMatched.size();
         int safePage = Math.max(page, 1);
         int safeSize = size > 0 ? size : 200;

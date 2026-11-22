@@ -29,6 +29,27 @@ public interface DataSourcePlugin {
 
     QueryResult executeQuery(QueryRequest request);
 
+    default QueryStreamSummary streamQuery(QueryRequest request, QueryRowHandler rowHandler) {
+        QueryResult result = executeQuery(request);
+        java.util.List<ColumnMetadata> columns = result.columns() == null ? java.util.List.of() : result.columns();
+        try {
+            rowHandler.onColumns(columns);
+            java.util.List<java.util.Map<String, Object>> rows = result.rows() == null
+                    ? java.util.List.of()
+                    : result.rows();
+            for (java.util.Map<String, Object> row : rows) {
+                java.util.List<Object> values = new java.util.ArrayList<>(columns.size());
+                for (ColumnMetadata column : columns) {
+                    values.add(row.get(column.name()));
+                }
+                rowHandler.onRow(values);
+            }
+            return new QueryStreamSummary(rows.size(), result.truncated(), result.executionTimeMs());
+        } catch (Exception e) {
+            throw new DataSourceException("流式读取查询结果失败: " + e.getMessage(), e);
+        }
+    }
+
     void executeStatements(DataSourceConnectionInfo connectionInfo, java.util.List<String> statements,
                            java.util.Map<String, String> parameters, int timeoutSeconds);
 

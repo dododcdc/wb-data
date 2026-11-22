@@ -15,10 +15,12 @@ import com.wbdata.group.entity.WbProjectGroupMember;
 import com.wbdata.group.mapper.WbProjectGroupMapper;
 import com.wbdata.group.mapper.WbProjectGroupMemberMapper;
 import com.wbdata.plugin.api.ColumnMetadata;
-import com.wbdata.plugin.api.QueryResult;
+import com.wbdata.plugin.api.QueryRowHandler;
+import com.wbdata.plugin.api.QueryStreamSummary;
 import com.wbdata.query.dto.QueryExportTaskResponse;
 import com.wbdata.query.service.QueryService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -31,16 +33,20 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -239,14 +245,17 @@ class QueryExportServiceImplTest {
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         AtomicReference<AuthSession> workerSession = new AtomicReference<>();
-        when(queryService.executeQuery(1L, "select 1", "db", 100_000)).thenAnswer(invocation -> {
-            workerSession.set(AuthContext.current());
-            started.countDown();
-            if (!release.await(5, TimeUnit.SECONDS)) {
-                throw new IllegalStateException("等待测试释放 worker 超时");
-            }
-            return new QueryResult(List.of(), List.of(), 1L, "OK", false, 100_000);
-        });
+        Mockito.doAnswer(invocation -> {
+                    workerSession.set(AuthContext.current());
+                    started.countDown();
+                    if (!release.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("等待测试释放 worker 超时");
+                    }
+                    QueryRowHandler handler = invocation.getArgument(4);
+                    handler.onColumns(List.of());
+                    return new QueryStreamSummary(0, false, 1L);
+                }).when(queryService)
+                .streamQuery(Mockito.eq(1L), Mockito.eq("select 1"), Mockito.eq("db"), Mockito.eq(100_000), any());
 
         String taskId = service.createExportTask(1L, "select 1", "db", "csv").taskId();
         try {
@@ -271,8 +280,11 @@ class QueryExportServiceImplTest {
     }
 
     private String completedExport() {
-        when(queryService.executeQuery(anyLong(), anyString(), anyString(), anyInt()))
-                .thenReturn(new QueryResult(List.of(), List.of(), 1L, "OK", false, 100));
+        Mockito.doAnswer(invocation -> {
+                    QueryRowHandler handler = invocation.getArgument(4);
+                    handler.onColumns(List.of());
+                    return new QueryStreamSummary(0, false, 1L);
+                }).when(queryService).streamQuery(anyLong(), anyString(), anyString(), anyInt(), any());
         String taskId = service.createExportTask(1L, "select 1", "db", "csv").taskId();
         assertThat(awaitTerminal(taskId).status()).isEqualTo("SUCCESS");
         return taskId;
@@ -294,30 +306,71 @@ class QueryExportServiceImplTest {
 
     @Test
     void exportSuccessProducesDownloadableFileAndShutdownCleansItUp() throws Exception {
-        QueryResult result = new QueryResult(
-                List.of(new ColumnMetadata("id", "INT", 11, false, "", true)),
-                List.of(Map.of("id", 1)),
-                1L, "OK", false, 100);
-        when(queryService.executeQuery(anyLong(), anyString(), anyString(), anyInt())).thenReturn(result);
+        Mockito.doAnswer(invocation -> {
+                    QueryRowHandler handler = invocation.getArgument(4);
+                    handler.onColumns(List.of(
+                            new ColumnMetadata("id", "INT", 11, false, "", true),
+                            new ColumnMetadata("note", "VARCHAR", 64, true, "", false)));
+                    handler.onRow(Arrays.asList(1, null));
+                    handler.onRow(Arrays.asList(2, "ok, \"quoted\""));
+                    return new QueryStreamSummary(2, true, 1L);
+                }).when(queryService).streamQuery(anyLong(), anyString(), anyString(), anyInt(), any());
 
         QueryExportTaskResponse created = service.createExportTask(1L, "select 1", "db", "csv");
         QueryExportTaskResponse finished = awaitTerminal(created.taskId());
 
         assertThat(finished.status()).isEqualTo("SUCCESS");
-        assertThat(finished.exportedRows()).isEqualTo(1);
+        assertThat(finished.exportedRows()).isEqualTo(2);
+        assertThat(finished.truncated()).isTrue();
         Resource resource = service.getDownloadResource(created.taskId());
         assertThat(resource.exists()).isTrue();
         Path exported = resource.getFile().toPath();
-        assertThat(Files.readString(exported)).contains("id");
+        assertThat(Files.readString(exported)).isEqualTo("\uFEFFid,note\n1,\n2,\"ok, \"\"quoted\"\"\"\n");
 
         service.shutdown();
         assertThat(Files.exists(exported)).isFalse();
     }
 
     @Test
-    void exportFailureMarksTaskFailedAndBlocksDownload() {
-        when(queryService.executeQuery(anyLong(), anyString(), anyString(), anyInt()))
-                .thenThrow(new RuntimeException("connection refused"));
+    void streamXlsxExportRendersNullCellsAsEmptyStringsAndPropagatesTruncated() throws Exception {
+        Mockito.doAnswer(invocation -> {
+                    QueryRowHandler handler = invocation.getArgument(4);
+                    handler.onColumns(List.of(
+                            new ColumnMetadata("id", "INT", 11, false, "", true),
+                            new ColumnMetadata("name", "VARCHAR", 64, true, "", false)));
+                    handler.onRow(Arrays.asList(1, null));
+                    handler.onRow(Arrays.asList(2, "Alice"));
+                    return new QueryStreamSummary(2, true, 1L);
+                }).when(queryService).streamQuery(anyLong(), anyString(), anyString(), anyInt(), any());
+
+        QueryExportTaskResponse created = service.createExportTask(1L, "select 1", "db", "xlsx");
+        QueryExportTaskResponse finished = awaitTerminal(created.taskId());
+
+        assertThat(finished.status()).isEqualTo("SUCCESS");
+        assertThat(finished.exportedRows()).isEqualTo(2);
+        assertThat(finished.truncated()).isTrue();
+
+        Path exported = service.getDownloadResource(created.taskId()).getFile().toPath();
+        try (InputStream is = Files.newInputStream(exported);
+             var workbook = WorkbookFactory.create(is)) {
+            var sheet = workbook.getSheet("Result");
+            assertThat(sheet.getRow(0).getCell(0).getStringCellValue()).isEqualTo("id");
+            assertThat(sheet.getRow(0).getCell(1).getStringCellValue()).isEqualTo("name");
+            assertThat(sheet.getRow(1).getCell(0).getStringCellValue()).isEqualTo("1");
+            assertThat(sheet.getRow(1).getCell(1).getStringCellValue()).isEmpty();
+            assertThat(sheet.getRow(2).getCell(0).getStringCellValue()).isEqualTo("2");
+            assertThat(sheet.getRow(2).getCell(1).getStringCellValue()).isEqualTo("Alice");
+        }
+    }
+
+    @Test
+    void exportFailureDeletesTempFileMarksTaskFailedAndBlocksDownload() throws Exception {
+        Mockito.doAnswer(invocation -> {
+                    QueryRowHandler handler = invocation.getArgument(4);
+                    handler.onColumns(List.of(new ColumnMetadata("id", "INT", 11, false, "", true)));
+                    handler.onRow(List.of(1));
+                    throw new RuntimeException("connection refused");
+                }).when(queryService).streamQuery(anyLong(), anyString(), anyString(), anyInt(), any());
 
         QueryExportTaskResponse created = service.createExportTask(1L, "select 1", "db", "csv");
         QueryExportTaskResponse finished = awaitTerminal(created.taskId());
@@ -326,6 +379,87 @@ class QueryExportServiceImplTest {
         assertThat(finished.errorMessage()).contains("connection refused");
         assertThatThrownBy(() -> service.getDownloadResource(created.taskId()))
                 .isInstanceOf(IllegalStateException.class);
+        Path tmpDir = Path.of(System.getProperty("java.io.tmpdir"));
+        try (Stream<Path> files = Files.list(tmpDir)) {
+            assertThat(files.filter(p -> p.getFileName().toString().startsWith("wb-query-export-" + created.taskId())))
+                    .isEmpty();
+        }
+    }
+
+    @Test
+    void boundedConcurrencyQueuesExcessTasksUntilPermitIsReleased() throws Exception {
+        QueryExportServiceImpl boundedService = new QueryExportServiceImpl(
+                queryService, authorizedDataSourceService, 1, 3);
+        try {
+            CountDownLatch firstStarted = new CountDownLatch(1);
+            CountDownLatch releaseFirst = new CountDownLatch(1);
+            AtomicInteger activeCount = new AtomicInteger();
+            AtomicInteger peakConcurrency = new AtomicInteger();
+            Mockito.doAnswer(invocation -> {
+                        int active = activeCount.incrementAndGet();
+                        peakConcurrency.accumulateAndGet(active, Math::max);
+                        try {
+                            firstStarted.countDown();
+                            releaseFirst.await(5, TimeUnit.SECONDS);
+                            QueryRowHandler handler = invocation.getArgument(4);
+                            handler.onColumns(List.of());
+                            return new QueryStreamSummary(0, false, 1L);
+                        } finally {
+                            activeCount.decrementAndGet();
+                        }
+                    }).when(queryService).streamQuery(anyLong(), anyString(), anyString(), anyInt(), any());
+
+            String first = boundedService.createExportTask(1L, "select 1", "db", "csv").taskId();
+            assertThat(firstStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            String second = boundedService.createExportTask(1L, "select 2", "db", "csv").taskId();
+            Thread.sleep(50);
+
+            assertThat(boundedService.getTask(first).status()).isEqualTo("RUNNING");
+            assertThat(boundedService.getTask(second).status()).isEqualTo("PENDING");
+            assertThat(peakConcurrency.get()).isEqualTo(1);
+
+            releaseFirst.countDown();
+            assertThat(awaitTerminal(boundedService, first).status()).isEqualTo("SUCCESS");
+            assertThat(awaitTerminal(boundedService, second).status()).isEqualTo("SUCCESS");
+            assertThat(peakConcurrency.get()).isEqualTo(1);
+        } finally {
+            boundedService.shutdown();
+        }
+    }
+
+    @Test
+    void rejectsOverflowExportsWithTooManyRequests() throws Exception {
+        QueryExportServiceImpl boundedService = new QueryExportServiceImpl(
+                queryService, authorizedDataSourceService, 1, 2);
+        try {
+            CountDownLatch release = new CountDownLatch(1);
+            Mockito.doAnswer(invocation -> {
+                        release.await(5, TimeUnit.SECONDS);
+                        QueryRowHandler handler = invocation.getArgument(4);
+                        handler.onColumns(List.of());
+                        return new QueryStreamSummary(0, false, 1L);
+                    }).when(queryService).streamQuery(anyLong(), anyString(), anyString(), anyInt(), any());
+
+            String first = boundedService.createExportTask(1L, "select 1", "db", "csv").taskId();
+            String second = boundedService.createExportTask(1L, "select 2", "db", "csv").taskId();
+
+            assertStatus(HttpStatus.TOO_MANY_REQUESTS,
+                    () -> boundedService.createExportTask(1L, "select 3", "db", "csv"));
+
+            release.countDown();
+            assertThat(awaitTerminal(boundedService, first).status()).isEqualTo("SUCCESS");
+            assertThat(awaitTerminal(boundedService, second).status()).isEqualTo("SUCCESS");
+            String third = boundedService.createExportTask(1L, "select 4", "db", "csv").taskId();
+            assertThat(awaitTerminal(boundedService, third).status()).isEqualTo("SUCCESS");
+        } finally {
+            boundedService.shutdown();
+        }
+    }
+
+    @Test
+    void unsupportedExportFormatReturnsBadRequestWithoutConsumingCapacity() {
+        assertStatus(HttpStatus.BAD_REQUEST, () -> service.createExportTask(1L, "select 1", "db", "json"));
+        verifyNoInteractions(queryService);
     }
 
     @Test
@@ -347,9 +481,13 @@ class QueryExportServiceImplTest {
     }
 
     private QueryExportTaskResponse awaitTerminal(String taskId) {
+        return awaitTerminal(service, taskId);
+    }
+
+    private static QueryExportTaskResponse awaitTerminal(QueryExportServiceImpl targetService, String taskId) {
         long deadline = System.currentTimeMillis() + 5_000;
         while (System.currentTimeMillis() < deadline) {
-            QueryExportTaskResponse task = service.getTask(taskId);
+            QueryExportTaskResponse task = targetService.getTask(taskId);
             if (!"PENDING".equals(task.status()) && !"RUNNING".equals(task.status())) {
                 return task;
             }

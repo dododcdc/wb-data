@@ -7,6 +7,8 @@ import com.wbdata.datasource.service.DataSourceService;
 import com.wbdata.plugin.api.DataSourcePlugin;
 import com.wbdata.plugin.api.QueryRequest;
 import com.wbdata.plugin.api.QueryResult;
+import com.wbdata.plugin.api.QueryRowHandler;
+import com.wbdata.plugin.api.QueryStreamSummary;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
@@ -90,6 +92,25 @@ class QueryServiceImplTest {
         assertThat(sent.connectionInfo().username()).isEqualTo("root");
         assertThat(sent.connectionInfo().password()).isEqualTo("secret");
         assertThat(sent.connectionInfo().connectionParams()).containsEntry("useSSL", "false");
+    }
+
+    @Test
+    void streamQueryDelegatesWithPooledConnectionAndRowLimit() {
+        DataSource ds = dataSource();
+        when(dataSourceService.getById(1L)).thenReturn(ds);
+        when(pluginRegistry.getPlugin("MYSQL")).thenReturn(Optional.of(plugin));
+        QueryStreamSummary expected = new QueryStreamSummary(2, true, 15L);
+        QueryRowHandler handler = Mockito.mock(QueryRowHandler.class);
+        when(plugin.streamQuery(any(), Mockito.same(handler))).thenReturn(expected);
+
+        QueryStreamSummary actual = service.streamQuery(1L, "select * from t", "analytics", 100_000, handler);
+
+        assertThat(actual).isSameAs(expected);
+        ArgumentCaptor<QueryRequest> captor = ArgumentCaptor.forClass(QueryRequest.class);
+        Mockito.verify(plugin).streamQuery(captor.capture(), Mockito.same(handler));
+        assertThat(captor.getValue().connectionInfo().databaseName()).isEqualTo("analytics");
+        assertThat(captor.getValue().sql()).isEqualTo("select * from t");
+        assertThat(captor.getValue().rowLimit()).isEqualTo(100_000);
     }
 
     private QueryRequest capturedRequest() {

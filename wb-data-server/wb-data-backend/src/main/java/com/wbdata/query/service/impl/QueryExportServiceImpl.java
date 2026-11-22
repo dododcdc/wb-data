@@ -1,20 +1,20 @@
 package com.wbdata.query.service.impl;
 
-import com.wbdata.common.Result;
-
 import com.wbdata.auth.context.AuthContext;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.datasource.service.AuthorizedDataSourceService;
 import com.wbdata.datasource.entity.DataSource;
-import com.wbdata.plugin.api.QueryResult;
+import com.wbdata.plugin.api.ColumnMetadata;
+import com.wbdata.plugin.api.QueryRowHandler;
+import com.wbdata.plugin.api.QueryStreamSummary;
 import com.wbdata.query.dto.QueryExportTaskResponse;
 import com.wbdata.query.service.QueryExportService;
 import com.wbdata.query.service.QueryService;
 import jakarta.annotation.PreDestroy;
-import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.streaming.SXSSFSheet;
 import org.apache.poi.xssf.streaming.SXSSFWorkbook;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
@@ -38,21 +38,39 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 @Service
 public class QueryExportServiceImpl implements QueryExportService {
     private static final int EXPORT_ROW_LIMIT = 100_000;
+    private static final int MAX_CONCURRENT_EXPORTS = 4;
+    private static final int MAX_IN_FLIGHT_EXPORTS = 16;
     private static final int MAX_VISIBLE_TASKS = 20;
     private static final Duration TASK_TTL = Duration.ofHours(1);
 
     private final QueryService queryService;
     private final AuthorizedDataSourceService authorizedDataSourceService;
+    private final int maxInFlightExports;
+    private final Semaphore exportPermits;
+    private final AtomicInteger inFlightExports = new AtomicInteger(0);
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final Map<String, ExportTask> tasks = new ConcurrentHashMap<>();
 
+    @Autowired
     public QueryExportServiceImpl(QueryService queryService, AuthorizedDataSourceService authorizedDataSourceService) {
+        this(queryService, authorizedDataSourceService, MAX_CONCURRENT_EXPORTS, MAX_IN_FLIGHT_EXPORTS);
+    }
+
+    QueryExportServiceImpl(QueryService queryService,
+                           AuthorizedDataSourceService authorizedDataSourceService,
+                           int maxConcurrentExports,
+                           int maxInFlightExports) {
         this.queryService = queryService;
         this.authorizedDataSourceService = authorizedDataSourceService;
+        this.maxInFlightExports = maxInFlightExports;
+        this.exportPermits = new Semaphore(maxConcurrentExports);
     }
 
     @Override
@@ -61,13 +79,26 @@ public class QueryExportServiceImpl implements QueryExportService {
         DataSource dataSource = authorizedDataSourceService.requireEnabledDataSource(dataSourceId, Permission.QUERY_EXPORT);
         evictExpiredTasks();
         String normalizedFormat = normalizeFormat(format);
+        if (!"csv".equals(normalizedFormat) && !"xlsx".equals(normalizedFormat)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不支持的导出格式: " + format);
+        }
+        if (!tryAcquireInFlightSlot()) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "当前导出任务过多，请稍后重试");
+        }
+
         String taskId = UUID.randomUUID().toString();
         Instant now = Instant.now();
         ExportTask task = new ExportTask(taskId, ownerId, dataSource.getGroupId(), dataSource.getId(),
                 normalizedFormat, ExportTaskStatus.PENDING, null, null, EXPORT_ROW_LIMIT, false, null, null, now, now);
         tasks.put(taskId, task);
 
-        executor.submit(() -> runExport(taskId, task.dataSourceId(), sql, database, normalizedFormat));
+        try {
+            executor.submit(() -> runExport(taskId, task.dataSourceId(), sql, database, normalizedFormat));
+        } catch (RuntimeException | Error submissionFailure) {
+            tasks.remove(taskId);
+            inFlightExports.decrementAndGet();
+            throw submissionFailure;
+        }
         return toResponse(task);
     }
 
@@ -108,84 +139,140 @@ public class QueryExportServiceImpl implements QueryExportService {
         return task.fileName();
     }
 
+    private boolean tryAcquireInFlightSlot() {
+        while (true) {
+            int current = inFlightExports.get();
+            if (current >= maxInFlightExports) {
+                return false;
+            }
+            if (inFlightExports.compareAndSet(current, current + 1)) {
+                return true;
+            }
+        }
+    }
+
     private void runExport(String taskId, Long dataSourceId, String sql, String database, String format) {
-        updateTask(taskId, task -> task.withStatus(ExportTaskStatus.RUNNING).withUpdatedAt(Instant.now()).withErrorMessage(null));
+        boolean permitAcquired = false;
+        Path filePath = null;
         try {
-            QueryResult result = queryService.executeQuery(dataSourceId, sql, database, EXPORT_ROW_LIMIT);
-            Path filePath = writeExportFile(taskId, format, result);
-            String fileName = "query-export-" + taskId + "." + format;
+            exportPermits.acquire();
+            permitAcquired = true;
+            updateTask(taskId, task -> task.withStatus(ExportTaskStatus.RUNNING).withUpdatedAt(Instant.now()).withErrorMessage(null));
+            String normalized = normalizeFormat(format);
+            filePath = switch (normalized) {
+                case "csv" -> Files.createTempFile("wb-query-export-" + taskId + "-", ".csv");
+                case "xlsx" -> Files.createTempFile("wb-query-export-" + taskId + "-", ".xlsx");
+                default -> throw new IllegalArgumentException("不支持的导出格式: " + format);
+            };
+            QueryStreamSummary summary = streamExportFile(dataSourceId, sql, database, normalized, filePath);
+            String fileName = "query-export-" + taskId + "." + normalized;
+            Path completedPath = filePath;
+            filePath = null;
             updateTask(taskId, task -> task
                     .withStatus(ExportTaskStatus.SUCCESS)
-                    .withFilePath(filePath)
+                    .withFilePath(completedPath)
                     .withFileName(fileName)
-                    .withExportedRows(result.rows().size())
-                    .withTruncated(result.truncated())
+                    .withExportedRows(summary.rowCount())
+                    .withTruncated(summary.truncated())
+                    .withUpdatedAt(Instant.now()));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            deleteQuietly(filePath);
+            updateTask(taskId, task -> task
+                    .withStatus(ExportTaskStatus.FAILED)
+                    .withErrorMessage("导出任务已中断")
                     .withUpdatedAt(Instant.now()));
         } catch (Exception e) {
+            deleteQuietly(filePath);
             updateTask(taskId, task -> task
                     .withStatus(ExportTaskStatus.FAILED)
                     .withErrorMessage(e.getMessage() == null || e.getMessage().isBlank() ? "导出失败，请稍后重试。" : e.getMessage())
                     .withUpdatedAt(Instant.now()));
+        } finally {
+            if (permitAcquired) {
+                exportPermits.release();
+            }
+            inFlightExports.decrementAndGet();
         }
     }
 
-    private Path writeExportFile(String taskId, String format, QueryResult result) throws IOException {
-        return switch (normalizeFormat(format)) {
-            case "csv" -> writeCsvFile(taskId, result);
-            case "xlsx" -> writeXlsxFile(taskId, result);
-            default -> throw new IllegalArgumentException("不支持的导出格式: " + format);
+    private QueryStreamSummary streamExportFile(Long dataSourceId,
+                                                String sql,
+                                                String database,
+                                                String normalizedFormat,
+                                                Path filePath) throws IOException {
+        return switch (normalizedFormat) {
+            case "csv" -> streamCsvFile(dataSourceId, sql, database, filePath);
+            case "xlsx" -> streamXlsxFile(dataSourceId, sql, database, filePath);
+            default -> throw new IllegalArgumentException("不支持的导出格式: " + normalizedFormat);
         };
     }
 
-    private Path writeCsvFile(String taskId, QueryResult result) throws IOException {
-        Path filePath = Files.createTempFile("wb-query-export-" + taskId + "-", ".csv");
+    private QueryStreamSummary streamCsvFile(Long dataSourceId, String sql, String database, Path filePath) throws IOException {
         try (BufferedWriter writer = Files.newBufferedWriter(filePath, StandardCharsets.UTF_8)) {
             writer.write('\uFEFF');
-            if (!result.columns().isEmpty()) {
-                writer.write(String.join(",", result.columns().stream().map(column -> escapeCsv(column.name())).toList()));
-                writer.newLine();
-            }
+            return queryService.streamQuery(dataSourceId, sql, database, EXPORT_ROW_LIMIT, new QueryRowHandler() {
+                @Override
+                public void onColumns(List<ColumnMetadata> columns) throws IOException {
+                    if (!columns.isEmpty()) {
+                        writer.write(columns.stream().map(column -> escapeCsv(column.name())).collect(Collectors.joining(",")));
+                        writer.newLine();
+                    }
+                }
 
-            for (Map<String, Object> row : result.rows()) {
-                List<String> values = new ArrayList<>();
-                result.columns().forEach(column -> values.add(escapeCsv(String.valueOf(row.getOrDefault(column.name(), "")))));
-                writer.write(String.join(",", values));
-                writer.newLine();
-            }
+                @Override
+                public void onRow(List<Object> values) throws IOException {
+                    List<String> formatted = new ArrayList<>(values.size());
+                    for (Object value : values) {
+                        formatted.add(escapeCsv(value == null ? "" : String.valueOf(value)));
+                    }
+                    writer.write(String.join(",", formatted));
+                    writer.newLine();
+                }
+            });
         }
-        return filePath;
     }
 
-    private Path writeXlsxFile(String taskId, QueryResult result) throws IOException {
-        Path filePath = Files.createTempFile("wb-query-export-" + taskId + "-", ".xlsx");
+    private QueryStreamSummary streamXlsxFile(Long dataSourceId, String sql, String database, Path filePath) throws IOException {
         try (SXSSFWorkbook workbook = new SXSSFWorkbook(500);
              OutputStream outputStream = Files.newOutputStream(filePath)) {
-            workbook.setCompressTempFiles(true);
-            SXSSFSheet sheet = workbook.createSheet("Result");
+            try {
+                workbook.setCompressTempFiles(true);
+                SXSSFSheet sheet = workbook.createSheet("Result");
+                int[] rowIndex = {0};
 
-            int rowIndex = 0;
-            if (!result.columns().isEmpty()) {
-                Row headerRow = sheet.createRow(rowIndex++);
-                for (int columnIndex = 0; columnIndex < result.columns().size(); columnIndex++) {
-                    Cell cell = headerRow.createCell(columnIndex);
-                    cell.setCellValue(result.columns().get(columnIndex).name());
-                }
+                QueryStreamSummary summary = queryService.streamQuery(
+                        dataSourceId,
+                        sql,
+                        database,
+                        EXPORT_ROW_LIMIT,
+                        new QueryRowHandler() {
+                            @Override
+                            public void onColumns(List<ColumnMetadata> columns) {
+                                if (!columns.isEmpty()) {
+                                    Row headerRow = sheet.createRow(rowIndex[0]++);
+                                    for (int columnIndex = 0; columnIndex < columns.size(); columnIndex++) {
+                                        headerRow.createCell(columnIndex).setCellValue(columns.get(columnIndex).name());
+                                    }
+                                }
+                            }
+
+                            @Override
+                            public void onRow(List<Object> values) {
+                                Row dataRow = sheet.createRow(rowIndex[0]++);
+                                for (int columnIndex = 0; columnIndex < values.size(); columnIndex++) {
+                                    Object value = values.get(columnIndex);
+                                    dataRow.createCell(columnIndex).setCellValue(value == null ? "" : String.valueOf(value));
+                                }
+                            }
+                        });
+
+                workbook.write(outputStream);
+                return summary;
+            } finally {
+                workbook.dispose();
             }
-
-            for (Map<String, Object> rowData : result.rows()) {
-                Row dataRow = sheet.createRow(rowIndex++);
-                for (int columnIndex = 0; columnIndex < result.columns().size(); columnIndex++) {
-                    String columnName = result.columns().get(columnIndex).name();
-                    Cell cell = dataRow.createCell(columnIndex);
-                    Object value = rowData.get(columnName);
-                    cell.setCellValue(value == null ? "" : String.valueOf(value));
-                }
-            }
-
-            workbook.write(outputStream);
-            workbook.dispose();
         }
-        return filePath;
     }
 
     private String escapeCsv(String value) {
