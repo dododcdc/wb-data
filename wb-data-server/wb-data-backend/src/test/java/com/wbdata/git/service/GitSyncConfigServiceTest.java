@@ -6,18 +6,24 @@ import com.baomidou.mybatisplus.core.enums.SqlKeyword;
 import com.wbdata.git.dto.AddAllGitSyncConfigsResponse;
 import com.wbdata.git.dto.GitSyncConfigListResponse;
 import com.wbdata.git.dto.GitSyncConfigResponse;
+import com.wbdata.git.dto.TriggerGitSyncResponse;
 import com.wbdata.git.entity.WbGitConfig;
 import com.wbdata.git.entity.WbGitSyncConfig;
 import com.wbdata.git.mapper.WbGitSyncConfigMapper;
 import com.wbdata.offline.config.OfflineKestraProperties;
 import com.wbdata.offline.repo.service.GitCommandService;
 import com.wbdata.offline.kestra.KestraClient;
+import com.wbdata.offline.kestra.KestraExecutionSnapshot;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -215,6 +221,63 @@ class GitSyncConfigServiceTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("Kestra rejected flow");
         verify(mapper, never()).updateById(any(WbGitSyncConfig.class));
+    }
+
+    @Test
+    void trigger_recreatesMissingKestraSyncFlowAndRetriesOn404() {
+        WbGitSyncConfigMapper mapper = Mockito.mock(WbGitSyncConfigMapper.class);
+        GitConfigService gitConfigService = Mockito.mock(GitConfigService.class);
+        GitCommandService gitCommandService = Mockito.mock(GitCommandService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        GitSyncConfigService service = service(mapper, gitConfigService, gitCommandService, kestraClient);
+
+        WbGitSyncConfig config = existing("feature/policy-review");
+        String syncFlowId = GitSyncFlowSourceBuilder.buildSyncFlowId(4L, "feature/policy-review");
+        when(mapper.selectById(10L)).thenReturn(config);
+        when(gitConfigService.requireDecryptedConfig(4L)).thenReturn(gitConfig(99L));
+        KestraExecutionSnapshot snapshot = new KestraExecutionSnapshot(
+                "exec-healed-1", "system", syncFlowId, "CREATED",
+                null, Instant.now(), Instant.now(), null,
+                List.of(), Map.of(), Map.of(), Map.of()
+        );
+        when(kestraClient.createExecution(GitSyncFlowSourceBuilder.SYSTEM_NAMESPACE, syncFlowId))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Flow not found"))
+                .thenReturn(snapshot);
+
+        TriggerGitSyncResponse response = service.trigger(4L, 10L);
+
+        assertThat(response.executionId()).isEqualTo("exec-healed-1");
+        assertThat(response.status()).isEqualTo("CREATED");
+        String expectedSource = GitSyncFlowSourceBuilder.buildSyncFlowSource(
+                gitConfig(99L),
+                existing("feature/policy-review"),
+                "*/5 * * * *"
+        );
+        InOrder order = inOrder(kestraClient, mapper);
+        order.verify(kestraClient).createExecution(GitSyncFlowSourceBuilder.SYSTEM_NAMESPACE, syncFlowId);
+        order.verify(kestraClient).upsertFlow(expectedSource);
+        order.verify(kestraClient).createExecution(GitSyncFlowSourceBuilder.SYSTEM_NAMESPACE, syncFlowId);
+        order.verify(mapper).updateById(config);
+    }
+
+    @Test
+    void trigger_doesNotRecreateSyncFlowOnNon404Error() {
+        WbGitSyncConfigMapper mapper = Mockito.mock(WbGitSyncConfigMapper.class);
+        GitConfigService gitConfigService = Mockito.mock(GitConfigService.class);
+        GitCommandService gitCommandService = Mockito.mock(GitCommandService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        GitSyncConfigService service = service(mapper, gitConfigService, gitCommandService, kestraClient);
+
+        WbGitSyncConfig config = existing("feature/policy-review");
+        String syncFlowId = GitSyncFlowSourceBuilder.buildSyncFlowId(4L, "feature/policy-review");
+        when(mapper.selectById(10L)).thenReturn(config);
+        when(kestraClient.createExecution(GitSyncFlowSourceBuilder.SYSTEM_NAMESPACE, syncFlowId))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Kestra down"));
+
+        assertThatThrownBy(() -> service.trigger(4L, 10L))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Kestra down");
+        verify(kestraClient, never()).upsertFlow(any(String.class));
     }
 
     private GitSyncConfigService service() {

@@ -14,6 +14,7 @@ import com.wbdata.offline.repo.service.GitRepoPushedEvent;
 import com.wbdata.offline.kestra.KestraClient;
 import com.wbdata.offline.kestra.KestraExecutionSnapshot;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class GitSyncConfigService {
@@ -149,10 +151,21 @@ public class GitSyncConfigService {
         if (!Boolean.TRUE.equals(config.getEnabled())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "同步配置已停用");
         }
-        KestraExecutionSnapshot execution = kestraClient.createExecution(
-                SYSTEM_NAMESPACE,
-                GitSyncFlowSourceBuilder.buildSyncFlowId(groupId, config.getBranch())
-        );
+        String syncFlowId = GitSyncFlowSourceBuilder.buildSyncFlowId(groupId, config.getBranch());
+        KestraExecutionSnapshot execution;
+        try {
+            execution = kestraClient.createExecution(SYSTEM_NAMESPACE, syncFlowId);
+        } catch (ResponseStatusException ex) {
+            if (ex.getStatusCode().value() != HttpStatus.NOT_FOUND.value()) {
+                throw ex;
+            }
+            log.warn("Kestra 同步流不存在，自动重建后重试触发: groupId={}, branch={}, syncFlowId={}",
+                    groupId, config.getBranch(), syncFlowId);
+            WbGitConfig gitConfig = gitConfigService.requireDecryptedConfig(groupId);
+            config.setGitConfigId(gitConfig.getId());
+            upsertSyncFlow(config, gitConfig);
+            execution = kestraClient.createExecution(SYSTEM_NAMESPACE, syncFlowId);
+        }
         LocalDateTime now = LocalDateTime.now();
         config.setLastSyncAt(now);
         config.setLastSyncStatus(execution.status());
