@@ -12,8 +12,6 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.util.UriUtils;
 
 import java.io.IOException;
-import java.net.Authenticator;
-import java.net.PasswordAuthentication;
 import java.net.Proxy;
 import java.net.ProxySelector;
 import java.net.URI;
@@ -29,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Kestra API 的 HTTP 传输层：认证、请求发送、错误映射与端点路径拼装。
@@ -41,6 +40,7 @@ public class KestraHttpClient implements KestraClient {
     private final KestraPayloadParser payloadParser;
     private final HttpClient httpClient;
     private final OfflineFlowInspector flowInspector = new OfflineFlowInspector();
+    private final ReentrantLock taskTypesLock = new ReentrantLock();
     private volatile Set<String> cachedTaskTypes;
 
     @Autowired
@@ -287,7 +287,8 @@ public class KestraHttpClient implements KestraClient {
             return snapshot;
         }
 
-        synchronized (this) {
+        taskTypesLock.lock();
+        try {
             if (cachedTaskTypes != null) {
                 return cachedTaskTypes;
             }
@@ -301,8 +302,11 @@ public class KestraHttpClient implements KestraClient {
             if (!isSuccessful(response.statusCode())) {
                 throw toKestraException(response, "查询 Kestra 插件列表失败");
             }
-            cachedTaskTypes = payloadParser.readTaskTypes(response.body());
-            return cachedTaskTypes;
+            Set<String> loaded = Set.copyOf(payloadParser.readTaskTypes(response.body()));
+            cachedTaskTypes = loaded;
+            return loaded;
+        } finally {
+            taskTypesLock.unlock();
         }
     }
 

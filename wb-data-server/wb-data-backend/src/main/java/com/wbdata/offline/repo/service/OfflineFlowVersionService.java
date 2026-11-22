@@ -1,10 +1,5 @@
 package com.wbdata.offline.repo.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.wbdata.git.entity.WbGitSyncConfig;
-import com.wbdata.git.entity.WbOfflinePublishRecord;
-import com.wbdata.git.mapper.WbGitSyncConfigMapper;
-import com.wbdata.git.mapper.WbOfflinePublishRecordMapper;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.dto.OfflineFlowPublicationItem;
 import com.wbdata.offline.dto.OfflineFlowVersionHistoryResponse;
@@ -27,19 +22,16 @@ import java.util.Set;
 public class OfflineFlowVersionService extends GitRepositoryOperations {
 
     private final OfflineFlowDocumentService flowDocumentService;
-    private final WbOfflinePublishRecordMapper publishRecordMapper;
-    private final WbGitSyncConfigMapper syncConfigMapper;
+    private final OfflinePublishHistoryPort publishHistoryPort;
     private final RepoLockManager repoLockManager;
 
     public OfflineFlowVersionService(OfflineProperties offlineProperties,
                                      OfflineFlowDocumentService flowDocumentService,
-                                     WbOfflinePublishRecordMapper publishRecordMapper,
-                                     WbGitSyncConfigMapper syncConfigMapper,
+                                     OfflinePublishHistoryPort publishHistoryPort,
                                      RepoLockManager repoLockManager) {
         super(offlineProperties);
         this.flowDocumentService = flowDocumentService;
-        this.publishRecordMapper = publishRecordMapper;
-        this.syncConfigMapper = syncConfigMapper;
+        this.publishHistoryPort = publishHistoryPort;
         this.repoLockManager = repoLockManager;
     }
 
@@ -77,37 +69,30 @@ public class OfflineFlowVersionService extends GitRepositoryOperations {
     }
 
     private Map<String, List<OfflineFlowPublicationItem>> publications(Long groupId, Path repoPath, List<String> historyPaths) {
-        WbGitSyncConfig syncConfig = syncConfigMapper.selectOne(new LambdaQueryWrapper<WbGitSyncConfig>()
-                .eq(WbGitSyncConfig::getGroupId, groupId)
-                .eq(WbGitSyncConfig::getBranch, getCurrentBranch(repoPath)));
-        List<WbOfflinePublishRecord> records = publishRecordMapper.selectList(new LambdaQueryWrapper<WbOfflinePublishRecord>()
-                .eq(WbOfflinePublishRecord::getGroupId, groupId)
-                .eq(WbOfflinePublishRecord::getBranch, getCurrentBranch(repoPath))
-                .eq(WbOfflinePublishRecord::getSyncEnabledAtPush, true)
-                .orderByAsc(WbOfflinePublishRecord::getPushedAt)
-                .orderByAsc(WbOfflinePublishRecord::getCreatedAt)
-                .orderByAsc(WbOfflinePublishRecord::getId));
+        OfflinePublishHistoryPort.BranchPublishHistory history =
+                publishHistoryPort.loadBranchPublishHistory(groupId, getCurrentBranch(repoPath));
+        OfflinePublishHistoryPort.SyncDeploymentState syncConfig = history.deploymentState();
         Map<String, List<OfflineFlowPublicationItem>> result = new LinkedHashMap<>();
         int onlineVersion = 0;
-        for (WbOfflinePublishRecord record : records) {
-            String revision = record.getBeforeSha() == null
-                    ? record.getAfterSha()
-                    : record.getBeforeSha() + ".." + record.getAfterSha();
+        for (OfflinePublishHistoryPort.PublishEntry record : history.records()) {
+            String revision = record.beforeSha() == null
+                    ? record.afterSha()
+                    : record.beforeSha() + ".." + record.afterSha();
             List<CommitInfo> related = readCommits(repoPath, revision, historyPaths, true);
             if (related.isEmpty()) {
                 continue;
             }
-            String attributedSha = revisionTouchesTask(repoPath, record.getAfterSha(), historyPaths)
-                    ? record.getAfterSha()
+            String attributedSha = revisionTouchesTask(repoPath, record.afterSha(), historyPaths)
+                    ? record.afterSha()
                     : related.getFirst().sha();
             onlineVersion++;
             boolean currentOnline = syncConfig != null
-                    && "CONFIRMED".equals(syncConfig.getDeploymentEvidence())
-                    && record.getAfterSha().equals(syncConfig.getLastDeployedSha());
+                    && "CONFIRMED".equals(syncConfig.deploymentEvidence())
+                    && record.afterSha().equals(syncConfig.lastDeployedSha());
             result.computeIfAbsent(attributedSha, ignored -> new ArrayList<>())
                     .add(new OfflineFlowPublicationItem(
-                            record.getId(), onlineVersion, record.getAfterSha(), record.getPushedAt(),
-                            record.getSyncStatus(), currentOnline));
+                            record.id(), onlineVersion, record.afterSha(), record.pushedAt(),
+                            record.syncStatus(), currentOnline));
         }
         return result;
     }

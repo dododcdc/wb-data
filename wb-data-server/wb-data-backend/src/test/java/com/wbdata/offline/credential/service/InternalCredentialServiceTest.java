@@ -2,13 +2,12 @@ package com.wbdata.offline.credential.service;
 
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.datasource.service.DataSourceService;
-import com.wbdata.git.entity.WbGitConfig;
-import com.wbdata.git.service.GitConfigService;
 import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.credential.dto.DataSourceCredentialRequest;
 import com.wbdata.offline.credential.dto.DataSourceCredentialResponse;
 import com.wbdata.offline.credential.dto.GitCredentialRequest;
 import com.wbdata.offline.credential.dto.GitCredentialResponse;
+import com.wbdata.offline.repo.service.OfflineGitRemotePort;
 import com.wbdata.offline.transfer.config.TransferInternalProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,7 +26,7 @@ class InternalCredentialServiceTest {
     private TransferInternalProperties internalProperties;
     private OfflineTransferProperties transferProperties;
     private DataSourceService dataSourceService;
-    private GitConfigService gitConfigService;
+    private OfflineGitRemotePort gitRemotePort;
     private InternalCredentialService service;
 
     @BeforeEach
@@ -37,8 +36,8 @@ class InternalCredentialServiceTest {
         transferProperties = new OfflineTransferProperties();
         transferProperties.setContainerHostRewrite("host.docker.internal");
         dataSourceService = mock(DataSourceService.class);
-        gitConfigService = mock(GitConfigService.class);
-        service = new InternalCredentialService(internalProperties, transferProperties, dataSourceService, gitConfigService);
+        gitRemotePort = mock(OfflineGitRemotePort.class);
+        service = new InternalCredentialService(internalProperties, transferProperties, dataSourceService, gitRemotePort);
     }
 
     @Test
@@ -122,14 +121,12 @@ class InternalCredentialServiceTest {
 
     @Test
     void resolveGit_returnsDecryptedRepositoryUrlUsernameAndToken() {
-        WbGitConfig gitConfig = new WbGitConfig();
-        gitConfig.setId(9L);
-        gitConfig.setProjectGroupId(4L);
-        gitConfig.setProvider("github");
-        gitConfig.setUsername("alice");
-        gitConfig.setToken("ghp_plain_decrypted");
-        gitConfig.setBaseUrl("https://github.com/");
-        when(gitConfigService.requireDecryptedConfig(4L)).thenReturn(gitConfig);
+        when(gitRemotePort.requireRuntimeCredentials(4L)).thenReturn(new OfflineGitRemotePort.GitRuntimeCredentials(
+                "github",
+                "https://github.com/alice/wb-data-4.git",
+                "alice",
+                "ghp_plain_decrypted"
+        ));
 
         GitCredentialResponse response = service.resolveGit(TOKEN, new GitCredentialRequest(4L));
 

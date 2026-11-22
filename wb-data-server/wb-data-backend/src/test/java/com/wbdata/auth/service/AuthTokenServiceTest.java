@@ -1,8 +1,6 @@
 package com.wbdata.auth.service;
 
 import com.wbdata.auth.dto.LoginResponse;
-import com.wbdata.user.entity.WbUser;
-import com.wbdata.user.mapper.WbUserMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -12,6 +10,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,13 +22,13 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class AuthTokenServiceTest {
-    private final WbUserMapper userMapper = mock(WbUserMapper.class);
-    private final AuthTokenService service = new AuthTokenService(userMapper);
+    private final AuthUserAccountPort userAccounts = mock(AuthUserAccountPort.class);
+    private final AuthTokenService service = new AuthTokenService(userAccounts);
 
     @Test
     void resolvesActiveAccountWithMatchingVersion() {
-        WbUser user = user(1L, 3L);
-        when(userMapper.selectById(1L)).thenReturn(user);
+        AuthUserAccountPort.AuthUserAccount user = user(1L, 3L);
+        when(userAccounts.findById(1L)).thenReturn(Optional.of(user));
         LoginResponse login = service.issueToken(user);
 
         assertThat(service.getCurrentUser("Bearer " + login.accessToken()).id()).isEqualTo(1L);
@@ -41,13 +40,13 @@ class AuthTokenServiceTest {
         assertThat(service.resolveToken(null)).isNull();
         assertThat(service.resolveToken(" ")).isNull();
         assertThat(service.resolveToken("unknown")).isNull();
-        verifyNoInteractions(userMapper);
+        verifyNoInteractions(userAccounts);
     }
 
     @Test
     void logoutInvalidatesOnlyTheSelectedToken() {
-        WbUser user = user(1L, 0L);
-        when(userMapper.selectById(1L)).thenReturn(user);
+        AuthUserAccountPort.AuthUserAccount user = user(1L, 0L);
+        when(userAccounts.findById(1L)).thenReturn(Optional.of(user));
         String first = service.issueToken(user).accessToken();
         String second = service.issueToken(user).accessToken();
 
@@ -60,62 +59,64 @@ class AuthTokenServiceTest {
 
     @Test
     void versionChangeRevokesEverySessionOfOnlyThatAccount() {
-        WbUser firstUser = user(1L, 0L);
-        WbUser otherUser = user(2L, 0L);
-        when(userMapper.selectById(1L)).thenReturn(firstUser);
-        when(userMapper.selectById(2L)).thenReturn(otherUser);
+        AuthUserAccountPort.AuthUserAccount firstUser = user(1L, 0L);
+        AuthUserAccountPort.AuthUserAccount otherUser = user(2L, 0L);
+        when(userAccounts.findById(1L)).thenReturn(Optional.of(firstUser));
+        when(userAccounts.findById(2L)).thenReturn(Optional.of(otherUser));
         String first = service.issueToken(firstUser).accessToken();
         String second = service.issueToken(firstUser).accessToken();
         String other = service.issueToken(otherUser).accessToken();
 
-        firstUser.setAuthVersion(1L);
+        AuthUserAccountPort.AuthUserAccount updatedFirst = user(1L, 1L);
+        when(userAccounts.findById(1L)).thenReturn(Optional.of(updatedFirst));
 
         assertThat(service.resolveToken(first)).isNull();
         assertThat(service.resolveToken(second)).isNull();
         assertThat(service.resolveToken(other)).isNotNull();
-        assertThat(service.resolveToken(service.issueToken(firstUser).accessToken())).isNotNull();
+        assertThat(service.resolveToken(service.issueToken(updatedFirst).accessToken())).isNotNull();
     }
 
     @Test
     void disabledAndDeletedAccountsAreRejected() {
-        WbUser user = user(1L, 0L);
-        when(userMapper.selectById(1L)).thenReturn(user);
+        AuthUserAccountPort.AuthUserAccount user = user(1L, 0L);
+        when(userAccounts.findById(1L)).thenReturn(Optional.of(user));
         String disabledToken = service.issueToken(user).accessToken();
         String deletedToken = service.issueToken(user).accessToken();
 
-        user.setStatus("DISABLED");
+        when(userAccounts.findById(1L)).thenReturn(Optional.of(
+                new AuthUserAccountPort.AuthUserAccount(1L, "user-1", "User 1", "hash", "SYSTEM_ADMIN", "DISABLED", 0L)));
         assertThat(service.resolveToken(disabledToken)).isNull();
 
-        when(userMapper.selectById(1L)).thenReturn(null);
+        when(userAccounts.findById(1L)).thenReturn(Optional.empty());
         assertThat(service.resolveToken(deletedToken)).isNull();
     }
 
     @Test
     void reenabledAccountCannotReviveUnusedOldToken() {
-        WbUser user = user(1L, 0L);
+        AuthUserAccountPort.AuthUserAccount user = user(1L, 0L);
         String token = service.issueToken(user).accessToken();
-        WbUser reenabled = user(1L, 2L);
-        when(userMapper.selectById(1L)).thenReturn(reenabled);
+        AuthUserAccountPort.AuthUserAccount reenabled = user(1L, 2L);
+        when(userAccounts.findById(1L)).thenReturn(Optional.of(reenabled));
 
         assertThat(service.resolveToken(token)).isNull();
     }
 
     @Test
     void restoredSystemRoleCannotReviveOldAdministratorToken() {
-        WbUser user = user(1L, 0L);
+        AuthUserAccountPort.AuthUserAccount user = user(1L, 0L);
         String token = service.issueToken(user).accessToken();
-        WbUser restoredAdmin = user(1L, 2L);
-        when(userMapper.selectById(1L)).thenReturn(restoredAdmin);
+        AuthUserAccountPort.AuthUserAccount restoredAdmin = user(1L, 2L);
+        when(userAccounts.findById(1L)).thenReturn(Optional.of(restoredAdmin));
 
         assertThat(service.resolveToken(token)).isNull();
     }
 
     @Test
     void tokenIssuedFromStaleLoginSnapshotAfterAccountChangeIsRejected() {
-        WbUser loginSnapshot = user(1L, 0L);
-        WbUser current = user(1L, 1L);
-        current.setSystemRole("USER");
-        when(userMapper.selectById(1L)).thenReturn(current);
+        AuthUserAccountPort.AuthUserAccount loginSnapshot = user(1L, 0L);
+        AuthUserAccountPort.AuthUserAccount current = new AuthUserAccountPort.AuthUserAccount(
+                1L, "user-1", "User 1", "hash", "USER", "ACTIVE", 1L);
+        when(userAccounts.findById(1L)).thenReturn(Optional.of(current));
 
         String token = service.issueToken(loginSnapshot).accessToken();
 
@@ -126,10 +127,11 @@ class AuthTokenServiceTest {
 
     @Test
     void nonSecurityAccountChangesKeepSessionValid() {
-        WbUser user = user(1L, 0L);
-        when(userMapper.selectById(1L)).thenReturn(user);
+        AuthUserAccountPort.AuthUserAccount user = user(1L, 0L);
+        when(userAccounts.findById(1L)).thenReturn(Optional.of(user));
         String token = service.issueToken(user).accessToken();
-        user.setDisplayName("New name");
+        when(userAccounts.findById(1L)).thenReturn(Optional.of(
+                new AuthUserAccountPort.AuthUserAccount(1L, "user-1", "New name", "hash", "SYSTEM_ADMIN", "ACTIVE", 0L)));
 
         AuthSession resolved = service.resolveToken(token);
         assertThat(resolved).isNotNull();
@@ -155,32 +157,26 @@ class AuthTokenServiceTest {
                 return currentTime.get();
             }
         };
-        AuthTokenService timedService = new AuthTokenService(userMapper, mutableClock);
-        WbUser user = user(1L, 0L);
-        when(userMapper.selectById(1L)).thenReturn(user);
+        AuthTokenService timedService = new AuthTokenService(userAccounts, mutableClock);
+        AuthUserAccountPort.AuthUserAccount user = user(1L, 0L);
+        when(userAccounts.findById(1L)).thenReturn(Optional.of(user));
 
         LoginResponse login = timedService.issueToken(user);
         assertThat(login.expiresAt()).isEqualTo(Instant.parse("2026-11-22T12:00:00Z"));
 
         currentTime.set(currentTime.get().plus(Duration.ofHours(11)).plusSeconds(59 * 60 + 59));
         assertThat(timedService.resolveToken(login.accessToken())).isNotNull();
-        verify(userMapper, times(1)).selectById(1L);
+        verify(userAccounts, times(1)).findById(1L);
 
         // Even with an access 1s earlier, reaching expiresAt rejects the token without querying DB
         currentTime.set(Instant.parse("2026-11-22T12:00:00Z"));
         assertThat(timedService.resolveToken(login.accessToken())).isNull();
         assertThat(timedService.resolveToken(login.accessToken())).isNull();
-        verify(userMapper, times(1)).selectById(1L);
+        verify(userAccounts, times(1)).findById(1L);
     }
 
-    private static WbUser user(long id, long version) {
-        WbUser user = new WbUser();
-        user.setId(id);
-        user.setUsername("user-" + id);
-        user.setDisplayName("User " + id);
-        user.setSystemRole("SYSTEM_ADMIN");
-        user.setStatus("ACTIVE");
-        user.setAuthVersion(version);
-        return user;
+    private static AuthUserAccountPort.AuthUserAccount user(long id, long version) {
+        return new AuthUserAccountPort.AuthUserAccount(
+                id, "user-" + id, "User " + id, "hash", "SYSTEM_ADMIN", "ACTIVE", version);
     }
 }

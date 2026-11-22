@@ -1,14 +1,11 @@
 package com.wbdata.user.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wbdata.auth.enums.GroupRole;
 import com.wbdata.auth.enums.SystemRole;
-import com.wbdata.group.entity.WbProjectGroup;
-import com.wbdata.group.entity.WbProjectGroupMember;
-import com.wbdata.group.mapper.WbProjectGroupMapper;
-import com.wbdata.group.mapper.WbProjectGroupMemberMapper;
+import com.wbdata.common.dto.PageQuery;
+import com.wbdata.common.dto.PageResult;
 import com.wbdata.user.dto.CreateUserRequest;
 import com.wbdata.user.dto.GroupAssignment;
 import com.wbdata.user.dto.ResetPasswordRequest;
@@ -25,11 +22,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -43,14 +38,14 @@ public class UserService {
             java.util.Arrays.stream(GroupRole.values()).map(Enum::name).collect(Collectors.toUnmodifiableSet());
 
     private final WbUserMapper userMapper;
-    private final WbProjectGroupMapper groupMapper;
-    private final WbProjectGroupMemberMapper groupMemberMapper;
+    private final UserGroupMembershipPort groupMembershipPort;
     private final PasswordEncoder passwordEncoder;
 
-    public IPage<UserResponse> listUsers(int page, int size, String keyword) {
-        Page<WbUser> pageParam = new Page<>(page, size);
+    public PageResult<UserResponse> listUsers(PageQuery query) {
+        Page<WbUser> pageParam = query.toMyBatisPage();
         LambdaQueryWrapper<WbUser> wrapper = new LambdaQueryWrapper<>();
 
+        String keyword = query.getKeyword();
         if (keyword != null && !keyword.isBlank()) {
             String kw = "%" + keyword.trim() + "%";
             wrapper.and(w -> w
@@ -60,9 +55,8 @@ public class UserService {
         }
 
         wrapper.orderByDesc(WbUser::getCreatedAt);
-        IPage<WbUser> result = userMapper.selectPage(pageParam, wrapper);
-
-        return result.convert(UserResponse::from);
+        return PageResult.of(userMapper.selectPage(pageParam, wrapper))
+                .convert(UserResponse::from);
     }
 
     @Transactional
@@ -78,15 +72,10 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "无效的系统角色");
         }
 
-        if (req.getGroupAssignments() != null && !req.getGroupAssignments().isEmpty()) {
-            Set<Long> groupIds = new HashSet<>();
-            for (GroupAssignment assignment : req.getGroupAssignments()) {
-                if (assignment == null || assignment.getGroupId() == null || !groupIds.add(assignment.getGroupId())) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不可重复指定同一项目组");
-                }
-                validateGroupAssignment(assignment.getGroupId(), assignment.getGroupRole());
-            }
-        }
+        List<UserGroupMembershipPort.MembershipSpec> groupSpecs =
+                (req.getGroupAssignments() == null || req.getGroupAssignments().isEmpty())
+                        ? List.of()
+                        : parseAndValidateGroupAssignments(req.getGroupAssignments());
 
         WbUser user = new WbUser();
         user.setUsername(req.getUsername());
@@ -98,16 +87,8 @@ public class UserService {
         user.setUpdatedBy(operatorId);
         userMapper.insert(user);
 
-        if (req.getGroupAssignments() != null && !req.getGroupAssignments().isEmpty()) {
-            for (GroupAssignment assignment : req.getGroupAssignments()) {
-                WbProjectGroupMember member = new WbProjectGroupMember();
-                member.setGroupId(assignment.getGroupId());
-                member.setUserId(user.getId());
-                member.setRole(assignment.getGroupRole());
-                member.setCreatedBy(operatorId);
-                member.setUpdatedBy(operatorId);
-                groupMemberMapper.insert(member);
-            }
+        if (!groupSpecs.isEmpty()) {
+            groupMembershipPort.assignMemberships(user.getId(), groupSpecs, operatorId);
         }
 
         return UserResponse.from(userMapper.selectById(user.getId()));
@@ -141,51 +122,9 @@ public class UserService {
         }
 
         if (req.getGroupAssignments() != null) {
-            Map<Long, GroupAssignment> submittedMap = new HashMap<>();
-            for (GroupAssignment assignment : req.getGroupAssignments()) {
-                if (assignment == null || assignment.getGroupId() == null || submittedMap.containsKey(assignment.getGroupId())) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不可重复指定同一项目组");
-                }
-                validateGroupAssignment(assignment.getGroupId(), assignment.getGroupRole());
-                submittedMap.put(assignment.getGroupId(), assignment);
-            }
-
-            List<WbProjectGroupMember> existingMembers = groupMemberMapper.selectList(
-                    new LambdaQueryWrapper<WbProjectGroupMember>()
-                            .eq(WbProjectGroupMember::getUserId, userId));
-
-            Map<Long, WbProjectGroupMember> existingMap = new HashMap<>();
-            for (WbProjectGroupMember member : existingMembers) {
-                existingMap.put(member.getGroupId(), member);
-            }
-
-            for (WbProjectGroupMember member : existingMembers) {
-                if (!submittedMap.containsKey(member.getGroupId())) {
-                    groupMemberMapper.deleteById(member.getId());
-                }
-            }
-
-            for (Map.Entry<Long, GroupAssignment> entry : submittedMap.entrySet()) {
-                Long groupId = entry.getKey();
-                GroupAssignment assignment = entry.getValue();
-                WbProjectGroupMember existingMember = existingMap.get(groupId);
-
-                if (existingMember == null) {
-                    WbProjectGroupMember newMember = new WbProjectGroupMember();
-                    newMember.setGroupId(groupId);
-                    newMember.setUserId(userId);
-                    newMember.setRole(assignment.getGroupRole());
-                    newMember.setCreatedBy(operatorId);
-                    newMember.setUpdatedBy(operatorId);
-                    groupMemberMapper.insert(newMember);
-                } else if (!assignment.getGroupRole().equals(existingMember.getRole())) {
-                    WbProjectGroupMember roleUpdate = new WbProjectGroupMember();
-                    roleUpdate.setId(existingMember.getId());
-                    roleUpdate.setRole(assignment.getGroupRole());
-                    roleUpdate.setUpdatedBy(operatorId);
-                    groupMemberMapper.updateById(roleUpdate);
-                }
-            }
+            List<UserGroupMembershipPort.MembershipSpec> groupSpecs =
+                    parseAndValidateGroupAssignments(req.getGroupAssignments());
+            groupMembershipPort.syncMemberships(userId, groupSpecs, operatorId);
         }
 
         return UserResponse.from(userMapper.selectById(userId));
@@ -197,26 +136,15 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在");
         }
 
-        List<WbProjectGroupMember> members = groupMemberMapper.selectList(
-                new LambdaQueryWrapper<WbProjectGroupMember>()
-                        .eq(WbProjectGroupMember::getUserId, userId));
-
-        if (members.isEmpty()) {
-            return List.of();
-        }
-
-        List<Long> groupIds = members.stream().map(WbProjectGroupMember::getGroupId).toList();
-        List<WbProjectGroup> groups = groupMapper.selectBatchIds(groupIds);
-        Map<Long, String> groupNameMap = groups.stream()
-                .collect(Collectors.toMap(WbProjectGroup::getId, WbProjectGroup::getName));
-
-        return members.stream().map(m -> {
-            UserGroupResponse resp = new UserGroupResponse();
-            resp.setGroupId(m.getGroupId());
-            resp.setGroupName(groupNameMap.getOrDefault(m.getGroupId(), ""));
-            resp.setGroupRole(m.getRole());
-            return resp;
-        }).toList();
+        return groupMembershipPort.listUserGroups(userId).stream()
+                .map(assigned -> {
+                    UserGroupResponse resp = new UserGroupResponse();
+                    resp.setGroupId(assigned.groupId());
+                    resp.setGroupName(assigned.groupName());
+                    resp.setGroupRole(assigned.groupRole());
+                    return resp;
+                })
+                .toList();
     }
 
     @Transactional
@@ -255,16 +183,26 @@ public class UserService {
         userMapper.incrementAuthVersion(userId);
     }
 
-    private void validateGroupAssignment(Long groupId, String groupRole) {
-        if (groupRole == null || groupRole.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择项目组角色");
+    private List<UserGroupMembershipPort.MembershipSpec> parseAndValidateGroupAssignments(
+            List<GroupAssignment> assignments) {
+        Set<Long> groupIds = new LinkedHashSet<>();
+        List<UserGroupMembershipPort.MembershipSpec> specs = new ArrayList<>(assignments.size());
+        for (GroupAssignment assignment : assignments) {
+            if (assignment == null || assignment.getGroupId() == null || !groupIds.add(assignment.getGroupId())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不可重复指定同一项目组");
+            }
+            String groupRole = assignment.getGroupRole();
+            if (groupRole == null || groupRole.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择项目组角色");
+            }
+            if (!VALID_GROUP_ROLES.contains(groupRole)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "无效的项目组角色");
+            }
+            specs.add(new UserGroupMembershipPort.MembershipSpec(assignment.getGroupId(), groupRole));
         }
-        if (!VALID_GROUP_ROLES.contains(groupRole)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "无效的项目组角色");
+        if (!groupIds.isEmpty()) {
+            groupMembershipPort.assertGroupsExist(groupIds);
         }
-        WbProjectGroup group = groupMapper.selectById(groupId);
-        if (group == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "指定的项目组不存在");
-        }
+        return specs;
     }
 }

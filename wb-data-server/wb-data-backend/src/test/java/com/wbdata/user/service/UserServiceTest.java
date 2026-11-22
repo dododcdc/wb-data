@@ -1,9 +1,7 @@
 package com.wbdata.user.service;
 
-import com.wbdata.group.entity.WbProjectGroup;
-import com.wbdata.group.entity.WbProjectGroupMember;
-import com.wbdata.group.mapper.WbProjectGroupMapper;
-import com.wbdata.group.mapper.WbProjectGroupMemberMapper;
+import com.wbdata.common.dto.PageQuery;
+import com.wbdata.common.dto.PageResult;
 import com.wbdata.user.dto.CreateUserRequest;
 import com.wbdata.user.dto.GroupAssignment;
 import com.wbdata.user.dto.ResetPasswordRequest;
@@ -24,6 +22,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -31,10 +31,35 @@ import static org.mockito.Mockito.when;
 class UserServiceTest {
 
     private final WbUserMapper userMapper = Mockito.mock(WbUserMapper.class);
-    private final WbProjectGroupMapper groupMapper = Mockito.mock(WbProjectGroupMapper.class);
-    private final WbProjectGroupMemberMapper groupMemberMapper = Mockito.mock(WbProjectGroupMemberMapper.class);
+    private final UserGroupMembershipPort groupMembershipPort = Mockito.mock(UserGroupMembershipPort.class);
     private final PasswordEncoder passwordEncoder = Mockito.mock(PasswordEncoder.class);
-    private final UserService service = new UserService(userMapper, groupMapper, groupMemberMapper, passwordEncoder);
+    private final UserService service = new UserService(userMapper, groupMembershipPort, passwordEncoder);
+
+    @Test
+    void listUsersMapsPageToPageResult() {
+        WbUser alice = new WbUser();
+        alice.setId(1L);
+        alice.setUsername("alice");
+        alice.setDisplayName("Alice");
+        alice.setSystemRole("USER");
+        alice.setStatus("ACTIVE");
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<WbUser> page =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(2, 20, 25);
+        page.setRecords(List.of(alice));
+        when(userMapper.selectPage(any(), any())).thenReturn(page);
+
+        PageQuery query = new PageQuery();
+        query.setPage(2);
+        query.setSize(20);
+        query.setKeyword("  ali ");
+        PageResult<com.wbdata.user.dto.UserResponse> result = service.listUsers(query);
+
+        assertThat(result.getTotal()).isEqualTo(25);
+        assertThat(result.getCurrent()).isEqualTo(2);
+        assertThat(result.getSize()).isEqualTo(20);
+        assertThat(result.getRecords()).extracting(com.wbdata.user.dto.UserResponse::getUsername)
+                .containsExactly("alice");
+    }
 
     @Test
     void createUserConflictsWhenUsernameExists() {
@@ -99,7 +124,8 @@ class UserServiceTest {
     @Test
     void createUserRejectsUnknownGroup() {
         when(userMapper.exists(any())).thenReturn(false);
-        when(groupMapper.selectById(anyLong())).thenReturn(null);
+        doThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "指定的项目组不存在"))
+                .when(groupMembershipPort).assertGroupsExist(any());
         CreateUserRequest req = createRequest();
         GroupAssignment assignment = new GroupAssignment();
         assignment.setGroupId(99L);
@@ -139,29 +165,23 @@ class UserServiceTest {
         existing.setId(5L);
         when(userMapper.selectForUpdate(5L)).thenReturn(existing);
         when(userMapper.selectById(5L)).thenReturn(existing);
-        when(groupMapper.selectById(anyLong())).thenReturn(new WbProjectGroup());
-
-        WbProjectGroupMember removed = member(11L, 1L, "DEVELOPER");
-        WbProjectGroupMember roleChanged = member(12L, 2L, "GROUP_ADMIN");
-        WbProjectGroupMember untouched = member(13L, 3L, "DEVELOPER");
-        when(groupMemberMapper.selectList(any())).thenReturn(List.of(removed, roleChanged, untouched));
 
         UpdateUserRequest req = new UpdateUserRequest();
-        req.setGroupAssignments(List.of(assignment(2L, "DEVELOPER"), assignment(3L, "DEVELOPER"), assignment(4L, "GROUP_ADMIN")));
+        req.setGroupAssignments(List.of(
+                assignment(2L, "DEVELOPER"),
+                assignment(3L, "DEVELOPER"),
+                assignment(4L, "GROUP_ADMIN")));
 
         service.updateUser(5L, req, 7L);
 
-        verify(groupMemberMapper).deleteById(11L);
-
-        ArgumentCaptor<WbProjectGroupMember> insertCaptor = ArgumentCaptor.forClass(WbProjectGroupMember.class);
-        verify(groupMemberMapper).insert(insertCaptor.capture());
-        assertThat(insertCaptor.getValue().getGroupId()).isEqualTo(4L);
-        assertThat(insertCaptor.getValue().getUserId()).isEqualTo(5L);
-
-        ArgumentCaptor<WbProjectGroupMember> updateCaptor = ArgumentCaptor.forClass(WbProjectGroupMember.class);
-        verify(groupMemberMapper).updateById(updateCaptor.capture());
-        assertThat(updateCaptor.getValue().getId()).isEqualTo(12L);
-        assertThat(updateCaptor.getValue().getRole()).isEqualTo("DEVELOPER");
+        verify(groupMembershipPort).assertGroupsExist(any());
+        ArgumentCaptor<List<UserGroupMembershipPort.MembershipSpec>> specsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(groupMembershipPort).syncMemberships(eq(5L), specsCaptor.capture(), eq(7L));
+        assertThat(specsCaptor.getValue()).containsExactly(
+                new UserGroupMembershipPort.MembershipSpec(2L, "DEVELOPER"),
+                new UserGroupMembershipPort.MembershipSpec(3L, "DEVELOPER"),
+                new UserGroupMembershipPort.MembershipSpec(4L, "GROUP_ADMIN")
+        );
     }
 
     @Test
@@ -280,14 +300,5 @@ class UserServiceTest {
         assignment.setGroupId(groupId);
         assignment.setGroupRole(role);
         return assignment;
-    }
-
-    private static WbProjectGroupMember member(Long id, Long groupId, String role) {
-        WbProjectGroupMember member = new WbProjectGroupMember();
-        member.setId(id);
-        member.setGroupId(groupId);
-        member.setUserId(5L);
-        member.setRole(role);
-        return member;
     }
 }

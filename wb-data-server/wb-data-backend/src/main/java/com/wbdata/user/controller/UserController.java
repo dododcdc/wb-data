@@ -1,9 +1,10 @@
 package com.wbdata.user.controller;
 
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.wbdata.auth.context.AuthContext;
 import com.wbdata.auth.service.AuthSession;
 import com.wbdata.common.Result;
+import com.wbdata.common.dto.PageQuery;
+import com.wbdata.common.dto.PageResult;
 import com.wbdata.user.dto.CreateUserRequest;
 import com.wbdata.user.dto.ResetPasswordRequest;
 import com.wbdata.user.dto.UpdateUserRequest;
@@ -23,7 +24,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -39,12 +39,9 @@ public class UserController {
 
     @Operation(summary = "用户分页列表")
     @GetMapping
-    public Result<IPage<UserResponse>> list(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) String keyword) {
+    public Result<PageResult<UserResponse>> list(@Validated PageQuery query) {
         AuthContext.requireSystemAdmin();
-        return Result.success(userService.listUsers(page, size, keyword));
+        return Result.success(userService.listUsers(query));
     }
 
     @Operation(summary = "创建用户")

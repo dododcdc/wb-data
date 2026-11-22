@@ -1,10 +1,5 @@
 package com.wbdata.offline.repo.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.wbdata.git.entity.WbGitSyncConfig;
-import com.wbdata.git.entity.WbOfflinePublishRecord;
-import com.wbdata.git.mapper.WbGitSyncConfigMapper;
-import com.wbdata.git.mapper.WbOfflinePublishRecordMapper;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.dto.OfflineFlowVersionHistoryResponse;
 import com.wbdata.offline.dto.OfflineFlowVersionItem;
@@ -20,7 +15,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 class OfflineFlowVersionServiceTest {
@@ -38,10 +32,9 @@ class OfflineFlowVersionServiceTest {
         OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
         when(flowDocumentService.resolveManagedFiles(4L, FLOW_PATH))
                 .thenReturn(List.of(FLOW_PATH, "scripts/example/node.sql"));
-        WbOfflinePublishRecordMapper publishMapper = Mockito.mock(WbOfflinePublishRecordMapper.class);
-        WbGitSyncConfigMapper syncConfigMapper = Mockito.mock(WbGitSyncConfigMapper.class);
+        OfflinePublishHistoryPort publishHistoryPort = Mockito.mock(OfflinePublishHistoryPort.class);
         OfflineFlowVersionService service = new OfflineFlowVersionService(
-                properties, flowDocumentService, publishMapper, syncConfigMapper, new RepoLockManager());
+                properties, flowDocumentService, publishHistoryPort, new RepoLockManager());
 
         Path repo = properties.resolveRepoPath(4L);
         Path remote = tempDir.resolve("remote.git");
@@ -50,7 +43,7 @@ class OfflineFlowVersionServiceTest {
         git(repo, "remote", "add", "origin", remote.toUri().toString());
 
         List<String> shas = new ArrayList<>();
-        List<WbOfflinePublishRecord> records = new ArrayList<>();
+        List<OfflinePublishHistoryPort.PublishEntry> records = new ArrayList<>();
         String previousPushedSha = null;
         for (int index = 1; index <= 10; index++) {
             write(repo, FLOW_PATH, "id: example\nnamespace: pg-4\ntasks: []\n# c" + index + "\n");
@@ -64,11 +57,10 @@ class OfflineFlowVersionServiceTest {
                 previousPushedSha = shas.getLast();
             }
         }
-        when(publishMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(records);
-        WbGitSyncConfig syncConfig = new WbGitSyncConfig();
-        syncConfig.setDeploymentEvidence("CONFIRMED");
-        syncConfig.setLastDeployedSha(shas.get(8));
-        when(syncConfigMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(syncConfig);
+        OfflinePublishHistoryPort.SyncDeploymentState deploymentState =
+                new OfflinePublishHistoryPort.SyncDeploymentState("CONFIRMED", shas.get(8));
+        when(publishHistoryPort.loadBranchPublishHistory(4L, "main"))
+                .thenAnswer(ignored -> new OfflinePublishHistoryPort.BranchPublishHistory(deploymentState, List.copyOf(records)));
         write(repo, FLOW_PATH, "id: example\nnamespace: pg-4\ntasks: []\n# development\n");
 
         OfflineFlowVersionHistoryResponse response = service.getVersions(4L, FLOW_PATH, false, 1, 50);
@@ -106,18 +98,14 @@ class OfflineFlowVersionServiceTest {
                 .containsExactly(shas.get(9), shas.get(8), shas.get(3));
     }
 
-    private WbOfflinePublishRecord publish(Long id, String beforeSha, String afterSha, int day) {
-        WbOfflinePublishRecord record = new WbOfflinePublishRecord();
-        record.setId(id);
-        record.setGroupId(4L);
-        record.setBranch("main");
-        record.setRecordType("PUSH");
-        record.setBeforeSha(beforeSha);
-        record.setAfterSha(afterSha);
-        record.setPushedAt(LocalDateTime.of(2026, 1, day, 1, 0));
-        record.setSyncEnabledAtPush(true);
-        record.setSyncStatus("SUCCESS");
-        return record;
+    private OfflinePublishHistoryPort.PublishEntry publish(Long id, String beforeSha, String afterSha, int day) {
+        return new OfflinePublishHistoryPort.PublishEntry(
+                id,
+                beforeSha,
+                afterSha,
+                LocalDateTime.of(2026, 1, day, 1, 0),
+                "SUCCESS"
+        );
     }
 
     private OfflineFlowVersionItem version(OfflineFlowVersionHistoryResponse response, String sha) {

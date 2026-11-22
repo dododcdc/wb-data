@@ -1,7 +1,5 @@
 package com.wbdata.offline.repo.service;
 
-import com.wbdata.git.entity.WbOfflinePublishRecord;
-import com.wbdata.git.service.OfflinePublishRecordService;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
 
 import com.wbdata.offline.config.OfflineProperties;
@@ -30,7 +28,7 @@ public class GitCommandService extends GitRepositoryOperations {
 
     private final OfflineGitRemotePort gitRemotePort;
     private final OfflineFlowDocumentService offlineFlowDocumentService;
-    private final OfflinePublishRecordService publishRecordService;
+    private final OfflinePublishHistoryPort publishHistoryPort;
     private final RepoLockManager repoLockManager;
     private final GitBranchOperations branchOperations;
     private ApplicationEventPublisher applicationEventPublisher = event -> {};
@@ -41,12 +39,12 @@ public class GitCommandService extends GitRepositoryOperations {
     public GitCommandService(OfflineProperties offlineProperties,
                              OfflineGitRemotePort gitRemotePort,
                              OfflineFlowDocumentService offlineFlowDocumentService,
-                             OfflinePublishRecordService publishRecordService,
+                             OfflinePublishHistoryPort publishHistoryPort,
                              RepoLockManager repoLockManager) {
         super(offlineProperties);
         this.gitRemotePort = gitRemotePort;
         this.offlineFlowDocumentService = offlineFlowDocumentService;
-        this.publishRecordService = publishRecordService;
+        this.publishHistoryPort = publishHistoryPort;
         this.repoLockManager = repoLockManager;
         this.branchOperations = new GitBranchOperations(offlineProperties, gitRemotePort);
     }
@@ -741,15 +739,15 @@ public class GitCommandService extends GitRepositoryOperations {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "推送后远端分支校验失败，发布记录未写入");
         }
-        WbOfflinePublishRecord record;
+        Long publishRecordId;
         try {
-            record = publishRecordService.recordPush(groupId, pushedBy, branch, beforeSha, afterSha);
+            publishRecordId = publishHistoryPort.recordPush(groupId, pushedBy, branch, beforeSha, afterSha);
         } catch (RuntimeException ex) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "推送已成功，但发布记录写入失败，请稍后通过版本历史对账", ex);
         }
         applicationEventPublisher.publishEvent(
-                new GitRepoPushedEvent(record.getId(), groupId, branch, beforeSha, afterSha));
+                new GitRepoPushedEvent(publishRecordId, groupId, branch, beforeSha, afterSha));
     }
 
     /** 获取当前 remote URL（不含 token） */

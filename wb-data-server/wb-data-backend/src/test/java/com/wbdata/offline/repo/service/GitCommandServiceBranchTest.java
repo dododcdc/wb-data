@@ -1,7 +1,6 @@
 package com.wbdata.offline.repo.service;
 
 import com.sun.net.httpserver.HttpServer;
-import com.wbdata.git.service.OfflinePublishRecordService;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
 
 import com.wbdata.offline.config.OfflineProperties;
@@ -157,7 +156,7 @@ class GitCommandServiceBranchTest {
                     properties,
                     remotePort,
                     Mockito.mock(OfflineFlowDocumentService.class),
-                    Mockito.mock(OfflinePublishRecordService.class),
+                    Mockito.mock(OfflinePublishHistoryPort.class),
                     new RepoLockManager()
             );
 
@@ -410,7 +409,7 @@ class GitCommandServiceBranchTest {
                 properties,
                 Mockito.mock(OfflineGitRemotePort.class),
                 Mockito.mock(OfflineFlowDocumentService.class),
-                Mockito.mock(OfflinePublishRecordService.class),
+                Mockito.mock(OfflinePublishHistoryPort.class),
                 new RepoLockManager()
         );
     }

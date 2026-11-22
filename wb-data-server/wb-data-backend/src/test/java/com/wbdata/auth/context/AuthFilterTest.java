@@ -7,15 +7,17 @@ import com.wbdata.auth.controller.AuthController;
 import com.wbdata.auth.service.AuthContextService;
 import com.wbdata.auth.service.AuthService;
 import com.wbdata.auth.service.AuthTokenService;
-import com.wbdata.user.entity.WbUser;
-import com.wbdata.user.mapper.WbUserMapper;
+import com.wbdata.auth.service.AuthUserAccountPort;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
+import java.util.Optional;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class AuthFilterTest {
 
@@ -78,14 +80,11 @@ class AuthFilterTest {
 
     @Test
     void logoutMakesSubsequentAuthenticatedRequestUnauthorized() throws Exception {
-        WbUserMapper mapper = mock(WbUserMapper.class);
-        WbUser user = new WbUser();
-        user.setId(1L);
-        user.setStatus("ACTIVE");
-        user.setSystemRole("USER");
-        user.setAuthVersion(0L);
-        org.mockito.Mockito.when(mapper.selectById(1L)).thenReturn(user);
-        AuthTokenService tokens = new AuthTokenService(mapper);
+        AuthUserAccountPort accounts = mock(AuthUserAccountPort.class);
+        AuthUserAccountPort.AuthUserAccount user = new AuthUserAccountPort.AuthUserAccount(
+                1L, "user-1", "User 1", "hash", "USER", "ACTIVE", 0L);
+        when(accounts.findById(1L)).thenReturn(Optional.of(user));
+        AuthTokenService tokens = new AuthTokenService(accounts);
         AuthContextService contexts = mock(AuthContextService.class);
         AuthFilter filter = new AuthFilter(tokens);
         AuthController controller = new AuthController(mock(AuthService.class), contexts, tokens);

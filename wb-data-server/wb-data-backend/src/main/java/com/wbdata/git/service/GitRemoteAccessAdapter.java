@@ -47,4 +47,18 @@ public class GitRemoteAccessAdapter implements OfflineGitRemotePort {
                 : config.getUsername();
         return Optional.of(new GitRemoteCredentials(username, config.getToken()));
     }
+
+    @Override
+    public GitRuntimeCredentials requireRuntimeCredentials(Long groupId) {
+        WbGitConfig gitConfig = gitConfigService.requireDecryptedConfig(groupId);
+        String repositoryUrl = gitConfig.getBaseUrl().replaceFirst("/$", "")
+                + "/" + gitConfig.getUsername()
+                + "/wb-data-" + groupId + ".git";
+        return new GitRuntimeCredentials(
+                gitConfig.getProvider(),
+                repositoryUrl,
+                gitConfig.getUsername(),
+                gitConfig.getToken()
+        );
+    }
 }
