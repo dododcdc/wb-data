@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { mergeDatabaseOptions, pickSelectedDatabase, resolveDatabaseAfterLoad } from './storageUtils';
+import {
+    mergeDatabaseOptions,
+    pickSelectedDatabase,
+    resolveDatabaseAfterLoad,
+    shouldPreferDefaultDataSourceOnMount,
+} from './storageUtils';
 
 describe('mergeDatabaseOptions', () => {
     it('does not inject an unknown fallback database into the options', () => {
@@ -100,5 +105,11 @@ describe('resolveDatabaseAfterLoad', () => {
                 ignoreRemembered: false,
             }),
         ).toBe('wb_data');
+    });
+});
+
+describe('shouldPreferDefaultDataSourceOnMount', () => {
+    it('returns false safely when legacy performance.navigation is absent', () => {
+        expect(shouldPreferDefaultDataSourceOnMount()).toBe(false);
     });
 });
