@@ -18,6 +18,8 @@
 #   WB_DATA_GROUP_NAME         默认 policy
 #   DB_PASSWORD                MySQL root 密码，默认 1111
 #   WB_DATA_VERIFY_TIMEOUT     单次执行超时秒数，默认 300
+#   WB_DATA_TRANSFER_SEATUNNEL_IMAGE  SeaTunnel 镜像名，默认 wb-data-seatunnel:2.3.13
+#   SKIP_SEATUNNEL_BUILD       设为 1 时跳过缺失镜像的自动构建，默认 0
 set -euo pipefail
 
 mode="${1:---quick}"
@@ -40,6 +42,8 @@ username="${WB_DATA_USERNAME:-admin}"
 group_name="${WB_DATA_GROUP_NAME:-policy}"
 mysql_root_password="${DB_PASSWORD:-${WB_DATA_MYSQL_ROOT_PASSWORD:-1111}}"
 timeout_seconds="${WB_DATA_VERIFY_TIMEOUT:-300}"
+seatunnel_image="${WB_DATA_TRANSFER_SEATUNNEL_IMAGE:-wb-data-seatunnel:2.3.13}"
+skip_seatunnel_build="${SKIP_SEATUNNEL_BUILD:-0}"
 
 for cmd in curl jq docker; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "缺少依赖: $cmd" >&2; exit 1; }
@@ -120,9 +124,9 @@ reset_hive_fixture() {
 
 prepare_transfer_containers() {
   echo "==> 检查并准备 Docker 容器与测试库夹具 (infra_host=$infra_host)"
-  if ! docker image inspect wb-data/seatunnel:2.3.13 >/dev/null 2>&1; then
-    echo "  构建 SeaTunnel 镜像..."
-    docker compose -f "$transfer_compose_file" build wb-data-seatunnel
+  if [ "$skip_seatunnel_build" != "1" ] && ! docker image inspect "$seatunnel_image" >/dev/null 2>&1; then
+    echo "  构建 SeaTunnel 镜像 ($seatunnel_image)..."
+    docker compose -f "$transfer_compose_file" --profile build build wb-data-seatunnel
   fi
   for container in wb-data-mysql wb-data-hiveserver2 wb-data-kestra; do
     local status

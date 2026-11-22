@@ -56,6 +56,10 @@
                             <configuration>
                                 <target>
                                     <mkdir dir="${project.basedir}/../../../plugins" />
+                                    <delete>
+                                        <fileset dir="${project.basedir}/../../../plugins"
+                                                 includes="${project.artifactId}-*-plugin.jar" />
+                                    </delete>
                                     <copy file="${project.build.directory}/${project.artifactId}-${project.version}-plugin.jar"
                                           todir="${project.basedir}/../../../plugins"
                                           overwrite="true" />

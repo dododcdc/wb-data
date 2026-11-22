@@ -33,6 +33,8 @@ if [[ "${need_build}" -eq 1 ]]; then
 fi
 
 for mod in "${PLUGIN_MODULES[@]}"; do
+  artifact_name="$(basename "${mod}")"
+  rm -f "${PLUGINS_DIR}/${artifact_name}"-*-plugin.jar
   cp -f "${MAVEN_DIR}/${mod}"/target/*-plugin.jar "${PLUGINS_DIR}/"
 done
 
