@@ -95,7 +95,7 @@ export function OperationsTable(props: OperationsTableProps) {
             key: 'task',
             header: '任务',
             primary: true,
-            width: '24%',
+            width: '20%',
             cell: (row) => (
                 <span className="operations-flow-cell">
                     <span className="operations-flow" title={row.flowId}>{row.flowId}</span>
@@ -107,35 +107,42 @@ export function OperationsTable(props: OperationsTableProps) {
             key: 'branch',
             header: '分支',
             mono: true,
-            width: '18%',
+            width: '15%',
             cell: (row) => <span className="operations-branch" title={row.branch}>{row.branch}</span>,
         },
         {
             key: 'status',
             header: '状态',
-            width: 110,
+            width: 100,
             cell: (row) => <StatusPill tone={statusTone(row.status)}>{getExecutionStatusLabel(row.status)}</StatusPill>,
         },
         {
             key: 'plannedAt',
             header: '计划执行时间',
             mono: true,
-            width: 190,
+            width: 175,
             cell: (row) => formatBrowserDateTime(row.plannedAt),
         },
         {
             key: 'startDate',
             header: '开始时间',
             mono: true,
-            width: 190,
+            width: 175,
             cell: (row) => formatBrowserDateTime(row.startDate),
+        },
+        {
+            key: 'endDate',
+            header: '结束时间',
+            mono: true,
+            width: 175,
+            cell: (row) => formatBrowserDateTime(row.endDate),
         },
         {
             key: 'duration',
             header: '耗时',
             mono: true,
             align: 'right',
-            width: 100,
+            width: 88,
             cell: (row) => formatDuration(row.durationMs),
         },
         {
@@ -161,7 +168,7 @@ export function OperationsTable(props: OperationsTableProps) {
             columns={columns}
             rowKey={(row) => row.id}
             ariaLabel="运行记录"
-            minWidth="1120px"
+            minWidth="1240px"
             className="wb-list-compact"
             onRowClick={(row) => onOpenDetail(row.id)}
             rowAriaLabel={(row) => `查看 ${row.flowId} 执行详情`}

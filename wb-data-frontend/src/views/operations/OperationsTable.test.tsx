@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentProps } from 'react';
 import type { OperationsExecutionListItem } from '../../api/operations';
 import { TooltipProvider } from '../../components/ui/tooltip';
+import { formatBrowserDateTime } from '../../lib/dateTime';
 import { OperationsTable } from './OperationsTable';
 
 afterEach(cleanup);
@@ -42,11 +43,12 @@ function renderTable(overrides: Partial<ComponentProps<typeof OperationsTable>> 
 }
 
 describe('OperationsTable', () => {
-    it('supports row and keyboard navigation without showing end time', () => {
+    it('supports row and keyboard navigation and displays end time', () => {
         const { props } = renderTable();
 
-        expect(screen.getAllByRole('columnheader')).toHaveLength(7);
-        expect(screen.queryByRole('columnheader', { name: '结束时间' })).toBeNull();
+        expect(screen.getAllByRole('columnheader')).toHaveLength(8);
+        expect(screen.getByRole('columnheader', { name: '结束时间' })).toBeTruthy();
+        expect(screen.getByText(formatBrowserDateTime(execution.endDate))).toBeTruthy();
         const row = screen.getByRole('row', { name: '查看 daily_policy 执行详情' });
         fireEvent.click(row);
         fireEvent.keyDown(row, { key: 'Enter' });
