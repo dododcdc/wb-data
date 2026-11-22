@@ -9,6 +9,7 @@ import com.wbdata.git.entity.WbGitConfig;
 import com.wbdata.git.entity.WbGitSyncConfig;
 import com.wbdata.git.mapper.WbGitSyncConfigMapper;
 import com.wbdata.offline.config.OfflineKestraProperties;
+import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.repo.service.GitCommandService;
 import com.wbdata.offline.repo.service.GitRepoPushedEvent;
 import com.wbdata.offline.kestra.KestraClient;
@@ -40,6 +41,7 @@ public class GitSyncConfigService {
     private final KestraClient kestraClient;
     private final OfflineKestraProperties kestraProperties;
     private final GitSyncProperties syncProperties;
+    private final OfflineTransferProperties transferProperties;
 
     public GitSyncConfigListResponse list(Long groupId) {
         List<WbGitSyncConfig> configs = syncConfigMapper.selectList(groupQuery(groupId));
@@ -68,7 +70,7 @@ public class GitSyncConfigService {
         WbGitSyncConfig existing = syncConfigMapper.selectOne(groupBranchQuery(groupId, normalizedBranch));
         if (existing != null) {
             existing.setGitConfigId(gitConfig.getId());
-            upsertSyncFlow(existing, gitConfig);
+            upsertSyncFlow(existing);
             syncConfigMapper.updateById(existing);
             return toResponse(existing);
         }
@@ -79,7 +81,7 @@ public class GitSyncConfigService {
         config.setGitConfigId(gitConfig.getId());
         config.setBranch(normalizedBranch);
         config.setEnabled(true);
-        upsertSyncFlow(config, gitConfig);
+        upsertSyncFlow(config);
         syncConfigMapper.insert(config);
         return toResponse(config);
     }
@@ -104,7 +106,7 @@ public class GitSyncConfigService {
             if (config != null) {
                 existing++;
                 config.setGitConfigId(gitConfig.getId());
-                upsertSyncFlow(config, gitConfig);
+                upsertSyncFlow(config);
                 syncConfigMapper.updateById(config);
                 continue;
             }
@@ -114,7 +116,7 @@ public class GitSyncConfigService {
             config.setGitConfigId(gitConfig.getId());
             config.setBranch(branch);
             config.setEnabled(true);
-            upsertSyncFlow(config, gitConfig);
+            upsertSyncFlow(config);
             syncConfigMapper.insert(config);
             accumulatedConfigs.add(config);
             created++;
@@ -131,7 +133,8 @@ public class GitSyncConfigService {
     public GitSyncConfigResponse setEnabled(Long groupId, Long id, boolean enabled) {
         WbGitSyncConfig config = requireConfig(groupId, id);
         config.setEnabled(enabled);
-        upsertSyncFlow(config, gitConfigService.requireDecryptedConfig(groupId));
+        gitConfigService.requireDecryptedConfig(groupId);
+        upsertSyncFlow(config);
         syncConfigMapper.updateById(config);
         return toResponse(config);
     }
@@ -163,7 +166,7 @@ public class GitSyncConfigService {
                     groupId, config.getBranch(), syncFlowId);
             WbGitConfig gitConfig = gitConfigService.requireDecryptedConfig(groupId);
             config.setGitConfigId(gitConfig.getId());
-            upsertSyncFlow(config, gitConfig);
+            upsertSyncFlow(config);
             execution = kestraClient.createExecution(SYSTEM_NAMESPACE, syncFlowId);
         }
         LocalDateTime now = LocalDateTime.now();
@@ -196,11 +199,12 @@ public class GitSyncConfigService {
         triggerBranchAfterPush(event.publishRecordId(), event.groupId(), event.branch());
     }
 
-    private void upsertSyncFlow(WbGitSyncConfig config, WbGitConfig gitConfig) {
+    private void upsertSyncFlow(WbGitSyncConfig config) {
         kestraClient.upsertFlow(GitSyncFlowSourceBuilder.buildSyncFlowSource(
-                gitConfig,
                 config,
-                syncProperties.getSyncCron()
+                syncProperties.getSyncCron(),
+                transferProperties.getInternalBaseUrl(),
+                transferProperties.getInternalTokenEnv()
         ));
     }
 

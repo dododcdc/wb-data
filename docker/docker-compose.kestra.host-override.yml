@@ -5,6 +5,8 @@ services:
   kestra:
     network_mode: host
     environment:
+      SECRET_WB_DATA_INTERNAL_TOKEN: ${WB_DATA_INTERNAL_TOKEN_B64:?Set WB_DATA_INTERNAL_TOKEN_B64 (base64 of WB_DATA_TRANSFER_INTERNAL_TOKEN)}
+      WB_DATA_INTERNAL_BASE_URL: ${WB_DATA_INTERNAL_BASE_URL:-}
       KESTRA_CONFIGURATION: |
         micronaut:
           server:
@@ -16,6 +18,8 @@ services:
             username: kestra
             password: ${WB_DATA_KESTRA_DB_PASSWORD:?Set WB_DATA_KESTRA_DB_PASSWORD}
         kestra:
+          encryption:
+            secret-key: ${WB_DATA_KESTRA_ENCRYPTION_KEY:?Set WB_DATA_KESTRA_ENCRYPTION_KEY (base64 32-byte AES key)}
           server:
             basic-auth:
               username: ${WB_DATA_KESTRA_USERNAME:-admin@kestra.io}

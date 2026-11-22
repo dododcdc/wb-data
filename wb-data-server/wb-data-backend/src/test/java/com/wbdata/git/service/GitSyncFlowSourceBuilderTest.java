@@ -1,6 +1,5 @@
 package com.wbdata.git.service;
 
-import com.wbdata.git.entity.WbGitConfig;
 import com.wbdata.git.entity.WbGitSyncConfig;
 import org.junit.jupiter.api.Test;
 
@@ -45,11 +44,12 @@ class GitSyncFlowSourceBuilderTest {
     }
 
     @Test
-    void buildSyncFlowSource_includesGitSyncFlowAndNamespaceFileTasks() {
+    void buildSyncFlowSource_resolvesGitCredentialsAtRuntimeWithoutPlaintextInputs() {
         String source = GitSyncFlowSourceBuilder.buildSyncFlowSource(
-                gitConfig(),
                 syncConfig("feature/policy-review", true),
-                "*/5 * * * *"
+                "*/5 * * * *",
+                "http://192.168.1.2:8080",
+                "WB_DATA_INTERNAL_TOKEN"
         );
         String expectedNamespace = GitSyncFlowSourceBuilder.buildKestraNamespace(4L, "feature/policy-review");
         String expectedSyncFlowId = GitSyncFlowSourceBuilder.buildSyncFlowId(4L, "feature/policy-review");
@@ -58,10 +58,17 @@ class GitSyncFlowSourceBuilderTest {
                 .contains("id: " + expectedSyncFlowId)
                 .contains("namespace: system")
                 .contains("concurrency:\n  limit: 1\n  behavior: QUEUE")
+                .contains("type: io.wbdata.kestra.core.ResolveGitCredentials")
+                .contains("groupId: 4")
+                .contains("internalBaseUrl: \"http://192.168.1.2:8080\"")
+                .contains("internalToken: \"{{ secret('WB_DATA_INTERNAL_TOKEN') }}\"")
                 .contains("type: io.wbdata.kestra.core.GitRemoteRevision")
                 .contains("type: io.kestra.plugin.git.SyncFlows")
                 .contains("type: io.kestra.plugin.git.SyncNamespaceFiles")
-                .containsSubsequence("resolve_start", "sync_flows", "sync_files", "resolve_end", "start_sha", "end_sha")
+                .containsSubsequence("resolve_git", "resolve_start", "sync_flows", "sync_files", "resolve_end", "start_sha", "end_sha")
+                .contains("url: \"{{ outputs.resolve_git.repositoryUrl }}\"")
+                .contains("username: \"{{ outputs.resolve_git.username }}\"")
+                .contains("password: \"{{ outputs.resolve_git.token }}\"")
                 .contains("value: \"{{ outputs.resolve_start.sha }}\"")
                 .contains("value: \"{{ outputs.resolve_end.sha }}\"")
                 .contains("branch: \"feature/policy-review\"")
@@ -71,41 +78,23 @@ class GitSyncFlowSourceBuilderTest {
                 .contains("gitDirectory: .\n    delete: true")
                 .contains("cron: \"*/5 * * * *\"")
                 .contains("disabled: false")
-                .contains("defaults: \"alice\"")
-                .contains("defaults: \"ghp_secret\"")
-                .contains("url: \"https://github.com/alice/wb-data-4.git\"");
+                .doesNotContain("inputs:", "git_username", "git_token");
     }
 
     @Test
-    void buildSyncFlowSource_escapesDoubleQuotedYamlValues() {
-        WbGitConfig gitConfig = gitConfig();
-        gitConfig.setUsername("ali\\ce");
-        gitConfig.setToken("ghp_\"secret\"\nline2");
-        gitConfig.setBaseUrl("https://git.example.com/");
-
+    void buildSyncFlowSource_escapesDoubleQuotedYamlValuesAndOmitsBlankInternalBaseUrl() {
         String source = GitSyncFlowSourceBuilder.buildSyncFlowSource(
-                gitConfig,
                 syncConfig("release/1.0:\"hotfix\"\n", false),
-                "0 0 * * *"
+                "0 0 * * *",
+                "  ",
+                null
         );
 
         assertThat(source)
                 .contains("disabled: true")
-                .contains("defaults: \"ali\\\\ce\"")
-                .contains("defaults: \"ghp_\\\"secret\\\"\\nline2\"")
+                .contains("internalToken: \"{{ secret('WB_DATA_INTERNAL_TOKEN') }}\"")
                 .contains("branch: \"release/1.0:\\\"hotfix\\\"\\n\"")
-                .contains("url: \"https://git.example.com/ali\\\\ce/wb-data-4.git\"");
-    }
-
-    private WbGitConfig gitConfig() {
-        WbGitConfig config = new WbGitConfig();
-        config.setId(99L);
-        config.setProjectGroupId(4L);
-        config.setProvider("github");
-        config.setUsername("alice");
-        config.setToken("ghp_secret");
-        config.setBaseUrl("https://github.com");
-        return config;
+                .doesNotContain("internalBaseUrl:");
     }
 
     private WbGitSyncConfig syncConfig(String branch, boolean enabled) {

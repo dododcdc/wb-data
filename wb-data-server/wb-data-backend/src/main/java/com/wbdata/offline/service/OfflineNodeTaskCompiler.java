@@ -3,7 +3,6 @@ package com.wbdata.offline.service;
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.config.TransferRunner;
-import com.wbdata.offline.transfer.service.JdbcDriverCatalog;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -17,6 +16,7 @@ final class OfflineNodeTaskCompiler {
     static final String SHELL_COMMANDS_TASK_TYPE = "io.kestra.plugin.scripts.shell.Commands";
     static final String WB_DATA_JDBC_TASK_PREFIX = "io.wbdata.kestra.jdbc.";
     static final String KESTRA_JDBC_TASK_PREFIX = "io.kestra.plugin.jdbc.";
+    static final String HIVE_QUERY_TASK_TYPE = "io.wbdata.kestra.hive.Query";
 
     private final TransferRuntimeSettings transferRuntimeSettings;
     private final TaskAdapter sqlAdapter = new SqlTaskAdapter();
@@ -35,9 +35,7 @@ final class OfflineNodeTaskCompiler {
                 transferProperties.getInternalBaseUrlEnv(),
                 transferProperties.getInternalTokenEnv(),
                 transferProperties.getInternalBaseUrl(),
-                transferProperties.getInternalToken(),
                 transferProperties.getDockerVolumes(),
-                transferProperties.getContainerHostRewrite(),
                 transferProperties.getRunner(),
                 transferProperties.getSeatunnelHome(),
                 transferProperties.getHiveSqlImage()
@@ -69,16 +67,14 @@ final class OfflineNodeTaskCompiler {
             task.put("inputFiles", Map.of("wb-data-transfer-parameters.json",
                     parametersExpression == null ? "{}" : parametersExpression));
         }
-        if (manageParameters && OfflineFlowNodeKinds.isJdbcSql(node.kind())
-                && task.get("type") instanceof String type
-                && isJdbcQueryTaskType(type)) {
+        if (manageParameters && supportsInlineParameters(task)) {
             if (parametersExpression == null) {
                 task.remove("parameters");
             } else {
                 task.put("parameters", parametersExpression);
             }
         }
-        if (manageParameters && isRenderableScript(node.kind())) {
+        if (manageParameters && isRenderableShellScript(node.kind(), task)) {
             if (parametersExpression == null) {
                 task.remove("inputFiles");
                 Map<String, String> managedEnv = buildTransferEnv();
@@ -92,8 +88,15 @@ final class OfflineNodeTaskCompiler {
         return task;
     }
 
-    private static boolean isRenderableScript(String kind) {
-        return "HIVE_SQL".equalsIgnoreCase(kind) || "SHELL".equalsIgnoreCase(kind);
+    private static boolean supportsInlineParameters(Map<String, Object> task) {
+        return task.get("type") instanceof String type
+                && (isJdbcQueryTaskType(type) || HIVE_QUERY_TASK_TYPE.equals(type));
+    }
+
+    private static boolean isRenderableShellScript(String kind, Map<String, Object> task) {
+        return task.get("type") instanceof String type
+                && SHELL_COMMANDS_TASK_TYPE.equals(type)
+                && ("SHELL".equalsIgnoreCase(kind) || "HIVE_SQL".equalsIgnoreCase(kind));
     }
 
     private void applyScriptParameters(Map<String, Object> task,
@@ -103,14 +106,6 @@ final class OfflineNodeTaskCompiler {
         Map<String, String> env = buildTransferEnv();
         if (!env.isEmpty()) {
             task.put("env", env);
-        }
-        if ("HIVE_SQL".equalsIgnoreCase(node.kind())
-                && transferRuntimeSettings.runner() == TransferRunner.DOCKER) {
-            Map<String, Object> taskRunner = new LinkedHashMap<>();
-            taskRunner.put("type", "io.kestra.plugin.scripts.runner.docker.Docker");
-            taskRunner.put("networkMode", transferRuntimeSettings.dockerNetwork());
-            taskRunner.put("pullPolicy", "IF_NOT_PRESENT");
-            task.put("taskRunner", taskRunner);
         }
         task.put("commands", buildScriptRenderCommands(node, castCommands(task.get("commands"))));
     }
@@ -210,7 +205,7 @@ final class OfflineNodeTaskCompiler {
             }
             if (transferRuntimeSettings.runner() == TransferRunner.DOCKER) {
                 task.put("containerImage", transferRuntimeSettings.seatunnelImage());
-                task.put("taskRunner", buildTransferTaskRunner());
+                task.put("taskRunner", buildDockerTaskRunner(true));
             }
             task.put("commands", buildTransferCommands(node.taskId(), node.transferConfigPath()));
         }
@@ -221,10 +216,11 @@ final class OfflineNodeTaskCompiler {
         public void compile(Map<String, Object> task,
                             OfflineFlowNode node,
                             Map<Long, DataSource> dataSourceMap) {
+            clearJdbcTaskFields(task);
+            clearShellTaskFields(task);
             Long dataSourceId = node.dataSourceId();
             DataSource dataSource = dataSourceId == null ? null : dataSourceMap.get(dataSourceId);
             if (dataSource == null) {
-                clearJdbcTaskFields(task);
                 task.put("type", SHELL_COMMANDS_TASK_TYPE);
                 task.put("description", OfflineTaskMetadataCodec.mergeDataSource(
                         readOptionalString(task, "description"),
@@ -237,7 +233,6 @@ final class OfflineNodeTaskCompiler {
                 return;
             }
 
-            clearShellTaskFields(task);
             String type = dataSource.getType().toUpperCase();
             String requiredType = OfflineFlowNodeKinds.requiredDataSourceType(node.kind());
             if (requiredType != null && !requiredType.equals(type)) {
@@ -246,6 +241,7 @@ final class OfflineNodeTaskCompiler {
                         "节点 " + node.taskId() + " 只能绑定 " + requiredType + " 数据源"
                 );
             }
+            Long groupId = requireGroupId(dataSource);
             task.put("type", resolveKestraQueryTaskType(type));
             task.put("description", OfflineTaskMetadataCodec.mergeDataSource(
                     readOptionalString(task, "description"),
@@ -253,9 +249,9 @@ final class OfflineNodeTaskCompiler {
                     type,
                     OfflineFlowNodeKinds.canonicalize(node.kind(), type)
             ));
-            task.put("url", buildJdbcUrl(dataSource.getHost(), dataSource.getPort(), dataSource.getDatabaseName(), type));
-            task.put("username", dataSource.getUsername());
-            task.put("password", dataSource.getPassword());
+            task.put("dataSourceId", dataSource.getId());
+            task.put("groupId", groupId);
+            applyInternalCredentialRefs(task);
             task.put("sql", String.format("{{ read('%s') }}", node.scriptPath()));
         }
     }
@@ -265,11 +261,10 @@ final class OfflineNodeTaskCompiler {
         public void compile(Map<String, Object> task,
                             OfflineFlowNode node,
                             Map<Long, DataSource> dataSourceMap) {
-            Long dataSourceId = node.dataSourceId();
-            DataSource dataSource = dataSourceId == null ? null : dataSourceMap.get(dataSourceId);
-
             clearJdbcTaskFields(task);
             clearShellTaskFields(task);
+            Long dataSourceId = node.dataSourceId();
+            DataSource dataSource = dataSourceId == null ? null : dataSourceMap.get(dataSourceId);
             if (dataSource == null) {
                 task.put("type", SHELL_COMMANDS_TASK_TYPE);
                 task.put("description", OfflineTaskMetadataCodec.mergeDataSource(
@@ -287,20 +282,29 @@ final class OfflineNodeTaskCompiler {
             if (!"HIVE".equals(type)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "HiveSQL 节点只能绑定 Hive 数据源: " + node.taskId());
             }
+            Long groupId = requireGroupId(dataSource);
+            Map<String, String> normalizedConf = OfflineHiveConfigStore.normalizeAndValidateNodeConf(
+                    "HIVE_SQL", node.hiveConf());
 
-            task.put("type", SHELL_COMMANDS_TASK_TYPE);
+            task.put("type", HIVE_QUERY_TASK_TYPE);
             task.put("description", OfflineTaskMetadataCodec.mergeDataSource(
                     readOptionalString(task, "description"),
                     dataSource.getId(),
                     type,
                     "HIVE_SQL"
             ));
+            task.put("dataSourceId", dataSource.getId());
+            task.put("groupId", groupId);
+            applyInternalCredentialRefs(task);
             task.put("namespaceFiles", buildNamespaceFilesConfig(node.scriptPath()));
-            // beeline 只在含 Hive 客户端的镜像里存在，Kestra 默认 ubuntu 镜像没有
+            task.put("scriptPath", node.scriptPath());
+            if (!normalizedConf.isEmpty()) {
+                task.put("hiveConf", new LinkedHashMap<>(normalizedConf));
+            }
             if (transferRuntimeSettings.runner() == TransferRunner.DOCKER) {
                 task.put("containerImage", transferRuntimeSettings.hiveSqlImage());
+                task.put("taskRunner", buildDockerTaskRunner(false));
             }
-            task.put("commands", List.of(buildBeelineCommand(dataSource, node.scriptPath(), node.hiveConf())));
         }
     }
 
@@ -317,11 +321,36 @@ final class OfflineNodeTaskCompiler {
         }
     }
 
+    private Long requireGroupId(DataSource dataSource) {
+        if (dataSource.getGroupId() == null) {
+            throw new IllegalStateException("数据源缺少所属项目组 ID: " + dataSource.getId());
+        }
+        return dataSource.getGroupId();
+    }
+
+    private void applyInternalCredentialRefs(Map<String, Object> task) {
+        if (transferRuntimeSettings.internalBaseUrl() != null && !transferRuntimeSettings.internalBaseUrl().isBlank()) {
+            task.put("internalBaseUrl", transferRuntimeSettings.internalBaseUrl());
+        }
+        String tokenExpr = internalTokenSecretExpression();
+        if (tokenExpr != null) {
+            task.put("internalToken", tokenExpr);
+        }
+    }
+
     private Map<String, String> buildTransferEnv() {
         Map<String, String> env = new LinkedHashMap<>();
         putIfPresent(env, transferRuntimeSettings.internalBaseUrlEnv(), transferRuntimeSettings.internalBaseUrl());
-        putIfPresent(env, transferRuntimeSettings.internalTokenEnv(), transferRuntimeSettings.internalToken());
+        putIfPresent(env, transferRuntimeSettings.internalTokenEnv(), internalTokenSecretExpression());
         return env;
+    }
+
+    private String internalTokenSecretExpression() {
+        String tokenEnv = transferRuntimeSettings.internalTokenEnv();
+        if (tokenEnv == null || tokenEnv.isBlank()) {
+            return null;
+        }
+        return "{{ secret('" + tokenEnv.trim() + "') }}";
     }
 
     private void putIfPresent(Map<String, String> env, String name, String value) {
@@ -330,18 +359,20 @@ final class OfflineNodeTaskCompiler {
         }
     }
 
-    private Map<String, Object> buildTransferTaskRunner() {
+    private Map<String, Object> buildDockerTaskRunner(boolean includeVolumes) {
         Map<String, Object> taskRunner = new LinkedHashMap<>();
         taskRunner.put("type", "io.kestra.plugin.scripts.runner.docker.Docker");
         taskRunner.put("networkMode", transferRuntimeSettings.dockerNetwork());
         taskRunner.put("pullPolicy", "IF_NOT_PRESENT");
-        List<String> dockerVolumes = transferRuntimeSettings.dockerVolumes() == null
-                ? List.of()
-                : transferRuntimeSettings.dockerVolumes().stream()
-                .filter(volume -> volume != null && !volume.isBlank())
-                .toList();
-        if (!dockerVolumes.isEmpty()) {
-            taskRunner.put("volumes", new ArrayList<>(dockerVolumes));
+        if (includeVolumes) {
+            List<String> dockerVolumes = transferRuntimeSettings.dockerVolumes() == null
+                    ? List.of()
+                    : transferRuntimeSettings.dockerVolumes().stream()
+                    .filter(volume -> volume != null && !volume.isBlank())
+                    .toList();
+            if (!dockerVolumes.isEmpty()) {
+                taskRunner.put("volumes", new ArrayList<>(dockerVolumes));
+            }
         }
         return taskRunner;
     }
@@ -388,44 +419,6 @@ final class OfflineNodeTaskCompiler {
         return namespaceFiles;
     }
 
-    private String buildBeelineCommand(DataSource dataSource,
-                                       String scriptPath,
-                                       Map<String, String> hiveConf) {
-        Map<String, String> normalizedConf = OfflineHiveConfigStore.normalizeAndValidateNodeConf("HIVE_SQL", hiveConf);
-        StringBuilder command = new StringBuilder("beeline -u ")
-                .append(shellQuote(buildJdbcUrl(
-                        dataSource.getHost(),
-                        dataSource.getPort(),
-                        dataSource.getDatabaseName(),
-                        "HIVE"
-                )));
-        if (dataSource.getUsername() != null && !dataSource.getUsername().isBlank()) {
-            command.append(" -n ").append(shellQuote(dataSource.getUsername()));
-        }
-        if (dataSource.getPassword() != null && !dataSource.getPassword().isBlank()) {
-            command.append(" -p ").append(shellQuote(dataSource.getPassword()));
-        }
-        for (Map.Entry<String, String> entry : normalizedConf.entrySet()) {
-            command.append(" --hiveconf ")
-                    .append(shellQuote(entry.getKey() + "=" + entry.getValue()));
-        }
-        command.append(" -f ").append(shellQuote(scriptPath));
-        return command.toString();
-    }
-
-    private String buildJdbcUrl(String host, Integer port, String databaseName, String dataSourceType) {
-        String effectiveHost = JdbcDriverCatalog.rewriteContainerHost(host, transferRuntimeSettings.containerHostRewrite());
-        String normalizedType = dataSourceType == null ? "" : dataSourceType.trim().toUpperCase();
-        String databaseSegment = databaseName == null || databaseName.isBlank() ? "" : "/" + databaseName;
-        return switch (normalizedType) {
-            case "MYSQL" -> String.format("jdbc:mysql://%s:%d%s", effectiveHost, port, databaseSegment);
-            case "POSTGRESQL" -> String.format("jdbc:postgresql://%s:%d%s", effectiveHost, port, databaseSegment);
-            case "CLICKHOUSE" -> String.format("jdbc:clickhouse://%s:%d%s", effectiveHost, port, databaseSegment);
-            case "HIVE" -> String.format("jdbc:hive2://%s:%d%s", effectiveHost, port, databaseSegment);
-            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "暂不支持的数据源类型: " + dataSourceType);
-        };
-    }
-
     private String shellQuote(String value) {
         return "'" + (value == null ? "" : value.replace("'", "'\"'\"'")) + "'";
     }
@@ -433,9 +426,12 @@ final class OfflineNodeTaskCompiler {
     private void clearShellTaskFields(Map<String, Object> task) {
         task.remove("namespaceFiles");
         task.remove("inputFiles");
+        task.remove("env");
         task.remove("commands");
         task.remove("containerImage");
         task.remove("taskRunner");
+        task.remove("scriptPath");
+        task.remove("hiveConf");
         task.remove("labels");
         OfflineTaskMetadataCodec.cleanup(task);
     }
@@ -444,6 +440,10 @@ final class OfflineNodeTaskCompiler {
         task.remove("url");
         task.remove("username");
         task.remove("password");
+        task.remove("dataSourceId");
+        task.remove("groupId");
+        task.remove("internalBaseUrl");
+        task.remove("internalToken");
         task.remove("sql");
         task.remove("driverClassName");
         task.remove("parameters");
@@ -455,6 +455,8 @@ final class OfflineNodeTaskCompiler {
         task.remove("timeZoneId");
         task.remove("store");
         task.remove("inputFile");
+        task.remove("scriptPath");
+        task.remove("hiveConf");
         task.remove("labels");
         OfflineTaskMetadataCodec.cleanup(task);
     }
@@ -470,9 +472,7 @@ final class OfflineNodeTaskCompiler {
             String internalBaseUrlEnv,
             String internalTokenEnv,
             String internalBaseUrl,
-            String internalToken,
             List<String> dockerVolumes,
-            String containerHostRewrite,
             TransferRunner runner,
             String seatunnelHome,
             String hiveSqlImage

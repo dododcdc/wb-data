@@ -71,6 +71,7 @@ dev profile 提供的本地默认值（可通过 `WB_DATA_INFRA_HOST=localhost` 
 | 插件目录 | `<启动目录>/../../plugins`（必须是绝对路径，默认值按 `user.dir` 拼） |
 | CORS 允许来源 | `http://localhost:5173`、`http://127.0.0.1:5173` |
 | `WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE` | `host.docker.internal`（仅 dev profile；生产主配置默认为空） |
+| `WB_DATA_TRANSFER_INTERNAL_TOKEN` | `wb-data-local-dev-internal-token`（仅 dev profile；用于 Kestra 插件 / 传输容器内部鉴权，生产主配置默认为空） |
 
 首次启动空库时创建第一个系统管理员：
 
@@ -147,8 +148,16 @@ cd ..
 WB_DATA_KESTRA_DB_PASSWORD=<postgres-password> \
 WB_DATA_KESTRA_USERNAME=<kestra-username> \
 WB_DATA_KESTRA_PASSWORD=<kestra-password> \
+WB_DATA_KESTRA_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
+WB_DATA_INTERNAL_TOKEN_B64="$(printf '%s' 'wb-data-local-dev-internal-token' | base64)" \
+WB_DATA_INTERNAL_BASE_URL="http://<mac-lan-ip>:8080" \
 docker compose -f docker/docker-compose.kestra.yml up -d --build
 ```
+
+说明：
+- Flow YAML 与 Git 同步流 YAML **不再存放明文数据源连接串、密码、Git PAT 或内部 Token**；所有 SQL / HiveSQL / 传输 / Git 同步凭据均由 Kestra 插件在运行时凭 `SECRET_WB_DATA_INTERNAL_TOKEN`（通过 `{{ secret('WB_DATA_INTERNAL_TOKEN') }}` 注入，传入 `WB_DATA_INTERNAL_TOKEN_B64` 作为 Base64 编码）回连后端解析。
+- `WB_DATA_KESTRA_ENCRYPTION_KEY`（Base64 编码 32 字节 AES 密钥，生产务必持久化固定密钥以免历史执行密文无法解密）用于 `ResolveGitCredentials` 等任务输出 `EncryptedString`。
+- `WB_DATA_INTERNAL_BASE_URL` 默认写入 Kestra 环境；若后端 `WB_DATA_TRANSFER_INTERNAL_BASE_URL` 非空，编译后的 YAML 会优先带出任务级 `internalBaseUrl`，两者保持指向宿主机后端地址（台式机跑 Docker 时填 Mac 局域网 IP，例如 `http://192.168.1.2:8080`；本机 Docker 填 `http://host.docker.internal:8080`）。
 
 启动后地址 `http://omarchy.local:8090`（本机 Docker 则为 `http://localhost:8090`）。后端使用相同的 `WB_DATA_KESTRA_USERNAME` 和 `WB_DATA_KESTRA_PASSWORD`。真实密码只通过环境变量提供，不要写入 Compose 或提交到 Git。
 

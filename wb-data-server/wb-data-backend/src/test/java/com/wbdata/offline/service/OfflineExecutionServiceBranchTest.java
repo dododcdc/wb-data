@@ -202,6 +202,39 @@ class OfflineExecutionServiceBranchTest {
     }
 
     @Test
+    void createDebugExecution_validatesHivePluginAndDockerTaskRunnerForBoundHiveNode() {
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OfflineExecutionService service = service(kestraClient, repoStatusService("main"));
+        DebugExecutionRequest hiveRequest = new DebugExecutionRequest(
+                1L,
+                "_flows/example/flow.yaml",
+                """
+                        id: example
+                        namespace: pg-1
+                        tasks:
+                          - id: hive_1
+                            type: io.wbdata.kestra.hive.Query
+                            description: "[wbdata-meta] dataSourceId=2;dataSourceType=HIVE;nodeKind=HIVE_SQL"
+                            namespaceFiles:
+                              enabled: true
+                              include:
+                                - scripts/example/hive_1.sql
+                            scriptPath: scripts/example/hive_1.sql
+                        """,
+                List.of("hive_1"),
+                "SELECTED"
+        );
+        when(kestraClient.supportsTaskType("io.wbdata.kestra.hive.Query")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.createDebugExecution(hiveRequest, 7L))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Hive 执行插件");
+
+        verify(kestraClient).supportsTaskType("io.wbdata.kestra.hive.Query");
+        verify(kestraClient, never()).upsertFlow(any());
+    }
+
+    @Test
     void createDebugExecution_allowsSelectedTransferWhenProcessRunnerIsConfigured() {
         KestraClient kestraClient = Mockito.mock(KestraClient.class);
         OfflineTransferProperties transferProperties = new OfflineTransferProperties();

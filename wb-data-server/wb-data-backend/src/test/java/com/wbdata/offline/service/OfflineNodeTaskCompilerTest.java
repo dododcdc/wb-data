@@ -40,8 +40,9 @@ class OfflineNodeTaskCompilerTest {
         assertThat(task).containsEntry("description", "[wbdata-meta] nodeKind=TRANSFER;transferConfigPath=" + transferPath);
         assertThat(task).containsEntry("env", Map.of(
                 "TRANSFER_BACKEND_URL", "http://host.docker.internal:18080",
-                "TRANSFER_BACKEND_TOKEN", "dev-transfer-token"
+                "TRANSFER_BACKEND_TOKEN", "{{ secret('TRANSFER_BACKEND_TOKEN') }}"
         ));
+        assertThat(task.toString()).doesNotContain("dev-transfer-token");
         assertThat(task).containsEntry("taskRunner", Map.of(
                 "type", "io.kestra.plugin.scripts.runner.docker.Docker",
                 "networkMode", "transfer-network",
@@ -86,8 +87,9 @@ class OfflineNodeTaskCompilerTest {
         assertThat(task).doesNotContainKey("taskRunner");
         assertThat(task).containsEntry("env", Map.of(
                 "TRANSFER_BACKEND_URL", "http://wb-data-backend:8080",
-                "TRANSFER_BACKEND_TOKEN", "prod-transfer-token"
+                "TRANSFER_BACKEND_TOKEN", "{{ secret('TRANSFER_BACKEND_TOKEN') }}"
         ));
+        assertThat(task.toString()).doesNotContain("prod-transfer-token");
         assertThat(task).containsEntry("inputFiles", Map.of("wb-data-transfer-parameters.json", "{}"));
         assertThat((List<String>) task.get("commands")).containsExactly(
                 "set -eu",
@@ -118,7 +120,7 @@ class OfflineNodeTaskCompilerTest {
     }
 
     @Test
-    void compile_generatesScriptRenderCommandsUsingTmpRequestAndCurlFail() {
+    void compile_generatesScriptRenderCommandsUsingSecretTokenAndCurlFail() {
         OfflineTransferProperties transferProperties = new OfflineTransferProperties();
         transferProperties.setInternalBaseUrl("http://wb-data-backend:8080");
         transferProperties.setInternalToken("test-token");
@@ -130,6 +132,11 @@ class OfflineNodeTaskCompilerTest {
 
         Map<String, Object> task = compiler.compile(null, node, Map.of(), expression, true);
 
+        assertThat(task).containsEntry("env", Map.of(
+                "INTERNAL_BASE_URL", "http://wb-data-backend:8080",
+                "INTERNAL_TOKEN", "{{ secret('INTERNAL_TOKEN') }}"
+        ));
+        assertThat(task.toString()).doesNotContain("test-token");
         assertThat(task).containsEntry("inputFiles", Map.of("wb-data-script-parameters.json", expression));
         assertThat((List<String>) task.get("commands")).containsExactly(
                 "set -eu",
@@ -247,7 +254,7 @@ class OfflineNodeTaskCompilerTest {
     }
 
     @Test
-    void compile_preservesSqlHiveSqlAndShellTaskFields() {
+    void compile_emitsCredentialFreeSqlHiveSqlAndShellTasks() {
         OfflineNodeTaskCompiler compiler = new OfflineNodeTaskCompiler();
         DataSource mysql = dataSource(1L, "MYSQL");
         DataSource hive = dataSource(2L, "HIVE");
@@ -266,19 +273,33 @@ class OfflineNodeTaskCompilerTest {
                 "id", "sql_1",
                 "type", "io.wbdata.kestra.jdbc.mysql.Query",
                 "description", "[wbdata-meta] dataSourceId=1;dataSourceType=MYSQL;nodeKind=MYSQL",
-                "url", "jdbc:mysql://db.example:3306/warehouse",
-                "username", "analyst",
-                "password", "existing-password",
+                "dataSourceId", 1L,
+                "groupId", 4L,
+                "internalToken", "{{ secret('WB_DATA_INTERNAL_TOKEN') }}",
                 "sql", "{{ read('scripts/sql_1.sql') }}"
         ));
+        assertThat(sqlTask).doesNotContainKeys("url", "username", "password", "internalBaseUrl");
+        assertThat(sqlTask.toString()).doesNotContain("existing-password", "analyst", "db.example");
+
         assertThat(hiveTask).containsExactlyInAnyOrderEntriesOf(Map.of(
                 "id", "hive_1",
-                "type", "io.kestra.plugin.scripts.shell.Commands",
+                "type", "io.wbdata.kestra.hive.Query",
                 "description", "[wbdata-meta] dataSourceId=2;dataSourceType=HIVE;nodeKind=HIVE_SQL",
+                "dataSourceId", 2L,
+                "groupId", 4L,
+                "internalToken", "{{ secret('WB_DATA_INTERNAL_TOKEN') }}",
                 "namespaceFiles", Map.of("enabled", true, "include", List.of("scripts/hive_1.hql")),
+                "scriptPath", "scripts/hive_1.hql",
                 "containerImage", OfflineTransferProperties.DEFAULT_HIVE_SQL_IMAGE,
-                "commands", List.of("beeline -u 'jdbc:hive2://db.example:3306/warehouse' -n 'analyst' -p 'existing-password' -f 'scripts/hive_1.hql'")
+                "taskRunner", Map.of(
+                        "type", "io.kestra.plugin.scripts.runner.docker.Docker",
+                        "networkMode", "wb-data_default",
+                        "pullPolicy", "IF_NOT_PRESENT"
+                )
         ));
+        assertThat(hiveTask).doesNotContainKeys("commands", "url", "username", "password", "env");
+        assertThat(hiveTask.toString()).doesNotContain("existing-password", "-p", "beeline", "db.example");
+
         assertThat(shellTask).containsExactlyInAnyOrderEntriesOf(Map.of(
                 "id", "shell_1",
                 "type", "io.kestra.plugin.scripts.shell.Commands",
@@ -288,7 +309,7 @@ class OfflineNodeTaskCompilerTest {
     }
 
     @Test
-    void compile_rendersHiveAndShellParametersBeforeExecution() {
+    void compile_rendersHiveParametersInlineAndShellParametersViaScriptRender() {
         OfflineNodeTaskCompiler compiler = new OfflineNodeTaskCompiler();
         String expression = "{{ {\"DWD\": inputs.DWD} | toJson }}";
         DataSource hive = dataSource(2L, "HIVE");
@@ -297,16 +318,11 @@ class OfflineNodeTaskCompilerTest {
 
         Map<String, Object> hiveTask = compiler.compile(null, hiveNode, Map.of(2L, hive), expression, true);
 
-        assertThat(hiveTask).containsEntry("inputFiles", Map.of("wb-data-script-parameters.json", expression));
+        assertThat(hiveTask).containsEntry("type", "io.wbdata.kestra.hive.Query");
+        assertThat(hiveTask).containsEntry("parameters", expression);
+        assertThat(hiveTask).containsEntry("scriptPath", "scripts/hive_1.hql");
         assertThat(hiveTask).containsKey("taskRunner");
-        String hiveCommands = String.join("\n", (List<String>) hiveTask.get("commands"));
-        assertThat(hiveCommands).contains(
-                "set -eu",
-                "mkdir -p /tmp/wb-data-script",
-                "base64 -w 0 'scripts/hive_1.hql'",
-                "/api/v1/internal/offline/script/render",
-                "-f '/tmp/wb-data-script/hive_1.hql'");
-        assertThat(hiveCommands).doesNotContain("-f 'scripts/hive_1.hql'");
+        assertThat(hiveTask).doesNotContainKeys("inputFiles", "commands", "env");
 
         Map<String, Object> shellTask = compiler.compile(null, new OfflineFlowNode(
                 "shell_1", "SHELL", "scripts/shell_1.sh", null, null, null
@@ -318,13 +334,12 @@ class OfflineNodeTaskCompilerTest {
         assertThat(shellTask).doesNotContainKey("containerImage");
 
         Map<String, Object> cleared = compiler.compile(hiveTask, hiveNode, Map.of(2L, hive), null, true);
-        assertThat(cleared).doesNotContainKey("inputFiles");
-        assertThat((List<String>) cleared.get("commands")).containsExactly(
-                "beeline -u 'jdbc:hive2://db.example:3306/warehouse' -n 'analyst' -p 'existing-password' -f 'scripts/hive_1.hql'");
+        assertThat(cleared).doesNotContainKeys("parameters", "inputFiles", "commands");
+        assertThat(cleared).containsEntry("scriptPath", "scripts/hive_1.hql");
     }
 
     @Test
-    void compile_rewritesExistingTaskWithoutMutatingSource() {
+    void compile_stripsLegacyCredentialsWhenRecompilingOrSwitchingTaskKindsWithoutMutatingSource() {
         OfflineNodeTaskCompiler compiler = new OfflineNodeTaskCompiler();
         Map<String, Object> existingTask = new LinkedHashMap<>();
         existingTask.put("id", "task_1");
@@ -336,11 +351,19 @@ class OfflineNodeTaskCompilerTest {
         existingTask.put("sql", "select 1");
         existingTask.put("disabled", true);
 
-        Map<String, Object> task = compiler.compile(existingTask, new OfflineFlowNode(
+        DataSource mysql = dataSource(1L, "MYSQL");
+        Map<String, Object> recompiledSql = compiler.compile(existingTask, new OfflineFlowNode(
+                "task_1", "MYSQL", "scripts/task_1.sql", 1L, "MYSQL", null
+        ), Map.of(1L, mysql));
+        assertThat(recompiledSql).doesNotContainKeys("url", "username", "password", "disabled");
+        assertThat(recompiledSql).containsEntry("description", "用户说明\n[wbdata-meta] dataSourceId=1;dataSourceType=MYSQL;nodeKind=MYSQL");
+        assertThat(recompiledSql).containsEntry("dataSourceId", 1L);
+
+        Map<String, Object> shellTask = compiler.compile(existingTask, new OfflineFlowNode(
                 "task_1", "SHELL", "scripts/task_1.sh", null, null, null
         ), Map.of());
 
-        assertThat(task).containsExactlyInAnyOrderEntriesOf(Map.of(
+        assertThat(shellTask).containsExactlyInAnyOrderEntriesOf(Map.of(
                 "id", "task_1",
                 "type", "io.kestra.plugin.scripts.shell.Commands",
                 "description", "用户说明",
@@ -350,44 +373,30 @@ class OfflineNodeTaskCompilerTest {
         assertThat(existingTask).containsKeys("disabled", "url", "username", "password", "sql");
     }
 
-    private DataSource dataSource(Long id, String type) {
-        DataSource dataSource = new DataSource();
-        dataSource.setId(id);
-        dataSource.setType(type);
-        dataSource.setHost("db.example");
-        dataSource.setPort(3306);
-        dataSource.setDatabaseName("warehouse");
-        dataSource.setUsername("analyst");
-        dataSource.setPassword("existing-password");
-        return dataSource;
-    }
-
     @Test
-    void compile_rewritesLoopbackHostInSqlTaskUrlWhenConfigured() {
+    void compile_wiresInternalBaseUrlAndProcessRunnerForSqlAndHiveWhenConfigured() {
         OfflineTransferProperties transferProperties = new OfflineTransferProperties();
-        transferProperties.setContainerHostRewrite("host.docker.internal");
+        transferProperties.setRunner(TransferRunner.PROCESS);
+        transferProperties.setInternalBaseUrl("http://backend.internal:8080");
+        transferProperties.setInternalTokenEnv("CUSTOM_INTERNAL_TOKEN");
         OfflineNodeTaskCompiler compiler = new OfflineNodeTaskCompiler(transferProperties);
         DataSource mysql = dataSource(1L, "MYSQL");
         mysql.setHost("localhost");
+        DataSource hive = dataSource(2L, "HIVE");
 
-        Map<String, Object> task = compiler.compile(null, new OfflineFlowNode(
+        Map<String, Object> sqlTask = compiler.compile(null, new OfflineFlowNode(
                 "sql_1", "SQL", "scripts/sql_1.sql", 1L, "MYSQL", null
         ), Map.of(1L, mysql));
+        assertThat(sqlTask).containsEntry("internalBaseUrl", "http://backend.internal:8080");
+        assertThat(sqlTask).containsEntry("internalToken", "{{ secret('CUSTOM_INTERNAL_TOKEN') }}");
+        assertThat(sqlTask).doesNotContainKeys("url", "username", "password");
 
-        assertThat(task).containsEntry("url", "jdbc:mysql://host.docker.internal:3306/warehouse");
-    }
-
-    @Test
-    void compile_keepsLoopbackHostInSqlTaskUrlByDefault() {
-        OfflineNodeTaskCompiler compiler = new OfflineNodeTaskCompiler();
-        DataSource mysql = dataSource(1L, "MYSQL");
-        mysql.setHost("127.0.0.1");
-
-        Map<String, Object> task = compiler.compile(null, new OfflineFlowNode(
-                "sql_1", "SQL", "scripts/sql_1.sql", 1L, "MYSQL", null
-        ), Map.of(1L, mysql));
-
-        assertThat(task).containsEntry("url", "jdbc:mysql://127.0.0.1:3306/warehouse");
+        Map<String, Object> hiveTask = compiler.compile(null, new OfflineFlowNode(
+                "hive_1", "HIVE_SQL", "scripts/hive_1.hql", 2L, "HIVE", null
+        ), Map.of(2L, hive));
+        assertThat(hiveTask).containsEntry("internalBaseUrl", "http://backend.internal:8080");
+        assertThat(hiveTask).containsEntry("internalToken", "{{ secret('CUSTOM_INTERNAL_TOKEN') }}");
+        assertThat(hiveTask).doesNotContainKeys("containerImage", "taskRunner");
     }
 
     @Test
@@ -419,7 +428,7 @@ class OfflineNodeTaskCompilerTest {
     }
 
     @Test
-    void compile_emitsQuotedHiveConfFlagsBeforeScriptAndPreservesWhenParametersRendered() {
+    void compile_storesNormalizedHiveConfMapAndPreservesWhenParametersRendered() {
         OfflineNodeTaskCompiler compiler = new OfflineNodeTaskCompiler();
         DataSource hive = dataSource(2L, "HIVE");
         hive.setPort(10000);
@@ -431,19 +440,28 @@ class OfflineNodeTaskCompilerTest {
                 "hive_1", "HIVE_SQL", "scripts/hive_1.sql", 2L, "HIVE", null, hiveConf);
 
         Map<String, Object> plain = compiler.compile(null, node, Map.of(2L, hive));
-        assertThat((List<String>) plain.get("commands")).containsExactly(
-                "beeline -u 'jdbc:hive2://db.example:10000/warehouse' -n 'analyst' -p 'existing-password'"
-                        + " --hiveconf 'hive.exec.dynamic.partition.mode=nonstrict'"
-                        + " --hiveconf 'mapred.job.name=daily'\"'\"'s job; part=1'"
-                        + " -f 'scripts/hive_1.sql'"
-        );
+        assertThat(plain).containsEntry("type", "io.wbdata.kestra.hive.Query");
+        assertThat(plain).containsEntry("hiveConf", hiveConf);
+        assertThat(plain).containsEntry("scriptPath", "scripts/hive_1.sql");
+        assertThat(plain).doesNotContainKeys("commands", "password");
 
         Map<String, Object> parameterized = compiler.compile(null, node, Map.of(2L, hive), "{\"v_day\":\"20261114\"}", true);
-        assertThat((List<String>) parameterized.get("commands")).last().asString().isEqualTo(
-                "beeline -u 'jdbc:hive2://db.example:10000/warehouse' -n 'analyst' -p 'existing-password'"
-                        + " --hiveconf 'hive.exec.dynamic.partition.mode=nonstrict'"
-                        + " --hiveconf 'mapred.job.name=daily'\"'\"'s job; part=1'"
-                        + " -f '/tmp/wb-data-script/hive_1.sql'"
-        );
+        assertThat(parameterized).containsEntry("type", "io.wbdata.kestra.hive.Query");
+        assertThat(parameterized).containsEntry("hiveConf", hiveConf);
+        assertThat(parameterized).containsEntry("parameters", "{\"v_day\":\"20261114\"}");
+        assertThat(parameterized).containsEntry("scriptPath", "scripts/hive_1.sql");
+    }
+
+    private DataSource dataSource(Long id, String type) {
+        DataSource dataSource = new DataSource();
+        dataSource.setId(id);
+        dataSource.setGroupId(4L);
+        dataSource.setType(type);
+        dataSource.setHost("db.example");
+        dataSource.setPort(3306);
+        dataSource.setDatabaseName("warehouse");
+        dataSource.setUsername("analyst");
+        dataSource.setPassword("existing-password");
+        return dataSource;
     }
 }

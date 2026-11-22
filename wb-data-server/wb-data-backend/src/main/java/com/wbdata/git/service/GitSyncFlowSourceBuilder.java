@@ -1,6 +1,5 @@
 package com.wbdata.git.service;
 
-import com.wbdata.git.entity.WbGitConfig;
 import com.wbdata.git.entity.WbGitSyncConfig;
 
 import java.nio.charset.StandardCharsets;
@@ -13,6 +12,7 @@ public final class GitSyncFlowSourceBuilder {
     static final String SYSTEM_NAMESPACE = "system";
 
     private static final int KESTRA_IDENTIFIER_MAX_LENGTH = 150;
+    private static final String DEFAULT_INTERNAL_TOKEN_ENV = "WB_DATA_INTERNAL_TOKEN";
 
     private GitSyncFlowSourceBuilder() {
     }
@@ -26,13 +26,21 @@ public final class GitSyncFlowSourceBuilder {
         return boundedIdentifier("sync-flows-g" + groupId + "-", branch);
     }
 
-    static String buildSyncFlowSource(WbGitConfig gitConfig, WbGitSyncConfig config, String syncCron) {
+    static String buildSyncFlowSource(WbGitSyncConfig config,
+                                      String syncCron,
+                                      String internalBaseUrl,
+                                      String internalTokenEnv) {
         Long groupId = config.getGroupId();
         String branch = config.getBranch();
         String namespace = buildKestraNamespace(groupId, branch);
         String syncFlowId = buildSyncFlowId(groupId, branch);
-        String repositoryUrl = buildRepositoryUrl(gitConfig, groupId);
         boolean disabled = !Boolean.TRUE.equals(config.getEnabled());
+        String effectiveTokenEnv = internalTokenEnv == null || internalTokenEnv.isBlank()
+                ? DEFAULT_INTERNAL_TOKEN_ENV
+                : internalTokenEnv.trim();
+        String internalBaseUrlLine = internalBaseUrl == null || internalBaseUrl.isBlank()
+                ? ""
+                : "    internalBaseUrl: \"" + yamlDoubleQuoted(internalBaseUrl.trim()) + "\"\n";
 
         return """
                 id: %s
@@ -41,49 +49,46 @@ public final class GitSyncFlowSourceBuilder {
                 concurrency:
                   limit: 1
                   behavior: QUEUE
-                inputs:
-                  - id: git_username
-                    type: STRING
-                    defaults: "%s"
-                  - id: git_token
-                    type: STRING
-                    defaults: "%s"
                 triggers:
                   - id: schedule
                     type: io.kestra.plugin.core.trigger.Schedule
                     cron: "%s"
                     disabled: %s
                 tasks:
+                  - id: resolve_git
+                    type: io.wbdata.kestra.core.ResolveGitCredentials
+                    groupId: %s
+                %s    internalToken: "{{ secret('%s') }}"
                   - id: resolve_start
                     type: io.wbdata.kestra.core.GitRemoteRevision
-                    url: "%s"
+                    url: "{{ outputs.resolve_git.repositoryUrl }}"
                     branch: "%s"
-                    username: "{{ inputs.git_username }}"
-                    password: "{{ inputs.git_token }}"
+                    username: "{{ outputs.resolve_git.username }}"
+                    password: "{{ outputs.resolve_git.token }}"
                   - id: sync_flows
                     type: io.kestra.plugin.git.SyncFlows
-                    url: "%s"
+                    url: "{{ outputs.resolve_git.repositoryUrl }}"
                     branch: "%s"
-                    username: "{{ inputs.git_username }}"
-                    password: "{{ inputs.git_token }}"
+                    username: "{{ outputs.resolve_git.username }}"
+                    password: "{{ outputs.resolve_git.token }}"
                     targetNamespace: %s
                     gitDirectory: .wb-data/kestra-flows
                     delete: true
                   - id: sync_files
                     type: io.kestra.plugin.git.SyncNamespaceFiles
-                    url: "%s"
+                    url: "{{ outputs.resolve_git.repositoryUrl }}"
                     branch: "%s"
-                    username: "{{ inputs.git_username }}"
-                    password: "{{ inputs.git_token }}"
+                    username: "{{ outputs.resolve_git.username }}"
+                    password: "{{ outputs.resolve_git.token }}"
                     namespace: %s
                     gitDirectory: .
                     delete: true
                   - id: resolve_end
                     type: io.wbdata.kestra.core.GitRemoteRevision
-                    url: "%s"
+                    url: "{{ outputs.resolve_git.repositoryUrl }}"
                     branch: "%s"
-                    username: "{{ inputs.git_username }}"
-                    password: "{{ inputs.git_token }}"
+                    username: "{{ outputs.resolve_git.username }}"
+                    password: "{{ outputs.resolve_git.token }}"
                 outputs:
                   - id: start_sha
                     type: STRING
@@ -95,19 +100,16 @@ public final class GitSyncFlowSourceBuilder {
                 syncFlowId,
                 groupId,
                 yamlDoubleQuoted(branch),
-                yamlDoubleQuoted(gitConfig.getUsername()),
-                yamlDoubleQuoted(gitConfig.getToken()),
                 yamlDoubleQuoted(syncCron),
                 disabled,
-                yamlDoubleQuoted(repositoryUrl),
+                groupId,
+                internalBaseUrlLine,
+                effectiveTokenEnv,
                 yamlDoubleQuoted(branch),
-                yamlDoubleQuoted(repositoryUrl),
-                yamlDoubleQuoted(branch),
-                namespace,
-                yamlDoubleQuoted(repositoryUrl),
                 yamlDoubleQuoted(branch),
                 namespace,
-                yamlDoubleQuoted(repositoryUrl),
+                yamlDoubleQuoted(branch),
+                namespace,
                 yamlDoubleQuoted(branch)
         );
     }
@@ -147,11 +149,6 @@ public final class GitSyncFlowSourceBuilder {
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("计算分支哈希失败", ex);
         }
-    }
-
-    private static String buildRepositoryUrl(WbGitConfig config, Long groupId) {
-        return config.getBaseUrl().replaceFirst("/$", "") + "/"
-                + config.getUsername() + "/wb-data-" + groupId + ".git";
     }
 
     private static String yamlDoubleQuoted(String value) {

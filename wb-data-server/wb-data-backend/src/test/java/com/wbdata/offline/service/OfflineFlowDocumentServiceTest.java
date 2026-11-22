@@ -1255,9 +1255,11 @@ class OfflineFlowDocumentServiceTest {
         assertThat(sidecar).exists();
         String flowYaml = Files.readString(repo.resolve("_flows/hive_demo/flow.yaml"));
         assertThat(flowYaml)
-                .contains("--hiveconf 'hive.exec.dynamic.partition=true'")
-                .contains("--hiveconf 'hive.exec.dynamic.partition.mode=nonstrict'")
-                .contains("-f 'scripts/hive_demo/hive_1.sql'");
+                .contains("type: io.wbdata.kestra.hive.Query")
+                .contains("hive.exec.dynamic.partition: 'true'")
+                .contains("hive.exec.dynamic.partition.mode: nonstrict")
+                .contains("scriptPath: scripts/hive_demo/hive_1.sql")
+                .doesNotContain("beeline", "-p ", "secret\n");
 
         assertThat(service.resolveManagedFiles(1L, "_flows/hive_demo/flow.yaml"))
                 .contains("_flows/hive_demo/.hive-conf.json");
@@ -1291,7 +1293,7 @@ class OfflineFlowDocumentServiceTest {
                 )
         );
         assertThat(debugDraft.content())
-                .contains("--hiveconf 'mapreduce.job.queuename=bi'")
+                .contains("mapreduce.job.queuename: bi")
                 .doesNotContain("hive.exec.dynamic.partition");
 
         // Clearing hiveConf deletes sidecar and removes flags from flow.yaml
@@ -1325,7 +1327,7 @@ class OfflineFlowDocumentServiceTest {
         assertThat(sidecar).doesNotExist();
         assertThat(cleared.documentHash()).isNotEqualTo(saved.documentHash());
         assertThat(Files.readString(repo.resolve("_flows/hive_demo/flow.yaml")))
-                .doesNotContain("--hiveconf");
+                .doesNotContain("hiveConf");
     }
 
     @Test
@@ -1408,8 +1410,9 @@ class OfflineFlowDocumentServiceTest {
         Path repo = properties.resolveRepoPath(1L);
         assertThat(repo.resolve("_flows/hive_legacy/.hive-conf.json")).exists();
         assertThat(Files.readString(repo.resolve("_flows/hive_legacy/flow.yaml")))
-                .contains("--hiveconf 'hive.exec.dynamic.partition=true'")
-                .contains("-f 'scripts/hive_legacy/hive_1.sql'");
+                .contains("type: io.wbdata.kestra.hive.Query")
+                .contains("hive.exec.dynamic.partition: 'true'")
+                .contains("scriptPath: scripts/hive_legacy/hive_1.sql");
     }
 
     private DataSource mysqlDataSource() {

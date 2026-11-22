@@ -409,13 +409,16 @@ final class OfflineFlowGraphYaml {
         // Infer kind and type
         String typeAttr = yaml.readOptionalString(task, "type");
         if (typeAttr != null) {
-            if ((dataSourceType == null || dataSourceType.isBlank())
-                    && OfflineNodeTaskCompiler.isJdbcQueryTaskType(typeAttr)) {
-                String prefix = typeAttr.startsWith(OfflineNodeTaskCompiler.WB_DATA_JDBC_TASK_PREFIX)
-                        ? OfflineNodeTaskCompiler.WB_DATA_JDBC_TASK_PREFIX
-                        : OfflineNodeTaskCompiler.KESTRA_JDBC_TASK_PREFIX;
-                dataSourceType = typeAttr.substring(prefix.length()).split("\\.")[0].toUpperCase();
-                if ("GENERIC".equals(dataSourceType)) {
+            if (dataSourceType == null || dataSourceType.isBlank()) {
+                if (OfflineNodeTaskCompiler.isJdbcQueryTaskType(typeAttr)) {
+                    String prefix = typeAttr.startsWith(OfflineNodeTaskCompiler.WB_DATA_JDBC_TASK_PREFIX)
+                            ? OfflineNodeTaskCompiler.WB_DATA_JDBC_TASK_PREFIX
+                            : OfflineNodeTaskCompiler.KESTRA_JDBC_TASK_PREFIX;
+                    dataSourceType = typeAttr.substring(prefix.length()).split("\\.")[0].toUpperCase();
+                    if ("GENERIC".equals(dataSourceType)) {
+                        dataSourceType = "HIVE";
+                    }
+                } else if (OfflineNodeTaskCompiler.HIVE_QUERY_TASK_TYPE.equals(typeAttr)) {
                     dataSourceType = "HIVE";
                 }
             }
@@ -424,7 +427,8 @@ final class OfflineFlowGraphYaml {
         if (nodeKind == null || nodeKind.isBlank()) {
             if (scriptPath.endsWith(".hql")
                     || ("HIVE".equalsIgnoreCase(dataSourceType)
-                    && OfflineNodeTaskCompiler.SHELL_COMMANDS_TASK_TYPE.equals(typeAttr))) {
+                    && (OfflineNodeTaskCompiler.SHELL_COMMANDS_TASK_TYPE.equals(typeAttr)
+                    || OfflineNodeTaskCompiler.HIVE_QUERY_TASK_TYPE.equals(typeAttr)))) {
                 nodeKind = "HIVE_SQL";
             } else {
                 nodeKind = scriptPath.endsWith(".sql") ? "SQL" : "SHELL";
@@ -463,6 +467,11 @@ final class OfflineFlowGraphYaml {
         String sqlPath = readSqlReadPath(task);
         if (sqlPath != null) {
             paths.add(sqlPath);
+        }
+
+        String hiveScriptPath = yaml.readOptionalString(task, "scriptPath");
+        if (hiveScriptPath != null && !hiveScriptPath.isBlank()) {
+            paths.add(hiveScriptPath);
         }
 
         return List.copyOf(paths);

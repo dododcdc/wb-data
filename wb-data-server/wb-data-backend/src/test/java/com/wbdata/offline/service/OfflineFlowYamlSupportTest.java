@@ -130,16 +130,18 @@ class OfflineFlowYamlSupportTest {
     }
 
     @Test
-    void compileAndParseGraph_roundTripsMysqlNodeKind() {
+    @SuppressWarnings("unchecked")
+    void compileAndParseGraph_roundTripsMysqlNodeKindWithoutPlaintextCredentials() {
         OfflineFlowYamlSupport support = new OfflineFlowYamlSupport();
         DataSource mysql = new DataSource();
         mysql.setId(1L);
+        mysql.setGroupId(1L);
         mysql.setType("MYSQL");
         mysql.setHost("db.example");
         mysql.setPort(3306);
         mysql.setDatabaseName("warehouse");
         mysql.setUsername("analyst");
-        mysql.setPassword("secret");
+        mysql.setPassword("secret-pw-123");
 
         String yaml = support.compileGraph(
                 support.buildEmptyFlowYaml("orders", "pg-1"),
@@ -150,10 +152,48 @@ class OfflineFlowYamlSupportTest {
                 Map.of(1L, mysql)
         );
 
-        assertThat(yaml).contains("nodeKind=MYSQL");
+        assertThat(yaml).contains("nodeKind=MYSQL", "dataSourceId: 1", "groupId: 1", "internalToken: '{{ secret(''WB_DATA_INTERNAL_TOKEN'') }}'");
+        assertThat(yaml).doesNotContain("secret-pw-123", "jdbc:mysql://", "analyst", "db.example", "password:");
+        Map<String, Object> parsedRoot = new Yaml().load(yaml);
+        List<Map<String, Object>> dagTasks = (List<Map<String, Object>>) ((List<Map<String, Object>>) parsedRoot.get("tasks")).getFirst().get("tasks");
+        Map<String, Object> compiledTask = (Map<String, Object>) dagTasks.getFirst().get("task");
+        assertThat(compiledTask).containsEntry("internalToken", "{{ secret('WB_DATA_INTERNAL_TOKEN') }}");
         OfflineFlowNode node = support.parseDocument(yaml)
                 .stages().getFirst().nodes().getFirst();
         assertThat(node.kind()).isEqualTo("MYSQL");
+    }
+
+    @Test
+    void compileAndParseGraph_roundTripsHiveNodeAndUnbindsDataSourceCleanly() {
+        OfflineFlowYamlSupport support = new OfflineFlowYamlSupport();
+        DataSource hive = new DataSource();
+        hive.setId(2L);
+        hive.setGroupId(1L);
+        hive.setType("HIVE");
+        hive.setHost("hive.example");
+        hive.setPort(10000);
+        hive.setDatabaseName("default");
+        hive.setUsername("hive");
+        hive.setPassword("hive-secret-pw");
+
+        String yaml = support.compileGraph(
+                support.buildEmptyFlowYaml("etl", "pg-1"),
+                List.of(new OfflineFlowNode(
+                        "hive_step", "HIVE_SQL", "scripts/hive_step.sql", 2L, "HIVE", null
+                )),
+                List.of(),
+                Map.of(2L, hive)
+        );
+
+        assertThat(yaml).contains("type: io.wbdata.kestra.hive.Query", "scriptPath: scripts/hive_step.sql");
+        assertThat(yaml).doesNotContain("hive-secret-pw", "beeline", "-p ");
+        OfflineFlowNode parsed = support.parseGraph(yaml).nodes().getFirst();
+        assertThat(parsed.kind()).isEqualTo("HIVE_SQL");
+        assertThat(parsed.dataSourceId()).isEqualTo(2L);
+        assertThat(parsed.scriptPath()).isEqualTo("scripts/hive_step.sql");
+
+        String unbound = support.unbindSqlDataSources(yaml, java.util.Set.of("hive_step"));
+        assertThat(unbound).contains("No data source selected").doesNotContain("io.wbdata.kestra.hive.Query", "dataSourceId: 2");
     }
 
 }

@@ -14,6 +14,8 @@ wbdata:
   offline:
     repo-base-dir: ${WB_DATA_OFFLINE_REPO_BASE_DIR:${user.dir}/../../output/offline-live/repos}
     transfer:
+      # 仅限本地 dev profile 使用；生产部署务必通过 WB_DATA_TRANSFER_INTERNAL_TOKEN 显式注入强令牌
+      internal-token: ${WB_DATA_TRANSFER_INTERNAL_TOKEN:wb-data-local-dev-internal-token}
       container-host-rewrite: ${WB_DATA_TRANSFER_CONTAINER_HOST_REWRITE:host.docker.internal}
     kestra:
       base-url: ${WB_DATA_KESTRA_BASE_URL:http://${WB_DATA_INFRA_HOST:omarchy.local}:8090}

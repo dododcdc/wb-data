@@ -11,6 +11,7 @@ import com.wbdata.git.entity.WbGitConfig;
 import com.wbdata.git.entity.WbGitSyncConfig;
 import com.wbdata.git.mapper.WbGitSyncConfigMapper;
 import com.wbdata.offline.config.OfflineKestraProperties;
+import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.repo.service.GitCommandService;
 import com.wbdata.offline.kestra.KestraClient;
 import com.wbdata.offline.kestra.KestraExecutionSnapshot;
@@ -87,9 +88,10 @@ class GitSyncConfigServiceTest {
         ArgumentCaptor<String> source = ArgumentCaptor.forClass(String.class);
         verify(kestraClient).upsertFlow(source.capture());
         assertThat(source.getValue()).isEqualTo(GitSyncFlowSourceBuilder.buildSyncFlowSource(
-                gitConfig(99L),
                 existing("feature/policy-review"),
-                "*/5 * * * *"
+                "*/5 * * * *",
+                null,
+                "WB_DATA_INTERNAL_TOKEN"
         ));
     }
 
@@ -196,9 +198,10 @@ class GitSyncConfigServiceTest {
         WbGitSyncConfig disabledConfig = existing("feature/policy-review");
         disabledConfig.setEnabled(false);
         String expectedSource = GitSyncFlowSourceBuilder.buildSyncFlowSource(
-                gitConfig(99L),
                 disabledConfig,
-                "*/5 * * * *"
+                "*/5 * * * *",
+                null,
+                "WB_DATA_INTERNAL_TOKEN"
         );
         InOrder order = inOrder(kestraClient, mapper);
         order.verify(kestraClient).upsertFlow(expectedSource);
@@ -249,9 +252,10 @@ class GitSyncConfigServiceTest {
         assertThat(response.executionId()).isEqualTo("exec-healed-1");
         assertThat(response.status()).isEqualTo("CREATED");
         String expectedSource = GitSyncFlowSourceBuilder.buildSyncFlowSource(
-                gitConfig(99L),
                 existing("feature/policy-review"),
-                "*/5 * * * *"
+                "*/5 * * * *",
+                null,
+                "WB_DATA_INTERNAL_TOKEN"
         );
         InOrder order = inOrder(kestraClient, mapper);
         order.verify(kestraClient).createExecution(GitSyncFlowSourceBuilder.SYSTEM_NAMESPACE, syncFlowId);
@@ -297,7 +301,8 @@ class GitSyncConfigServiceTest {
         GitSyncProperties syncProperties = new GitSyncProperties();
         syncProperties.setSyncCron("*/5 * * * *");
         return new GitSyncConfigService(mapper, Mockito.mock(OfflinePublishRecordService.class),
-                gitConfigService, gitCommandService, kestraClient, kestraProperties, syncProperties);
+                gitConfigService, gitCommandService, kestraClient, kestraProperties, syncProperties,
+                new OfflineTransferProperties());
     }
 
     private WbGitConfig gitConfig(Long id) {

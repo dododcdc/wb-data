@@ -194,7 +194,19 @@ public class OfflineExecutionService {
                 continue;
             }
             if ("TRANSFER".equalsIgnoreCase(node.kind())) {
-                validateTransferTaskRunner(node.taskId());
+                validateDockerTaskRunner(node.taskId(), "传输节点");
+                continue;
+            }
+            if ("HIVE_SQL".equalsIgnoreCase(node.kind())) {
+                if (node.dataSourceId() != null) {
+                    if (!kestraClient.supportsTaskType(OfflineNodeTaskCompiler.HIVE_QUERY_TASK_TYPE)) {
+                        throw new ResponseStatusException(
+                                HttpStatus.BAD_REQUEST,
+                                "当前 Kestra 未安装 Hive 执行插件，节点 " + node.taskId() + " 暂时无法执行"
+                        );
+                    }
+                    validateDockerTaskRunner(node.taskId(), "HiveSQL 节点");
+                }
                 continue;
             }
             if (!OfflineFlowNodeKinds.isJdbcSql(node.kind())) {
@@ -220,14 +232,14 @@ public class OfflineExecutionService {
         }
     }
 
-    private void validateTransferTaskRunner(String taskId) {
+    private void validateDockerTaskRunner(String taskId, String nodeLabel) {
         if (transferProperties.getRunner() != TransferRunner.DOCKER) {
             return;
         }
         if (!kestraClient.supportsTaskType(TRANSFER_DOCKER_TASK_RUNNER_TYPE)) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "当前 Kestra 不支持 Docker task runner，传输节点 " + taskId + " 暂时无法执行"
+                    "当前 Kestra 不支持 Docker task runner，" + nodeLabel + " " + taskId + " 暂时无法执行"
             );
         }
     }
