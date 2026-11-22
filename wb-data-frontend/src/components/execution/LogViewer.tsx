@@ -17,6 +17,7 @@ interface LogViewerProps {
     searchQuery: string;
     currentMatchPosition: number;
     onAtBottomChange?: (atBottom: boolean) => void;
+    hideTaskColumn?: boolean;
 }
 
 function renderHighlightedMessage(text: string, query: string, isCurrent: boolean): ReactNode {
@@ -55,7 +56,7 @@ export interface LogViewerHandle {
 }
 
 const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer(
-    { items, searchQuery, currentMatchPosition, onAtBottomChange },
+    { items, searchQuery, currentMatchPosition, onAtBottomChange, hideTaskColumn = false },
     ref,
 ) {
     const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -86,12 +87,14 @@ const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer
                 <div className="log-line">
                     <span className="log-line-time">{formatTime(item.timestamp) || '—'}</span>
                     <span className={`log-line-level is-${item.level.toLowerCase()}`}>{item.level}</span>
-                    <span className="log-line-task" title={item.taskId}>{item.taskId}</span>
+                    {!hideTaskColumn ? (
+                        <span className="log-line-task" title={item.taskId}>{item.taskId}</span>
+                    ) : null}
                     <p className="log-line-msg">{renderHighlightedMessage(item.message, searchQuery, isCurrentMatch)}</p>
                 </div>
             );
         },
-        [searchQuery, currentMatchPosition],
+        [searchQuery, currentMatchPosition, hideTaskColumn],
     );
 
     if (items.length === 0) {
@@ -99,7 +102,7 @@ const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer
     }
 
     return (
-        <div className="log-viewer">
+        <div className={hideTaskColumn ? 'log-viewer log-viewer--no-task' : 'log-viewer'}>
             <Virtuoso
                 ref={virtuosoRef}
                 style={{ height: '100%' }}

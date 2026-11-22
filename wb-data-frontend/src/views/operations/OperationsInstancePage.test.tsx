@@ -599,4 +599,28 @@ describe('OperationsInstancePage', () => {
         await waitFor(() => expect(stopOperationsExecutionMock).toHaveBeenCalledWith(4, 'exec-1'));
         expect(showSuccess).toHaveBeenCalledWith('已发送停止请求');
     });
+
+    it('renders integrated period stepper, single-node logs without repeated taskId column, and quiet zero-count level pills', async () => {
+        renderPage();
+
+        expect(await screen.findByText('load failed on row 42')).toBeTruthy();
+
+        const periodStepper = screen.getByRole('group', { name: '业务期切换' });
+        expect(within(periodStepper).getByRole('button', { name: '上一期' })).toBeTruthy();
+        expect(within(periodStepper).getByText('2026-06-07')).toBeTruthy();
+        expect(within(periodStepper).getByRole('button', { name: '下一期' })).toBeTruthy();
+
+        expect(document.querySelector('.log-viewer--no-task')).toBeTruthy();
+        expect(document.querySelector('.log-line-task')).toBeNull();
+
+        const errorPill = screen.getByRole('button', { name: 'ERROR 1' });
+        const warnPill = screen.getByRole('button', { name: 'WARN 0' });
+        const infoPill = screen.getByRole('button', { name: 'INFO 0' });
+        expect(errorPill.className).not.toContain('is-zero');
+        expect(warnPill.className).toContain('is-zero');
+        expect(infoPill.className).toContain('is-zero');
+
+        fireEvent.click(errorPill);
+        expect(errorPill.className).toContain('is-active');
+    });
 });
