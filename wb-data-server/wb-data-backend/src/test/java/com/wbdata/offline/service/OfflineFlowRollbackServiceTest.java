@@ -5,7 +5,6 @@ import com.wbdata.auth.dto.ProjectGroupContextItem;
 import com.wbdata.auth.service.PermissionService;
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.datasource.service.DataSourceService;
-import com.wbdata.git.service.OfflinePublishRecordService;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.dto.NodePosition;
@@ -25,6 +24,7 @@ import com.wbdata.offline.parameter.service.FlowParameterSnapshotStore;
 import com.wbdata.offline.repo.service.GitCommandService;
 import com.wbdata.offline.repo.service.OfflineFlowSnapshotService;
 import com.wbdata.offline.repo.service.OfflineGitRemotePort;
+import com.wbdata.offline.repo.service.OfflinePublishHistoryPort;
 import com.wbdata.offline.repo.service.RepoLockManager;
 import com.wbdata.offline.schedule.dto.OfflineFlowDependencyRef;
 import com.wbdata.offline.schedule.dto.OfflineFlowDependencySettings;
@@ -347,7 +347,7 @@ class OfflineFlowRollbackServiceTest {
             );
             dependencies = new OfflineFlowDependencyService(properties, content, locks, new PermissionService());
             gitCommandService = new GitCommandService(
-                    properties, mock(OfflineGitRemotePort.class), documents, mock(OfflinePublishRecordService.class), locks);
+                    properties, mock(OfflineGitRemotePort.class), documents, mock(OfflinePublishHistoryPort.class), locks);
             snapshots = new OfflineFlowSnapshotService(documents, gitCommandService, properties);
         }
 

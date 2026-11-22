@@ -1,29 +1,21 @@
 package com.wbdata.query.service.impl;
 
-import com.baomidou.mybatisplus.core.MybatisConfiguration;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.wbdata.auth.context.AuthContext;
+import com.wbdata.auth.service.AuthGroupAccessPort;
 import com.wbdata.auth.service.AuthSession;
 import com.wbdata.datasource.service.AuthorizedDataSourceService;
 import com.wbdata.auth.service.GroupAuthorizationService;
 import com.wbdata.auth.service.PermissionService;
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.datasource.service.DataSourceService;
-import com.wbdata.group.entity.WbProjectGroup;
-import com.wbdata.group.entity.WbProjectGroupMember;
-import com.wbdata.group.mapper.WbProjectGroupMapper;
-import com.wbdata.group.mapper.WbProjectGroupMemberMapper;
 import com.wbdata.plugin.api.ColumnMetadata;
 import com.wbdata.plugin.api.QueryRowHandler;
 import com.wbdata.plugin.api.QueryStreamSummary;
 import com.wbdata.query.dto.QueryExportTaskResponse;
 import com.wbdata.query.service.QueryService;
-import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -40,8 +32,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -52,6 +48,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -62,21 +59,14 @@ class QueryExportServiceImplTest {
 
     private final QueryService queryService = Mockito.mock(QueryService.class);
     private final DataSourceService dataSourceService = Mockito.mock(DataSourceService.class);
-    private final WbProjectGroupMapper groupMapper = Mockito.mock(WbProjectGroupMapper.class);
-    private final WbProjectGroupMemberMapper memberMapper = Mockito.mock(WbProjectGroupMemberMapper.class);
+    private final AuthGroupAccessPort groupAccessPort = Mockito.mock(AuthGroupAccessPort.class);
     private final GroupAuthorizationService authorizationService = new GroupAuthorizationService(
-            groupMapper, memberMapper, new PermissionService());
+            groupAccessPort, new PermissionService());
     private final AuthorizedDataSourceService authorizedDataSourceService = new AuthorizedDataSourceService(
             dataSourceService, authorizationService);
     private final QueryExportServiceImpl service = new QueryExportServiceImpl(queryService, authorizedDataSourceService);
     private final DataSource dataSource = new DataSource();
-    private final List<WbProjectGroupMember> memberships = new ArrayList<>();
-
-    @BeforeAll
-    static void initializeMapperMetadata() {
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""),
-                WbProjectGroupMember.class);
-    }
+    private final Map<Long, Set<Long>> membershipsByGroup = new LinkedHashMap<>();
 
     @BeforeEach
     void loginOwner() {
@@ -84,40 +74,25 @@ class QueryExportServiceImplTest {
         dataSource.setId(1L);
         dataSource.setGroupId(10L);
         when(dataSourceService.getById(1L)).thenReturn(dataSource);
-        List<WbProjectGroup> groups = List.of(group(10L), group(20L));
-        for (long userId : List.of(1L, 2L)) {
-            for (WbProjectGroup group : groups) {
-                WbProjectGroupMember member = new WbProjectGroupMember();
-                member.setUserId(userId);
-                member.setGroupId(group.getId());
-                member.setRole("DEVELOPER");
-                memberships.add(member);
-            }
+        for (long groupId : List.of(10L, 20L)) {
+            membershipsByGroup.put(groupId, new LinkedHashSet<>(List.of(1L, 2L)));
         }
-        when(memberMapper.selectOne(any())).thenAnswer(invocation -> {
-            LambdaQueryWrapper<WbProjectGroupMember> query = invocation.getArgument(0);
-            query.getSqlSegment();
-            Map<String, Object> parameters = query.getParamNameValuePairs();
-            return memberships.stream()
-                    .filter(member -> parameters.containsValue(member.getUserId())
-                            && parameters.containsValue(member.getGroupId()))
-                    .findFirst().orElse(null);
+        when(groupAccessPort.findGroupAccess(anyLong(), anyLong(), anyBoolean())).thenAnswer(invocation -> {
+            Long groupId = invocation.getArgument(0);
+            Long userId = invocation.getArgument(1);
+            boolean includeMembership = invocation.getArgument(2);
+            Set<Long> members = membershipsByGroup.get(groupId);
+            if (members == null) {
+                return Optional.empty();
+            }
+            String role = includeMembership && members.contains(userId) ? "DEVELOPER" : null;
+            return Optional.of(new AuthGroupAccessPort.AuthGroupSnapshot(
+                    groupId, "group-" + groupId, "active", role));
         });
-        when(groupMapper.selectById(any())).thenAnswer(invocation -> groups.stream()
-                .filter(group -> group.getId().equals(invocation.getArgument(0)))
-                .findFirst().orElse(null));
-    }
-
-    private static WbProjectGroup group(Long groupId) {
-        WbProjectGroup group = new WbProjectGroup();
-        group.setId(groupId);
-        group.setName("group-" + groupId);
-        group.setStatus("active");
-        return group;
     }
 
     private void revokeMembership(Long userId) {
-        memberships.removeIf(member -> member.getUserId().equals(userId) && member.getGroupId().equals(10L));
+        membershipsByGroup.getOrDefault(10L, Set.of()).remove(userId);
     }
 
     @AfterEach

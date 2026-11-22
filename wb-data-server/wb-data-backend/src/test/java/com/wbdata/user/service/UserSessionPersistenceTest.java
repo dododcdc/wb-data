@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.wbdata.auth.service.AuthTokenService;
 import com.wbdata.group.mapper.WbProjectGroupMapper;
 import com.wbdata.group.mapper.WbProjectGroupMemberMapper;
+import com.wbdata.group.service.GroupMembershipAdapter;
 import com.wbdata.user.dto.GroupAssignment;
 import com.wbdata.user.dto.ResetPasswordRequest;
 import com.wbdata.user.dto.UpdateUserRequest;
@@ -68,9 +69,10 @@ class UserSessionPersistenceTest {
         factory.setDataSource(dataSource);
         factory.setConfiguration(configuration);
         mapper = new SqlSessionTemplate(factory.getObject()).getMapper(WbUserMapper.class);
-        tokens = new AuthTokenService(mapper);
+        tokens = new AuthTokenService(new UserAuthAccountAdapter(mapper));
         members = mock(WbProjectGroupMemberMapper.class);
-        UserService target = new UserService(mapper, mock(WbProjectGroupMapper.class), members,
+        UserService target = new UserService(mapper,
+                new GroupMembershipAdapter(mock(WbProjectGroupMapper.class), members),
                 new BCryptPasswordEncoder());
         ProxyFactory proxy = new ProxyFactory(target);
         proxy.setProxyTargetClass(true);
@@ -91,7 +93,7 @@ class UserSessionPersistenceTest {
     void migrationAndPasswordResetRevokeSessionsWithoutResettingVersionOnPartialUpdates() {
         WbUser snapshot = mapper.selectById(1L);
         assertThat(snapshot.getAuthVersion()).isZero();
-        String token = tokens.issueToken(snapshot).accessToken();
+        String token = tokens.issueToken(UserAuthAccountAdapter.toAuthUserAccount(snapshot)).accessToken();
         ResetPasswordRequest req = new ResetPasswordRequest();
         req.setNewPassword("new-test-password");
         users.resetPassword(1L, req, 2L);
@@ -99,8 +101,8 @@ class UserSessionPersistenceTest {
         assertThat(mapper.selectById(1L).getAuthVersion()).isEqualTo(1L);
         assertThat(new BCryptPasswordEncoder().matches("new-test-password", mapper.selectById(1L).getPasswordHash())).isTrue();
         assertThat(tokens.resolveToken(token)).isNull();
-        assertThat(tokens.resolveToken(tokens.issueToken(snapshot).accessToken())).isNull();
-        String currentToken = tokens.issueToken(mapper.selectById(1L)).accessToken();
+        assertThat(tokens.resolveToken(tokens.issueToken(UserAuthAccountAdapter.toAuthUserAccount(snapshot)).accessToken())).isNull();
+        String currentToken = tokens.issueToken(UserAuthAccountAdapter.toAuthUserAccount(mapper.selectById(1L))).accessToken();
         UpdateUserRequest rename = new UpdateUserRequest();
         rename.setDisplayName("Renamed");
         users.updateUser(1L, rename, 2L);
@@ -110,7 +112,7 @@ class UserSessionPersistenceTest {
 
     @Test
     void disablingAndReenablingCannotReviveOldSessions() {
-        String token = tokens.issueToken(mapper.selectById(1L)).accessToken();
+        String token = tokens.issueToken(UserAuthAccountAdapter.toAuthUserAccount(mapper.selectById(1L))).accessToken();
         UpdateUserStatusRequest req = new UpdateUserStatusRequest();
         req.setStatus("DISABLED");
         users.changeStatus(1L, req, 2L);
@@ -123,18 +125,18 @@ class UserSessionPersistenceTest {
 
     @Test
     void demotionRevokesAdministratorSession() {
-        String token = tokens.issueToken(mapper.selectById(1L)).accessToken();
+        String token = tokens.issueToken(UserAuthAccountAdapter.toAuthUserAccount(mapper.selectById(1L))).accessToken();
         UpdateUserRequest req = new UpdateUserRequest();
         req.setSystemRole("USER");
         users.updateUser(1L, req, 2L);
 
         assertThat(tokens.resolveToken(token)).isNull();
-        assertThat(tokens.resolveToken(tokens.issueToken(mapper.selectById(1L)).accessToken()).isSystemAdmin()).isFalse();
+        assertThat(tokens.resolveToken(tokens.issueToken(UserAuthAccountAdapter.toAuthUserAccount(mapper.selectById(1L))).accessToken()).isSystemAdmin()).isFalse();
     }
 
     @Test
     void failedUpdateRollsBackRoleAndVersionTogether() {
-        String token = tokens.issueToken(mapper.selectById(1L)).accessToken();
+        String token = tokens.issueToken(UserAuthAccountAdapter.toAuthUserAccount(mapper.selectById(1L))).accessToken();
         UpdateUserRequest req = new UpdateUserRequest();
         req.setSystemRole("USER");
         req.setGroupAssignments(List.<GroupAssignment>of());

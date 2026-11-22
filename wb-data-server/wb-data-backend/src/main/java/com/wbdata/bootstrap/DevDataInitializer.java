@@ -1,4 +1,4 @@
-package com.wbdata.user.bootstrap;
+package com.wbdata.bootstrap;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wbdata.group.entity.WbProjectGroup;

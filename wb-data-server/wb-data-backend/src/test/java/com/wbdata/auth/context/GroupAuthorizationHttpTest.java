@@ -13,6 +13,7 @@ import com.wbdata.group.entity.WbProjectGroupMember;
 import com.wbdata.group.mapper.WbProjectGroupMapper;
 import com.wbdata.group.mapper.WbProjectGroupMemberMapper;
 import com.wbdata.group.mapper.WbUserGroupPreferenceMapper;
+import com.wbdata.group.service.GroupAuthAccessAdapter;
 import com.wbdata.group.service.GroupSettingsService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,11 +54,12 @@ class GroupAuthorizationHttpTest {
         when(members.selectList(any())).thenAnswer(invocation -> List.of(member));
         when(members.selectOne(any())).thenReturn(member);
         when(tokens.resolveToken(anyString())).thenReturn(session("USER"));
-        AuthContextService contexts = new AuthContextService(groups, members, preferences, new PermissionService());
+        GroupAuthAccessAdapter groupAccess = new GroupAuthAccessAdapter(groups, members, preferences);
+        AuthContextService contexts = new AuthContextService(groupAccess, new PermissionService());
         mvc = MockMvcBuilders.standaloneSetup(new GroupSettingsController(settings),
                         new AuthController(mock(AuthService.class), contexts, tokens))
                 .setCustomArgumentResolvers(new GroupAuthContextResolver(
-                        new GroupAuthorizationService(groups, members, new PermissionService())))
+                        new GroupAuthorizationService(groupAccess, new PermissionService())))
                 .addFilters(new AuthFilter(tokens))
                 .build();
     }

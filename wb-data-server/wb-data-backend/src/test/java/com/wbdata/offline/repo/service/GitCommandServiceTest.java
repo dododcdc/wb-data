@@ -1,8 +1,6 @@
 package com.wbdata.offline.repo.service;
 
 import com.sun.net.httpserver.HttpServer;
-import com.wbdata.git.entity.WbOfflinePublishRecord;
-import com.wbdata.git.service.OfflinePublishRecordService;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
 import org.junit.jupiter.api.Test;
@@ -220,10 +218,10 @@ class GitCommandServiceTest {
         properties.setRepoDirPrefix("wb-data-");
         OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
         OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
-        OfflinePublishRecordService publishRecordService = publishRecordService();
+        OfflinePublishHistoryPort publishHistoryPort = publishRecordService();
         when(gitRemotePort.repositoryExists(1L, "wb-data-1")).thenReturn(true);
         GitCommandService service = new GitCommandService(
-                properties, gitRemotePort, flowDocumentService, publishRecordService, new RepoLockManager());
+                properties, gitRemotePort, flowDocumentService, publishHistoryPort, new RepoLockManager());
 
         Path repo = properties.resolveRepoPath(1L);
         Path remote = tempDir.resolve("remote.git");
@@ -256,7 +254,7 @@ class GitCommandServiceTest {
         service.push(1L, 9L);
 
         String expectedAfter = git(repo, "rev-parse", "HEAD");
-        Mockito.verify(publishRecordService).recordPush(
+        Mockito.verify(publishHistoryPort).recordPush(
                 Mockito.eq(1L), Mockito.eq(9L), Mockito.eq("main"),
                 Mockito.eq(expectedBefore), Mockito.eq(expectedAfter));
     }
@@ -357,10 +355,10 @@ class GitCommandServiceTest {
         properties.setRepoDirPrefix("wb-data-");
         OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
         OfflineGitRemotePort gitRemotePort = Mockito.mock(OfflineGitRemotePort.class);
-        OfflinePublishRecordService publishRecordService = publishRecordService();
+        OfflinePublishHistoryPort publishHistoryPort = publishRecordService();
         when(gitRemotePort.repositoryExists(1L, "wb-data-1")).thenReturn(true);
         GitCommandService service = new GitCommandService(
-                properties, gitRemotePort, flowDocumentService, publishRecordService, new RepoLockManager());
+                properties, gitRemotePort, flowDocumentService, publishHistoryPort, new RepoLockManager());
         List<Object> events = new ArrayList<>();
         service.setApplicationEventPublisher(events::add);
 
@@ -410,7 +408,7 @@ class GitCommandServiceTest {
         assertThat(git(repo, "show", "HEAD:scripts/other/o1.sh")).isEqualTo("echo other-v2-committed");
         assertThat(Files.readString(repo.resolve("scripts/other/o1.sh"))).isEqualTo("echo other-v3-uncommitted\n");
 
-        Mockito.verify(publishRecordService).recordPush(
+        Mockito.verify(publishHistoryPort).recordPush(
                 Mockito.eq(1L), Mockito.eq(9L), Mockito.eq("main"),
                 Mockito.eq(initialSha), Mockito.eq(remoteMainSha));
         assertThat(events).hasSize(1);
@@ -695,18 +693,12 @@ class GitCommandServiceTest {
         }
     }
 
-    private static OfflinePublishRecordService publishRecordService() {
-        OfflinePublishRecordService service = Mockito.mock(OfflinePublishRecordService.class);
-        when(service.recordPush(
+    private static OfflinePublishHistoryPort publishRecordService() {
+        OfflinePublishHistoryPort port = Mockito.mock(OfflinePublishHistoryPort.class);
+        when(port.recordPush(
                 Mockito.anyLong(), Mockito.nullable(Long.class), Mockito.anyString(), Mockito.any(), Mockito.anyString()))
-                .thenAnswer(invocation -> {
-                    WbOfflinePublishRecord record = new WbOfflinePublishRecord();
-                    record.setId(99L);
-                    record.setBeforeSha(invocation.getArgument(3));
-                    record.setAfterSha(invocation.getArgument(4));
-                    return record;
-                });
-        return service;
+                .thenReturn(99L);
+        return port;
     }
 
     private static void initRepo(Path repo) throws Exception {

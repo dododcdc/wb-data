@@ -2,7 +2,6 @@ package com.wbdata.offline.repo.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.datasource.service.DataSourceService;
-import com.wbdata.git.service.OfflinePublishRecordService;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
@@ -137,7 +136,7 @@ class OfflineFlowSnapshotServiceTest {
                     properties,
                     mock(OfflineGitRemotePort.class),
                     documentService,
-                    mock(OfflinePublishRecordService.class),
+                    mock(OfflinePublishHistoryPort.class),
                     lockManager
             );
             snapshotService = new OfflineFlowSnapshotService(documentService, gitCommandService, properties);

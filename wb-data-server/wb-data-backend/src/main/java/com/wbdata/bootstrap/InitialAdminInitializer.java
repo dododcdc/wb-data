@@ -1,4 +1,4 @@
-package com.wbdata.user.bootstrap;
+package com.wbdata.bootstrap;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.wbdata.user.entity.WbUser;

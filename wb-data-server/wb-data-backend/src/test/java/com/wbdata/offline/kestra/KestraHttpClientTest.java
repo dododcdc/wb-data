@@ -160,6 +160,65 @@ class KestraHttpClientTest {
         assertThat(client.supportsTaskType("io.kestra.plugin.scripts.runner.docker.Docker")).isTrue();
     }
 
+    @Test
+    void supportsTaskType_fetchesPluginCatalogOnceAcrossConcurrentCalls() throws Exception {
+        HttpClient httpClient = Mockito.mock(HttpClient.class);
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.CountDownLatch inFlight = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenAnswer(inv -> {
+            calls.incrementAndGet();
+            inFlight.countDown();
+            release.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            return response(200, """
+                    [
+                      {
+                        "name": "plugin-script-shell",
+                        "tasks": [],
+                        "taskRunners": [{"cls": "io.kestra.plugin.scripts.runner.docker.Docker"}]
+                      }
+                    ]
+                    """);
+        });
+        KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
+
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var first = pool.submit(() -> client.supportsTaskType("io.kestra.plugin.scripts.runner.docker.Docker"));
+            assertThat(inFlight.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            var second = pool.submit(() -> client.supportsTaskType("io.kestra.plugin.scripts.runner.docker.Docker"));
+            release.countDown();
+
+            assertThat(first.get(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThat(second.get(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThat(calls.get()).isEqualTo(1);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void supportsTaskType_retriesAfterInitialPluginCatalogFailure() throws Exception {
+        HttpClient httpClient = Mockito.mock(HttpClient.class);
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response(503, "unavailable"))
+                .thenReturn(response(200, """
+                        [
+                          {
+                            "name": "plugin-script-shell",
+                            "tasks": [],
+                            "taskRunners": [{"cls": "io.kestra.plugin.scripts.runner.docker.Docker"}]
+                          }
+                        ]
+                        """));
+        KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
+
+        assertThatThrownBy(() -> client.supportsTaskType("io.kestra.plugin.scripts.runner.docker.Docker"))
+                .isInstanceOf(ResponseStatusException.class);
+        assertThat(client.supportsTaskType("io.kestra.plugin.scripts.runner.docker.Docker")).isTrue();
+        Mockito.verify(httpClient, Mockito.times(2)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+    }
+
     private OfflineKestraProperties properties() {
         OfflineKestraProperties properties = new OfflineKestraProperties();
         properties.setBaseUrl("http://localhost:8090");

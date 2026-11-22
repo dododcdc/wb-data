@@ -2,6 +2,7 @@ package com.wbdata.user.controller;
 
 import com.wbdata.auth.context.AuthContext;
 import com.wbdata.auth.service.AuthSession;
+import com.wbdata.common.dto.PageQuery;
 import com.wbdata.user.dto.CreateUserRequest;
 import com.wbdata.user.dto.ResetPasswordRequest;
 import com.wbdata.user.dto.UpdateUserStatusRequest;
@@ -62,7 +63,7 @@ class UserControllerPermissionTest {
     void nonAdminIsForbidden() {
         AuthContext.set(new AuthSession(8L, "bob", "Bob", "USER", null));
 
-        assertThatThrownBy(() -> controller.list(1, 10, null))
+        assertThatThrownBy(() -> controller.list(new PageQuery()))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         e -> org.assertj.core.api.Assertions.assertThat(e.getStatusCode())
                                 .isEqualTo(HttpStatus.FORBIDDEN));
@@ -70,7 +71,7 @@ class UserControllerPermissionTest {
 
     @Test
     void unauthenticatedIsUnauthorized() {
-        assertThatThrownBy(() -> controller.list(1, 10, null))
+        assertThatThrownBy(() -> controller.list(new PageQuery()))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         e -> org.assertj.core.api.Assertions.assertThat(e.getStatusCode())
                                 .isEqualTo(HttpStatus.UNAUTHORIZED));

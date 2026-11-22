@@ -1,10 +1,7 @@
 package com.wbdata.auth.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wbdata.auth.dto.LoginRequest;
 import com.wbdata.auth.dto.LoginResponse;
-import com.wbdata.user.entity.WbUser;
-import com.wbdata.user.mapper.WbUserMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -19,31 +16,25 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class AuthService {
 
-    private final WbUserMapper wbUserMapper;
+    private final AuthUserAccountPort userAccountPort;
     private final PasswordEncoder passwordEncoder;
     private final AuthTokenService authTokenService;
 
     public LoginResponse login(LoginRequest request) {
         String username = request.username() == null ? "" : request.username().trim();
-        WbUser user = wbUserMapper.selectOne(new LambdaQueryWrapper<WbUser>()
-                .eq(WbUser::getUsername, username)
-                .last("LIMIT 1"));
+        AuthUserAccountPort.AuthUserAccount user = userAccountPort.findByUsername(username).orElse(null);
 
-        if (user == null || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        if (user == null || !passwordEncoder.matches(request.password(), user.passwordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
         }
 
-        if (!"ACTIVE".equalsIgnoreCase(user.getStatus())) {
+        if (!"ACTIVE".equalsIgnoreCase(user.status())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "账号已被禁用");
         }
 
-        WbUser update = new WbUser();
-        update.setId(user.getId());
-        update.setLastLoginAt(LocalDateTime.now());
-        wbUserMapper.updateById(update);
-        user.setLastLoginAt(update.getLastLoginAt());
+        userAccountPort.updateLastLoginAt(user.id(), LocalDateTime.now());
         LoginResponse loginResponse = authTokenService.issueToken(user);
-        log.info("用户 {} 登录成功", user.getId());
+        log.info("用户 {} 登录成功", user.id());
         return loginResponse;
     }
 }

@@ -2,13 +2,12 @@ package com.wbdata.offline.credential.service;
 
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.datasource.service.DataSourceService;
-import com.wbdata.git.entity.WbGitConfig;
-import com.wbdata.git.service.GitConfigService;
 import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.credential.dto.DataSourceCredentialRequest;
 import com.wbdata.offline.credential.dto.DataSourceCredentialResponse;
 import com.wbdata.offline.credential.dto.GitCredentialRequest;
 import com.wbdata.offline.credential.dto.GitCredentialResponse;
+import com.wbdata.offline.repo.service.OfflineGitRemotePort;
 import com.wbdata.offline.transfer.config.TransferInternalProperties;
 import com.wbdata.offline.transfer.service.JdbcDriverCatalog;
 import lombok.RequiredArgsConstructor;
@@ -35,7 +34,7 @@ public class InternalCredentialService {
     private final TransferInternalProperties transferInternalProperties;
     private final OfflineTransferProperties offlineTransferProperties;
     private final DataSourceService dataSourceService;
-    private final GitConfigService gitConfigService;
+    private final OfflineGitRemotePort gitRemotePort;
 
     public DataSourceCredentialResponse resolveDataSource(String providedToken,
                                                           DataSourceCredentialRequest request) {
@@ -76,16 +75,14 @@ public class InternalCredentialService {
 
     public GitCredentialResponse resolveGit(String providedToken, GitCredentialRequest request) {
         authorize(providedToken);
-        WbGitConfig gitConfig = gitConfigService.requireDecryptedConfig(request.groupId());
-        String repositoryUrl = gitConfig.getBaseUrl().replaceFirst("/$", "")
-                + "/" + gitConfig.getUsername()
-                + "/wb-data-" + request.groupId() + ".git";
+        OfflineGitRemotePort.GitRuntimeCredentials creds =
+                gitRemotePort.requireRuntimeCredentials(request.groupId());
         return new GitCredentialResponse(
                 request.groupId(),
-                gitConfig.getProvider(),
-                repositoryUrl,
-                gitConfig.getUsername(),
-                gitConfig.getToken()
+                creds.provider(),
+                creds.repositoryUrl(),
+                creds.username(),
+                creds.token()
         );
     }
 

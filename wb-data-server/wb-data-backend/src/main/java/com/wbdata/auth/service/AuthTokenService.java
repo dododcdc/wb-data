@@ -4,8 +4,6 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.wbdata.auth.dto.CurrentUserResponse;
 import com.wbdata.auth.dto.LoginResponse;
-import com.wbdata.user.entity.WbUser;
-import com.wbdata.user.mapper.WbUserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -20,7 +18,7 @@ import java.util.UUID;
 public class AuthTokenService {
     private static final Duration TOKEN_TTL = Duration.ofHours(12);
 
-    private final WbUserMapper userMapper;
+    private final AuthUserAccountPort userAccountPort;
     private final Clock clock;
     private final Cache<String, CachedSession> sessions = Caffeine.newBuilder()
             .expireAfterWrite(TOKEN_TTL)
@@ -28,26 +26,26 @@ public class AuthTokenService {
             .build();
 
     @Autowired
-    public AuthTokenService(WbUserMapper userMapper) {
-        this(userMapper, Clock.systemUTC());
+    public AuthTokenService(AuthUserAccountPort userAccountPort) {
+        this(userAccountPort, Clock.systemUTC());
     }
 
-    AuthTokenService(WbUserMapper userMapper, Clock clock) {
-        this.userMapper = userMapper;
+    AuthTokenService(AuthUserAccountPort userAccountPort, Clock clock) {
+        this.userAccountPort = userAccountPort;
         this.clock = clock;
     }
 
-    public LoginResponse issueToken(WbUser user) {
+    public LoginResponse issueToken(AuthUserAccountPort.AuthUserAccount user) {
         String token = UUID.randomUUID().toString();
         Instant expiresAt = Instant.now(clock).plus(TOKEN_TTL);
         AuthSession session = new AuthSession(
-                user.getId(),
-                user.getUsername(),
-                user.getDisplayName(),
-                user.getSystemRole(),
+                user.id(),
+                user.username(),
+                user.displayName(),
+                user.systemRole(),
                 expiresAt
         );
-        sessions.put(token, new CachedSession(session, user.getAuthVersion()));
+        sessions.put(token, new CachedSession(session, user.authVersion()));
         return new LoginResponse(token, "Bearer", expiresAt, session.toCurrentUserResponse());
     }
 
@@ -67,21 +65,21 @@ public class AuthTokenService {
             sessions.invalidate(token);
             return null;
         }
-        WbUser user = userMapper.selectById(cached.session().id());
-        if (user == null || !"ACTIVE".equalsIgnoreCase(user.getStatus())
-                || user.getAuthVersion() != cached.authVersion()) {
+        AuthUserAccountPort.AuthUserAccount user = userAccountPort.findById(cached.session().id()).orElse(null);
+        if (user == null || !"ACTIVE".equalsIgnoreCase(user.status())
+                || user.authVersion() != cached.authVersion()) {
             sessions.invalidate(token);
             return null;
         }
         AuthSession currentSession = new AuthSession(
-                user.getId(),
-                user.getUsername(),
-                user.getDisplayName(),
-                user.getSystemRole(),
+                user.id(),
+                user.username(),
+                user.displayName(),
+                user.systemRole(),
                 cached.session().expiresAt()
         );
         if (!currentSession.equals(cached.session())) {
-            sessions.put(token, new CachedSession(currentSession, user.getAuthVersion()));
+            sessions.put(token, new CachedSession(currentSession, user.authVersion()));
         }
         return currentSession;
     }

@@ -12,20 +12,15 @@ import com.wbdata.group.entity.WbProjectGroup;
 import com.wbdata.group.entity.WbProjectGroupMember;
 import com.wbdata.group.mapper.WbProjectGroupMapper;
 import com.wbdata.group.mapper.WbProjectGroupMemberMapper;
-import com.wbdata.offline.config.OfflineProperties;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -34,7 +29,7 @@ public class GroupService {
 
     private final WbProjectGroupMapper groupMapper;
     private final WbProjectGroupMemberMapper groupMemberMapper;
-    private final OfflineProperties offlineProperties;
+    private final ApplicationEventPublisher eventPublisher;
 
     public PageResult<GroupDetailResponse> listGroups(PageQuery query) {
         Page<WbProjectGroup> pageParam = query.toMyBatisPage();
@@ -75,7 +70,7 @@ public class GroupService {
         group.setUpdatedBy(operatorId);
         groupMapper.insert(group);
 
-        initLocalRepo(group.getId());
+        eventPublisher.publishEvent(new GroupCreatedEvent(group.getId()));
 
         return GroupDetailResponse.from(groupMapper.selectById(group.getId()), 0L);
     }
@@ -159,46 +154,5 @@ public class GroupService {
                 m -> (Long) m.get("group_id"),
                 m -> ((Number) m.get("count")).longValue()
         ));
-    }
-
-    private void initLocalRepo(Long groupId) {
-        Path repoPath = offlineProperties.resolveRepoPath(groupId);
-        try {
-            Files.createDirectories(repoPath);
-            Files.createDirectories(repoPath.resolve("_flows"));
-            Files.createDirectories(repoPath.resolve("scripts"));
-            Files.writeString(repoPath.resolve("_flows/.gitkeep"), "", StandardCharsets.UTF_8);
-            Files.writeString(repoPath.resolve("scripts/.gitkeep"), "", StandardCharsets.UTF_8);
-            runGitCommand(repoPath, "init", "--initial-branch=main");
-        } catch (IOException ex) {
-            throw new IllegalStateException("初始化本地仓库失败: " + repoPath, ex);
-        }
-    }
-
-    private String runGitCommand(Path repoPath, String... args) {
-        List<String> command = new java.util.ArrayList<>();
-        command.add("git");
-        command.add("-C");
-        command.add(repoPath.toString());
-        command.addAll(List.of(args));
-        try {
-            Process process = new ProcessBuilder(command)
-                    .redirectErrorStream(true)
-                    .start();
-            if (!process.waitFor(10, TimeUnit.SECONDS)) {
-                process.destroyForcibly();
-                throw new IllegalStateException("执行 git 命令超时: " + String.join(" ", command));
-            }
-            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
-            if (process.exitValue() != 0) {
-                throw new IllegalStateException("执行 git 命令失败: " + output);
-            }
-            return output;
-        } catch (IOException ex) {
-            throw new IllegalStateException("执行 git 命令失败", ex);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("执行 git 命令被中断", ex);
-        }
     }
 }

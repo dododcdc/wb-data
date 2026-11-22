@@ -1,59 +1,42 @@
 package com.wbdata.offline.service;
 
-import com.wbdata.offline.parameter.service.ExecutionParameterSnapshotRegistry;
-import com.wbdata.offline.parameter.service.FlowParameterBindingAssembler;
-import com.wbdata.offline.parameter.service.FlowParameterSnapshotStore;
-import com.wbdata.offline.repo.service.RepoLockManager;
-import com.wbdata.offline.repo.service.SnapshotFileAccess;
-import com.wbdata.offline.repo.service.WorkingTreeSnapshotFileAccess;
-
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.config.OfflineTransferProperties;
-import com.wbdata.offline.execution.dto.DebugDocumentExecutionRequest;
-import com.wbdata.offline.parameter.dto.FlowParameterBindingItemResponse;
-import com.wbdata.offline.parameter.dto.FlowParameterBindingResponse;
-import com.wbdata.offline.parameter.dto.FlowParameterDefinitionSnapshot;
-import com.wbdata.offline.parameter.dto.FlowParameterSnapshot;
-import com.wbdata.offline.dto.NodePosition;
 import com.wbdata.offline.dto.OfflineFlowDocumentResponse;
-import com.wbdata.offline.dto.OfflineFlowEdgeResponse;
 import com.wbdata.offline.dto.OfflineFlowNodeResponse;
-import com.wbdata.offline.schedule.dto.OfflineFlowSchedule;
 import com.wbdata.offline.dto.OfflineFlowStageResponse;
 import com.wbdata.offline.dto.RollbackOfflineFlowRequest;
 import com.wbdata.offline.dto.RollbackOfflineFlowResponse;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
-import com.wbdata.offline.dto.SaveOfflineFlowEdgeRequest;
-import com.wbdata.offline.dto.SaveOfflineFlowNodeRequest;
-import com.wbdata.offline.dto.SaveOfflineFlowStageRequest;
-import com.wbdata.offline.service.FlowGraphDraftBuilder.GraphDraft;
-import com.wbdata.offline.parameter.service.FlowParameterBindingAssembler.ParameterSnapshotUpdate;
+import com.wbdata.offline.execution.dto.DebugDocumentExecutionRequest;
+import com.wbdata.offline.parameter.dto.FlowParameterBindingItemResponse;
+import com.wbdata.offline.parameter.dto.FlowParameterBindingResponse;
+import com.wbdata.offline.parameter.dto.FlowParameterDefinitionSnapshot;
+import com.wbdata.offline.parameter.service.ExecutionParameterSnapshotRegistry;
+import com.wbdata.offline.parameter.service.FlowParameterBindingAssembler;
+import com.wbdata.offline.parameter.service.FlowParameterSnapshotStore;
 import com.wbdata.offline.parameter.service.ScriptParameterRenderer;
-import com.wbdata.offline.transfer.dto.TransferConfig;
+import com.wbdata.offline.repo.service.RepoLockManager;
+import com.wbdata.offline.repo.service.SnapshotFileAccess;
+import com.wbdata.offline.repo.service.WorkingTreeSnapshotFileAccess;
+import com.wbdata.offline.service.OfflineFlowDocumentStore.DocumentSnapshot;
 import com.wbdata.offline.transfer.service.TransferConfigFileService;
 import com.wbdata.offline.transfer.service.TransferParameters;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 
+/**
+ * 离线任务文档的加锁协调门面：统一管理仓库锁并委托快照读写、保存编译、工作区回滚与参数引用扫描。
+ * 具体职责见 {@link OfflineFlowDocumentStore} / {@link OfflineFlowDocumentWriter} / {@link OfflineFlowDocumentRollback}。
+ */
 @Service
 public class OfflineFlowDocumentService {
 
@@ -68,20 +51,17 @@ public class OfflineFlowDocumentService {
     ) {
     }
 
-    private final OfflineProperties offlineProperties;
-    private final OfflineFlowContentService offlineFlowContentService;
+    public record VersionSnapshotData(
+            OfflineFlowDocumentResponse document,
+            List<String> managedFiles
+    ) {
+    }
+
     private final RepoLockManager repoLockManager;
-    private final OfflineKestraFlowFileService kestraFlowFileService;
-    private final TransferConfigFileService transferConfigFileService;
-    private final FlowParameterSnapshotStore parameterSnapshotStore;
-    private final FlowParameterBindingAssembler parameterBindingAssembler;
-    private final FlowGraphDraftBuilder graphDraftBuilder;
-    private final ExecutionParameterSnapshotRegistry executionParameterSnapshotRegistry;
-    private final OfflineHiveConfigStore hiveConfigStore;
-    private final FlowParameterCompiler parameterCompiler = new FlowParameterCompiler();
-    private final OfflineFlowYamlSupport yamlSupport;
     private final SqlNamedParameterScanner namedParameterScanner = new SqlNamedParameterScanner();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final OfflineFlowDocumentStore store;
+    private final OfflineFlowDocumentWriter writer;
+    private final OfflineFlowDocumentRollback rollback;
 
     public OfflineFlowDocumentService(OfflineProperties offlineProperties,
                                       OfflineFlowContentService offlineFlowContentService,
@@ -120,44 +100,64 @@ public class OfflineFlowDocumentService {
                                       ExecutionParameterSnapshotRegistry executionParameterSnapshotRegistry,
                                       OfflineTransferProperties transferProperties,
                                       OfflineHiveConfigStore hiveConfigStore) {
-        this.offlineProperties = offlineProperties;
-        this.offlineFlowContentService = offlineFlowContentService;
         this.repoLockManager = repoLockManager;
-        this.kestraFlowFileService = kestraFlowFileService;
-        this.transferConfigFileService = transferConfigFileService;
-        this.parameterSnapshotStore = parameterSnapshotStore;
-        this.parameterBindingAssembler = parameterBindingAssembler;
-        this.graphDraftBuilder = graphDraftBuilder;
-        this.executionParameterSnapshotRegistry = executionParameterSnapshotRegistry;
-        this.hiveConfigStore = hiveConfigStore;
-        this.yamlSupport = new OfflineFlowYamlSupport(transferProperties);
+        OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport(transferProperties);
+        FlowParameterCompiler parameterCompiler = new FlowParameterCompiler();
+        ObjectMapper objectMapper = new ObjectMapper();
+        this.store = new OfflineFlowDocumentStore(
+                offlineProperties,
+                kestraFlowFileService,
+                transferConfigFileService,
+                parameterSnapshotStore,
+                parameterBindingAssembler,
+                hiveConfigStore,
+                yamlSupport,
+                objectMapper
+        );
+        this.writer = new OfflineFlowDocumentWriter(
+                offlineProperties,
+                offlineFlowContentService,
+                kestraFlowFileService,
+                parameterSnapshotStore,
+                parameterBindingAssembler,
+                graphDraftBuilder,
+                executionParameterSnapshotRegistry,
+                hiveConfigStore,
+                yamlSupport,
+                parameterCompiler,
+                store
+        );
+        this.rollback = new OfflineFlowDocumentRollback(
+                offlineProperties,
+                kestraFlowFileService,
+                transferConfigFileService,
+                parameterSnapshotStore,
+                parameterBindingAssembler,
+                graphDraftBuilder,
+                executionParameterSnapshotRegistry,
+                hiveConfigStore,
+                yamlSupport,
+                store
+        );
     }
 
     public OfflineFlowDocumentResponse getFlowDocument(Long groupId, String path) {
-        return repoLockManager.withLock(groupId, () -> getFlowDocumentUnlocked(groupId, path));
-    }
-
-    private OfflineFlowDocumentResponse getFlowDocumentUnlocked(Long groupId, String path) {
-        try {
-            return readSnapshot(groupId, path).response();
-        } catch (IOException ex) {
-            throw new IllegalStateException("读取任务文档失败", ex);
-        }
-    }
-
-    public record VersionSnapshotData(
-            OfflineFlowDocumentResponse document,
-            List<String> managedFiles
-    ) {
+        return repoLockManager.withLock(groupId, () -> {
+            try {
+                return store.readSnapshot(groupId, path).response();
+            } catch (IOException ex) {
+                throw new IllegalStateException("读取任务文档失败", ex);
+            }
+        });
     }
 
     public VersionSnapshotData getVersionSnapshotData(Long groupId, String path, SnapshotFileAccess fileAccess) {
         return repoLockManager.withLock(groupId, () -> {
             try {
-                DocumentSnapshot snapshot = readSnapshot(groupId, path, fileAccess);
+                DocumentSnapshot snapshot = store.readSnapshot(groupId, path, fileAccess);
                 return new VersionSnapshotData(
                         snapshot.response(),
-                        collectManagedFiles(groupId, path, fileAccess, snapshot)
+                        store.collectManagedFiles(groupId, path, fileAccess, snapshot)
                 );
             } catch (IOException ex) {
                 throw new IllegalStateException("读取任务快照失败", ex);
@@ -168,7 +168,7 @@ public class OfflineFlowDocumentService {
     public OfflineFlowDocumentResponse getFlowDocumentSnapshot(Long groupId, String path, SnapshotFileAccess fileAccess) {
         return repoLockManager.withLock(groupId, () -> {
             try {
-                return readSnapshot(groupId, path, fileAccess).response();
+                return store.readSnapshot(groupId, path, fileAccess).response();
             } catch (IOException ex) {
                 throw new IllegalStateException("读取任务快照失败", ex);
             }
@@ -178,35 +178,12 @@ public class OfflineFlowDocumentService {
     public List<String> resolveManagedFilesAtRevision(Long groupId, String path, SnapshotFileAccess fileAccess) {
         return repoLockManager.withLock(groupId, () -> {
             try {
-                DocumentSnapshot snapshot = readSnapshot(groupId, path, fileAccess);
-                return collectManagedFiles(groupId, path, fileAccess, snapshot);
+                DocumentSnapshot snapshot = store.readSnapshot(groupId, path, fileAccess);
+                return store.collectManagedFiles(groupId, path, fileAccess, snapshot);
             } catch (IOException ex) {
                 throw new IllegalStateException("解析历史任务关联文件失败", ex);
             }
         });
-    }
-
-    private List<String> collectManagedFiles(Long groupId,
-                                             String path,
-                                             SnapshotFileAccess fileAccess,
-                                             DocumentSnapshot snapshot) throws IOException {
-        Path repoPath = offlineProperties.resolveRepoPath(groupId);
-        LinkedHashSet<String> files = new LinkedHashSet<>();
-        files.add(path);
-        Path layoutFile = resolveLayoutFile(repoPath, path);
-        String layoutRelative = repoPath.relativize(layoutFile).toString().replace('\\', '/');
-        if (fileAccess.exists(repoPath, layoutRelative)) {
-            files.add(layoutRelative);
-        }
-        Path kestraFlowFile = kestraFlowFileService.resolveFlowFile(repoPath, path);
-        String kestraRelative = repoPath.relativize(kestraFlowFile).toString().replace('\\', '/');
-        if (fileAccess.exists(repoPath, kestraRelative)) {
-            files.add(kestraRelative);
-        }
-        for (Path taskFile : snapshot.managedNodeFiles()) {
-            files.add(repoPath.relativize(taskFile).toString().replace('\\', '/'));
-        }
-        return List.copyOf(files);
     }
 
     public Map<String, List<String>> extractReferencedParameters(OfflineFlowDocumentResponse document) {
@@ -224,6 +201,39 @@ public class OfflineFlowDocumentService {
             }
         }
         return result;
+    }
+
+    /** Persistence callback; API callers must enter OfflineFlowDependencyService.saveDocument first. */
+    public OfflineFlowDocumentResponse saveFlowDocument(SaveOfflineFlowDocumentRequest request) {
+        return repoLockManager.withLock(request.groupId(), () -> writer.saveUnlocked(request));
+    }
+
+    /**
+     * Rolls back the target flow's working tree files to the specified historical revision.
+     * Callers must enter OfflineFlowDependencyService.rollbackDocument first so lock ordering
+     * stays graph-lock -> group-lock.
+     */
+    public RollbackOfflineFlowResponse rollbackFlowDocument(RollbackOfflineFlowRequest request,
+                                                            SnapshotFileAccess revisionAccess,
+                                                            DependencyRollbackValidator dependencyValidator) {
+        return repoLockManager.withLock(request.groupId(),
+                () -> rollback.rollbackUnlocked(request, revisionAccess, dependencyValidator));
+    }
+
+    public List<String> resolveManagedFiles(Long groupId, String path) {
+        return repoLockManager.withLock(groupId, () -> {
+            try {
+                SnapshotFileAccess workingTree = new WorkingTreeSnapshotFileAccess();
+                DocumentSnapshot snapshot = store.readSnapshot(groupId, path, workingTree);
+                return store.collectManagedFiles(groupId, path, workingTree, snapshot);
+            } catch (IOException ex) {
+                throw new IllegalStateException("解析任务关联文件失败", ex);
+            }
+        });
+    }
+
+    public CompiledFlowDraft compileFlowDraft(DebugDocumentExecutionRequest request) {
+        return repoLockManager.withLock(request.groupId(), () -> writer.compileDraftUnlocked(request));
     }
 
     private Set<String> extractDefinedParameterNames(FlowParameterBindingResponse binding) {
@@ -271,852 +281,5 @@ public class OfflineFlowDocumentService {
         } catch (IllegalArgumentException ex) {
             return List.of();
         }
-    }
-
-    /** Persistence callback; API callers must enter OfflineFlowDependencyService.saveDocument first. */
-    public OfflineFlowDocumentResponse saveFlowDocument(SaveOfflineFlowDocumentRequest request) {
-        return repoLockManager.withLock(request.groupId(), () -> saveFlowDocumentUnlocked(request));
-    }
-
-    private OfflineFlowDocumentResponse saveFlowDocumentUnlocked(SaveOfflineFlowDocumentRequest request) {
-        try {
-            Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
-            Path flowFile = resolveRepoFile(repoPath, request.path());
-            boolean isNewFile = !Files.exists(flowFile);
-            String runtimeTimezone = resolveRuntimeTimezoneForSave(request, isNewFile);
-            String flowSource = isNewFile
-                    ? yamlSupport.buildEmptyFlowYaml(extractFlowId(request.path()), "pg-" + request.groupId())
-                    : offlineFlowContentService.getFlowContent(request.groupId(), request.path()).content();
-            // Reject malformed draft schedules before writing scripts, sidecars or a new stub.
-            yamlSupport.applySchedule(flowSource, request.schedule());
-            ParameterSnapshotUpdate parameterUpdate = parameterBindingAssembler.prepareParameterSnapshotUpdate(
-                    request.groupId(), request.parameterBinding(), request.parameterBindings(), runtimeTimezone);
-            FlowParameterSnapshot effectiveParameterSnapshot = parameterBindingAssembler.resolveEffectiveParameterSnapshot(
-                    repoPath, request.path(), parameterUpdate);
-            parameterUpdate = parameterBindingAssembler.normalizeParameterSnapshotForSave(
-                    parameterUpdate, effectiveParameterSnapshot, runtimeTimezone);
-            effectiveParameterSnapshot = parameterUpdate.requested()
-                    ? parameterUpdate.snapshot()
-                    : effectiveParameterSnapshot;
-
-            if (request.edges() != null) {
-                // New graph-based save: compile DAG back to YAML
-                DocumentSnapshot current = null;
-                if (!isNewFile && request.documentHash() != null) {
-                    current = readSnapshot(request.groupId(), request.path());
-                }
-                if (current != null && request.documentHash() != null
-                        && (!current.response().documentHash().equals(request.documentHash())
-                        || current.response().documentUpdatedAt() != request.documentUpdatedAt())) {
-                    throw new ResponseStatusException(HttpStatus.CONFLICT, "检测到文件已被修改，请先加载最新内容");
-                }
-                saveWithGraph(request, flowSource, effectiveParameterSnapshot, runtimeTimezone);
-            } else {
-                // Legacy stage-based save
-                if (isNewFile) {
-                    // For new flows, create a stub YAML with id, namespace, and empty tasks
-                    String flowId = extractFlowId(request.path());
-                    String namespace = "pg-" + request.groupId();
-                    String stubYaml = yamlSupport.buildEmptyFlowYaml(flowId, namespace);
-                    Files.createDirectories(flowFile.getParent());
-                    Files.writeString(flowFile, stubYaml, StandardCharsets.UTF_8);
-                }
-                DocumentSnapshot current = readSnapshot(request.groupId(), request.path());
-                if (!isNewFile && (request.documentHash() != null
-                        && (!current.response().documentHash().equals(request.documentHash())
-                        || current.response().documentUpdatedAt() != request.documentUpdatedAt()))) {
-                    throw new ResponseStatusException(HttpStatus.CONFLICT, "检测到文件已被修改，请先加载最新内容");
-                }
-                saveWithStages(request, current);
-                LegacyHiveConfResolution hiveConfResolution = syncLegacyHiveConfAndDetectChange(repoPath, request);
-                if (effectiveParameterSnapshot != null || parameterUpdate.requested() || hiveConfResolution.changed()) {
-                    recompileLegacyFlowWithParameters(
-                            request, hiveConfResolution.mergedStages(), effectiveParameterSnapshot);
-                }
-            }
-
-            applyRuntimeTimezoneToFlowFile(repoPath, request.path(), runtimeTimezone);
-            if (request.schedule() != null) {
-                applyScheduleToFlowFile(repoPath, request.path(), new OfflineFlowSchedule(
-                        request.schedule().cron(), runtimeTimezone, request.schedule().enabled(),
-                        request.schedule().period()));
-            }
-            if (request.dependencyConfig() != null) {
-                var settings = request.dependencyConfig();
-                String content = Files.readString(flowFile, StandardCharsets.UTF_8);
-                Files.writeString(flowFile, yamlSupport.applyDependencyConfig(content, settings.dependencies(),
-                        settings.failurePolicy(), settings.crossGroupDependency()), StandardCharsets.UTF_8);
-            }
-            parameterBindingAssembler.applyParameterSnapshotUpdate(repoPath, request.path(), parameterUpdate);
-            kestraFlowFileService.syncFlowFile(repoPath, request.path());
-
-            if (request.layout() != null && !request.layout().isEmpty()) {
-                saveLayout(request.groupId(), request.path(), request.layout());
-            }
-
-            return readSnapshot(request.groupId(), request.path()).response();
-        } catch (IOException ex) {
-            throw new IllegalStateException("保存任务文档失败", ex);
-        }
-    }
-
-    /**
-     * Rolls back the target flow's working tree files to the specified historical revision.
-     * Callers must enter OfflineFlowDependencyService.rollbackDocument first so lock ordering
-     * stays graph-lock -> group-lock.
-     */
-    public RollbackOfflineFlowResponse rollbackFlowDocument(RollbackOfflineFlowRequest request,
-                                                            SnapshotFileAccess revisionAccess,
-                                                            DependencyRollbackValidator dependencyValidator) {
-        return repoLockManager.withLock(request.groupId(),
-                () -> rollbackFlowDocumentUnlocked(request, revisionAccess, dependencyValidator));
-    }
-
-    private RollbackOfflineFlowResponse rollbackFlowDocumentUnlocked(RollbackOfflineFlowRequest request,
-                                                                     SnapshotFileAccess revisionAccess,
-                                                                     DependencyRollbackValidator dependencyValidator) {
-        try {
-            Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
-            Path flowFile = resolveRepoFile(repoPath, request.path());
-            OfflineRecentFlowService.assertNotReservedRootPath(repoPath, flowFile);
-
-            DocumentSnapshot current = Files.exists(flowFile)
-                    ? readSnapshot(request.groupId(), request.path())
-                    : null;
-            if (request.documentHash() != null) {
-                if (current == null
-                        || !current.response().documentHash().equals(request.documentHash())
-                        || (request.documentUpdatedAt() != null
-                        && current.response().documentUpdatedAt() != request.documentUpdatedAt())) {
-                    throw new ResponseStatusException(HttpStatus.CONFLICT, "检测到文件已被修改，请先加载最新内容");
-                }
-            }
-
-            if (!revisionAccess.exists(repoPath, request.path())) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "目标版本不存在或未包含该任务");
-            }
-
-            DocumentSnapshot targetSnapshot = readSnapshot(request.groupId(), request.path(), revisionAccess);
-            String targetFlowContent = revisionAccess.readString(repoPath, request.path());
-
-            List<String> warnings = new ArrayList<>(dependencyValidator.validate(targetFlowContent));
-
-            String effectiveTimezone = targetSnapshot.response().runtimeTimezone();
-            if (effectiveTimezone == null || effectiveTimezone.isBlank()) {
-                effectiveTimezone = current == null ? null : current.response().runtimeTimezone();
-            }
-            if (effectiveTimezone != null && !effectiveTimezone.isBlank()
-                    && !Objects.equals(yamlSupport.readLabel(targetFlowContent, "wbdataRuntimeTimezone"), effectiveTimezone.trim())) {
-                targetFlowContent = yamlSupport.applyRuntimeTimezoneLabel(targetFlowContent, effectiveTimezone);
-            }
-
-            Set<String> invalidSqlDataSourceTaskIds = new LinkedHashSet<>();
-            Map<String, String> nodeIssues = new LinkedHashMap<>();
-            collectInvalidDataSources(request.groupId(), targetSnapshot.response(), invalidSqlDataSourceTaskIds, nodeIssues, warnings);
-            if (!invalidSqlDataSourceTaskIds.isEmpty()) {
-                targetFlowContent = yamlSupport.unbindSqlDataSources(targetFlowContent, invalidSqlDataSourceTaskIds);
-            }
-
-            targetFlowContent = restoreParameterSnapshotForRollback(
-                    repoPath, request.groupId(), request.path(), effectiveTimezone, targetFlowContent, revisionAccess);
-            restoreManagedNodeFilesForRollback(repoPath, request.path(), current, targetSnapshot, revisionAccess);
-            restoreSidecarFile(repoPath, resolveLayoutFile(repoPath, request.path()), revisionAccess);
-            restoreSidecarFile(repoPath, hiveConfigStore.resolveConfigFile(repoPath, request.path()), revisionAccess);
-
-            Files.createDirectories(flowFile.getParent());
-            Files.writeString(flowFile, targetFlowContent, StandardCharsets.UTF_8);
-            kestraFlowFileService.syncFlowFile(repoPath, request.path());
-
-            OfflineFlowDocumentResponse restored = readSnapshot(request.groupId(), request.path()).response();
-            FlowParameterBindingResponse restoredBinding = restored.parameterBinding();
-            if (restoredBinding != null && restoredBinding.status() != null && !"CURRENT".equals(restoredBinding.status())) {
-                warnings.add(describeParameterBindingWarning(restoredBinding.status()));
-            }
-            return new RollbackOfflineFlowResponse(restored, List.copyOf(warnings), Map.copyOf(nodeIssues));
-        } catch (IOException ex) {
-            throw new IllegalStateException("回滚任务文档失败", ex);
-        }
-    }
-
-    private void collectInvalidDataSources(Long groupId,
-                                           OfflineFlowDocumentResponse targetDocument,
-                                           Set<String> invalidSqlDataSourceTaskIds,
-                                           Map<String, String> nodeIssues,
-                                           List<String> warnings) {
-        if (targetDocument.stages() == null) {
-            return;
-        }
-        for (OfflineFlowStageResponse stage : targetDocument.stages()) {
-            if (stage.nodes() == null) {
-                continue;
-            }
-            for (OfflineFlowNodeResponse node : stage.nodes()) {
-                if ("TRANSFER".equalsIgnoreCase(node.kind())) {
-                    TransferConfig transfer = node.transfer();
-                    if (transfer != null) {
-                        boolean sourceInvalid = transfer.source() != null
-                                && transfer.source().dataSourceId() != null
-                                && !graphDraftBuilder.isValidGroupDataSource(groupId, transfer.source().dataSourceId());
-                        boolean targetInvalid = transfer.target() != null
-                                && transfer.target().dataSourceId() != null
-                                && !graphDraftBuilder.isValidGroupDataSource(groupId, transfer.target().dataSourceId());
-                        if (sourceInvalid || targetInvalid) {
-                            nodeIssues.put(node.taskId(), "引用的数据源已不存在，请重新配置传输规则");
-                            warnings.add("传输节点「" + node.taskId() + "」引用的数据源已不存在，请重新配置传输节点");
-                        }
-                    }
-                } else if (node.dataSourceId() != null
-                        && !graphDraftBuilder.isValidGroupDataSource(groupId, node.dataSourceId())) {
-                    invalidSqlDataSourceTaskIds.add(node.taskId());
-                    warnings.add("节点「" + node.taskId() + "」原绑定的数据源（ID: " + node.dataSourceId() + "）已不存在，已解除绑定，请重新选择数据源");
-                }
-            }
-        }
-    }
-
-    private String restoreParameterSnapshotForRollback(Path repoPath,
-                                                       Long groupId,
-                                                       String flowPath,
-                                                       String effectiveTimezone,
-                                                       String flowContent,
-                                                       SnapshotFileAccess revisionAccess) throws IOException {
-        Optional<FlowParameterSnapshotStore.SnapshotFile> targetParamFile =
-                parameterSnapshotStore.read(repoPath, flowPath, revisionAccess);
-        if (targetParamFile.isEmpty()) {
-            parameterSnapshotStore.delete(repoPath, flowPath);
-            if (yamlSupport.readLabel(flowContent, ExecutionParameterSnapshotRegistry.LABEL_KEY) != null) {
-                return yamlSupport.applyParameterSnapshotId(flowContent, null);
-            }
-            return flowContent;
-        }
-
-        FlowParameterSnapshot targetParam = targetParamFile.get().snapshot();
-        FlowParameterSnapshot snapshotToRegister = targetParam;
-        Path paramFile = parameterSnapshotStore.resolve(repoPath, flowPath);
-        if (effectiveTimezone != null && !effectiveTimezone.isBlank()) {
-            ParameterSnapshotUpdate normalized = parameterBindingAssembler.normalizeParameterSnapshotForSave(
-                    new ParameterSnapshotUpdate(true, targetParam), targetParam, effectiveTimezone);
-            snapshotToRegister = normalized.snapshot();
-            if (targetParam.schemaVersion() == 2 && snapshotToRegister.equals(targetParam)) {
-                Files.createDirectories(paramFile.getParent());
-                Files.writeString(paramFile, targetParamFile.get().content(), StandardCharsets.UTF_8);
-            } else {
-                parameterSnapshotStore.write(repoPath, flowPath, snapshotToRegister);
-            }
-        } else {
-            Files.createDirectories(paramFile.getParent());
-            Files.writeString(paramFile, targetParamFile.get().content(), StandardCharsets.UTF_8);
-        }
-
-        if (snapshotToRegister.schemaVersion() == 2
-                && snapshotToRegister.runtimeTimezone() != null
-                && !snapshotToRegister.runtimeTimezone().isBlank()) {
-            String snapshotId = executionParameterSnapshotRegistry.register(groupId, snapshotToRegister);
-            if (snapshotId != null && !snapshotId.isBlank()) {
-                String existingSnapshotId = yamlSupport.readLabel(flowContent, ExecutionParameterSnapshotRegistry.LABEL_KEY);
-                if (!snapshotId.equals(existingSnapshotId)) {
-                    return yamlSupport.applyParameterSnapshotId(flowContent, snapshotId);
-                }
-            }
-        }
-        return flowContent;
-    }
-
-    private void restoreManagedNodeFilesForRollback(Path repoPath,
-                                                    String flowPath,
-                                                    DocumentSnapshot current,
-                                                    DocumentSnapshot targetSnapshot,
-                                                    SnapshotFileAccess revisionAccess) throws IOException {
-        Path paramPath = parameterSnapshotStore.resolve(repoPath, flowPath).normalize();
-        Path hiveConfPath = hiveConfigStore.resolveConfigFile(repoPath, flowPath).normalize();
-        Set<String> activeScriptPaths = new LinkedHashSet<>();
-        Set<String> activeTransferPaths = new LinkedHashSet<>();
-        for (Path targetManaged : targetSnapshot.managedNodeFiles()) {
-            Path normalizedManaged = targetManaged.normalize();
-            if (normalizedManaged.equals(paramPath) || normalizedManaged.equals(hiveConfPath)) {
-                continue;
-            }
-            String relPath = repoPath.relativize(normalizedManaged).toString().replace('\\', '/');
-            String fileContent = revisionAccess.readString(repoPath, relPath);
-            Files.createDirectories(normalizedManaged.getParent());
-            Files.writeString(normalizedManaged, fileContent, StandardCharsets.UTF_8);
-            if (targetSnapshot.taskFiles().containsValue(targetManaged)) {
-                activeScriptPaths.add(relPath);
-            } else {
-                activeTransferPaths.add(relPath);
-            }
-        }
-        if (current != null) {
-            for (Path oldManaged : current.managedNodeFiles()) {
-                if (!targetSnapshot.managedNodeFiles().contains(oldManaged)) {
-                    Files.deleteIfExists(oldManaged);
-                }
-            }
-        }
-        transferConfigFileService.deleteStaleForFlow(repoPath, flowPath, activeTransferPaths);
-        graphDraftBuilder.deleteStaleScriptsForFlow(repoPath, flowPath, activeScriptPaths);
-    }
-
-    private void restoreSidecarFile(Path repoPath, Path sidecarFile, SnapshotFileAccess revisionAccess) throws IOException {
-        String relPath = repoPath.relativize(sidecarFile).toString().replace('\\', '/');
-        if (revisionAccess.exists(repoPath, relPath)) {
-            Files.createDirectories(sidecarFile.getParent());
-            Files.writeString(sidecarFile, revisionAccess.readString(repoPath, relPath), StandardCharsets.UTF_8);
-        } else {
-            Files.deleteIfExists(sidecarFile);
-        }
-    }
-
-    private String describeParameterBindingWarning(String status) {
-        return switch (status) {
-            case "MISSING" -> "回滚版本绑定的参数组已不存在，请打开「参数」弹窗检查或重新绑定";
-            case "ARCHIVED" -> "回滚版本绑定的参数组已归档，请打开「参数」弹窗检查或调整";
-            case "OUTDATED" -> "回滚版本使用的参数组版本落后于当前最新版本，如需同步请打开「参数」弹窗更新";
-            default -> "参数组绑定状态需要检查（" + status + "），请打开「参数」弹窗确认";
-        };
-    }
-
-    public List<String> resolveManagedFiles(Long groupId, String path) {
-        return repoLockManager.withLock(groupId, () -> resolveManagedFilesUnlocked(groupId, path));
-    }
-
-    private List<String> resolveManagedFilesUnlocked(Long groupId, String path) {
-        try {
-            SnapshotFileAccess workingTree = new WorkingTreeSnapshotFileAccess();
-            DocumentSnapshot snapshot = readSnapshot(groupId, path, workingTree);
-            return collectManagedFiles(groupId, path, workingTree, snapshot);
-        } catch (IOException ex) {
-            throw new IllegalStateException("解析任务关联文件失败", ex);
-        }
-    }
-
-    public CompiledFlowDraft compileFlowDraft(DebugDocumentExecutionRequest request) {
-        return repoLockManager.withLock(request.groupId(), () -> compileFlowDraftUnlocked(request));
-    }
-
-    private CompiledFlowDraft compileFlowDraftUnlocked(DebugDocumentExecutionRequest request) {
-        try {
-            DocumentSnapshot current = readSnapshot(request.groupId(), request.flowPath());
-            if (request.documentHash() != null
-                    && (!current.response().documentHash().equals(request.documentHash())
-                    || current.response().documentUpdatedAt() != request.documentUpdatedAt())) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "检测到文件已被修改，请先加载最新内容");
-            }
-
-            GraphDraft draft = graphDraftBuilder.prepare(
-                    request.groupId(),
-                    request.flowPath(),
-                    request.stages(),
-                    request.edges()
-            );
-            for (OfflineFlowNode node : draft.nodes()) {
-                if ("TRANSFER".equalsIgnoreCase(node.kind()) && draft.transferConfigs().get(node.taskId()) == null) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "传输节点“" + node.taskId() + "”未配置传输规则，无法执行");
-                }
-            }
-            var flowContent = offlineFlowContentService.getFlowContent(request.groupId(), request.flowPath());
-            Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
-            FlowParameterSnapshot parameterSnapshot = parameterSnapshotStore.read(repoPath, request.flowPath())
-                    .map(FlowParameterSnapshotStore.SnapshotFile::snapshot)
-                    .orElse(null);
-            FlowParameterCompiler.Compilation parameterCompilation = parameterCompiler.compile(
-                    parameterSnapshot,
-                    draft.nodes(),
-                    draft.scriptFileContents(),
-                    draft.transferConfigs()
-            );
-            String compiledYaml = yamlSupport.compileGraph(
-                    flowContent.content(),
-                    draft.nodes(),
-                    draft.edges(),
-                    draft.dataSourceMap(),
-                    parameterCompilation
-            );
-            compiledYaml = applyParameterSnapshotId(request.groupId(), compiledYaml, parameterSnapshot);
-            return new CompiledFlowDraft(compiledYaml, draft.namespaceFileContents());
-        } catch (IOException ex) {
-            throw new IllegalStateException("编译任务文档失败", ex);
-        }
-    }
-
-    private String extractFlowId(String path) {
-        // path format: _flows/{folder}/{name}/flow.yaml
-        String[] parts = path.split("/");
-        if (parts.length >= 2) {
-            return parts[parts.length - 2];
-        }
-        return "flow";
-    }
-
-    private void saveWithGraph(SaveOfflineFlowDocumentRequest request,
-                               String flowSource,
-                               FlowParameterSnapshot parameterSnapshot,
-                               String runtimeTimezone) throws IOException {
-        Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
-        GraphDraft graphDraft = graphDraftBuilder.prepare(
-                request.groupId(),
-                request.path(),
-                request.stages(),
-                request.edges()
-        );
-
-        FlowParameterCompiler.Compilation parameterCompilation = parameterCompiler.compile(
-                parameterSnapshot,
-                graphDraft.nodes(),
-                graphDraft.scriptFileContents(),
-                graphDraft.transferConfigs()
-        );
-        String compiledYaml = yamlSupport.compileGraph(
-                flowSource,
-                graphDraft.nodes(),
-                graphDraft.edges(),
-                graphDraft.dataSourceMap(),
-                parameterCompilation
-        );
-        compiledYaml = applyParameterSnapshotId(request.groupId(), compiledYaml, parameterSnapshot);
-        graphDraftBuilder.writeFiles(repoPath, request.groupId(), request.path(), graphDraft);
-
-        Path flowFile = resolveRepoFile(repoPath, request.path());
-        Files.createDirectories(flowFile.getParent());
-        Files.writeString(flowFile, compiledYaml, StandardCharsets.UTF_8);
-    }
-
-    private void applyScheduleToFlowFile(Path repoPath, String flowPath, OfflineFlowSchedule schedule) throws IOException {
-        Path flowFile = resolveRepoFile(repoPath, flowPath);
-        String current = Files.readString(flowFile, StandardCharsets.UTF_8);
-        Files.writeString(flowFile, yamlSupport.applySchedule(current, schedule), StandardCharsets.UTF_8);
-    }
-
-    private void applyRuntimeTimezoneToFlowFile(Path repoPath,
-                                                String flowPath,
-                                                String runtimeTimezone) throws IOException {
-        Path flowFile = resolveRepoFile(repoPath, flowPath);
-        String current = Files.readString(flowFile, StandardCharsets.UTF_8);
-        Files.writeString(flowFile,
-                yamlSupport.applyRuntimeTimezoneLabel(current, runtimeTimezone),
-                StandardCharsets.UTF_8);
-    }
-
-    private void saveWithStages(SaveOfflineFlowDocumentRequest request, DocumentSnapshot current) throws IOException {
-        validateStructure(current, request);
-
-        Map<String, SaveOfflineFlowNodeRequest> requestedNodes = flattenRequestedNodes(request.stages());
-        for (Map.Entry<String, Path> entry : current.taskFiles().entrySet()) {
-            SaveOfflineFlowNodeRequest node = requestedNodes.get(entry.getKey());
-            if (node == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前版本仅支持编辑已有节点内容");
-            }
-            Files.writeString(entry.getValue(), node.scriptContent(), StandardCharsets.UTF_8);
-        }
-    }
-
-    private record LegacyHiveConfResolution(
-            List<SaveOfflineFlowStageRequest> mergedStages,
-            boolean changed
-    ) {
-    }
-
-    private LegacyHiveConfResolution syncLegacyHiveConfAndDetectChange(Path repoPath,
-                                                                     SaveOfflineFlowDocumentRequest request) throws IOException {
-        Map<String, Map<String, String>> existingByNode = hiveConfigStore.read(repoPath, request.path())
-                .map(OfflineHiveConfigStore.StoredHiveConfigFile::nodes)
-                .orElse(Map.of());
-        List<OfflineFlowNode> resolvedNodes = new ArrayList<>();
-        List<SaveOfflineFlowStageRequest> mergedStages = new ArrayList<>(request.stages().size());
-        Map<String, Map<String, String>> nextByNode = new LinkedHashMap<>();
-        for (SaveOfflineFlowStageRequest stage : request.stages()) {
-            List<SaveOfflineFlowNodeRequest> mergedNodes = new ArrayList<>(stage.nodes().size());
-            for (SaveOfflineFlowNodeRequest node : stage.nodes()) {
-                Map<String, String> existingConf = existingByNode.getOrDefault(node.taskId(), Map.of());
-                // Preserve existing sidecar hiveConf when legacy callers omit the field (null); explicit Map updates/clears it.
-                Map<String, String> effectiveConf = node.hiveConf() == null
-                        ? existingConf
-                        : OfflineHiveConfigStore.normalizeAndValidateNodeConf(node.kind(), node.hiveConf());
-                if (!effectiveConf.isEmpty()) {
-                    nextByNode.put(node.taskId(), effectiveConf);
-                }
-                resolvedNodes.add(new OfflineFlowNode(
-                        node.taskId(),
-                        node.kind(),
-                        node.scriptPath(),
-                        node.dataSourceId(),
-                        node.dataSourceType(),
-                        null,
-                        effectiveConf
-                ));
-                mergedNodes.add(new SaveOfflineFlowNodeRequest(
-                        node.taskId(),
-                        node.scriptContent(),
-                        node.kind(),
-                        node.scriptPath(),
-                        node.dataSourceId(),
-                        node.dataSourceType(),
-                        node.transfer(),
-                        effectiveConf.isEmpty() ? Map.of() : effectiveConf
-                ));
-            }
-            mergedStages.add(new SaveOfflineFlowStageRequest(stage.stageId(), mergedNodes));
-        }
-        boolean changed = !orderedNodeConfEquals(existingByNode, nextByNode);
-        if (changed) {
-            hiveConfigStore.writeForNodes(repoPath, request.path(), resolvedNodes);
-        }
-        return new LegacyHiveConfResolution(mergedStages, changed);
-    }
-
-    private static boolean orderedNodeConfEquals(Map<String, Map<String, String>> left,
-                                                 Map<String, Map<String, String>> right) {
-        if (left.size() != right.size() || !left.keySet().equals(right.keySet())) {
-            return false;
-        }
-        for (Map.Entry<String, Map<String, String>> entry : left.entrySet()) {
-            Map<String, String> rightEntries = right.get(entry.getKey());
-            if (rightEntries == null || !List.copyOf(entry.getValue().entrySet()).equals(List.copyOf(rightEntries.entrySet()))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private void recompileLegacyFlowWithParameters(SaveOfflineFlowDocumentRequest request,
-                                                   List<SaveOfflineFlowStageRequest> stages,
-                                                   FlowParameterSnapshot parameterSnapshot) throws IOException {
-        String flowSource = offlineFlowContentService.getFlowContent(request.groupId(), request.path()).content();
-        OfflineFlowYamlSupport.FlowGraph graph = yamlSupport.parseGraph(flowSource);
-        List<SaveOfflineFlowEdgeRequest> edges = graph.edges().stream()
-                .map(edge -> new SaveOfflineFlowEdgeRequest(edge.source(), edge.target()))
-                .toList();
-        GraphDraft draft = graphDraftBuilder.prepare(
-                request.groupId(),
-                request.path(),
-                stages,
-                edges
-        );
-        FlowParameterCompiler.Compilation parameterCompilation = parameterCompiler.compile(
-                parameterSnapshot,
-                draft.nodes(),
-                draft.scriptFileContents(),
-                draft.transferConfigs()
-        );
-        String compiledYaml = yamlSupport.compileGraph(
-                flowSource,
-                draft.nodes(),
-                draft.edges(),
-                draft.dataSourceMap(),
-                parameterCompilation
-        );
-        compiledYaml = applyParameterSnapshotId(request.groupId(), compiledYaml, parameterSnapshot);
-        Files.writeString(resolveRepoFile(
-                offlineProperties.resolveRepoPath(request.groupId()), request.path()), compiledYaml, StandardCharsets.UTF_8);
-    }
-
-    private String applyParameterSnapshotId(Long groupId,
-                                            String flowSource,
-                                            FlowParameterSnapshot parameterSnapshot) {
-        String snapshotId = parameterSnapshot == null
-                ? null
-                : executionParameterSnapshotRegistry.register(groupId, parameterSnapshot);
-        return yamlSupport.applyParameterSnapshotId(flowSource, snapshotId);
-    }
-
-    private OfflineFlowNodeResponse findNodeInResponse(OfflineFlowDocumentResponse response, String taskId) {
-        for (OfflineFlowStageResponse stage : response.stages()) {
-            for (OfflineFlowNodeResponse node : stage.nodes()) {
-                if (node.taskId().equals(taskId)) return node;
-            }
-        }
-        return null;
-    }
-
-    private DocumentSnapshot readSnapshot(Long groupId, String path) throws IOException {
-        return readSnapshot(groupId, path, new WorkingTreeSnapshotFileAccess());
-    }
-
-    private DocumentSnapshot readSnapshot(Long groupId, String path, SnapshotFileAccess fileAccess) throws IOException {
-        Path repoPath = offlineProperties.resolveRepoPath(groupId);
-        String flowContent = fileAccess.readString(repoPath, path);
-
-        // Parse both stage-based and graph-based representations
-        OfflineFlowYamlSupport.FlowDocument document = yamlSupport.parseDocument(flowContent);
-        OfflineFlowYamlSupport.FlowGraph graph = yamlSupport.parseGraph(flowContent);
-        OfflineFlowYamlSupport.ScheduleData scheduleData = yamlSupport.readSchedule(flowContent);
-        OfflineFlowSchedule schedule = scheduleData == null
-                ? null
-                : new OfflineFlowSchedule(
-                        scheduleData.cron(),
-                        scheduleData.timezone(),
-                        scheduleData.enabled(),
-                        scheduleData.period()
-                );
-
-        List<OfflineFlowStageResponse> stages = new ArrayList<>();
-        Map<String, Path> taskFiles = new LinkedHashMap<>();
-        Set<Path> managedNodeFiles = new LinkedHashSet<>();
-        Set<String> seenTaskIds = new LinkedHashSet<>();
-        List<String> stageKeys = new ArrayList<>();
-        List<String> taskOrder = new ArrayList<>();
-        long updatedAt = fileAccess.lastModified(repoPath, path);
-        StringBuilder signature = new StringBuilder()
-                .append(path)
-                .append('\n')
-                .append(flowContent);
-
-        Optional<FlowParameterSnapshotStore.SnapshotFile> parameterFile = parameterSnapshotStore.read(repoPath, path, fileAccess);
-        FlowParameterBindingResponse parameterBinding = null;
-        if (parameterFile.isPresent()) {
-            FlowParameterSnapshotStore.SnapshotFile file = parameterFile.get();
-            updatedAt = Math.max(updatedAt, file.updatedAt());
-            signature.append('\n')
-                    .append(file.path().getFileName())
-                    .append('\n')
-                    .append(file.content());
-            managedNodeFiles.add(file.path());
-            parameterBinding = parameterBindingAssembler.resolveParameterBinding(groupId, file.snapshot());
-        }
-
-        Optional<OfflineHiveConfigStore.StoredHiveConfigFile> hiveConfigFile =
-                hiveConfigStore.read(repoPath, path, fileAccess);
-        Map<String, Map<String, String>> hiveConfByNode = Map.of();
-        if (hiveConfigFile.isPresent()) {
-            OfflineHiveConfigStore.StoredHiveConfigFile file = hiveConfigFile.get();
-            updatedAt = Math.max(updatedAt, file.updatedAt());
-            signature.append('\n')
-                    .append(file.path().getFileName())
-                    .append('\n')
-                    .append(file.content());
-            managedNodeFiles.add(file.path());
-            hiveConfByNode = file.nodes();
-        }
-
-        for (OfflineFlowYamlSupport.FlowStage stage : document.stages()) {
-            stageKeys.add(stage.stageId());
-            List<OfflineFlowNodeResponse> nodes = new ArrayList<>();
-            for (OfflineFlowNode node : stage.nodes()) {
-                if (!seenTaskIds.add(node.taskId())) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow YAML 中存在重复 taskId");
-                }
-                taskOrder.add(node.taskId());
-                if ("TRANSFER".equalsIgnoreCase(node.kind())) {
-                    TransferConfig transfer = null;
-                    if (node.transferConfigPath() != null) {
-                        Path transferFile = resolveRepoFile(repoPath, node.transferConfigPath());
-                        if (fileAccess.exists(repoPath, node.transferConfigPath())) {
-                            String transferContent = fileAccess.readString(repoPath, node.transferConfigPath());
-                            transfer = transferConfigFileService.readContent(node.transferConfigPath(), transferContent);
-                            updatedAt = Math.max(updatedAt, fileAccess.lastModified(repoPath, node.transferConfigPath()));
-                            signature.append('\n')
-                                    .append(node.taskId())
-                                    .append('\n')
-                                    .append(node.transferConfigPath())
-                                    .append('\n')
-                                    .append(transferContent);
-                            managedNodeFiles.add(transferFile);
-                        }
-                    }
-                    nodes.add(new OfflineFlowNodeResponse(
-                            node.taskId(),
-                            node.kind(),
-                            null,
-                            null,
-                            null,
-                            null,
-                            transfer
-                    ));
-                } else {
-                    Path scriptFile = resolveRepoFile(repoPath, node.scriptPath());
-                    if (!fileAccess.exists(repoPath, node.scriptPath())) {
-                        throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                                "脚本文件不存在: " + node.scriptPath());
-                    }
-                    String scriptContent = fileAccess.readString(repoPath, node.scriptPath());
-                    updatedAt = Math.max(updatedAt, fileAccess.lastModified(repoPath, node.scriptPath()));
-                    signature.append('\n')
-                            .append(node.taskId())
-                            .append('\n')
-                            .append(node.scriptPath())
-                            .append('\n')
-                            .append(scriptContent);
-                    taskFiles.put(node.taskId(), scriptFile);
-                    managedNodeFiles.add(scriptFile);
-                    Map<String, String> nodeHiveConf = "HIVE_SQL".equalsIgnoreCase(node.kind())
-                            ? hiveConfByNode.get(node.taskId())
-                            : null;
-                    if (nodeHiveConf != null && nodeHiveConf.isEmpty()) {
-                        nodeHiveConf = null;
-                    }
-                    nodes.add(new OfflineFlowNodeResponse(
-                            node.taskId(),
-                            node.kind(),
-                            node.scriptPath(),
-                            scriptContent,
-                            node.dataSourceId(),
-                            node.dataSourceType(),
-                            null,
-                            nodeHiveConf
-                    ));
-                }
-            }
-            stages.add(new OfflineFlowStageResponse(stage.stageId(), stage.parallel(), nodes));
-        }
-
-        // Build edges from graph
-        List<OfflineFlowEdgeResponse> edges = graph.edges().stream()
-                .map(e -> new OfflineFlowEdgeResponse(e.source(), e.target()))
-                .toList();
-
-        Map<String, NodePosition> layout = readLayout(groupId, path, fileAccess);
-
-        String runtimeTimezone = yamlSupport.readLabel(flowContent, "wbdataRuntimeTimezone");
-        if ((runtimeTimezone == null || runtimeTimezone.isBlank())
-                && schedule != null && schedule.timezone() != null && !schedule.timezone().isBlank()) {
-            runtimeTimezone = schedule.timezone();
-        }
-        if ((runtimeTimezone == null || runtimeTimezone.isBlank()) && parameterFile.isPresent()) {
-            runtimeTimezone = parameterFile.get().snapshot().runtimeTimezone();
-        }
-        runtimeTimezone = runtimeTimezone == null || runtimeTimezone.isBlank()
-                ? null
-                : runtimeTimezone.trim();
-
-        return new DocumentSnapshot(
-                new OfflineFlowDocumentResponse(
-                        groupId,
-                        path,
-                        document.flowId(),
-                        document.namespace(),
-                        yamlSupport.sha256Hex(signature.toString()),
-                        updatedAt,
-                        stages,
-                        edges,
-                        layout,
-                        schedule,
-                        parameterBinding,
-                        runtimeTimezone,
-                        yamlSupport.readDependencyConfig(flowContent)
-                ),
-                taskFiles,
-                managedNodeFiles,
-                stageKeys,
-                taskOrder
-        );
-    }
-
-    private Map<String, NodePosition> readLayout(Long groupId, String path, SnapshotFileAccess fileAccess) {
-        try {
-            Path repoPath = offlineProperties.resolveRepoPath(groupId);
-            Path layoutFile = resolveLayoutFile(repoPath, path);
-            String relativePath = repoPath.relativize(layoutFile).toString().replace('\\', '/');
-            if (!fileAccess.exists(repoPath, relativePath)) {
-                return Collections.emptyMap();
-            }
-            String content = fileAccess.readString(repoPath, relativePath);
-            return objectMapper.readValue(content, new TypeReference<>() {});
-        } catch (IOException ex) {
-            return Collections.emptyMap();
-        }
-    }
-
-    private void saveLayout(Long groupId, String path, Map<String, NodePosition> layout) throws IOException {
-        Path repoPath = offlineProperties.resolveRepoPath(groupId);
-        Path layoutFile = resolveLayoutFile(repoPath, path);
-        Files.createDirectories(layoutFile.getParent());
-        String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(layout);
-        Files.writeString(layoutFile, json, StandardCharsets.UTF_8);
-    }
-
-    private Path resolveLayoutFile(Path repoPath, String flowPath) {
-        // flow.yaml → .layout.json in the same directory
-        Path flowFile = Path.of(flowPath).normalize();
-        Path parent = flowFile.getParent();
-        String layoutName = ".layout.json";
-        Path layoutRelative = parent != null ? parent.resolve(layoutName) : Path.of(layoutName);
-        Path resolved = repoPath.resolve(layoutRelative).normalize();
-        if (!resolved.startsWith(repoPath)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "布局文件路径不合法");
-        }
-        return resolved;
-    }
-
-    private String requireRuntimeTimezone(String runtimeTimezone) {
-        if (runtimeTimezone == null || runtimeTimezone.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务运行时区不能为空");
-        }
-        String normalized = runtimeTimezone.trim();
-        try {
-            ZoneId.of(normalized);
-        } catch (RuntimeException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务运行时区不合法");
-        }
-        return normalized;
-    }
-
-    private String resolveRuntimeTimezoneForSave(SaveOfflineFlowDocumentRequest request,
-                                                 boolean isNewFile) throws IOException {
-        String requestedTimezone = requireRuntimeTimezone(request.runtimeTimezone());
-        if (isNewFile) {
-            return requestedTimezone;
-        }
-
-        String existingTimezone = readSnapshot(request.groupId(), request.path()).response().runtimeTimezone();
-        if (existingTimezone == null || existingTimezone.isBlank()) {
-            return requestedTimezone;
-        }
-        existingTimezone = requireRuntimeTimezone(existingTimezone);
-        if (!existingTimezone.equals(requestedTimezone)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "任务运行时区创建后不能修改");
-        }
-        return existingTimezone;
-    }
-
-    private void validateStructure(DocumentSnapshot current, SaveOfflineFlowDocumentRequest request) {
-        List<String> requestedStages = request.stages().stream()
-                .map(SaveOfflineFlowStageRequest::stageId)
-                .toList();
-        if (!current.stageOrder().equals(requestedStages)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前版本仅支持编辑已有节点内容");
-        }
-
-        List<String> requestedTaskOrder = request.stages().stream()
-                .flatMap(stage -> stage.nodes().stream())
-                .map(SaveOfflineFlowNodeRequest::taskId)
-                .toList();
-        if (!current.taskOrder().equals(requestedTaskOrder)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前版本仅支持编辑已有节点内容");
-        }
-    }
-
-    private Map<String, SaveOfflineFlowNodeRequest> flattenRequestedNodes(List<SaveOfflineFlowStageRequest> stages) {
-        Map<String, SaveOfflineFlowNodeRequest> nodes = new LinkedHashMap<>();
-        for (SaveOfflineFlowStageRequest stage : stages) {
-            for (SaveOfflineFlowNodeRequest node : stage.nodes()) {
-                nodes.put(node.taskId(), node);
-            }
-        }
-        return nodes;
-    }
-
-    private Path resolveRepoFile(Path repoPath, String path) {
-        if (path == null || path.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "脚本文件路径不能为空");
-        }
-        Path relativePath = Path.of(path).normalize();
-        if (relativePath.isAbsolute()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "脚本文件路径不合法");
-        }
-
-        Path resolvedPath = repoPath.resolve(relativePath).normalize();
-        if (!resolvedPath.startsWith(repoPath)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "脚本文件路径不合法");
-        }
-        return resolvedPath;
-    }
-
-    private record DocumentSnapshot(
-            OfflineFlowDocumentResponse response,
-            Map<String, Path> taskFiles,
-            Set<Path> managedNodeFiles,
-            List<String> stageOrder,
-            List<String> taskOrder
-    ) {
     }
 }
