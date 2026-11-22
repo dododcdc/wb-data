@@ -132,7 +132,7 @@ public class WaitUpstream extends Task implements RunnableTask<WaitUpstream.Wait
 
         if (isPausePolicy(renderOptional(runContext, failurePolicy))) {
             assertPreviousPeriodSucceeded(logger, executionRepository, tenant, runContext.flowInfo().namespace(),
-                    runContext.flowInfo().id(), ownPeriod, ownZone, planned, scheduleKey, pageable);
+                    runContext.flowInfo().id(), ownPeriod, ownCron, ownZone, planned, scheduleKey, pageable);
         }
 
         List<ResolvedUpstream> resolved = resolveUpstreams(runContext, flowRepository, tenant,
@@ -188,9 +188,9 @@ public class WaitUpstream extends Task implements RunnableTask<WaitUpstream.Wait
     /** 上一期失败策略：存在上一期执行且无一 SUCCESS 且全部终态 → 挡住本期。 */
     private void assertPreviousPeriodSucceeded(Logger logger, ExecutionRepositoryInterface executionRepository,
                                                String tenant, String namespace, String flowId,
-                                               SchedulePeriod period, ZoneId zone, ZonedDateTime planned,
+                                               SchedulePeriod period, String ownCron, ZoneId zone, ZonedDateTime planned,
                                                String scheduleKey, Pageable pageable) {
-        String previousKey = ScheduleKeys.key(period, ScheduleKeys.previousPeriod(period, planned));
+        String previousKey = ScheduleKeys.previousPeriodKey(period, ownCron, planned);
         List<Execution> previous = matchingExecutions(executionRepository, tenant, namespace, flowId,
                 period, zone, previousKey, pageable);
         if (previous.isEmpty()) {

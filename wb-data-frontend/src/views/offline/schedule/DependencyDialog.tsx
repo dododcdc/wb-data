@@ -20,7 +20,14 @@ import {
     DialogHeader,
     DialogTitle,
 } from '../../../components/ui/dialog';
-import { inferPeriodFromCron, isValidCronExpression, parsePeriodPartsFromCron } from './ScheduleUtils';
+import {
+    formatHourlyHoursLabel,
+    formatHourlyScheduleSummary,
+    getMissingHourlyHours,
+    inferPeriodFromCron,
+    isValidCronExpression,
+    parsePeriodPartsFromCron,
+} from './ScheduleUtils';
 import './ScheduleDialog.css';
 import './DependencyDialog.css';
 
@@ -83,7 +90,7 @@ function scheduleSummary(schedule: {
     if (parts) {
         const clock = `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`;
         switch (period) {
-            case 'HOURLY': time = `${parts.minute} 分`; break;
+            case 'HOURLY': time = formatHourlyScheduleSummary(parts.minute, parts.hourly); break;
             case 'DAILY': time = clock; break;
             case 'WEEKLY': time = `${WEEKDAY_LABELS[parts.dayOfWeek]} ${clock}`; break;
             case 'MONTHLY': time = `${parts.dayOfMonth} 日 ${clock}`; break;
@@ -98,6 +105,13 @@ function unavailableReason(candidate: OfflineDependencyCandidate, groupId: numbe
     if (!standardPeriod(document.schedule?.period)) return '当前任务未配置标准调度频率，请先配置调度';
     if (!candidate.hasSchedule || !standardPeriod(candidate.period)) return '未配置标准调度频率';
     if (candidate.period !== document.schedule?.period) return '与当前任务调度频率不同';
+    if (candidate.period === 'HOURLY') {
+        const missingHours = getMissingHourlyHours(document.schedule?.cron, candidate.cron);
+        if (missingHours === null) return '小时调度时间不可用，无法校验依赖覆盖关系';
+        if (missingHours.length > 0) {
+            return `前置调度小时未覆盖当前任务（缺少 ${formatHourlyHoursLabel(missingHours)}）`;
+        }
+    }
     if (candidate.groupId !== groupId && candidate.crossGroupDependency === 'DENY') return '该任务不允许跨项目组依赖';
     return null;
 }

@@ -38,6 +38,28 @@ public final class ScheduleKeys {
         return SchedulePeriodKeys.previousPeriod(period.toStandardPeriod(), plannedTime);
     }
 
+    /** 上一个实际计划点火点：供 PAUSE 策略精确定位间断/区间调度的上一期（忽略空窗小时）。 */
+    public static Optional<ZonedDateTime> lastFire(String cron, ZonedDateTime time) {
+        if (cron == null || cron.isBlank() || time == null) {
+            return Optional.empty();
+        }
+        try {
+            return ExecutionTime.forCron(UNIX_CRON_PARSER.parse(cron.trim())).lastExecution(time);
+        } catch (IllegalArgumentException ex) {
+            return Optional.empty();
+        }
+    }
+
+    /** 上一期对齐键：优先按自身 Cron 的上一实际点火计算，Cron 无法解析时回退自然周期平移。 */
+    public static String previousPeriodKey(SchedulePeriod period, String cron, ZonedDateTime plannedTime) {
+        if (period == null || plannedTime == null) {
+            throw new IllegalArgumentException("周期与计划执行时间不能为空");
+        }
+        ZonedDateTime previous = lastFire(cron, plannedTime.minusSeconds(1))
+                .orElseGet(() -> previousPeriod(period, plannedTime));
+        return key(period, previous);
+    }
+
     /** 下一个计划点火点：等待超时边界（「最多等一个自己的周期」）。月末与夏令时由 cron 库精确处理。 */
     public static Optional<ZonedDateTime> nextFire(String cron, ZonedDateTime plannedTime) {
         if (cron == null || cron.isBlank() || plannedTime == null) {

@@ -68,6 +68,8 @@ export interface OfflineDependentItem {
     groupName: string | null;
     flowId: string;
     path: string;
+    period?: OfflineSchedulePeriod | null;
+    cron?: string | null;
 }
 
 export const getOfflineDependencies = (groupId: number, path: string) => {

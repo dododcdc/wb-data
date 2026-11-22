@@ -72,6 +72,16 @@ class OfflineScheduleKeysTest {
     void inferPeriod_recognizesStandardShapes() {
         assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("30 * * * *"))
                 .isEqualTo(OfflineSchedulePeriod.HOURLY);
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("15 8-22 * * *"))
+                .isEqualTo(OfflineSchedulePeriod.HOURLY);
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("0 */2 * * *"))
+                .isEqualTo(OfflineSchedulePeriod.HOURLY);
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("15 8-22/2 * * *"))
+                .isEqualTo(OfflineSchedulePeriod.HOURLY);
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("0 1,3,14 * * *"))
+                .isEqualTo(OfflineSchedulePeriod.HOURLY);
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("0 1,8,13 * * *"))
+                .isEqualTo(OfflineSchedulePeriod.HOURLY);
         assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("0 2 * * *"))
                 .isEqualTo(OfflineSchedulePeriod.DAILY);
         assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("0 2 * * 1"))
@@ -88,7 +98,9 @@ class OfflineScheduleKeysTest {
                 .isEqualTo(OfflineSchedulePeriod.CUSTOM);
         assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("*/5 * * * *"))
                 .isEqualTo(OfflineSchedulePeriod.CUSTOM);
-        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("0 1,8,13 * * *"))
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("0 22-6 * * *"))
+                .isEqualTo(OfflineSchedulePeriod.CUSTOM);
+        assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("0 10-14/6 * * *"))
                 .isEqualTo(OfflineSchedulePeriod.CUSTOM);
         assertThat(OfflineFlowScheduleYaml.inferPeriodFromCron("0 2 * * 1,3,5"))
                 .isEqualTo(OfflineSchedulePeriod.CUSTOM);

@@ -55,8 +55,9 @@ public class OfflineScheduleController {
                 request.fileUpdatedAt()
         );
         return offlineFlowDependencyService.withDependencyGraphLock(() -> {
-            offlineFlowDependencyService.assertPeriodChangeAllowed(
-                    context.groupId(), request.path(), request.period(), authContextService.listAccessibleGroups(context.user()));
+            offlineFlowDependencyService.assertScheduleChangeAllowed(
+                    context.groupId(), request.path(), request.period(), request.cron(),
+                    authContextService.listAccessibleGroups(context.user()));
             return Result.success(offlineScheduleService.updateSchedule(normalizedRequest));
         });
     }

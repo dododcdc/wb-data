@@ -110,6 +110,12 @@ public class OperationsInstanceDiagnosisService {
         String resolvedKey = OperationsScheduleWindows.key(schedule.period(), plannedFire);
         ZonedDateTime periodStart = OperationsScheduleWindows.periodStart(schedule.period(), resolvedKey, zone);
         ZonedDateTime periodEnd = OperationsScheduleWindows.periodEnd(schedule.period(), periodStart);
+        String prevKey = cronTime.lastExecution(plannedFire.minusSeconds(1))
+                .map(fire -> OperationsScheduleWindows.key(schedule.period(), fire))
+                .orElse(null);
+        String nextKey = cronTime.nextExecution(plannedFire)
+                .map(fire -> OperationsScheduleWindows.key(schedule.period(), fire))
+                .orElse(null);
 
         List<KestraExecutionSnapshot> periodExecutions = findPeriodExecutions(
                 namespace, flow.flowId(), schedule.period(), zone, resolvedKey, periodStart, periodEnd, now);
@@ -143,13 +149,15 @@ public class OperationsInstanceDiagnosisService {
                     state = representative.status();
                 }
             } else if ("FAILED".equals(representative.status()) && isGateFailed(representativeSnapshot)) {
-                String prevKey = OperationsScheduleWindows.key(schedule.period(),
-                        OperationsScheduleWindows.shiftPeriod(schedule.period(), periodStart, -1));
+                String pausePrevKey = prevKey != null
+                        ? prevKey
+                        : OperationsScheduleWindows.key(schedule.period(),
+                                OperationsScheduleWindows.shiftPeriod(schedule.period(), periodStart, -1));
                 if (flow.failurePolicy() == OfflineFailurePolicy.PAUSE
                         && previousPeriodBlocked(namespace, flow.flowId(), schedule.period(), zone,
-                        prevKey, periodStart, now)) {
+                        pausePrevKey, now)) {
                     state = STATE_PAUSED_BY_POLICY;
-                    reason = "上一期 " + prevKey + " 终态非 SUCCESS，PAUSE 策略暂停本期；请恢复上一期后重跑该期";
+                    reason = "上一期 " + pausePrevKey + " 终态非 SUCCESS，PAUSE 策略暂停本期；请恢复上一期后重跑该期";
                 } else {
                     state = STATE_GATE_TIMEOUT;
                     List<OperationsInstanceUpstreamItem> waiting = upstreams.stream()
@@ -175,14 +183,6 @@ public class OperationsInstanceDiagnosisService {
             state = STATE_MISSED;
             reason = "超过计划点火时间仍未产生执行，疑似漏触发（调度停用、分支未同步或调度器异常）";
         }
-
-        String prevKey = OperationsScheduleWindows.cronTime(schedule.cron())
-                .flatMap(time -> time.lastExecution(plannedFire.minusSeconds(1)))
-                .map(fire -> OperationsScheduleWindows.key(schedule.period(), fire))
-                .orElse(null);
-        String nextKey = cronTime.nextExecution(plannedFire)
-                .map(fire -> OperationsScheduleWindows.key(schedule.period(), fire))
-                .orElse(null);
 
         return new OperationsInstanceDiagnosisResponse(flow.flowId(), branch.trim(), namespace,
                 resolvedKey, schedule.period().name(), schedule.cron(), zone.getId(), schedule.enabled(),
@@ -276,11 +276,11 @@ public class OperationsInstanceDiagnosisService {
                                           OfflineSchedulePeriod period,
                                           ZoneId zone,
                                           String prevKey,
-                                          ZonedDateTime periodStart,
                                           ZonedDateTime now) {
-        ZonedDateTime prevStart = OperationsScheduleWindows.shiftPeriod(period, periodStart, -1);
+        ZonedDateTime prevStart = OperationsScheduleWindows.periodStart(period, prevKey, zone);
+        ZonedDateTime prevEnd = OperationsScheduleWindows.periodEnd(period, prevStart);
         List<KestraExecutionSnapshot> previous = findPeriodExecutions(namespace, flowId, period, zone,
-                prevKey, prevStart, periodStart, now);
+                prevKey, prevStart, prevEnd, now);
         if (previous.isEmpty()) {
             return false;
         }

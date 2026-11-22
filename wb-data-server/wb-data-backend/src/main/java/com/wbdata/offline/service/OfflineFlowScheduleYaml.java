@@ -2,6 +2,7 @@ package com.wbdata.offline.service;
 
 import com.wbdata.offline.schedule.dto.OfflineFlowSchedule;
 import com.wbdata.offline.enums.OfflineSchedulePeriod;
+import com.wbdata.schedule.HourlyCronHours;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -65,6 +66,9 @@ final class OfflineFlowScheduleYaml {
         if (schedule.period() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "调度频率不能为空");
         }
+        if (schedule.period() == OfflineSchedulePeriod.HOURLY && !HourlyCronHours.isHourlyCron(schedule.cron())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "小时调度 Cron 不合法，需至少包含 2 个有效执行小时");
+        }
 
         Map<String, Object> root = yaml.loadRoot(source);
         Map<String, Object> trigger = findScheduleTrigger(root);
@@ -115,8 +119,7 @@ final class OfflineFlowScheduleYaml {
         if (parts.length != 5) {
             return OfflineSchedulePeriod.CUSTOM;
         }
-        if (isFixedNumber(parts[0]) && "*".equals(parts[1]) && "*".equals(parts[2])
-                && "*".equals(parts[3]) && "*".equals(parts[4])) {
+        if (HourlyCronHours.isHourlyCron(cron)) {
             return OfflineSchedulePeriod.HOURLY;
         }
         if (isFixedNumber(parts[0]) && isFixedNumber(parts[1]) && "*".equals(parts[2])
