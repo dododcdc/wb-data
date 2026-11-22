@@ -24,6 +24,17 @@ interface KestraSyncSettingsTabProps {
     onConfigureGit?: () => void;
 }
 
+function formatSyncCron(cron: string | undefined): string {
+    if (!cron || cron.trim() === '*/5 * * * *') {
+        return '每 5 分钟';
+    }
+    const stepMatch = /^[*][/](\d+)\s+[*]\s+[*]\s+[*]\s+[*]$/.exec(cron.trim());
+    if (stepMatch) {
+        return `每 ${stepMatch[1]} 分钟`;
+    }
+    return cron;
+}
+
 export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit }: KestraSyncSettingsTabProps) {
     const { showSuccess, showError } = useOperationFeedback();
     const queryClient = useQueryClient();
@@ -120,8 +131,7 @@ export default function KestraSyncSettingsTab({ groupId, canEdit, onConfigureGit
                     <div>
                         <h2 className="git-settings-title">自动同步</h2>
                         <p className="git-settings-description">
-                            按分支同步远程仓库中的任务与脚本。
-                            {syncData?.syncCron ? `当前定时调度周期为：${syncData.syncCron}。` : '默认每 5 分钟自动同步一次。'}
+                            按分支定时同步远程仓库中的任务与脚本，默认{formatSyncCron(syncData?.syncCron)}自动拉取一次。
                         </p>
                     </div>
                 </div>
