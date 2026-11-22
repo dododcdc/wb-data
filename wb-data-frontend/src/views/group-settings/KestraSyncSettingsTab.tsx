@@ -163,13 +163,13 @@ function KestraSyncTable({ rows, canEdit, isLoading = false }: { rows: SyncBranc
             key: 'branch',
             header: '分支',
             primary: true,
-            width: '26%',
+            width: '28%',
             cell: (row) => <strong>{row.branch}</strong>,
         },
         {
             key: 'lastSyncStatus',
             header: '最近结果',
-            width: 150,
+            width: 140,
             cell: (row) => {
                 const status = row.item?.lastSyncStatus;
                 return (
@@ -197,7 +197,7 @@ function KestraSyncTable({ rows, canEdit, isLoading = false }: { rows: SyncBranc
             key: 'lastSyncAt',
             header: '上次同步时间',
             mono: true,
-            width: 220,
+            width: 200,
             cell: (row) => row.item?.lastSyncAt
                 ? new Date(row.item.lastSyncAt).toLocaleString('zh-CN', {
                     year: 'numeric', month: '2-digit', day: '2-digit',
@@ -208,7 +208,7 @@ function KestraSyncTable({ rows, canEdit, isLoading = false }: { rows: SyncBranc
         {
             key: 'autoSync',
             header: '自动同步',
-            width: 190,
+            width: 180,
             cell: (row) => {
                 const enabled = row.item?.enabled ?? false;
                 return canEdit ? (
@@ -241,7 +241,7 @@ function KestraSyncTable({ rows, canEdit, isLoading = false }: { rows: SyncBranc
             key: 'actions',
             header: '操作',
             align: 'right',
-            width: 110,
+            width: 100,
             cell: (row) => {
                 if (!row.item) return null;
                 const enabled = row.item.enabled;
@@ -278,7 +278,7 @@ function KestraSyncTable({ rows, canEdit, isLoading = false }: { rows: SyncBranc
             columns={columns}
             rowKey={(row) => row.branch}
             ariaLabel="调度同步分支列表"
-            minWidth="960px"
+            minWidth="760px"
             className="wb-kestra-sync-grid wb-list-compact"
             state={isLoading ? 'loading' : rows.length === 0 ? 'empty' : 'ready'}
             emptyTitle="尚未添加同步分支"
