@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     ArrowLeft,
-    ChevronLeft,
     ChevronRight,
     GitBranch,
+    Info,
     Lock,
     RefreshCw,
     RotateCcw,
@@ -103,11 +103,21 @@ function StatusPill({ state, label }: { state: string | null | undefined; label?
     );
 }
 
-function DetailMetric({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailMetric({
+    label,
+    value,
+    emphasized = false,
+}: {
+    label: string;
+    value: React.ReactNode;
+    emphasized?: boolean;
+}) {
     return (
         <div className="operations-execution-metric">
-            <span>{label}</span>
-            <strong>{value}</strong>
+            <span className="operations-execution-metric__label">{label}</span>
+            <strong className={`operations-execution-metric__value${emphasized ? ' is-emphasized' : ''}`}>
+                {value}
+            </strong>
         </div>
     );
 }
@@ -291,14 +301,6 @@ export default function OperationsInstancePage() {
         }
     };
 
-    const navigatePeriod = (scheduleKey: string | null) => {
-        if (!scheduleKey) return;
-        const next = new URLSearchParams(searchParams);
-        next.set('period', scheduleKey);
-        next.delete('execution');
-        setSearchParams(next, { replace: true });
-    };
-
     const drillToUpstream = (upstream: OperationsInstanceUpstreamItem) => {
         if (!upstream.accessible || groupId == null || !branch || !flowId || !period) return;
         setTrail((previous) => [...previous, { group: groupId, branch, flowId, period }]);
@@ -387,67 +389,78 @@ export default function OperationsInstancePage() {
         );
     }
 
+    const formattedPlannedFireAt = formatBrowserDateTime(diagnosis.plannedFireAt);
+    const formattedExecutionPlannedAt = detail ? formatBrowserDateTime(detail.plannedAt) : '—';
+    const hasDistinctExecutionPlannedAt = Boolean(
+        detail && diagnosis.plannedFireAt && detail.plannedAt && formattedPlannedFireAt !== formattedExecutionPlannedAt,
+    );
+    const showExecutionStatusMetric = Boolean(
+        detail && (executions.length > 1 || (detail.status ?? '').toUpperCase() !== (diagnosis.state ?? '').toUpperCase()),
+    );
+    const diagnosisReasonTone = getInstanceStateTone(diagnosis.state);
+
     return (
         <div className="operations-execution-detail-page operations-instance-page">
             <header className="operations-execution-detail-header">
-                <div className="operations-instance-header-left">
+                <div className="operations-instance-header-identity">
                     <button
                         type="button"
                         className="operations-execution-detail-back"
                         onClick={() => navigate('/operations')}
                         aria-label="返回运维中心"
                     >
-                        <ArrowLeft size={17} />
+                        <ArrowLeft size={16} />
                         <span>返回列表</span>
                     </button>
-                    {trail.length > 0 && (
-                        <nav className="operations-instance-trail" aria-label="钻取路径">
-                            {trail.map((entry, index) => (
-                                <span key={`${entry.group}-${entry.flowId}-${entry.period}`} className="operations-instance-trail-item">
-                                    <button
-                                        type="button"
-                                        className="operations-instance-trail-link"
-                                        onClick={() => jumpToTrailEntry(index)}
-                                    >
-                                        {entry.flowId}
-                                    </button>
-                                    <ChevronRight size={13} aria-hidden="true" />
-                                </span>
-                            ))}
-                            <span className="operations-instance-trail-current">{diagnosis.flowId}</span>
-                        </nav>
-                    )}
-                </div>
 
-                <div className="operations-execution-detail-heading">
-                    <div className="operations-execution-title-row">
-                        <h1 title={diagnosis.flowId}>{diagnosis.flowId}</h1>
-                        <StatusPill state={diagnosis.state} />
+                    <span className="operations-instance-header-divider" aria-hidden="true" />
+
+                    <div className="operations-execution-detail-heading">
+                        {trail.length > 0 && (
+                            <nav className="operations-instance-trail" aria-label="钻取路径">
+                                {trail.map((entry, index) => (
+                                    <span key={`${entry.group}-${entry.flowId}-${entry.period}`} className="operations-instance-trail-item">
+                                        <button
+                                            type="button"
+                                            className="operations-instance-trail-link"
+                                            onClick={() => jumpToTrailEntry(index)}
+                                        >
+                                            {entry.flowId}
+                                        </button>
+                                        <ChevronRight size={13} aria-hidden="true" />
+                                    </span>
+                                ))}
+                                <span className="operations-instance-trail-current">{diagnosis.flowId}</span>
+                            </nav>
+                        )}
+                        <div className="operations-execution-title-row">
+                            <h1 title={diagnosis.flowId}>{diagnosis.flowId}</h1>
+                            <StatusPill state={diagnosis.state} />
+                        </div>
+                        <div className="operations-instance-meta" aria-label="实例摘要">
+                            <span className="operations-instance-meta__item">
+                                <GitBranch size={12} aria-hidden="true" />
+                                <code title={diagnosis.branch}>{diagnosis.branch}</code>
+                            </span>
+                            <span className="operations-instance-meta__sep" aria-hidden="true">·</span>
+                            <span className="operations-instance-meta__item">
+                                <span>Cron</span>
+                                <code title={diagnosis.cron ?? ''}>{diagnosis.cron ?? '—'}</code>
+                            </span>
+                            <span className="operations-instance-meta__sep" aria-hidden="true">·</span>
+                            <span className="operations-instance-meta__item">{diagnosis.timezone ?? '—'}</span>
+                            <span className="operations-instance-meta__sep" aria-hidden="true">·</span>
+                            <span className="operations-instance-meta__item">
+                                <span>调度</span>
+                                <span className={`operations-instance-schedule-flag${diagnosis.scheduleEnabled ? ' is-enabled' : ''}`}>
+                                    {diagnosis.scheduleEnabled ? '已启用' : '已停用'}
+                                </span>
+                            </span>
+                        </div>
                     </div>
-                    {diagnosis.reason && <p title={diagnosis.reason}>{diagnosis.reason}</p>}
                 </div>
 
                 <div className="operations-execution-detail-actions">
-                    <button
-                        type="button"
-                        className="operations-execution-icon-button"
-                        onClick={() => navigatePeriod(diagnosis.prevScheduleKey)}
-                        disabled={!diagnosis.prevScheduleKey}
-                        aria-label="上一期"
-                        title="上一期"
-                    >
-                        <ChevronLeft size={16} />
-                    </button>
-                    <button
-                        type="button"
-                        className="operations-execution-icon-button"
-                        onClick={() => navigatePeriod(diagnosis.nextScheduleKey)}
-                        disabled={!diagnosis.nextScheduleKey}
-                        aria-label="下一期"
-                        title="下一期"
-                    >
-                        <ChevronRight size={16} />
-                    </button>
                     <button
                         type="button"
                         className="operations-instance-upstream-button"
@@ -504,14 +517,16 @@ export default function OperationsInstancePage() {
             </header>
 
             <main className="operations-execution-detail-main">
-                <section className="operations-execution-summary" aria-label="实例摘要">
-                    <DetailMetric label="分支" value={<span title={diagnosis.branch}>{diagnosis.branch}</span>} />
-                    <DetailMetric label="业务期" value={diagnosis.scheduleKey ?? '—'} />
-                    <DetailMetric label="计划点火时间" value={formatBrowserDateTime(diagnosis.plannedFireAt)} />
-                    <DetailMetric label="Cron" value={<span title={diagnosis.cron ?? ''}>{diagnosis.cron ?? '—'}</span>} />
-                    <DetailMetric label="时区" value={diagnosis.timezone ?? '—'} />
-                    <DetailMetric label="调度" value={diagnosis.scheduleEnabled ? '已启用' : '已停用'} />
-                </section>
+                {diagnosis.reason && executions.length > 0 && (
+                    <div className={`operations-instance-reason operations-instance-reason--${diagnosisReasonTone}`} role="status">
+                        {diagnosisReasonTone === 'failed' || diagnosisReasonTone === 'warning' ? (
+                            <TriangleAlert size={15} className="operations-instance-reason__icon" aria-hidden="true" />
+                        ) : (
+                            <Info size={15} className="operations-instance-reason__icon" aria-hidden="true" />
+                        )}
+                        <span>{diagnosis.reason}</span>
+                    </div>
+                )}
 
                 {executions.length > 1 && (
                     <section className="operations-instance-executions" aria-label="本期执行">
@@ -543,12 +558,12 @@ export default function OperationsInstancePage() {
                         <p>{diagnosis.reason ?? '本期尚未产生执行。'}</p>
                         {diagnosis.plannedFireAt && (
                             <p className="operations-instance-empty-fire">
-                                计划点火时间：{formatBrowserDateTime(diagnosis.plannedFireAt)}
+                                计划点火时间：{formattedPlannedFireAt}
                             </p>
                         )}
                     </section>
                 ) : detailQuery.isLoading || !detail ? (
-                    <div className="operations-execution-log-loading" role="status">
+                    <div className="operations-execution-log-loading operations-execution-log-loading--standalone" role="status">
                         {Array.from({ length: 8 }).map((_, index) => (
                             <span key={index} />
                         ))}
@@ -564,16 +579,32 @@ export default function OperationsInstancePage() {
                             </section>
                         )}
                         <section className="operations-execution-summary" aria-label="执行摘要">
-                            <DetailMetric label="状态" value={<StatusPill state={detail.status} />} />
-                            <DetailMetric label="计划执行时间" value={formatBrowserDateTime(detail.plannedAt)} />
+                            {showExecutionStatusMetric && (
+                                <DetailMetric label="状态" value={<StatusPill state={detail.status} />} />
+                            )}
+                            {hasDistinctExecutionPlannedAt ? (
+                                <>
+                                    <DetailMetric label="计划点火时间" value={formattedPlannedFireAt} />
+                                    <DetailMetric label="计划执行时间" value={formattedExecutionPlannedAt} />
+                                </>
+                            ) : (
+                                <DetailMetric
+                                    label="计划时间"
+                                    value={detail.plannedAt ? formattedExecutionPlannedAt : formattedPlannedFireAt}
+                                />
+                            )}
                             <DetailMetric label="开始时间" value={formatBrowserDateTime(detail.startDate)} />
                             <DetailMetric label="结束时间" value={formatBrowserDateTime(detail.endDate)} />
-                            <DetailMetric label="耗时" value={formatDuration(detail.durationMs)} />
+                            <DetailMetric label="耗时" value={formatDuration(detail.durationMs)} emphasized />
                             <DetailMetric label="节点数" value={visibleTaskRuns.length} />
                         </section>
 
                         <section className="operations-execution-workspace">
                             <aside className="operations-execution-tasks" aria-label="节点列表">
+                                <div className="operations-execution-tasks-header">
+                                    <span>执行节点</span>
+                                    <span className="operations-execution-tasks-count">{visibleTaskRuns.length}</span>
+                                </div>
                                 <ListShell
                                     state={visibleTaskRuns.length === 0 ? 'empty' : 'ready'}
                                     className="operations-instance-list-shell"
@@ -597,7 +628,7 @@ export default function OperationsInstancePage() {
                                                     <span className="operations-execution-task__main">
                                                         <span className="operations-execution-task__name" title={task.taskId}>{task.taskId}</span>
                                                         <span className={`operations-execution-status operations-execution-status--${tone}`}>
-                                                            <Icon size={14} className={isRunningStatus(task.status) ? 'operations-execution-spin' : undefined} />
+                                                            <Icon size={13} className={isRunningStatus(task.status) ? 'operations-execution-spin' : undefined} />
                                                             {getExecutionStatusLabel(task.status)}
                                                         </span>
                                                     </span>
@@ -613,44 +644,46 @@ export default function OperationsInstancePage() {
                             </aside>
 
                             <div className="operations-execution-right">
-                                <div className="operations-execution-panel-tabs" role="tablist" aria-label="执行详情视图">
-                                    <button
-                                        type="button"
-                                        role="tab"
-                                        aria-selected={rightTab === 'logs'}
-                                        className={`operations-execution-panel-tab${rightTab === 'logs' ? ' is-active' : ''}`}
-                                        onClick={() => setRightTab('logs')}
-                                    >
-                                        <Terminal size={14} />
-                                        执行日志
-                                    </button>
-                                    <button
-                                        type="button"
-                                        role="tab"
-                                        aria-selected={rightTab === 'parameters'}
-                                        className={`operations-execution-panel-tab${rightTab === 'parameters' ? ' is-active' : ''}`}
-                                        onClick={() => setRightTab('parameters')}
-                                    >
-                                        <SlidersHorizontal size={14} />
-                                        运行参数
-                                        {parameterCount > 0 ? (
-                                            <span className="operations-execution-panel-tab__badge">{parameterCount}</span>
-                                        ) : null}
-                                    </button>
-                                </div>
+                                <div className="operations-execution-panel-header">
+                                    <div className="operations-execution-panel-tabs" role="tablist" aria-label="执行详情视图">
+                                        <button
+                                            type="button"
+                                            role="tab"
+                                            aria-selected={rightTab === 'logs'}
+                                            className={`operations-execution-panel-tab${rightTab === 'logs' ? ' is-active' : ''}`}
+                                            onClick={() => setRightTab('logs')}
+                                        >
+                                            <Terminal size={14} />
+                                            执行日志
+                                        </button>
+                                        <button
+                                            type="button"
+                                            role="tab"
+                                            aria-selected={rightTab === 'parameters'}
+                                            className={`operations-execution-panel-tab${rightTab === 'parameters' ? ' is-active' : ''}`}
+                                            onClick={() => setRightTab('parameters')}
+                                        >
+                                            <SlidersHorizontal size={14} />
+                                            运行参数
+                                            {parameterCount > 0 ? (
+                                                <span className="operations-execution-panel-tab__badge">{parameterCount}</span>
+                                            ) : null}
+                                        </button>
+                                    </div>
 
-                                {rightTab === 'logs' ? (
-                                    <section className="operations-execution-logs" role="tabpanel" aria-label="执行日志">
+                                    {rightTab === 'logs' && (
                                         <div className="operations-execution-log-tools">
                                             <div className="operations-execution-levels" aria-label="日志级别">
                                                 {LEVELS.map((level) => {
+                                                    const count = levelCounts[level] ?? 0;
                                                     const active = activeLevels.has(level);
+                                                    const zero = count === 0 && !active;
                                                     const dimmed = activeLevels.size > 0 && !active;
                                                     return (
                                                         <button
                                                             key={level}
                                                             type="button"
-                                                            className={`operations-execution-level operations-execution-level--${level.toLowerCase()}${dimmed ? ' is-dimmed' : ''}${active ? ' is-active' : ''}`}
+                                                            className={`operations-execution-level operations-execution-level--${level.toLowerCase()}${zero ? ' is-zero' : ''}${dimmed ? ' is-dimmed' : ''}${active ? ' is-active' : ''}`}
                                                             onClick={() => {
                                                                 setActiveLevels((previous) => {
                                                                     const next = new Set(previous);
@@ -663,7 +696,7 @@ export default function OperationsInstancePage() {
                                                                 });
                                                             }}
                                                         >
-                                                            {level} {levelCounts[level] ?? 0}
+                                                            {level} {count}
                                                         </button>
                                                     );
                                                 })}
@@ -681,25 +714,34 @@ export default function OperationsInstancePage() {
                                                 </label>
                                             </div>
                                         </div>
+                                    )}
+                                </div>
 
-                                        {logsQuery.isLoading || selectedTaskId === undefined ? (
-                                            <div className="operations-execution-log-loading" role="status">
-                                                {Array.from({ length: 8 }).map((_, index) => (
-                                                    <span key={index} />
-                                                ))}
+                                {rightTab === 'logs' ? (
+                                    <section className="operations-execution-logs" role="tabpanel" aria-label="执行日志">
+                                        <div className="operations-execution-log-frame">
+                                            <div className="operations-execution-log-surface">
+                                                {logsQuery.isLoading || selectedTaskId === undefined ? (
+                                                    <div className="operations-execution-log-loading" role="status">
+                                                        {Array.from({ length: 8 }).map((_, index) => (
+                                                            <span key={index} />
+                                                        ))}
+                                                    </div>
+                                                ) : logsQuery.isError ? (
+                                                    <div className="operations-execution-log-error" role="alert">
+                                                        <span>日志加载失败。</span>
+                                                        <button type="button" onClick={() => void logsQuery.refetch()}>重试</button>
+                                                    </div>
+                                                ) : (
+                                                    <LogViewer
+                                                        items={logItems}
+                                                        searchQuery={searchText}
+                                                        currentMatchPosition={-1}
+                                                        hideTaskColumn
+                                                    />
+                                                )}
                                             </div>
-                                        ) : logsQuery.isError ? (
-                                            <div className="operations-execution-log-error" role="alert">
-                                                <span>日志加载失败。</span>
-                                                <button type="button" onClick={() => void logsQuery.refetch()}>重试</button>
-                                            </div>
-                                        ) : (
-                                            <LogViewer
-                                                items={logItems}
-                                                searchQuery={searchText}
-                                                currentMatchPosition={-1}
-                                            />
-                                        )}
+                                        </div>
                                     </section>
                                 ) : (
                                     <section className="operations-execution-params" role="tabpanel" aria-label="运行参数">
@@ -805,7 +847,7 @@ export default function OperationsInstancePage() {
                         onClick={(event) => event.stopPropagation()}
                     >
                         <header className="operations-instance-drawer-header">
-                            <h2>上游实例 · {diagnosis.scheduleKey}</h2>
+                            <h2>上游实例</h2>
                             <button
                                 type="button"
                                 className="operations-execution-icon-button"

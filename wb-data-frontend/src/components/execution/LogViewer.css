@@ -55,12 +55,17 @@
     border-bottom: var(--logviewer-line-border, 1px solid rgba(0, 0, 0, 0.03));
 }
 
+.log-viewer--no-task .log-line {
+    grid-template-columns: 76px 52px minmax(0, 1fr);
+}
+
 .log-line:hover {
     background: var(--logviewer-hover, transparent);
 }
 
 .log-line-time {
     color: var(--logviewer-muted, var(--color-text-muted));
+    font-variant-numeric: tabular-nums;
     flex-shrink: 0;
 }
 

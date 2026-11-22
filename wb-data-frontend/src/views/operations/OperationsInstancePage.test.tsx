@@ -234,7 +234,6 @@ describe('OperationsInstancePage', () => {
 
         expect(await screen.findByText('daily_policy')).toBeTruthy();
         expect(screen.getByText('feature/policy-review')).toBeTruthy();
-        expect(screen.getByText('2026-06-07')).toBeTruthy();
         expect(screen.getByText('0 2 * * *')).toBeTruthy();
         expect(screen.getByText('Asia/Shanghai')).toBeTruthy();
         expect(screen.getByText('已启用')).toBeTruthy();
@@ -598,5 +597,28 @@ describe('OperationsInstancePage', () => {
 
         await waitFor(() => expect(stopOperationsExecutionMock).toHaveBeenCalledWith(4, 'exec-1'));
         expect(showSuccess).toHaveBeenCalledWith('已发送停止请求');
+    });
+
+    it('omits the period stepper, hides repeated taskId columns in single-node logs, and quiets zero-count level pills', async () => {
+        renderPage();
+
+        expect(await screen.findByText('load failed on row 42')).toBeTruthy();
+
+        expect(screen.queryByRole('group', { name: '业务期切换' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '上一期' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '下一期' })).toBeNull();
+
+        expect(document.querySelector('.log-viewer--no-task')).toBeTruthy();
+        expect(document.querySelector('.log-line-task')).toBeNull();
+
+        const errorPill = screen.getByRole('button', { name: 'ERROR 1' });
+        const warnPill = screen.getByRole('button', { name: 'WARN 0' });
+        const infoPill = screen.getByRole('button', { name: 'INFO 0' });
+        expect(errorPill.className).not.toContain('is-zero');
+        expect(warnPill.className).toContain('is-zero');
+        expect(infoPill.className).toContain('is-zero');
+
+        fireEvent.click(errorPill);
+        expect(errorPill.className).toContain('is-active');
     });
 });

@@ -217,8 +217,8 @@ describe('OperationsCenter', () => {
         expect(screen.getAllByText('feature/policy-review').length).toBeGreaterThan(0);
         expect(screen.getAllByText('失败').length).toBeGreaterThan(0);
         expect(within(screen.getByLabelText('运行记录筛选')).getByRole('button', { name: '刷新运行记录' })).toBeTruthy();
-        expect(screen.getAllByRole('columnheader')).toHaveLength(7);
-        expect(screen.queryByRole('columnheader', { name: '结束时间' })).toBeNull();
+        expect(screen.getAllByRole('columnheader')).toHaveLength(8);
+        expect(screen.getByRole('columnheader', { name: '结束时间' })).toBeTruthy();
         expect(screen.getByRole('columnheader', { name: '计划执行时间' })).toBeTruthy();
         expect(screen.queryByRole('columnheader', { name: '触发时间' })).toBeNull();
         expect(screen.getByRole('button', { name: '重跑 daily_policy' })).toBeTruthy();
