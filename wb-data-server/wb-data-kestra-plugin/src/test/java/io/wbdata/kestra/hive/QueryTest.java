@@ -214,7 +214,7 @@ class QueryTest {
                   printf '%%s\\n' "$arg" >> "$CAPTURE/args.txt"
                   if [ "$prev" = "-w" ]; then
                     cat "$arg" > "$CAPTURE/pw_content.txt"
-                    { stat -f '%%Lp' "$arg" 2>/dev/null || stat -c '%%a' "$arg"; } > "$CAPTURE/pw_mode.txt"
+                    { stat -c '%%a' "$arg" 2>/dev/null || stat -f '%%Lp' "$arg"; } > "$CAPTURE/pw_mode.txt"
                   fi
                   prev="$arg"
                 done
