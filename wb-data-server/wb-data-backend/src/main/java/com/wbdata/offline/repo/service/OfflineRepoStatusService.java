@@ -10,7 +10,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -18,6 +20,26 @@ import java.util.concurrent.TimeUnit;
 public class OfflineRepoStatusService {
 
     private final OfflineProperties offlineProperties;
+    private final GitWorkingTreeStatus workingTreeStatus = new GitWorkingTreeStatus();
+
+    public Set<String> listDirtyFlowPaths(Long groupId) {
+        Path repoPath = offlineProperties.resolveRepoPath(groupId);
+        if (!Files.isDirectory(repoPath) || !Files.isDirectory(repoPath.resolve(".git"))) {
+            return Set.of();
+        }
+        String porcelain = runGitCommand(repoPath, "status", "--porcelain");
+        List<String> changedFlows = workingTreeStatus.inspect(porcelain).changedFlows();
+        if (changedFlows == null || changedFlows.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> normalized = new LinkedHashSet<>(changedFlows.size());
+        for (String flowPath : changedFlows) {
+            if (flowPath != null && !flowPath.isBlank()) {
+                normalized.add(flowPath.replace('\\', '/'));
+            }
+        }
+        return Set.copyOf(normalized);
+    }
 
     public OfflineRepoStatusResponse getRepoStatus(Long groupId) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
