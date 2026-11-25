@@ -13,6 +13,8 @@ export interface OperationsExecutionListQuery {
     pageSize?: number | null;
 }
 
+export type OperationsRerunType = 'NONE' | 'MANUAL' | 'AUTO';
+
 export interface OperationsExecutionListItem {
     id: string;
     namespace: string;
@@ -26,7 +28,13 @@ export interface OperationsExecutionListItem {
     durationMs: number | null;
     rerunnable: boolean;
     stoppable?: boolean;
+    markableSuccess?: boolean;
     rerun: boolean;
+    rerunType?: OperationsRerunType;
+    retryAttempt?: number | null;
+    partialRerun?: boolean;
+    rerunSelectedTaskCount?: number | null;
+    rerunTotalTaskCount?: number | null;
 }
 
 export interface OperationsExecutionStatusCounts {
@@ -71,12 +79,47 @@ export interface OperationsExecutionDetail {
     durationMs: number | null;
     rerunnable: boolean;
     stoppable?: boolean;
+    markableSuccess?: boolean;
+    forceSuccess?: boolean;
+    forceSuccessBy?: string | null;
+    forceSuccessAt?: string | null;
     taskRuns: OperationsExecutionTaskRun[];
     inputs: Record<string, string>;
     labels: Record<string, string>;
     parameterResolutionStatus: 'NONE' | 'AVAILABLE' | 'PENDING' | 'UNAVAILABLE';
     parameters: ExecutionParameterValue[];
     parameterSnapshotChanged?: boolean | null;
+    rerun?: boolean;
+    rerunType?: OperationsRerunType;
+    retryAttempt?: number | null;
+    partialRerun?: boolean;
+    rerunSelectedTaskCount?: number | null;
+    rerunTotalTaskCount?: number | null;
+}
+
+export interface OperationsRerunGraphNode {
+    taskId: string;
+    kind: string;
+    dataSourceType: string | null;
+    executionStatus: string;
+}
+
+export interface OperationsRerunGraphEdge {
+    source: string;
+    target: string;
+}
+
+export interface OperationsExecutionRerunContext {
+    executionId: string;
+    namespace: string;
+    flowId: string;
+    partialRerunSupported: boolean;
+    graphChanged: boolean;
+    fallbackReason: string | null;
+    nodes: OperationsRerunGraphNode[];
+    edges: OperationsRerunGraphEdge[];
+    defaultSelectedTaskIds: string[];
+    requiredTaskIds: string[];
 }
 
 export interface OperationsExecutionLogEntry {
@@ -97,6 +140,7 @@ export interface OperationsExecutionRerunResponse {
 
 export interface OperationsExecutionRerunRequest {
     reuseManualOverrides: boolean;
+    selectedTaskIds?: string[];
 }
 
 function buildListSearchParams(query?: OperationsExecutionListQuery) {
@@ -135,6 +179,12 @@ export const getOperationsExecution = (groupId: number, executionId: string) => 
     );
 };
 
+export const getOperationsExecutionRerunContext = (groupId: number, executionId: string) => {
+    return request.get<unknown, OperationsExecutionRerunContext>(
+        groupScopedPath(groupId, `/operations/executions/${encodeURIComponent(executionId)}/rerun-context`)
+    );
+};
+
 export const getOperationsExecutionLogs = (groupId: number, executionId: string, taskId?: string | null) => {
     const params = new URLSearchParams();
     const normalizedTaskId = taskId?.trim();
@@ -155,6 +205,11 @@ export interface OperationsInstanceExecutionItem {
     endDate: string | null;
     durationMs: number | null;
     rerun: boolean;
+    rerunType?: OperationsRerunType;
+    retryAttempt?: number | null;
+    partialRerun?: boolean;
+    rerunSelectedTaskCount?: number | null;
+    rerunTotalTaskCount?: number | null;
 }
 
 export interface OperationsInstanceUpstreamItem {
@@ -167,6 +222,10 @@ export interface OperationsInstanceUpstreamItem {
     satisfied: boolean;
     accessible: boolean;
     executionId: string | null;
+    plannedAt?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+    durationMs?: number | null;
 }
 
 export interface OperationsInstanceDiagnosis {
@@ -223,5 +282,14 @@ export const stopOperationsExecution = (
 ) => {
     return request.post<unknown, void>(
         groupScopedPath(groupId, `/operations/executions/${encodeURIComponent(executionId)}/stop`)
+    );
+};
+
+export const markOperationsExecutionSuccess = (
+    groupId: number,
+    executionId: string,
+) => {
+    return request.post<unknown, void>(
+        groupScopedPath(groupId, `/operations/executions/${encodeURIComponent(executionId)}/mark-success`)
     );
 };

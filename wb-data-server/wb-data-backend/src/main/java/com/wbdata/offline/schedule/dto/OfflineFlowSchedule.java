@@ -8,6 +8,12 @@ public record OfflineFlowSchedule(
         @NotBlank String cron,
         String timezone,
         boolean enabled,
-        @NotNull OfflineSchedulePeriod period
+        @NotNull OfflineSchedulePeriod period,
+        boolean retryEnabled,
+        Integer retryCount,
+        Integer retryIntervalMinutes
 ) {
+    public OfflineFlowSchedule(String cron, String timezone, boolean enabled, OfflineSchedulePeriod period) {
+        this(cron, timezone, enabled, period, false, null, null);
+    }
 }

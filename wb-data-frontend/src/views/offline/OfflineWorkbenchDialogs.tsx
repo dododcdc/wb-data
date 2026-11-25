@@ -142,6 +142,9 @@ export function OfflineWorkbenchDialogs({
                 cron={flowExecutionAndSchedule.scheduleCron || ''}
                 period={flowExecutionAndSchedule.schedulePeriod}
                 timezone={flowExecutionAndSchedule.scheduleTimezone || ''}
+                retryEnabled={flowExecutionAndSchedule.scheduleRetryEnabled}
+                retryCount={flowExecutionAndSchedule.scheduleRetryCount}
+                retryIntervalMinutes={flowExecutionAndSchedule.scheduleRetryIntervalMinutes}
                 saving={flowExecutionAndSchedule.scheduleSaving}
                 flowId={flowDocument?.flowId ?? null}
                 hasRemote={remoteStatus?.hasRemote ?? repoStatus?.hasRemote ?? true}
@@ -153,6 +156,7 @@ export function OfflineWorkbenchDialogs({
                     }
                 }}
                 onPeriodChange={flowExecutionAndSchedule.changeSchedulePeriod}
+                onRetryChange={flowExecutionAndSchedule.changeScheduleRetry}
                 onSave={() => void flowExecutionAndSchedule.stageSchedule()}
                 onToggle={(enabled) => void flowExecutionAndSchedule.toggleSchedule(enabled)}
             />

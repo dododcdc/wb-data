@@ -66,7 +66,9 @@ final class KestraPayloadParser {
                 taskRuns,
                 readStringMap(root.path("inputs")),
                 readLabels(root.path("labels")),
-                readStringMap(root.path("outputs"))
+                readStringMap(root.path("outputs")),
+                readText(root.path("originalId")),
+                readInteger(root.path("metadata").path("attemptNumber"))
         );
     }
 
@@ -179,6 +181,26 @@ final class KestraPayloadParser {
 
     private String readText(JsonNode node) {
         return node == null || node.isMissingNode() || node.isNull() ? null : node.asText();
+    }
+
+    private Integer readInteger(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        if (node.isNumber()) {
+            return node.intValue();
+        }
+        if (node.isTextual()) {
+            String text = node.asText();
+            if (text != null && !text.isBlank()) {
+                try {
+                    return Integer.parseInt(text.trim());
+                } catch (NumberFormatException ignored) {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
     private Map<String, String> readStringMap(JsonNode node) {

@@ -118,9 +118,15 @@ final class OfflineFlowDocumentWriter {
 
             applyRuntimeTimezoneToFlowFile(repoPath, request.path(), runtimeTimezone);
             if (request.schedule() != null) {
+                boolean retryEnabled = request.schedule().retryEnabled();
                 applyScheduleToFlowFile(repoPath, request.path(), new OfflineFlowSchedule(
-                        request.schedule().cron(), runtimeTimezone, request.schedule().enabled(),
-                        request.schedule().period()));
+                        request.schedule().cron(),
+                        runtimeTimezone,
+                        request.schedule().enabled(),
+                        request.schedule().period(),
+                        retryEnabled,
+                        retryEnabled ? request.schedule().retryCount() : null,
+                        retryEnabled ? request.schedule().retryIntervalMinutes() : null));
             }
             if (request.dependencyConfig() != null) {
                 var settings = request.dependencyConfig();

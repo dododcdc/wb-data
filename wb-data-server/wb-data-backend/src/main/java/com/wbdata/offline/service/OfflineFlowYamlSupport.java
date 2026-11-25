@@ -140,6 +140,17 @@ final class OfflineFlowYamlSupport {
         return applyDependencyGate(scheduleYaml.updateSchedule(source, cron, timezone, period));
     }
 
+    String updateSchedule(String source,
+                          String cron,
+                          String timezone,
+                          OfflineSchedulePeriod period,
+                          Boolean retryEnabled,
+                          Integer retryCount,
+                          Integer retryIntervalMinutes) {
+        return applyDependencyGate(scheduleYaml.updateSchedule(
+                source, cron, timezone, period, retryEnabled, retryCount, retryIntervalMinutes));
+    }
+
     String updateScheduleStatus(String source, boolean enabled) {
         return scheduleYaml.updateScheduleStatus(source, enabled);
     }
@@ -189,6 +200,10 @@ final class OfflineFlowYamlSupport {
 
     FlowGraph parseGraph(String source) {
         return graphYaml.parseGraph(source);
+    }
+
+    OfflineFlowInspector.InspectedGraph inspectGraph(String source) {
+        return graphYaml.inspectGraph(source);
     }
 
     String compileGraph(String existingSource,
@@ -246,8 +261,20 @@ final class OfflineFlowYamlSupport {
             String cron,
             String timezone,
             boolean enabled,
-            OfflineSchedulePeriod period
+            OfflineSchedulePeriod period,
+            boolean retryEnabled,
+            Integer retryCount,
+            Integer retryIntervalMinutes
     ) {
+        ScheduleData(
+                String triggerId,
+                String cron,
+                String timezone,
+                boolean enabled,
+                OfflineSchedulePeriod period
+        ) {
+            this(triggerId, cron, timezone, enabled, period, false, null, null);
+        }
     }
 
 }

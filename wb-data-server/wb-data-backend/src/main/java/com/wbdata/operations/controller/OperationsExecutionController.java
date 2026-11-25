@@ -8,6 +8,7 @@ import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
 import com.wbdata.offline.execution.dto.ExecutionLogEntry;
 import com.wbdata.operations.dto.OperationsExecutionQuery;
+import com.wbdata.operations.dto.OperationsExecutionRerunContextResponse;
 import com.wbdata.operations.dto.OperationsExecutionRerunRequest;
 import com.wbdata.operations.dto.OperationsExecutionRerunResponse;
 import com.wbdata.operations.service.OperationsExecutionService;
@@ -62,16 +63,26 @@ public class OperationsExecutionController {
         return Result.success(operationsExecutionService.getLogs(context.groupId(), executionId, taskId));
     }
 
+    @GetMapping("/{executionId}/rerun-context")
+    public Result<OperationsExecutionRerunContextResponse> getRerunContext(
+            @RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
+            @PathVariable String executionId) {
+        return Result.success(operationsExecutionService.getRerunContext(context.groupId(), executionId));
+    }
+
     @PostMapping("/{executionId}/rerun")
     public Result<OperationsExecutionRerunResponse> rerun(
             @RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
             @PathVariable String executionId,
-            @RequestBody OperationsExecutionRerunRequest request) {
+            @RequestBody(required = false) OperationsExecutionRerunRequest request) {
+        boolean reuseManualOverrides = request != null && request.reuseManualOverrides();
+        List<String> selectedTaskIds = request == null ? null : request.selectedTaskIds();
         return Result.success(operationsExecutionService.rerunExecution(
                 context.groupId(),
                 context.user().id(),
                 executionId,
-                request.reuseManualOverrides()
+                reuseManualOverrides,
+                selectedTaskIds
         ));
     }
 
@@ -82,6 +93,23 @@ public class OperationsExecutionController {
         operationsExecutionService.stopExecution(
                 context.groupId(),
                 context.user().id(),
+                executionId
+        );
+        return Result.success(null);
+    }
+
+    @PostMapping("/{executionId}/mark-success")
+    public Result<Void> markSuccess(
+            @RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
+            @PathVariable String executionId) {
+        String displayName = context.user().displayName();
+        String operatorName = displayName != null && !displayName.isBlank()
+                ? displayName
+                : context.user().username();
+        operationsExecutionService.markExecutionSuccess(
+                context.groupId(),
+                context.user().id(),
+                operatorName,
                 executionId
         );
         return Result.success(null);

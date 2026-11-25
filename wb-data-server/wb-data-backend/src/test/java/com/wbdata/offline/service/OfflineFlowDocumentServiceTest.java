@@ -575,7 +575,8 @@ class OfflineFlowDocumentServiceTest {
         assertThat((List<Map<String, Object>>) root.get("inputs")).containsExactly(
                 Map.of("id", "name", "type", "STRING", "defaults", "小明"),
                 Map.of("id", "v_day", "type", "STRING", "required", false),
-                Map.of("id", "wbdata_planned_time", "type", "DATETIME", "required", false)
+                Map.of("id", "wbdata_planned_time", "type", "DATETIME", "required", false),
+                Map.of("id", "wbdata_rerun_tasks", "type", "STRING", "required", false)
         );
         Map<String, Object> dag = ((List<Map<String, Object>>) root.get("tasks")).getFirst();
         Map<String, Object> wrapper = ((List<Map<String, Object>>) dag.get("tasks")).getFirst();
@@ -596,7 +597,9 @@ class OfflineFlowDocumentServiceTest {
         ));
         Map<String, Object> unboundRoot = new Yaml().load(
                 Files.readString(repo.resolve("_flows/example/flow.yaml")));
-        assertThat(unboundRoot).doesNotContainKey("inputs");
+        assertThat((List<Map<String, Object>>) unboundRoot.get("inputs"))
+                .extracting(input -> input.get("id"))
+                .containsExactly("wbdata_rerun_tasks");
         assertThat(unboundRoot).extracting("labels")
                 .isEqualTo(Map.of(
                         "wbdataRuntimeTimezone", "Asia/Shanghai",
@@ -667,7 +670,7 @@ class OfflineFlowDocumentServiceTest {
         Map<String, Object> root = new Yaml().load(compiled.content());
         assertThat((List<Map<String, Object>>) root.get("inputs"))
                 .extracting(input -> input.get("id"))
-                .containsExactly("name", "v_day", "wbdata_planned_time");
+                .containsExactly("name", "v_day", "wbdata_planned_time", "wbdata_rerun_tasks");
         Map<String, Object> dag = ((List<Map<String, Object>>) root.get("tasks")).getFirst();
         Map<String, Object> wrapper = ((List<Map<String, Object>>) dag.get("tasks")).getFirst();
         Map<String, Object> task = (Map<String, Object>) wrapper.get("task");
@@ -711,7 +714,7 @@ class OfflineFlowDocumentServiceTest {
                 List.of("transfer_1"), "SELECTED"));
         Map<String, Object> root = new Yaml().load(compiled.content());
         assertThat((List<Map<String, Object>>) root.get("inputs")).extracting(input -> input.get("id"))
-                .containsExactly("name", "v_day", "wbdata_planned_time");
+                .containsExactly("name", "v_day", "wbdata_planned_time", "wbdata_rerun_tasks");
         Map<String, Object> dag = ((List<Map<String, Object>>) root.get("tasks")).getFirst();
         Map<String, Object> wrapper = ((List<Map<String, Object>>) dag.get("tasks")).getFirst();
         Map<String, Object> task = (Map<String, Object>) wrapper.get("task");
@@ -1413,6 +1416,34 @@ class OfflineFlowDocumentServiceTest {
                 .contains("type: io.wbdata.kestra.hive.Query")
                 .contains("hive.exec.dynamic.partition: 'true'")
                 .contains("scriptPath: scripts/hive_legacy/hive_1.sql");
+    }
+
+    @Test
+    void documentEndpointSavesAndReadsBackRetrySchedule() throws Exception {
+        DocumentEndpointFixture fixture = new DocumentEndpointFixture();
+        var retrySchedule = new OfflineFlowSchedule(
+                "0 2 * * *", "Asia/Shanghai", false, OfflineSchedulePeriod.DAILY, true, 3, 10);
+
+        var saved = fixture.save(1L, "retry_doc", retrySchedule, null, 1L);
+        assertThat(saved.schedule()).isEqualTo(retrySchedule);
+
+        var reopened = fixture.documents.getFlowDocument(1L, saved.path());
+        assertThat(reopened.schedule()).isEqualTo(retrySchedule);
+
+        Path repo = fixture.properties.resolveRepoPath(1L);
+        assertThat(Files.readString(repo.resolve("_flows/retry_doc/flow.yaml")))
+                .contains("maxAttempts: 4")
+                .contains("interval: PT10M")
+                .contains("behavior: CREATE_NEW_EXECUTION");
+
+        var clearedSchedule = new OfflineFlowSchedule(
+                "0 2 * * *", "Asia/Shanghai", false, OfflineSchedulePeriod.DAILY, false, 3, 10);
+        var cleared = fixture.save(1L, "retry_doc", clearedSchedule, null, 1L);
+        assertThat(cleared.schedule().retryEnabled()).isFalse();
+        assertThat(cleared.schedule().retryCount()).isNull();
+        assertThat(cleared.schedule().retryIntervalMinutes()).isNull();
+        assertThat(Files.readString(repo.resolve("_flows/retry_doc/flow.yaml")))
+                .doesNotContain("retry:");
     }
 
     private DataSource mysqlDataSource() {

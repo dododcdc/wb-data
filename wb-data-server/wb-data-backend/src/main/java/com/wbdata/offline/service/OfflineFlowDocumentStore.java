@@ -90,7 +90,10 @@ final class OfflineFlowDocumentStore {
                         scheduleData.cron(),
                         scheduleData.timezone(),
                         scheduleData.enabled(),
-                        scheduleData.period()
+                        scheduleData.period(),
+                        scheduleData.retryEnabled(),
+                        scheduleData.retryCount(),
+                        scheduleData.retryIntervalMinutes()
                 );
 
         List<OfflineFlowStageResponse> stages = new ArrayList<>();

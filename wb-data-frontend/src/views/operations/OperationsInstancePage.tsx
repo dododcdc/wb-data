@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     ArrowLeft,
+    CheckCheck,
     ChevronRight,
     GitBranch,
     Info,
+    LayoutList,
     Lock,
     RefreshCw,
     RotateCcw,
@@ -21,9 +23,11 @@ import {
     getOperationsExecution,
     getOperationsExecutionLogs,
     getOperationsInstanceDiagnosis,
+    markOperationsExecutionSuccess,
     rerunOperationsExecution,
     stopOperationsExecution,
     type OperationsExecutionLogEntry,
+    type OperationsExecutionRerunRequest,
     type OperationsExecutionTaskRun,
     type OperationsInstanceDiagnosis,
     type OperationsInstanceUpstreamItem,
@@ -36,8 +40,10 @@ import {
     computeLogLevelCounts,
     getExecutionPresentation,
     getExecutionStatusLabel,
+    getRerunBadgeMeta,
     getTaskStatusIcon,
     isActiveStatus,
+    isMarkableSuccess,
     isRunningStatus,
     isStoppable,
     isUserTaskId,
@@ -46,6 +52,7 @@ import LogViewer, { type LogViewerItem } from '../../components/execution/LogVie
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import { ListShell } from '../../components/ui/list/ListShell';
 import {
+    computeNodeTimelineSpans,
     getInstanceStateLabel,
     getInstanceStateTone,
     isActiveInstanceState,
@@ -88,7 +95,9 @@ function pickDefaultTaskId(taskRuns: OperationsExecutionTaskRun[]) {
     const failedTask = taskRuns.find((task) => getExecutionPresentation(task.status).dotTone === 'failed');
     if (failedTask) return failedTask.taskId;
     const activeTask = taskRuns.find((task) => isActiveStatus(task.status));
-    return activeTask?.taskId ?? taskRuns[0]?.taskId ?? undefined;
+    if (activeTask) return activeTask.taskId;
+    const executedTask = taskRuns.find((task) => task.status !== 'SKIPPED');
+    return executedTask?.taskId ?? taskRuns[0]?.taskId ?? undefined;
 }
 
 function StatusPill({ state, label }: { state: string | null | undefined; label?: string }) {
@@ -148,9 +157,10 @@ export default function OperationsInstancePage() {
     const [activeLevels, setActiveLevels] = useState<Set<string>>(new Set());
     const [searchText, setSearchText] = useState('');
     const [autoRefresh, setAutoRefresh] = useState(true);
-    const [rightTab, setRightTab] = useState<'logs' | 'parameters'>('logs');
+    const [activeTab, setActiveTab] = useState<'overview' | 'logs' | 'parameters'>('overview');
     const [rerunDialogOpen, setRerunDialogOpen] = useState(false);
     const [stopDialogOpen, setStopDialogOpen] = useState(false);
+    const [markSuccessDialogOpen, setMarkSuccessDialogOpen] = useState(false);
 
     const locateQuery = useQuery({
         queryKey: ['operations-instance-locate', groupId, locatorExecutionId],
@@ -212,8 +222,19 @@ export default function OperationsInstancePage() {
         () => detail?.taskRuns.filter((task) => isUserTaskId(task.taskId)) ?? [],
         [detail],
     );
+    const skippedTaskCount = useMemo(
+        () => visibleTaskRuns.filter((task) => task.status === 'SKIPPED').length,
+        [visibleTaskRuns],
+    );
     const defaultTaskId = useMemo(
         () => (detail ? pickDefaultTaskId(visibleTaskRuns) : undefined),
+        [detail, visibleTaskRuns],
+    );
+
+    const timelineSpans = useMemo(
+        () => (detail
+            ? computeNodeTimelineSpans(visibleTaskRuns, detail.startDate, detail.endDate)
+            : new Map()),
         [detail, visibleTaskRuns],
     );
 
@@ -230,16 +251,16 @@ export default function OperationsInstancePage() {
 
     const logsQuery = useQuery({
         queryKey: ['operations-execution-logs', groupId, selectedExecutionId, selectedTaskId],
-        enabled: groupId != null && Boolean(detail) && selectedTaskId !== undefined && rightTab === 'logs',
+        enabled: groupId != null && Boolean(detail) && selectedTaskId !== undefined && activeTab === 'logs',
         queryFn: () => getOperationsExecutionLogs(groupId ?? 0, selectedExecutionId ?? '', selectedTaskId ?? ''),
-        refetchInterval: autoRefresh && isExecutionActive && rightTab === 'logs' ? 5_000 : false,
+        refetchInterval: autoRefresh && isExecutionActive && activeTab === 'logs' ? 5_000 : false,
     });
 
     const rerunMutation = useMutation({
-        mutationFn: (reuseManualOverrides: boolean) => rerunOperationsExecution(
+        mutationFn: (payload: OperationsExecutionRerunRequest) => rerunOperationsExecution(
             groupId ?? 0,
             selectedExecutionId ?? '',
-            { reuseManualOverrides },
+            payload,
         ),
         onSuccess: () => {
             setRerunDialogOpen(false);
@@ -266,6 +287,20 @@ export default function OperationsInstancePage() {
         },
     });
 
+    const markSuccessMutation = useMutation({
+        mutationFn: () => markOperationsExecutionSuccess(groupId ?? 0, selectedExecutionId ?? ''),
+        onSuccess: () => {
+            setMarkSuccessDialogOpen(false);
+            showSuccess('已置为成功');
+            void queryClient.invalidateQueries({ queryKey: ['operations-instance-diagnosis'] });
+            void queryClient.invalidateQueries({ queryKey: ['operations-execution', groupId, selectedExecutionId] });
+            void queryClient.invalidateQueries({ queryKey: ['operations-executions'] });
+        },
+        onError: (error) => {
+            showError(error, '置成功失败');
+        },
+    });
+
     const logs = logsQuery.data ?? EMPTY_LOGS;
     const levelCounts = useMemo(() => computeLogLevelCounts(logs), [logs]);
     const logItems = useMemo<LogViewerItem[]>(() => logs
@@ -283,7 +318,9 @@ export default function OperationsInstancePage() {
 
     const canOperate = systemAdmin || permissions.includes('offline.write');
     const canStop = Boolean(detail && (detail.stoppable ?? isStoppable(detail.status)) && canOperate);
+    const canMarkSuccess = Boolean(detail && (detail.markableSuccess ?? isMarkableSuccess(detail.status)) && canOperate);
     const canRerun = Boolean(detail?.rerunnable && canOperate);
+    const isForceSuccess = Boolean(detail && (detail.forceSuccess || detail.status === 'FORCE_SUCCESS'));
     const rawInputsEntries = detail ? Object.entries(detail.inputs ?? {}) : [];
     const parameterCount = detail
         ? (detail.parameters.length > 0
@@ -296,7 +333,7 @@ export default function OperationsInstancePage() {
     const refreshAll = () => {
         void diagnosisQuery.refetch();
         void detailQuery.refetch();
-        if (selectedTaskId !== undefined && rightTab === 'logs') {
+        if (selectedTaskId !== undefined && activeTab === 'logs') {
             void logsQuery.refetch();
         }
     };
@@ -305,18 +342,24 @@ export default function OperationsInstancePage() {
         if (!upstream.accessible || groupId == null || !branch || !flowId || !period) return;
         setTrail((previous) => [...previous, { group: groupId, branch, flowId, period }]);
         setDrawerOpen(false);
-        setSearchParams({
+        setActiveTab('overview');
+        const next: Record<string, string> = {
             group: String(upstream.groupId),
             branch,
             flowId: upstream.flowId,
             period: upstream.scheduleKey,
-        });
+        };
+        if (upstream.executionId) {
+            next.execution = upstream.executionId;
+        }
+        setSearchParams(next);
     };
 
     const jumpToTrailEntry = (index: number) => {
         const target = trail[index];
         if (!target) return;
         setTrail((previous) => previous.slice(0, index));
+        setActiveTab('overview');
         setSearchParams({
             group: String(target.group),
             branch: target.branch,
@@ -465,7 +508,6 @@ export default function OperationsInstancePage() {
                         type="button"
                         className="operations-instance-upstream-button"
                         onClick={() => setDrawerOpen(true)}
-                        disabled={diagnosis.upstreams.length === 0}
                     >
                         <GitBranch size={15} />
                         上游实例{diagnosis.upstreams.length > 0 ? ` (${diagnosis.upstreams.length})` : ''}
@@ -502,6 +544,17 @@ export default function OperationsInstancePage() {
                             停止任务
                         </button>
                     )}
+                    {canMarkSuccess && (
+                        <button
+                            type="button"
+                            className="operations-execution-mark-success"
+                            onClick={() => setMarkSuccessDialogOpen(true)}
+                            disabled={markSuccessMutation.isPending}
+                        >
+                            <CheckCheck size={15} />
+                            置成功
+                        </button>
+                    )}
                     {canRerun && (
                         <button
                             type="button"
@@ -531,24 +584,34 @@ export default function OperationsInstancePage() {
                 {executions.length > 1 && (
                     <section className="operations-instance-executions" aria-label="本期执行">
                         <span className="operations-instance-executions-label">本期共 {executions.length} 次执行</span>
-                        {executions.map((item) => (
-                            <button
-                                key={item.id}
-                                type="button"
-                                className={`operations-instance-execution-chip${item.id === selectedExecutionId ? ' is-active' : ''}`}
-                                onClick={() => {
-                                    const next = new URLSearchParams(searchParams);
-                                    next.set('execution', item.id);
-                                    setSearchParams(next, { replace: true });
-                                }}
-                            >
-                                <span className="operations-instance-execution-chip-time">
-                                    {formatBrowserDateTime(item.createdAt)}
-                                </span>
-                                <StatusPill state={item.status} />
-                                {item.rerun && <span className="operations-instance-rerun-badge">重跑</span>}
-                            </button>
-                        ))}
+                        {executions.map((item) => {
+                            const rerunBadge = getRerunBadgeMeta(item);
+                            return (
+                                <button
+                                    key={item.id}
+                                    type="button"
+                                    className={`operations-instance-execution-chip${item.id === selectedExecutionId ? ' is-active' : ''}`}
+                                    onClick={() => {
+                                        const next = new URLSearchParams(searchParams);
+                                        next.set('execution', item.id);
+                                        setSearchParams(next, { replace: true });
+                                    }}
+                                >
+                                    <span className="operations-instance-execution-chip-time">
+                                        {formatBrowserDateTime(item.createdAt)}
+                                    </span>
+                                    <StatusPill state={item.status} />
+                                    {rerunBadge ? (
+                                        <span
+                                            className={`operations-instance-rerun-badge operations-instance-rerun-badge--${rerunBadge.kind}`}
+                                            title={rerunBadge.title}
+                                        >
+                                            {rerunBadge.label}
+                                        </span>
+                                    ) : null}
+                                </button>
+                            );
+                        })}
                     </section>
                 )}
 
@@ -572,12 +635,38 @@ export default function OperationsInstancePage() {
                     <div className="operations-execution-empty-inline" role="alert">执行详情加载失败。</div>
                 ) : (
                     <>
-                        {executions.length === 1 && executions[0]?.rerun && (
-                            <section className="operations-instance-executions" aria-label="本期执行">
-                                <span className="operations-instance-executions-label">本次执行为重跑</span>
-                                <span className="operations-instance-rerun-badge">重跑</span>
-                            </section>
-                        )}
+                        {executions.length === 1 && (() => {
+                            const rerunBadge = getRerunBadgeMeta(executions[0]);
+                            if (!rerunBadge) return null;
+                            return (
+                                <section className="operations-instance-executions" aria-label="本期执行">
+                                    <span className="operations-instance-executions-label">
+                                        {rerunBadge.kind === 'auto' ? '本次执行为自动重试' : '本次执行为手动重跑'}
+                                    </span>
+                                    <span
+                                        className={`operations-instance-rerun-badge operations-instance-rerun-badge--${rerunBadge.kind}`}
+                                        title={rerunBadge.title}
+                                    >
+                                        {rerunBadge.label}
+                                    </span>
+                                </section>
+                            );
+                        })()}
+                        {isForceSuccess && (() => {
+                            const metaParts: string[] = [];
+                            if (detail.forceSuccessBy) metaParts.push(`操作人：${detail.forceSuccessBy}`);
+                            if (detail.forceSuccessAt) metaParts.push(`操作时间：${formatBrowserDateTime(detail.forceSuccessAt)}`);
+                            const metaSuffix = metaParts.length > 0 ? `（${metaParts.join('，')}）` : '';
+                            return (
+                                <div
+                                    className="operations-instance-reason operations-instance-reason--forced-success"
+                                    role="status"
+                                >
+                                    <CheckCheck size={15} className="operations-instance-reason__icon" aria-hidden="true" />
+                                    <span>{`已人工置成功${metaSuffix}。下游等待任务已放行，原始失败节点与报错日志保持不变。`}</span>
+                                </div>
+                            );
+                        })()}
                         <section className="operations-execution-summary" aria-label="执行摘要">
                             {showExecutionStatusMetric && (
                                 <DetailMetric label="状态" value={<StatusPill state={detail.status} />} />
@@ -596,129 +685,230 @@ export default function OperationsInstancePage() {
                             <DetailMetric label="开始时间" value={formatBrowserDateTime(detail.startDate)} />
                             <DetailMetric label="结束时间" value={formatBrowserDateTime(detail.endDate)} />
                             <DetailMetric label="耗时" value={formatDuration(detail.durationMs)} emphasized />
-                            <DetailMetric label="节点数" value={visibleTaskRuns.length} />
+                            <DetailMetric
+                                label="节点数"
+                                value={skippedTaskCount > 0
+                                    ? `${visibleTaskRuns.length - skippedTaskCount} / ${visibleTaskRuns.length}（${skippedTaskCount} 已跳过）`
+                                    : visibleTaskRuns.length}
+                            />
                         </section>
 
-                        <section className="operations-execution-workspace">
-                            <aside className="operations-execution-tasks" aria-label="节点列表">
-                                <div className="operations-execution-tasks-header">
-                                    <span>执行节点</span>
-                                    <span className="operations-execution-tasks-count">{visibleTaskRuns.length}</span>
+                        <section className="operations-execution-board">
+                            <div className="operations-execution-panel-header">
+                                <div className="operations-execution-panel-tabs" role="tablist" aria-label="执行详情视图">
+                                    <button
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={activeTab === 'overview'}
+                                        className={`operations-execution-panel-tab${activeTab === 'overview' ? ' is-active' : ''}`}
+                                        onClick={() => setActiveTab('overview')}
+                                    >
+                                        <LayoutList size={14} />
+                                        运行概览
+                                        {visibleTaskRuns.length > 0 ? (
+                                            <span className="operations-execution-panel-tab__badge">{visibleTaskRuns.length}</span>
+                                        ) : null}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={activeTab === 'logs'}
+                                        className={`operations-execution-panel-tab${activeTab === 'logs' ? ' is-active' : ''}`}
+                                        onClick={() => setActiveTab('logs')}
+                                    >
+                                        <Terminal size={14} />
+                                        执行日志
+                                    </button>
+                                    <button
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={activeTab === 'parameters'}
+                                        className={`operations-execution-panel-tab${activeTab === 'parameters' ? ' is-active' : ''}`}
+                                        onClick={() => setActiveTab('parameters')}
+                                    >
+                                        <SlidersHorizontal size={14} />
+                                        运行参数
+                                        {parameterCount > 0 ? (
+                                            <span className="operations-execution-panel-tab__badge">{parameterCount}</span>
+                                        ) : null}
+                                    </button>
                                 </div>
-                                <ListShell
-                                    state={visibleTaskRuns.length === 0 ? 'empty' : 'ready'}
-                                    className="operations-instance-list-shell"
-                                    emptyTitle="暂无节点"
-                                >
-                                    <div className="operations-execution-task-list">
-                                        {visibleTaskRuns.map((task) => {
-                                            const tone = getExecutionPresentation(task.status).dotTone;
-                                            const Icon = getTaskStatusIcon(task.status);
-                                            return (
-                                                <button
-                                                    key={task.taskId}
-                                                    type="button"
-                                                    className={`operations-execution-task${selectedTaskId === task.taskId ? ' is-active' : ''}`}
-                                                    onClick={() => {
-                                                        setSelectedTaskId(task.taskId);
-                                                        setRightTab('logs');
-                                                    }}
-                                                    aria-label={`查看 ${task.taskId} 日志`}
-                                                >
-                                                    <span className="operations-execution-task__main">
-                                                        <span className="operations-execution-task__name" title={task.taskId}>{task.taskId}</span>
-                                                        <span className={`operations-execution-status operations-execution-status--${tone}`}>
-                                                            <Icon size={13} className={isRunningStatus(task.status) ? 'operations-execution-spin' : undefined} />
-                                                            {getExecutionStatusLabel(task.status)}
-                                                        </span>
-                                                    </span>
-                                                    <span className="operations-execution-task__meta">
-                                                        <span>{formatBrowserDateTime(task.startDate)}</span>
-                                                        <span>{formatDuration(task.durationMs)}</span>
-                                                    </span>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </ListShell>
-                            </aside>
 
-                            <div className="operations-execution-right">
-                                <div className="operations-execution-panel-header">
-                                    <div className="operations-execution-panel-tabs" role="tablist" aria-label="执行详情视图">
-                                        <button
-                                            type="button"
-                                            role="tab"
-                                            aria-selected={rightTab === 'logs'}
-                                            className={`operations-execution-panel-tab${rightTab === 'logs' ? ' is-active' : ''}`}
-                                            onClick={() => setRightTab('logs')}
-                                        >
-                                            <Terminal size={14} />
-                                            执行日志
-                                        </button>
-                                        <button
-                                            type="button"
-                                            role="tab"
-                                            aria-selected={rightTab === 'parameters'}
-                                            className={`operations-execution-panel-tab${rightTab === 'parameters' ? ' is-active' : ''}`}
-                                            onClick={() => setRightTab('parameters')}
-                                        >
-                                            <SlidersHorizontal size={14} />
-                                            运行参数
-                                            {parameterCount > 0 ? (
-                                                <span className="operations-execution-panel-tab__badge">{parameterCount}</span>
-                                            ) : null}
-                                        </button>
-                                    </div>
+                                {activeTab === 'logs' && (
+                                    <div className="operations-execution-log-tools">
+                                        <div className="operations-execution-levels" aria-label="日志级别">
+                                            {LEVELS.map((level) => {
+                                                const count = levelCounts[level] ?? 0;
+                                                const active = activeLevels.has(level);
+                                                const zero = count === 0 && !active;
+                                                const dimmed = activeLevels.size > 0 && !active;
+                                                return (
+                                                    <button
+                                                        key={level}
+                                                        type="button"
+                                                        className={`operations-execution-level operations-execution-level--${level.toLowerCase()}${zero ? ' is-zero' : ''}${dimmed ? ' is-dimmed' : ''}${active ? ' is-active' : ''}`}
+                                                        onClick={() => {
+                                                            setActiveLevels((previous) => {
+                                                                const next = new Set(previous);
+                                                                if (next.has(level)) {
+                                                                    next.delete(level);
+                                                                } else {
+                                                                    next.add(level);
+                                                                }
+                                                                return next.size === LEVELS.length ? new Set() : next;
+                                                            });
+                                                        }}
+                                                    >
+                                                        {level} {count}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
 
-                                    {rightTab === 'logs' && (
-                                        <div className="operations-execution-log-tools">
-                                            <div className="operations-execution-levels" aria-label="日志级别">
-                                                {LEVELS.map((level) => {
-                                                    const count = levelCounts[level] ?? 0;
-                                                    const active = activeLevels.has(level);
-                                                    const zero = count === 0 && !active;
-                                                    const dimmed = activeLevels.size > 0 && !active;
+                                        <div className="operations-execution-log-actions">
+                                            <label className="operations-execution-log-search">
+                                                <Search size={14} />
+                                                <input
+                                                    type="search"
+                                                    value={searchText}
+                                                    onChange={(event) => setSearchText(event.target.value)}
+                                                    placeholder="搜索日志"
+                                                />
+                                            </label>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {activeTab === 'overview' ? (
+                                <section className="operations-overview-panel" role="tabpanel" aria-label="运行概览">
+                                    {visibleTaskRuns.length === 0 ? (
+                                        <div className="operations-execution-params__empty">暂无节点执行记录。</div>
+                                    ) : (
+                                        <div className="operations-overview-table-wrap">
+                                            <table className="operations-overview-table" aria-label="节点运行情况">
+                                                <thead>
+                                                    <tr>
+                                                        <th>节点</th>
+                                                        <th>状态</th>
+                                                        <th>开始时间</th>
+                                                        <th>结束时间</th>
+                                                        <th className="is-right">耗时</th>
+                                                        <th>时间分布</th>
+                                                        <th className="is-right">操作</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {visibleTaskRuns.map((task) => {
+                                                        const tone = getExecutionPresentation(task.status).dotTone;
+                                                        const Icon = getTaskStatusIcon(task.status);
+                                                        const isSkipped = task.status === 'SKIPPED';
+                                                        const span = timelineSpans.get(task.taskId);
+                                                        return (
+                                                            <tr
+                                                                key={task.taskId}
+                                                                className={`${isSkipped ? 'is-skipped ' : ''}${tone === 'failed' ? 'is-failed' : ''}`.trim() || undefined}
+                                                            >
+                                                                <td>
+                                                                    <span className="operations-overview-node-id" title={task.taskId}>
+                                                                        {task.taskId}
+                                                                    </span>
+                                                                </td>
+                                                                <td>
+                                                                    <span className={`operations-execution-status operations-execution-status--${tone}`}>
+                                                                        <Icon size={13} className={isRunningStatus(task.status) ? 'operations-execution-spin' : undefined} />
+                                                                        {getExecutionStatusLabel(task.status)}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="is-mono">{formatBrowserDateTime(task.startDate)}</td>
+                                                                <td className="is-mono">{formatBrowserDateTime(task.endDate)}</td>
+                                                                <td className="is-mono is-right">{formatDuration(task.durationMs)}</td>
+                                                                <td>
+                                                                    {span?.hasBar ? (
+                                                                        <div
+                                                                            className="operations-timeline-track"
+                                                                            title={`${formatBrowserDateTime(task.startDate)} → ${formatBrowserDateTime(task.endDate)} (${formatDuration(task.durationMs)})`}
+                                                                        >
+                                                                            <span
+                                                                                className={`operations-timeline-bar operations-timeline-bar--${tone}`}
+                                                                                style={{
+                                                                                    left: `${span.leftPct}%`,
+                                                                                    width: `${span.widthPct}%`,
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span className="operations-timeline-empty">—</span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="is-right">
+                                                                    <button
+                                                                        type="button"
+                                                                        className="operations-overview-log-btn"
+                                                                        aria-label={`查看 ${task.taskId} 日志`}
+                                                                        onClick={() => {
+                                                                            setSelectedTaskId(task.taskId);
+                                                                            setActiveTab('logs');
+                                                                        }}
+                                                                    >
+                                                                        <Terminal size={13} aria-hidden="true" />
+                                                                        查看日志
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </section>
+                            ) : activeTab === 'logs' ? (
+                                <div className="operations-execution-logs-split" role="tabpanel" aria-label="执行日志">
+                                    <aside className="operations-execution-tasks" aria-label="节点列表">
+                                        <div className="operations-execution-tasks-header">
+                                            <span>执行节点</span>
+                                            <span className="operations-execution-tasks-count">{visibleTaskRuns.length}</span>
+                                        </div>
+                                        <ListShell
+                                            state={visibleTaskRuns.length === 0 ? 'empty' : 'ready'}
+                                            className="operations-instance-list-shell"
+                                            emptyTitle="暂无节点"
+                                        >
+                                            <div className="operations-execution-task-list">
+                                                {visibleTaskRuns.map((task) => {
+                                                    const tone = getExecutionPresentation(task.status).dotTone;
+                                                    const Icon = getTaskStatusIcon(task.status);
+                                                    const isSkipped = task.status === 'SKIPPED';
                                                     return (
                                                         <button
-                                                            key={level}
+                                                            key={task.taskId}
                                                             type="button"
-                                                            className={`operations-execution-level operations-execution-level--${level.toLowerCase()}${zero ? ' is-zero' : ''}${dimmed ? ' is-dimmed' : ''}${active ? ' is-active' : ''}`}
+                                                            className={`operations-execution-task${selectedTaskId === task.taskId ? ' is-active' : ''}${isSkipped ? ' is-skipped' : ''}`}
                                                             onClick={() => {
-                                                                setActiveLevels((previous) => {
-                                                                    const next = new Set(previous);
-                                                                    if (next.has(level)) {
-                                                                        next.delete(level);
-                                                                    } else {
-                                                                        next.add(level);
-                                                                    }
-                                                                    return next.size === LEVELS.length ? new Set() : next;
-                                                                });
+                                                                setSelectedTaskId(task.taskId);
                                                             }}
+                                                            aria-label={`查看 ${task.taskId} 日志`}
                                                         >
-                                                            {level} {count}
+                                                            <span className="operations-execution-task__main">
+                                                                <span className="operations-execution-task__name" title={task.taskId}>{task.taskId}</span>
+                                                                <span className={`operations-execution-status operations-execution-status--${tone}`}>
+                                                                    <Icon size={13} className={isRunningStatus(task.status) ? 'operations-execution-spin' : undefined} />
+                                                                    {getExecutionStatusLabel(task.status)}
+                                                                </span>
+                                                            </span>
+                                                            <span className="operations-execution-task__meta">
+                                                                <span>{formatBrowserDateTime(task.startDate)}</span>
+                                                                <span>{formatDuration(task.durationMs)}</span>
+                                                            </span>
                                                         </button>
                                                     );
                                                 })}
                                             </div>
+                                        </ListShell>
+                                    </aside>
 
-                                            <div className="operations-execution-log-actions">
-                                                <label className="operations-execution-log-search">
-                                                    <Search size={14} />
-                                                    <input
-                                                        type="search"
-                                                        value={searchText}
-                                                        onChange={(event) => setSearchText(event.target.value)}
-                                                        placeholder="搜索日志"
-                                                    />
-                                                </label>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {rightTab === 'logs' ? (
-                                    <section className="operations-execution-logs" role="tabpanel" aria-label="执行日志">
+                                    <div className="operations-execution-logs">
                                         <div className="operations-execution-log-frame">
                                             <div className="operations-execution-log-surface">
                                                 {logsQuery.isLoading || selectedTaskId === undefined ? (
@@ -742,9 +932,10 @@ export default function OperationsInstancePage() {
                                                 )}
                                             </div>
                                         </div>
-                                    </section>
-                                ) : (
-                                    <section className="operations-execution-params" role="tabpanel" aria-label="运行参数">
+                                    </div>
+                                </div>
+                            ) : (
+                                <section className="operations-execution-params" role="tabpanel" aria-label="运行参数">
                                         {detail.parameterSnapshotChanged === true ? (
                                             <div className="operations-execution-params__notice" role="alert">
                                                 <TriangleAlert size={15} className="mt-0.5 shrink-0" />
@@ -826,9 +1017,8 @@ export default function OperationsInstancePage() {
                                                 </table>
                                             </div>
                                         )}
-                                    </section>
-                                )}
-                            </div>
+                                </section>
+                            )}
                         </section>
                     </>
                 )}
@@ -847,7 +1037,12 @@ export default function OperationsInstancePage() {
                         onClick={(event) => event.stopPropagation()}
                     >
                         <header className="operations-instance-drawer-header">
-                            <h2>上游实例</h2>
+                            <div className="operations-instance-drawer-title">
+                                <h2>上游实例</h2>
+                                {diagnosis.upstreams.length > 0 ? (
+                                    <span className="operations-execution-tasks-count">{diagnosis.upstreams.length}</span>
+                                ) : null}
+                            </div>
                             <button
                                 type="button"
                                 className="operations-execution-icon-button"
@@ -876,16 +1071,41 @@ export default function OperationsInstancePage() {
                                             title={upstream.accessible ? `查看 ${displayName} 实例详情` : '无该项目组权限'}
                                             onClick={() => drillToUpstream(upstream)}
                                         >
-                                            <span className="operations-instance-upstream-main">
-                                                <span className="operations-instance-upstream-name" title={displayName}>
-                                                    {!upstream.accessible && <Lock size={13} aria-label="无权限" />}
-                                                    {displayName}
-                                                </span>
-                                                <span className="operations-instance-upstream-meta">
-                                                    {upstream.satisfied ? '已满足闸门' : '未满足闸门'}
-                                                </span>
-                                            </span>
-                                            <StatusPill state={upstream.state} />
+                                            <div className="operations-instance-upstream-head">
+                                                <div className="operations-instance-upstream-main">
+                                                    <span className="operations-instance-upstream-name" title={displayName}>
+                                                        {!upstream.accessible && <Lock size={13} aria-label="无权限" />}
+                                                        {displayName}
+                                                    </span>
+                                                    <span className={`operations-instance-upstream-gate${upstream.satisfied ? ' is-satisfied' : ' is-waiting'}`}>
+                                                        {upstream.satisfied ? '已满足闸门' : '未满足闸门'}
+                                                    </span>
+                                                </div>
+                                                <div className="operations-instance-upstream-right">
+                                                    <StatusPill state={upstream.state} />
+                                                    {upstream.accessible ? (
+                                                        <ChevronRight size={14} className="operations-instance-upstream-arrow" aria-hidden="true" />
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                            <dl className="operations-instance-upstream-times">
+                                                <div>
+                                                    <dt>计划开始</dt>
+                                                    <dd>{formatBrowserDateTime(upstream.plannedAt)}</dd>
+                                                </div>
+                                                <div>
+                                                    <dt>实际开始</dt>
+                                                    <dd>{formatBrowserDateTime(upstream.startDate)}</dd>
+                                                </div>
+                                                <div>
+                                                    <dt>结束时间</dt>
+                                                    <dd>{formatBrowserDateTime(upstream.endDate)}</dd>
+                                                </div>
+                                                <div>
+                                                    <dt>耗时</dt>
+                                                    <dd>{formatDuration(upstream.durationMs)}</dd>
+                                                </div>
+                                            </dl>
                                         </button>
                                     );
                                 })}
@@ -902,7 +1122,7 @@ export default function OperationsInstancePage() {
                 detail={detail}
                 pending={rerunMutation.isPending}
                 onOpenChange={setRerunDialogOpen}
-                onConfirm={(reuseManualOverrides) => rerunMutation.mutate(reuseManualOverrides)}
+                onConfirm={(payload) => rerunMutation.mutate(payload)}
             />
             <ConfirmDialog
                 open={stopDialogOpen}
@@ -916,6 +1136,19 @@ export default function OperationsInstancePage() {
                 icon="warning"
                 isLoading={stopMutation.isPending}
                 onConfirm={() => stopMutation.mutate()}
+            />
+            <ConfirmDialog
+                open={markSuccessDialogOpen}
+                onOpenChange={(open) => {
+                    if (!open && !markSuccessMutation.isPending) setMarkSuccessDialogOpen(false);
+                }}
+                title="确认置成功"
+                description={`将任务「${diagnosis.flowId}」的本次执行状态置为「人工置成功」。下游等待任务将自动放行，原始失败节点与报错日志会完整保留；置成功后本次执行不可再重跑。`}
+                confirmText="确认置成功"
+                variant="success"
+                icon="success"
+                isLoading={markSuccessMutation.isPending}
+                onConfirm={() => markSuccessMutation.mutate()}
             />
         </div>
     );

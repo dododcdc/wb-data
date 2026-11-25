@@ -221,6 +221,9 @@ describe('useFlowExecutionAndSchedule', () => {
                     timezone: 'Asia/Shanghai',
                     enabled: true,
                     period: 'DAILY',
+                    retryEnabled: false,
+                    retryCount: null,
+                    retryIntervalMinutes: null,
                 },
             }),
         }));
@@ -256,6 +259,57 @@ describe('useFlowExecutionAndSchedule', () => {
 
         expect(result.current.schedulePeriod).toBe('WEEKLY');
         expect(result.current.scheduleCron).toBe('30 6 * * 5');
+    });
+
+    it('stages schedule auto-retry settings when enabled and clears values when disabled', async () => {
+        const { result, params } = renderExecutionAndSchedule();
+
+        act(() => {
+            result.current.setScheduleCron('0 2 * * *');
+            result.current.changeScheduleRetry({
+                retryEnabled: true,
+                retryCount: 4,
+                retryIntervalMinutes: 15,
+            });
+        });
+        await act(async () => {
+            await result.current.stageSchedule();
+        });
+
+        expect(params.setDraftSession).toHaveBeenLastCalledWith(expect.objectContaining({
+            workingDraft: expect.objectContaining({
+                schedule: {
+                    cron: '0 2 * * *',
+                    timezone: 'Asia/Shanghai',
+                    enabled: false,
+                    period: 'DAILY',
+                    retryEnabled: true,
+                    retryCount: 4,
+                    retryIntervalMinutes: 15,
+                },
+            }),
+        }));
+
+        act(() => {
+            result.current.changeScheduleRetry({ retryEnabled: false });
+        });
+        await act(async () => {
+            await result.current.stageSchedule();
+        });
+
+        expect(params.setDraftSession).toHaveBeenLastCalledWith(expect.objectContaining({
+            workingDraft: expect.objectContaining({
+                schedule: {
+                    cron: '0 2 * * *',
+                    timezone: 'Asia/Shanghai',
+                    enabled: false,
+                    period: 'DAILY',
+                    retryEnabled: false,
+                    retryCount: null,
+                    retryIntervalMinutes: null,
+                },
+            }),
+        }));
     });
 
     it('rejects enabling schedule when cron is invalid', async () => {

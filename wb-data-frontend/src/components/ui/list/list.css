@@ -291,6 +291,12 @@
     color: var(--color-success);
 }
 
+.wb-list-pill.is-teal {
+    border-color: rgba(31, 102, 92, 0.24);
+    background: rgba(56, 137, 125, 0.14);
+    color: rgb(31, 102, 92);
+}
+
 .wb-list-pill.is-warning {
     border-color: var(--color-warning-border);
     background: var(--color-warning-bg);

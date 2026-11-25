@@ -143,6 +143,10 @@ class OperationsInstanceDiagnosisServiceTest {
         assertThat(response.upstreams().getFirst().satisfied()).isFalse();
         assertThat(response.upstreams().getFirst().accessible()).isTrue();
         assertThat(response.upstreams().getFirst().groupName()).isEqualTo("组二");
+        assertThat(response.upstreams().getFirst().plannedAt()).isEqualTo(Instant.parse("2026-10-06T01:00:00Z"));
+        assertThat(response.upstreams().getFirst().startDate()).isNull();
+        assertThat(response.upstreams().getFirst().endDate()).isNull();
+        assertThat(response.upstreams().getFirst().durationMs()).isNull();
     }
 
     @Test
@@ -156,8 +160,20 @@ class OperationsInstanceDiagnosisServiceTest {
                                 taskRun("load", "RUNNING")), Map.of())));
         fixture.stubUpstreamFlow("g2-main", "task_b");
         fixture.stubExecutions("g2-main", "task_b", List.of(
-                execution("exec-b", "g2-main", "task_b", "SUCCESS", "2026-10-06T01:00:00Z",
-                        "2026-10-06T01:00:05Z", List.of(), Map.of())));
+                new KestraExecutionSnapshot(
+                        "exec-b",
+                        "g2-main",
+                        "task_b",
+                        "SUCCESS",
+                        Instant.parse("2026-10-06T01:00:00Z"),
+                        Instant.parse("2026-10-06T01:00:05Z"),
+                        Instant.parse("2026-10-06T01:00:06Z"),
+                        Instant.parse("2026-10-06T01:02:16Z"),
+                        List.of(),
+                        Map.of(),
+                        Map.of(),
+                        Map.of()
+                )));
 
         OperationsInstanceDiagnosisResponse response = fixture.service.diagnose(
                 4L, "main", "task_a", "2026-10-06", fixture.accessibleGroups());
@@ -165,6 +181,10 @@ class OperationsInstanceDiagnosisServiceTest {
         assertThat(response.state()).isEqualTo("RUNNING");
         assertThat(response.upstreams().getFirst().satisfied()).isTrue();
         assertThat(response.upstreams().getFirst().executionId()).isEqualTo("exec-b");
+        assertThat(response.upstreams().getFirst().plannedAt()).isEqualTo(Instant.parse("2026-10-06T01:00:00Z"));
+        assertThat(response.upstreams().getFirst().startDate()).isEqualTo(Instant.parse("2026-10-06T01:00:06Z"));
+        assertThat(response.upstreams().getFirst().endDate()).isEqualTo(Instant.parse("2026-10-06T01:02:16Z"));
+        assertThat(response.upstreams().getFirst().durationMs()).isEqualTo(130_000L);
     }
 
     @Test
@@ -356,6 +376,202 @@ class OperationsInstanceDiagnosisServiceTest {
                     assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
                     assertThat(exception.getReason()).isEqualTo("执行记录不存在");
                 });
+    }
+
+    @Test
+    void retriedRepresentative_returnsRetriedStateWithWaitMessage() {
+        Fixture fixture = new Fixture();
+        fixture.stubOwnFlow(dailyFlowYaml(null, null, false));
+        fixture.stubExecutions("g4-main", "task_a", List.of(
+                execution("exec-1", "g4-main", "task_a", "RETRIED", "2026-10-06T02:00:00Z",
+                        "2026-10-06T02:00:05Z", List.of(), Map.of())));
+
+        OperationsInstanceDiagnosisResponse response = fixture.service.diagnose(
+                4L, "main", "task_a", "2026-10-06", fixture.accessibleGroups());
+
+        assertThat(response.state()).isEqualTo("RETRIED");
+        assertThat(response.reason()).contains("自动重试");
+    }
+
+    @Test
+    void pausePolicy_doesNotBlockWhilePreviousPeriodLatestIsRetried_andBlocksOnceRetriesExhausted() {
+        Fixture fixture = new Fixture(Instant.parse("2026-10-07T03:00:00Z"));
+        fixture.stubOwnFlow(dailyFlowYaml(null, "PAUSE", false));
+        fixture.stubExecutions("g4-main", "task_a", List.of(
+                execution("exec-a-cur", "g4-main", "task_a", "FAILED", "2026-10-06T02:00:00Z",
+                        "2026-10-06T02:00:05Z", List.of(taskRun("wb_upstream_gate", "FAILED")), Map.of()),
+                execution("exec-a-prev-1", "g4-main", "task_a", "RETRIED", "2026-10-05T02:00:00Z",
+                        "2026-10-05T02:00:05Z", List.of(), Map.of())));
+
+        OperationsInstanceDiagnosisResponse waitingGap = fixture.service.diagnose(
+                4L, "main", "task_a", "2026-10-06", fixture.accessibleGroups());
+        assertThat(waitingGap.state()).isEqualTo(OperationsInstanceDiagnosisService.STATE_GATE_TIMEOUT);
+
+        fixture.stubExecutions("g4-main", "task_a", List.of(
+                execution("exec-a-cur", "g4-main", "task_a", "FAILED", "2026-10-06T02:00:00Z",
+                        "2026-10-06T02:00:05Z", List.of(taskRun("wb_upstream_gate", "FAILED")), Map.of()),
+                execution("exec-a-prev-1", "g4-main", "task_a", "RETRIED", "2026-10-05T02:00:00Z",
+                        "2026-10-05T02:00:05Z", List.of(), Map.of()),
+                new KestraExecutionSnapshot(
+                        "exec-a-prev-2", "g4-main", "task_a", "FAILED",
+                        Instant.parse("2026-10-05T02:00:00Z"),
+                        Instant.parse("2026-10-05T02:05:05Z"),
+                        Instant.parse("2026-10-05T02:05:05Z"),
+                        null, List.of(), Map.of(), Map.of(), Map.of(),
+                        "exec-a-prev-1", 2)));
+
+        OperationsInstanceDiagnosisResponse exhausted = fixture.service.diagnose(
+                4L, "main", "task_a", "2026-10-06", fixture.accessibleGroups());
+        assertThat(exhausted.state()).isEqualTo(OperationsInstanceDiagnosisService.STATE_PAUSED_BY_POLICY);
+    }
+
+    @Test
+    void executions_distinguishAutoRetryAndManualRerun() {
+        Fixture fixture = new Fixture();
+        fixture.stubOwnFlow(dailyFlowYaml(null, null, false));
+        fixture.stubExecutions("g4-main", "task_a", List.of(
+                execution("exec-1", "g4-main", "task_a", "RETRIED", "2026-10-06T02:00:00Z",
+                        "2026-10-06T02:00:05Z", List.of(), Map.of()),
+                new KestraExecutionSnapshot(
+                        "exec-2", "g4-main", "task_a", "FAILED",
+                        Instant.parse("2026-10-06T02:00:00Z"),
+                        Instant.parse("2026-10-06T02:05:05Z"),
+                        Instant.parse("2026-10-06T02:05:05Z"),
+                        null, List.of(), Map.of(), Map.of(), Map.of(),
+                        "exec-1", 2),
+                execution("exec-3", "g4-main", "task_a", "SUCCESS", null,
+                        "2026-10-06T05:00:00Z", List.of(),
+                        Map.of(ExecutionTimeContext.PLANNED_TIME_INPUT, "2026-10-06T02:00:00Z"))));
+        WbOperationExecutionAction action = new WbOperationExecutionAction();
+        action.setActionType("RERUN");
+        action.setNewExecutionId("exec-3");
+        when(fixture.actionMapper.selectList(Mockito.any())).thenReturn(List.of(action));
+
+        OperationsInstanceDiagnosisResponse response = fixture.service.diagnose(
+                4L, "main", "task_a", "2026-10-06", fixture.accessibleGroups());
+
+        assertThat(response.executions()).extracting("id").containsExactly("exec-3", "exec-2", "exec-1");
+        assertThat(response.executions().get(0).rerunType()).isEqualTo("MANUAL");
+        assertThat(response.executions().get(0).retryAttempt()).isNull();
+        assertThat(response.executions().get(1).rerun()).isTrue();
+        assertThat(response.executions().get(1).rerunType()).isEqualTo("AUTO");
+        assertThat(response.executions().get(1).retryAttempt()).isEqualTo(1);
+        assertThat(response.executions().get(2).rerun()).isFalse();
+        assertThat(response.executions().get(2).rerunType()).isEqualTo("NONE");
+    }
+
+    @Test
+    void diagnose_exposesPartialRerunCountsOnInstanceExecutionItems() {
+        Fixture fixture = new Fixture();
+        fixture.stubOwnFlow(dailyFlowYaml(null, null, false));
+        KestraExecutionSnapshot partialManual = new KestraExecutionSnapshot(
+                "exec-partial", "g4-main", "task_a", "SUCCESS",
+                Instant.parse("2026-10-07T02:00:00Z"),
+                Instant.parse("2026-10-07T02:05:00Z"),
+                Instant.parse("2026-10-07T02:05:01Z"),
+                Instant.parse("2026-10-07T02:05:20Z"),
+                List.of(),
+                Map.of("wbdata_rerun_tasks", "transform,load"),
+                Map.of("wbdataRerunSelectedCount", "2", "wbdataRerunTotalCount", "4"),
+                Map.of(),
+                "exec-partial",
+                1
+        );
+        fixture.stubExecutions("g4-main", "task_a", List.of(partialManual));
+        WbOperationExecutionAction manualAction = new WbOperationExecutionAction();
+        manualAction.setActionType("RERUN");
+        manualAction.setNewExecutionId("exec-partial");
+        when(fixture.actionMapper.selectList(Mockito.any())).thenReturn(List.of(manualAction));
+
+        OperationsInstanceDiagnosisResponse response = fixture.service.diagnose(
+                4L, "main", "task_a", "2026-10-07", fixture.accessibleGroups());
+
+        assertThat(response.executions()).hasSize(1);
+        var item = response.executions().getFirst();
+        assertThat(item.rerun()).isTrue();
+        assertThat(item.rerunType()).isEqualTo("MANUAL");
+        assertThat(item.partialRerun()).isTrue();
+        assertThat(item.rerunSelectedTaskCount()).isEqualTo(2);
+        assertThat(item.rerunTotalTaskCount()).isEqualTo(4);
+    }
+
+    @Test
+    void forceSuccess_setsInstanceStateSatisfiesUpstreamAndUnblocksPausePolicy() {
+        Fixture fixture = new Fixture(Instant.parse("2026-10-07T03:00:00Z"));
+        fixture.stubOwnFlow(dailyFlowYaml("2:task_b", "PAUSE", false));
+        KestraExecutionSnapshot curExec = new KestraExecutionSnapshot(
+                "exec-a-cur", "g4-main", "task_a", "SUCCESS",
+                Instant.parse("2026-10-06T02:00:00Z"),
+                Instant.parse("2026-10-06T02:00:05Z"),
+                Instant.parse("2026-10-06T02:00:06Z"),
+                Instant.parse("2026-10-06T02:00:20Z"),
+                List.of(taskRun("wb_upstream_gate", "SUCCESS"), taskRun("load", "FAILED")),
+                Map.of(),
+                Map.of(OperationsForceSuccess.LABEL_FORCE_SUCCESS, "true"),
+                Map.of()
+        );
+        KestraExecutionSnapshot prevForced = new KestraExecutionSnapshot(
+                "exec-a-prev", "g4-main", "task_a", "SUCCESS",
+                Instant.parse("2026-10-05T02:00:00Z"),
+                Instant.parse("2026-10-05T02:00:05Z"),
+                Instant.parse("2026-10-05T02:00:06Z"),
+                Instant.parse("2026-10-05T02:00:20Z"),
+                List.of(),
+                Map.of(),
+                Map.of(OperationsForceSuccess.LABEL_FORCE_SUCCESS, "true"),
+                Map.of()
+        );
+        fixture.stubExecutions("g4-main", "task_a", List.of(curExec, prevForced));
+        fixture.stubUpstreamFlow("g2-main", "task_b");
+        fixture.stubExecutions("g2-main", "task_b", List.of(
+                new KestraExecutionSnapshot(
+                        "exec-b-forced", "g2-main", "task_b", "SUCCESS",
+                        Instant.parse("2026-10-06T01:00:00Z"),
+                        Instant.parse("2026-10-06T01:00:05Z"),
+                        Instant.parse("2026-10-06T01:00:06Z"),
+                        Instant.parse("2026-10-06T01:00:20Z"),
+                        List.of(),
+                        Map.of(),
+                        Map.of(OperationsForceSuccess.LABEL_FORCE_SUCCESS, "true"),
+                        Map.of()
+                )
+        ));
+
+        OperationsInstanceDiagnosisResponse response = fixture.service.diagnose(
+                4L, "main", "task_a", "2026-10-06", fixture.accessibleGroups());
+
+        assertThat(response.state()).isEqualTo("FORCE_SUCCESS");
+        assertThat(response.executions().getFirst().status()).isEqualTo("FORCE_SUCCESS");
+        assertThat(response.upstreams().getFirst().satisfied()).isTrue();
+        assertThat(response.upstreams().getFirst().state()).isEqualTo("FORCE_SUCCESS");
+
+        // When current execution failed at gate after previous period was force-succeeded, PAUSE policy does not block
+        KestraExecutionSnapshot failedGate = execution("exec-a-cur-2", "g4-main", "task_a", "FAILED",
+                "2026-10-06T02:00:00Z", "2026-10-06T02:00:05Z",
+                List.of(taskRun("wb_upstream_gate", "FAILED")), Map.of());
+        fixture.stubExecutions("g4-main", "task_a", List.of(failedGate, prevForced));
+        // If another execution for upstream achieved organic SUCCESS, upstream state prefers SUCCESS
+        fixture.stubExecutions("g2-main", "task_b", List.of(
+                execution("exec-b-organic", "g2-main", "task_b", "SUCCESS",
+                        "2026-10-06T01:00:00Z", "2026-10-06T01:05:00Z", List.of(), Map.of()),
+                new KestraExecutionSnapshot(
+                        "exec-b-forced", "g2-main", "task_b", "SUCCESS",
+                        Instant.parse("2026-10-06T01:00:00Z"),
+                        Instant.parse("2026-10-06T01:00:05Z"),
+                        Instant.parse("2026-10-06T01:00:06Z"),
+                        Instant.parse("2026-10-06T01:00:20Z"),
+                        List.of(),
+                        Map.of(),
+                        Map.of(OperationsForceSuccess.LABEL_FORCE_SUCCESS, "true"),
+                        Map.of()
+                )
+        ));
+
+        OperationsInstanceDiagnosisResponse unblocked = fixture.service.diagnose(
+                4L, "main", "task_a", "2026-10-06", fixture.accessibleGroups());
+
+        assertThat(unblocked.state()).isEqualTo(OperationsInstanceDiagnosisService.STATE_GATE_TIMEOUT);
+        assertThat(unblocked.upstreams().getFirst().state()).isEqualTo("SUCCESS");
     }
 
     private static String dailyFlowYaml(String dependencies, String failurePolicy, boolean disabled) {

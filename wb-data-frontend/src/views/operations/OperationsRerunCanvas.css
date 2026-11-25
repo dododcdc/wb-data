@@ -1,0 +1,384 @@
+.operations-rerun-canvas-shell {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    background: var(--color-bg-primary);
+    overflow: hidden;
+}
+
+.operations-rerun-canvas-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-secondary);
+}
+
+.operations-rerun-canvas-summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 0.78rem;
+    color: var(--color-text-secondary);
+}
+
+.operations-rerun-canvas-count {
+    font-weight: 600;
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.operations-rerun-mode-pill {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 7px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.operations-rerun-mode-pill.is-partial {
+    background: var(--color-brand-light);
+    color: var(--color-brand);
+}
+
+.operations-rerun-mode-pill.is-full {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-secondary);
+}
+
+.operations-rerun-canvas-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+}
+
+.operations-rerun-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.operations-rerun-legend-swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+}
+
+.operations-rerun-legend-swatch.is-required {
+    background: var(--color-brand);
+}
+
+.operations-rerun-legend-swatch.is-selected {
+    background: var(--color-info);
+}
+
+.operations-rerun-legend-swatch.is-skipped {
+    border: 1.5px dashed var(--color-border-strong);
+    background: transparent;
+}
+
+.operations-rerun-canvas-actions {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.operations-rerun-tool-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 26px;
+    padding: 0 9px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-bg-primary);
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: 0.74rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.operations-rerun-tool-btn:hover:not(:disabled) {
+    background: var(--color-bg-tertiary);
+    border-color: var(--color-border-strong);
+    color: var(--color-text-primary);
+}
+
+.operations-rerun-tool-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.operations-rerun-tool-btn:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 1px;
+}
+
+.operations-rerun-feedback {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--color-info-border);
+    background: var(--color-info-bg);
+    color: var(--color-info);
+    font-size: 0.76rem;
+    line-height: 1.4;
+}
+
+.operations-rerun-reactflow-wrap {
+    position: relative;
+    height: 300px;
+    min-height: 240px;
+    background: var(--color-bg-secondary);
+}
+
+.operations-rerun-card {
+    position: relative;
+    box-sizing: border-box;
+    width: 244px;
+    min-height: 68px;
+    padding: 9px 11px;
+    border: 1.5px solid var(--color-border-strong);
+    border-radius: 12px;
+    background: var(--color-bg-primary);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 7px;
+    pointer-events: auto;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 140ms ease, box-shadow 140ms ease, opacity 140ms ease, background-color 140ms ease;
+}
+
+.operations-rerun-card:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+.operations-rerun-card.is-selected {
+    border-color: color-mix(in srgb, var(--color-info) 65%, var(--color-border));
+    background: var(--color-bg-primary);
+    box-shadow: var(--shadow-md);
+}
+
+.operations-rerun-card.is-selected:hover {
+    border-color: var(--color-info);
+}
+
+.operations-rerun-card.is-required {
+    border-color: var(--color-brand);
+    background: color-mix(in srgb, var(--color-brand-light) 55%, var(--color-bg-primary));
+    box-shadow: 0 0 0 2px var(--color-accent-glow), var(--shadow-sm);
+}
+
+.operations-rerun-card.is-skipped {
+    opacity: 0.72;
+    border-style: dashed;
+    border-color: var(--color-border-strong);
+    background: color-mix(in srgb, var(--color-bg-secondary) 70%, var(--color-bg-primary));
+    box-shadow: none;
+}
+
+.operations-rerun-card.is-skipped:hover {
+    opacity: 0.96;
+    border-color: var(--color-accent);
+}
+
+.operations-rerun-card.is-disabled {
+    cursor: default;
+}
+
+.operations-rerun-card__top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.operations-rerun-card__check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    border: 1.5px solid var(--color-border-strong);
+    background: var(--color-bg-primary);
+    color: #ffffff;
+}
+
+.operations-rerun-card.is-selected .operations-rerun-card__check {
+    border-color: var(--color-info);
+    background: var(--color-info);
+}
+
+.operations-rerun-card.is-required .operations-rerun-card__check {
+    border-color: var(--color-brand);
+    background: var(--color-brand);
+}
+
+.operations-rerun-card__title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.operations-rerun-node-kind {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-secondary);
+}
+
+.operations-rerun-node-kind.is-sql,
+.operations-rerun-node-kind.is-postgresql {
+    background: var(--badge-postgresql-bg);
+    color: var(--badge-postgresql-fg);
+}
+
+.operations-rerun-node-kind.is-mysql {
+    background: var(--badge-mysql-bg);
+    color: var(--badge-mysql-fg);
+}
+
+.operations-rerun-node-kind.is-clickhouse {
+    background: var(--badge-clickhouse-bg);
+    color: var(--badge-clickhouse-fg);
+}
+
+.operations-rerun-node-kind.is-hive-sql {
+    background: var(--badge-hive-bg);
+    color: var(--badge-hive-fg);
+}
+
+.operations-rerun-node-kind.is-transfer {
+    background: rgba(56, 137, 125, 0.14);
+    color: rgb(31, 102, 92);
+}
+
+.operations-rerun-card__bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.operations-rerun-node-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 20px;
+    padding: 0 7px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.operations-rerun-node-status.is-success {
+    background: var(--color-success-bg);
+    color: var(--color-success);
+}
+
+.operations-rerun-node-status.is-failed {
+    background: var(--color-error-bg);
+    color: var(--color-error);
+}
+
+.operations-rerun-node-status.is-running {
+    background: var(--color-info-bg);
+    color: var(--color-info);
+}
+
+.operations-rerun-node-status.is-neutral {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-secondary);
+}
+
+.operations-rerun-node-role {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.operations-rerun-node-role.is-required {
+    background: color-mix(in srgb, var(--color-brand) 14%, transparent);
+    color: var(--color-brand-dark);
+}
+
+.operations-rerun-node-role.is-selected {
+    background: var(--color-info-bg);
+    color: var(--color-info);
+}
+
+.operations-rerun-node-role.is-skipped {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-muted);
+}
+
+.operations-rerun-handle {
+    width: 8px !important;
+    height: 8px !important;
+    border: 1.5px solid var(--color-bg-primary) !important;
+    background: rgba(166, 106, 71, 0.5) !important;
+}
+
+.operations-rerun-reactflow-wrap .react-flow__controls {
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.operations-rerun-reactflow-wrap .react-flow__controls-button {
+    background: var(--color-bg-primary);
+    color: var(--color-text-secondary);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.operations-rerun-reactflow-wrap .react-flow__controls-button:hover {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+}
+
+.operations-rerun-reactflow-wrap .react-flow__controls-button:last-child {
+    border-bottom: none;
+}
+
+.operations-rerun-reactflow-wrap .react-flow__controls-button svg {
+    fill: currentColor;
+}
+
+.operations-rerun-reactflow-wrap .react-flow__attribution {
+    display: none;
+}

@@ -76,6 +76,9 @@ export function useOfflineOnlineMode({
             timezone: onlineDocument.schedule.timezone,
             enabled: onlineDocument.schedule.enabled,
             period: onlineDocument.schedule.period,
+            retryEnabled: Boolean(onlineDocument.schedule.retryEnabled),
+            retryCount: onlineDocument.schedule.retryEnabled ? (onlineDocument.schedule.retryCount ?? null) : null,
+            retryIntervalMinutes: onlineDocument.schedule.retryEnabled ? (onlineDocument.schedule.retryIntervalMinutes ?? null) : null,
             contentHash: '',
             fileUpdatedAt: 0,
         };

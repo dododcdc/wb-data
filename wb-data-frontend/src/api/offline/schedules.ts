@@ -9,6 +9,9 @@ export interface OfflineFlowSchedule {
     timezone: string;
     enabled: boolean;
     period: OfflineSchedulePeriod;
+    retryEnabled?: boolean;
+    retryCount?: number | null;
+    retryIntervalMinutes?: number | null;
 }
 
 export interface OfflineScheduleResponse {
@@ -19,6 +22,9 @@ export interface OfflineScheduleResponse {
     timezone: string | null;
     enabled: boolean;
     period: OfflineSchedulePeriod;
+    retryEnabled?: boolean;
+    retryCount?: number | null;
+    retryIntervalMinutes?: number | null;
     contentHash: string;
     fileUpdatedAt: number;
 }
@@ -30,6 +36,9 @@ export interface UpdateOfflineScheduleRequest {
     period: OfflineSchedulePeriod;
     contentHash: string;
     fileUpdatedAt: number;
+    retryEnabled?: boolean;
+    retryCount?: number | null;
+    retryIntervalMinutes?: number | null;
 }
 
 export interface UpdateOfflineScheduleStatusRequest {

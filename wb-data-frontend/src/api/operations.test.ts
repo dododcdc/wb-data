@@ -11,7 +11,9 @@ vi.mock('../utils/request', () => ({
 
 import {
     getOperationsExecution,
+    getOperationsExecutionRerunContext,
     listOperationsExecutions,
+    markOperationsExecutionSuccess,
     rerunOperationsExecution,
     stopOperationsExecution,
 } from './operations';
@@ -35,14 +37,19 @@ describe('operations API group-scoped routes', () => {
         );
     });
 
-    it('uses group-scoped routes for detail and rerun', async () => {
+    it('uses group-scoped routes for detail, rerun-context, and partial rerun', async () => {
         await getOperationsExecution(4, 'exec-1');
-        await rerunOperationsExecution(4, 'exec-1', { reuseManualOverrides: false });
+        await getOperationsExecutionRerunContext(4, 'exec-1');
+        await rerunOperationsExecution(4, 'exec-1', {
+            reuseManualOverrides: false,
+            selectedTaskIds: ['transform', 'load'],
+        });
 
         expect(requestMock.get).toHaveBeenCalledWith('/api/v1/groups/4/operations/executions/exec-1');
+        expect(requestMock.get).toHaveBeenCalledWith('/api/v1/groups/4/operations/executions/exec-1/rerun-context');
         expect(requestMock.post).toHaveBeenCalledWith(
             '/api/v1/groups/4/operations/executions/exec-1/rerun',
-            { reuseManualOverrides: false },
+            { reuseManualOverrides: false, selectedTaskIds: ['transform', 'load'] },
         );
     });
 
@@ -50,5 +57,13 @@ describe('operations API group-scoped routes', () => {
         await stopOperationsExecution(4, 'exec-1');
 
         expect(requestMock.post).toHaveBeenCalledWith('/api/v1/groups/4/operations/executions/exec-1/stop');
+    });
+
+    it('uses group-scoped route for marking an execution as success', async () => {
+        await markOperationsExecutionSuccess(4, 'exec-1/sub');
+
+        expect(requestMock.post).toHaveBeenCalledWith(
+            '/api/v1/groups/4/operations/executions/exec-1%2Fsub/mark-success',
+        );
     });
 });

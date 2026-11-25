@@ -63,6 +63,9 @@ export function buildFlowDocumentSignature(document: OfflineFlowDocument | null)
             timezone: document.schedule.timezone,
             enabled: document.schedule.enabled,
             period: document.schedule.period,
+            retryEnabled: Boolean(document.schedule.retryEnabled),
+            retryCount: document.schedule.retryEnabled ? (document.schedule.retryCount ?? null) : null,
+            retryIntervalMinutes: document.schedule.retryEnabled ? (document.schedule.retryIntervalMinutes ?? null) : null,
         } : null,
         dependencyConfig: {
             dependencies: [...(document.dependencyConfig?.dependencies ?? [])]

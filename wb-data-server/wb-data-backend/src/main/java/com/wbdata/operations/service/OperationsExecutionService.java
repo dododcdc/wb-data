@@ -15,10 +15,12 @@ import com.wbdata.offline.parameter.service.ExecutionTimeContext;
 import com.wbdata.offline.parameter.service.FlowParameterMetadata;
 import com.wbdata.offline.execution.dto.ExecutionLogEntry;
 import com.wbdata.offline.execution.dto.ExecutionTaskRun;
+import com.wbdata.offline.service.OfflineFlowInspector;
 import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
 import com.wbdata.operations.dto.OperationsExecutionListItem;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
 import com.wbdata.operations.dto.OperationsExecutionQuery;
+import com.wbdata.operations.dto.OperationsExecutionRerunContextResponse;
 import com.wbdata.operations.dto.OperationsExecutionRerunResponse;
 import com.wbdata.operations.dto.OperationsExecutionStatusCounts;
 import com.wbdata.operations.entity.WbOperationExecutionAction;
@@ -53,12 +55,18 @@ public class OperationsExecutionService {
     private static final int MAX_PAGE_SIZE = 200;
     private static final String PARAMETER_OVERRIDE_KEYS_LABEL = "wbdataParameterOverrideKeys";
     private static final String NO_PARAMETER_OVERRIDES_LABEL_VALUE = "__none__";
+    private static final Set<String> SYSTEM_INPUT_KEYS = Set.of(
+            ExecutionTimeContext.PLANNED_TIME_INPUT,
+            "wbdata_bypass_gate",
+            OfflineFlowInspector.RERUN_TASKS_INPUT
+    );
 
     private final GitSyncConfigService gitSyncConfigService;
     private final KestraClient kestraClient;
     private final WbOperationExecutionActionMapper actionMapper;
     private final ExecutionParameterSnapshotRegistry parameterSnapshotRegistry;
     private final ExecutionParameterResolver parameterResolver = new ExecutionParameterResolver();
+    private final OfflineFlowInspector flowInspector = new OfflineFlowInspector();
 
     public OperationsExecutionListResponse listExecutions(Long groupId, OperationsExecutionQuery query) {
         OperationsExecutionQuery effectiveQuery = query == null
@@ -78,6 +86,7 @@ public class OperationsExecutionService {
         int activeCount = 0;
         int stoppedCount = 0;
         List<OperationsExecutionListItem> executions = new ArrayList<>();
+        Map<String, KestraExecutionSnapshot> snapshotsById = new LinkedHashMap<>();
         for (String namespace : targetNamespaces) {
             List<KestraExecutionSnapshot> snapshots = kestraClient.searchExecutions(buildExecutionSearchFilters(namespace, from, to));
             if (snapshots == null) {
@@ -92,8 +101,10 @@ public class OperationsExecutionService {
                     continue;
                 }
                 totalCount++;
-                String normalizedStatus = execution.status() == null ? "" : execution.status().toUpperCase(Locale.ROOT);
-                if ("SUCCESS".equals(normalizedStatus)) {
+                String effectiveStatus = OperationsForceSuccess.effectiveStatus(execution);
+                String normalizedStatus = effectiveStatus == null ? "" : effectiveStatus.toUpperCase(Locale.ROOT);
+                if ("SUCCESS".equals(normalizedStatus)
+                        || OperationsForceSuccess.STATUS_FORCE_SUCCESS.equals(normalizedStatus)) {
                     successCount++;
                 } else if ("FAILED".equals(normalizedStatus)) {
                     failedCount++;
@@ -102,8 +113,11 @@ public class OperationsExecutionService {
                 } else if ("KILLED".equals(normalizedStatus) || "CANCELLED".equals(normalizedStatus)) {
                     stoppedCount++;
                 }
-                if (!matchesStatusFilter(execution.status(), effectiveQuery.status())) {
+                if (!matchesStatusFilter(effectiveStatus, effectiveQuery.status())) {
                     continue;
+                }
+                if (execution.id() != null) {
+                    snapshotsById.put(execution.id(), execution);
                 }
                 executions.add(toListItem(execution, branch));
             }
@@ -118,12 +132,19 @@ public class OperationsExecutionService {
                 .skip((long) (page - 1) * pageSize)
                 .limit(pageSize)
                 .toList();
-        Set<String> rerunIds = findRerunIds(pageExecutions);
+        Set<String> manualRerunIds = findRerunIds(pageExecutions.stream().map(OperationsExecutionListItem::id).toList());
         pageExecutions = pageExecutions.stream()
-                .map(item -> new OperationsExecutionListItem(
-                        item.id(), item.namespace(), item.flowId(), item.branch(), item.status(),
-                        item.plannedAt(), item.createdAt(), item.startDate(), item.endDate(),
-                        item.durationMs(), item.rerunnable(), item.stoppable(), rerunIds.contains(item.id())))
+                .map(item -> {
+                    OperationsRerunClassifier.Classification classification = OperationsRerunClassifier.classify(
+                            snapshotsById.get(item.id()), manualRerunIds);
+                    return new OperationsExecutionListItem(
+                            item.id(), item.namespace(), item.flowId(), item.branch(), item.status(),
+                            item.plannedAt(), item.createdAt(), item.startDate(), item.endDate(),
+                            item.durationMs(), item.rerunnable(), item.stoppable(),
+                            classification.rerun(), classification.rerunType(), classification.retryAttempt(),
+                            classification.partialRerun(), classification.rerunSelectedTaskCount(),
+                            classification.rerunTotalTaskCount(), item.markableSuccess());
+                })
                 .toList();
 
         return new OperationsExecutionListResponse(
@@ -143,7 +164,9 @@ public class OperationsExecutionService {
     public OperationsExecutionDetailResponse getExecution(Long groupId, String executionId) {
         Scope scope = loadScope(groupId);
         KestraExecutionSnapshot execution = requireAccessibleExecution(scope, executionId);
-        return toDetail(groupId, execution, scope.branchFor(execution.namespace()));
+        Set<String> manualRerunIds = execution.id() == null ? Set.of() : findRerunIds(List.of(execution.id()));
+        return toDetail(groupId, execution, scope.branchFor(execution.namespace()),
+                OperationsRerunClassifier.classify(execution, manualRerunIds));
     }
 
     public List<ExecutionLogEntry> getLogs(Long groupId, String executionId, String taskId) {
@@ -159,26 +182,66 @@ public class OperationsExecutionService {
                 .toList();
     }
 
+    public OperationsExecutionRerunContextResponse getRerunContext(Long groupId, String executionId) {
+        Scope scope = loadScope(groupId);
+        KestraExecutionSnapshot original = requireAccessibleExecution(scope, executionId);
+        String flowSource = requireCurrentFlowSourceForRerun(original.namespace(), original.flowId());
+        OfflineFlowInspector.InspectedGraph graph = flowInspector.inspectGraph(flowSource);
+        return OperationsRerunGraphPlanner.buildContext(original, graph);
+    }
+
     public OperationsExecutionRerunResponse rerunExecution(Long groupId,
                                                             Long requestedBy,
                                                             String executionId,
                                                             boolean reuseManualOverrides) {
+        return rerunExecution(groupId, requestedBy, executionId, reuseManualOverrides, null);
+    }
+
+    public OperationsExecutionRerunResponse rerunExecution(Long groupId,
+                                                            Long requestedBy,
+                                                            String executionId,
+                                                            boolean reuseManualOverrides,
+                                                            List<String> selectedTaskIds) {
         Scope scope = loadScope(groupId);
         KestraExecutionSnapshot original = requireAccessibleExecution(scope, executionId);
-        if (!rerunnable(original.status())) {
+        if (!rerunnable(OperationsForceSuccess.effectiveStatus(original))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前状态不支持重跑");
         }
 
-        Map<String, String> rerunInputs = resolveRerunInputs(groupId, original, reuseManualOverrides);
+        String currentFlowSource = selectedTaskIds != null
+                ? requireCurrentFlowSourceForRerun(original.namespace(), original.flowId())
+                : kestraClient.getFlowSource(original.namespace(), original.flowId());
+        OperationsRerunGraphPlanner.SelectionResolution selection;
+        if (selectedTaskIds != null) {
+            OfflineFlowInspector.InspectedGraph graph = flowInspector.inspectGraph(currentFlowSource);
+            OperationsExecutionRerunContextResponse context = OperationsRerunGraphPlanner.buildContext(original, graph);
+            selection = OperationsRerunGraphPlanner.resolveSelection(context, selectedTaskIds);
+        } else {
+            selection = new OperationsRerunGraphPlanner.SelectionResolution(false, List.of(), 0);
+        }
+
+        Map<String, String> rerunInputs = resolveRerunInputs(
+                groupId, original, currentFlowSource, reuseManualOverrides);
         Set<String> originalOverrideKeys = splitLabelValues(labels(original).get(PARAMETER_OVERRIDE_KEYS_LABEL));
         String rerunOverrideKeys = reuseManualOverrides && !originalOverrideKeys.isEmpty()
                 ? String.join("---", originalOverrideKeys)
                 : NO_PARAMETER_OVERRIDES_LABEL_VALUE;
+        Map<String, String> executionLabels = new LinkedHashMap<>();
+        executionLabels.put(PARAMETER_OVERRIDE_KEYS_LABEL, rerunOverrideKeys);
+        if (selection.partial()) {
+            rerunInputs.put(OfflineFlowInspector.RERUN_TASKS_INPUT,
+                    String.join(",", selection.orderedSelectedTaskIds()));
+            executionLabels.put(OperationsRerunClassifier.RERUN_SELECTED_COUNT_LABEL,
+                    String.valueOf(selection.orderedSelectedTaskIds().size()));
+            executionLabels.put(OperationsRerunClassifier.RERUN_TOTAL_COUNT_LABEL,
+                    String.valueOf(selection.totalNodeCount()));
+        }
+
         KestraExecutionSnapshot rerun = kestraClient.createExecution(
                 original.namespace(),
                 original.flowId(),
-                rerunInputs,
-                Map.of(PARAMETER_OVERRIDE_KEYS_LABEL, rerunOverrideKeys));
+                Map.copyOf(rerunInputs),
+                Map.copyOf(executionLabels));
 
         WbOperationExecutionAction action = new WbOperationExecutionAction();
         action.setGroupId(groupId);
@@ -225,13 +288,44 @@ public class OperationsExecutionService {
         }
     }
 
+    public void markExecutionSuccess(Long groupId, Long requestedBy, String operatorName, String executionId) {
+        Scope scope = loadScope(groupId);
+        KestraExecutionSnapshot execution = requireAccessibleExecution(scope, executionId);
+        String effectiveStatus = OperationsForceSuccess.effectiveStatus(execution);
+        if (!OperationsForceSuccess.canMarkSuccess(effectiveStatus)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前状态不支持置成功");
+        }
+        Map<String, String> mergedLabels = OperationsForceSuccess.buildMergedLabels(
+                execution.labels(),
+                blankToNull(operatorName),
+                Instant.now()
+        );
+        kestraClient.setExecutionLabels(execution.id(), mergedLabels);
+        kestraClient.changeExecutionStatus(execution.id(), "SUCCESS");
+
+        WbOperationExecutionAction action = new WbOperationExecutionAction();
+        action.setGroupId(groupId);
+        action.setActionType("MARK_SUCCESS");
+        action.setOriginalExecutionId(execution.id());
+        action.setNewExecutionId(null);
+        action.setNamespace(execution.namespace());
+        action.setFlowId(execution.flowId());
+        action.setRequestedBy(requestedBy);
+        action.setRequestedAt(LocalDateTime.now());
+        try {
+            actionMapper.insert(action);
+        } catch (RuntimeException ex) {
+            log.warn("置成功执行 {} 成功，但写入操作审计记录失败", execution.id(), ex);
+        }
+    }
+
     private Map<String, String> resolveRerunInputs(Long groupId,
                                                    KestraExecutionSnapshot original,
+                                                   String currentFlowSource,
                                                    boolean reuseManualOverrides) {
         Map<String, String> rerunInputs = new LinkedHashMap<>();
         Map<String, String> originalInputs = original.inputs() == null ? Map.of() : original.inputs();
         Set<String> originalOverrideKeys = splitLabelValues(labels(original).get(PARAMETER_OVERRIDE_KEYS_LABEL));
-        String currentFlowSource = kestraClient.getFlowSource(original.namespace(), original.flowId());
         String currentSnapshotId = FlowParameterMetadata.readSnapshotId(currentFlowSource);
         com.wbdata.offline.parameter.dto.FlowParameterSnapshot currentSnapshot =
                 currentSnapshotId == null || currentSnapshotId.isBlank()
@@ -267,7 +361,22 @@ public class OperationsExecutionService {
             }
             rerunInputs.put(ExecutionTimeContext.PLANNED_TIME_INPUT, plannedTime.toString());
         }
-        return Map.copyOf(rerunInputs);
+        return rerunInputs;
+    }
+
+    private String requireCurrentFlowSourceForRerun(String namespace, String flowId) {
+        try {
+            String source = kestraClient.getFlowSource(namespace, flowId);
+            if (source == null || source.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "任务已从线上分支删除，无法重跑");
+            }
+            return source;
+        } catch (ResponseStatusException ex) {
+            if (ex.getStatusCode() == HttpStatus.NOT_FOUND) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "任务已从线上分支删除，无法重跑", ex);
+            }
+            throw ex;
+        }
     }
 
     private boolean definesParameter(com.wbdata.offline.parameter.dto.FlowParameterSnapshot snapshot, String key) {
@@ -384,30 +493,40 @@ public class OperationsExecutionService {
         if ("ACTIVE".equalsIgnoreCase(statusFilter)) {
             return stoppable(status);
         }
+        if ("SUCCESS".equalsIgnoreCase(statusFilter)) {
+            return "SUCCESS".equalsIgnoreCase(status)
+                    || OperationsForceSuccess.STATUS_FORCE_SUCCESS.equalsIgnoreCase(status);
+        }
         return status != null && status.equalsIgnoreCase(statusFilter);
     }
 
     private OperationsExecutionListItem toListItem(KestraExecutionSnapshot execution, String branch) {
+        String effectiveStatus = OperationsForceSuccess.effectiveStatus(execution);
         return new OperationsExecutionListItem(
                 execution.id(),
                 execution.namespace(),
                 execution.flowId(),
                 branch,
-                execution.status(),
+                effectiveStatus,
                 readPlannedTime(execution),
                 execution.createdAt(),
                 execution.startDate(),
                 execution.endDate(),
                 durationMs(execution.startDate(), execution.endDate()),
-                rerunnable(execution.status()),
-                stoppable(execution.status()),
-                false
+                rerunnable(effectiveStatus),
+                stoppable(effectiveStatus),
+                false,
+                "NONE",
+                null,
+                false,
+                null,
+                null,
+                OperationsForceSuccess.canMarkSuccess(effectiveStatus)
         );
     }
 
-    private Set<String> findRerunIds(List<OperationsExecutionListItem> pageExecutions) {
-        List<String> ids = pageExecutions.stream().map(OperationsExecutionListItem::id).toList();
-        if (ids.isEmpty()) {
+    private Set<String> findRerunIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
             return Set.of();
         }
         List<WbOperationExecutionAction> actions = actionMapper.selectList(
@@ -424,7 +543,8 @@ public class OperationsExecutionService {
 
     private OperationsExecutionDetailResponse toDetail(Long groupId,
                                                         KestraExecutionSnapshot execution,
-                                                        String branch) {
+                                                        String branch,
+                                                        OperationsRerunClassifier.Classification classification) {
         List<ExecutionTaskRun> taskRuns = execution.taskRuns() == null
                 ? List.of()
                 : execution.taskRuns().stream()
@@ -433,25 +553,36 @@ public class OperationsExecutionService {
                 .map(this::toTaskRun)
                 .toList();
         ParameterDetail parameterDetail = resolveParameterDetail(groupId, execution);
+        String effectiveStatus = OperationsForceSuccess.effectiveStatus(execution);
         return new OperationsExecutionDetailResponse(
                 execution.id(),
                 execution.namespace(),
                 execution.flowId(),
                 branch,
-                execution.status(),
+                effectiveStatus,
                 readPlannedTime(execution),
                 execution.createdAt(),
                 execution.startDate(),
                 execution.endDate(),
                 durationMs(execution.startDate(), execution.endDate()),
-                rerunnable(execution.status()),
-                stoppable(execution.status()),
+                rerunnable(effectiveStatus),
+                stoppable(effectiveStatus),
                 taskRuns,
                 execution.inputs() == null ? Map.of() : execution.inputs(),
                 execution.labels() == null ? Map.of() : execution.labels(),
                 parameterDetail.status(),
                 parameterDetail.parameters(),
-                resolveParameterSnapshotChanged(execution)
+                resolveParameterSnapshotChanged(execution),
+                classification.rerun(),
+                classification.rerunType(),
+                classification.retryAttempt(),
+                classification.partialRerun(),
+                classification.rerunSelectedTaskCount(),
+                classification.rerunTotalTaskCount(),
+                OperationsForceSuccess.canMarkSuccess(effectiveStatus),
+                OperationsForceSuccess.isForceSuccess(execution),
+                OperationsForceSuccess.forceSuccessBy(execution),
+                OperationsForceSuccess.forceSuccessAt(execution)
         );
     }
 
@@ -475,7 +606,7 @@ public class OperationsExecutionService {
     private ParameterDetail resolveParameterDetail(Long groupId, KestraExecutionSnapshot execution) {
         String snapshotId = labels(execution).get(ExecutionParameterSnapshotRegistry.LABEL_KEY);
         if (snapshotId == null || snapshotId.isBlank()) {
-            String status = execution.inputs() == null || execution.inputs().isEmpty() ? "NONE" : "UNAVAILABLE";
+            String status = hasNonSystemInputs(execution.inputs()) ? "UNAVAILABLE" : "NONE";
             return new ParameterDetail(status, List.of());
         }
         var snapshot = parameterSnapshotRegistry.find(groupId, snapshotId).orElse(null);
@@ -489,6 +620,13 @@ public class OperationsExecutionService {
                 splitLabelValues(labels(execution).get(PARAMETER_OVERRIDE_KEYS_LABEL))
         );
         return new ParameterDetail(resolution.status(), resolution.parameters());
+    }
+
+    private boolean hasNonSystemInputs(Map<String, String> inputs) {
+        if (inputs == null || inputs.isEmpty()) {
+            return false;
+        }
+        return inputs.keySet().stream().anyMatch(key -> !SYSTEM_INPUT_KEYS.contains(key));
     }
 
     private boolean hasPlannedTimeParameter(com.wbdata.offline.parameter.dto.FlowParameterSnapshot snapshot) {

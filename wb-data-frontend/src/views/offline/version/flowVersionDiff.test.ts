@@ -254,4 +254,31 @@ describe('diffFlowVersions', () => {
         expect(buildWorktreeVersionSelection({ dirty: true }).message).toBe('工作区有未提交修改');
         expect(buildWorktreeVersionSelection({ dirty: false }).message).toBe('与最新提交一致');
     });
+
+    it('compares retry schedule fields only when enabled or toggled', () => {
+        const noSchedule = snapshot(document([node('a')]));
+        const scheduledWithoutRetry = snapshot(document([node('a')], {
+            schedule: { cron: '0 2 * * *', timezone: 'Asia/Shanghai', enabled: false, period: 'DAILY', retryEnabled: false },
+        }));
+        const disabledDiff = diffFlowVersions(noSchedule, scheduledWithoutRetry);
+        expect(disabledDiff.schedule.map((item) => item.field)).not.toContain('retryEnabled');
+
+        const withRetry = snapshot(document([node('a')], {
+            schedule: {
+                cron: '0 2 * * *',
+                timezone: 'Asia/Shanghai',
+                enabled: false,
+                period: 'DAILY',
+                retryEnabled: true,
+                retryCount: 3,
+                retryIntervalMinutes: 5,
+            },
+        }));
+        const enabledDiff = diffFlowVersions(scheduledWithoutRetry, withRetry);
+        expect(enabledDiff.schedule.map((item) => item.field)).toEqual([
+            'retryEnabled',
+            'retryCount',
+            'retryIntervalMinutes',
+        ]);
+    });
 });

@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../tooltip';
 export interface RowActionItem {
     key: string;
     label: string;
+    ariaLabel?: string;
     icon: LucideIcon;
     onClick: () => void;
     tone?: 'default' | 'danger';
@@ -94,12 +95,12 @@ export function RowActions({ items, maxVisible = 2, menuLabel = '更多操作' }
             {visibleItems.map((item) => {
                 const Icon = item.pending ? Loader2 : item.icon;
                 return (
-                    <Tooltip key={item.key}>
+                    <Tooltip key={item.key} disableHoverableContent>
                         <TooltipTrigger asChild>
                             <button
                                 type="button"
                                 className={`wb-list-icon-btn${item.tone === 'danger' ? ' is-danger' : ''}`}
-                                aria-label={item.label}
+                                aria-label={item.ariaLabel ?? item.label}
                                 disabled={item.disabled || item.pending}
                                 onClick={(event) => {
                                     event.stopPropagation();

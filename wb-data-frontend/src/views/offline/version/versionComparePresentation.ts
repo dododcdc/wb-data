@@ -35,6 +35,9 @@ export const SCHEDULE_FIELD_LABELS: Record<string, string> = {
     cron: 'Cron 表达式',
     timezone: '调度时区',
     runtimeTimezone: '运行时区',
+    retryEnabled: '失败自动重试',
+    retryCount: '重试次数',
+    retryIntervalMinutes: '重试间隔',
 };
 
 export const DEPENDENCY_FIELD_LABELS: Record<string, string> = {
@@ -237,6 +240,15 @@ export function formatScheduleFieldValue(field: string, value: string | number |
     if (value === null || value === undefined || value === '') return '未配置';
     if (field === 'enabled') {
         return value === true || value === 'true' ? '已启用' : '未启用';
+    }
+    if (field === 'retryEnabled') {
+        return value === true || value === 'true' ? '已开启' : '已关闭';
+    }
+    if (field === 'retryCount') {
+        return `${value} 次`;
+    }
+    if (field === 'retryIntervalMinutes') {
+        return `${value} 分钟`;
     }
     if (field === 'period') {
         const text = String(value);

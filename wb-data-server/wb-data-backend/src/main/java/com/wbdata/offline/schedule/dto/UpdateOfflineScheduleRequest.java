@@ -10,6 +10,19 @@ public record UpdateOfflineScheduleRequest(
         @NotBlank String cron,
         @NotNull OfflineSchedulePeriod period,
         @NotBlank String contentHash,
-        long fileUpdatedAt
+        long fileUpdatedAt,
+        Boolean retryEnabled,
+        Integer retryCount,
+        Integer retryIntervalMinutes
 ) {
+    public UpdateOfflineScheduleRequest(
+            Long groupId,
+            String path,
+            String cron,
+            OfflineSchedulePeriod period,
+            String contentHash,
+            long fileUpdatedAt
+    ) {
+        this(groupId, path, cron, period, contentHash, fileUpdatedAt, null, null, null);
+    }
 }

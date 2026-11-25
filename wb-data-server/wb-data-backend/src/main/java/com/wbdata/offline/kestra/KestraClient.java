@@ -35,5 +35,13 @@ public interface KestraClient {
 
     void killExecution(String executionId);
 
+    default void setExecutionLabels(String executionId, java.util.Map<String, String> labels) {
+        throw new UnsupportedOperationException("setExecutionLabels not implemented");
+    }
+
+    default void changeExecutionStatus(String executionId, String status) {
+        throw new UnsupportedOperationException("changeExecutionStatus not implemented");
+    }
+
     boolean supportsTaskType(String taskType);
 }

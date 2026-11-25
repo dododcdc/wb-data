@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, LoaderCircle, PlayCircle, XCircle } from 'lucide-react';
+import { CheckCheck, CheckCircle2, Clock, LoaderCircle, PlayCircle, RotateCcw, SkipForward, XCircle } from 'lucide-react';
 
 export type ExecutionDotTone = 'neutral' | 'running' | 'success' | 'failed';
 export type ExecutionProgressTone = 'neutral' | 'running' | 'success' | 'failed';
@@ -22,20 +22,29 @@ export function isStoppable(status: string | null | undefined) {
     return isActiveStatus(status);
 }
 
+/** 可人工置成功的状态（失败、已取消或已停止） */
+export function isMarkableSuccess(status: string | null | undefined) {
+    return status === 'FAILED' || status === 'CANCELLED' || status === 'KILLED';
+}
+
 export function getExecutionStatusLabel(status: string | null | undefined) {
     if (status === 'SUCCESS') return '成功';
+    if (status === 'FORCE_SUCCESS') return '人工置成功';
     if (status === 'FAILED') return '失败';
     if (status === 'CANCELLED') return '已取消';
     if (status === 'KILLED') return '已停止';
     if (status === 'QUEUED' || status === 'CREATED') return '就绪';
     if (status === 'PAUSED') return '已暂停';
     if (status === 'RETRYING') return '重试中';
+    if (status === 'RETRIED') return '已重试';
+    if (status === 'SKIPPED') return '已跳过';
+    if (status === 'NOT_RUN') return '未执行';
     if (isRunningStatus(status)) return '执行中';
     return status || '等待执行';
 }
 
 export function getExecutionPresentation(status: string | null | undefined): ExecutionPresentation {
-    if (status === 'SUCCESS') {
+    if (status === 'SUCCESS' || status === 'FORCE_SUCCESS') {
         return {
             dotTone: 'success',
             progressTone: 'success',
@@ -65,15 +74,69 @@ export function getExecutionPresentation(status: string | null | undefined): Exe
 
 export const taskStatusIcon = {
     SUCCESS: CheckCircle2,
+    FORCE_SUCCESS: CheckCheck,
     FAILED: XCircle,
     RUNNING: LoaderCircle,
     RETRYING: LoaderCircle,
+    RETRIED: RotateCcw,
+    SKIPPED: SkipForward,
     CREATED: Clock,
     QUEUED: Clock,
     PAUSED: PlayCircle,
     CANCELLED: XCircle,
     KILLED: XCircle,
 } as const;
+
+export interface RerunBadgeMeta {
+    kind: 'manual' | 'auto';
+    label: string;
+    title?: string;
+    partial?: boolean;
+}
+
+export function getRerunBadgeMeta(item: {
+    rerun?: boolean;
+    rerunType?: string | null;
+    retryAttempt?: number | null;
+    partialRerun?: boolean;
+    rerunSelectedTaskCount?: number | null;
+    rerunTotalTaskCount?: number | null;
+} | null | undefined): RerunBadgeMeta | null {
+    if (!item) return null;
+    const selected = item.rerunSelectedTaskCount;
+    const total = item.rerunTotalTaskCount;
+    const partialSuffix = item.partialRerun && selected != null
+        ? total != null
+            ? ` · ${selected}/${total}`
+            : ` · ${selected} 节点`
+        : '';
+    if (item.rerunType === 'AUTO') {
+        const base = item.retryAttempt != null ? `自动重试 #${item.retryAttempt}` : '自动重试';
+        return {
+            kind: 'auto',
+            label: `${base}${partialSuffix}`,
+            title: item.partialRerun && selected != null
+                ? (total != null
+                    ? `${base}（部分重跑，执行 ${selected} / 共 ${total} 个节点）`
+                    : `${base}（部分重跑，执行 ${selected} 个节点）`)
+                : undefined,
+            partial: Boolean(item.partialRerun),
+        };
+    }
+    if (item.rerunType === 'MANUAL' || item.rerun) {
+        return {
+            kind: 'manual',
+            label: `手动重跑${partialSuffix}`,
+            title: item.partialRerun && selected != null
+                ? (total != null
+                    ? `手动部分重跑（执行 ${selected} / 共 ${total} 个节点）`
+                    : `手动部分重跑（执行 ${selected} 个节点）`)
+                : undefined,
+            partial: Boolean(item.partialRerun),
+        };
+    }
+    return null;
+}
 
 export function getTaskStatusIcon(status: string | null | undefined) {
     return taskStatusIcon[status as keyof typeof taskStatusIcon] || Clock;

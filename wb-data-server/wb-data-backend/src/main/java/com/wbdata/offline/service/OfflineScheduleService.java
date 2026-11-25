@@ -39,7 +39,10 @@ public class OfflineScheduleService {
                         existing.content(),
                         request.cron(),
                         runtimeTimezone,
-                        request.period()
+                        request.period(),
+                        request.retryEnabled(),
+                        request.retryCount(),
+                        request.retryIntervalMinutes()
                 ),
                 request.contentHash(),
                 request.fileUpdatedAt()
@@ -87,6 +90,9 @@ public class OfflineScheduleService {
                 schedule.timezone(),
                 schedule.enabled(),
                 schedule.period(),
+                schedule.retryEnabled(),
+                schedule.retryCount(),
+                schedule.retryIntervalMinutes(),
                 flow.contentHash(),
                 flow.fileUpdatedAt()
         );

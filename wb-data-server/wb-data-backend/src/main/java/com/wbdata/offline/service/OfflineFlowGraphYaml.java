@@ -20,6 +20,8 @@ import java.util.Set;
  */
 final class OfflineFlowGraphYaml {
 
+    static final String RERUN_TASKS_INPUT = "wbdata_rerun_tasks";
+
     private static final java.util.regex.Pattern READ_CALL_PATTERN =
             java.util.regex.Pattern.compile("\\{\\{\\s*read\\(\\s*['\"]([^'\"]+)['\"]\\s*\\)\\s*}}");
 
@@ -33,6 +35,12 @@ final class OfflineFlowGraphYaml {
         this.yaml = yaml;
         this.dependencyYaml = dependencyYaml;
         this.nodeTaskCompiler = nodeTaskCompiler;
+    }
+
+    static String buildRerunRunIfExpression(String taskId) {
+        String escaped = taskId.replace("\\", "\\\\").replace("'", "\\'");
+        return "{{ (inputs." + RERUN_TASKS_INPUT + " ?? '') == '' or ((',' ~ (inputs."
+                + RERUN_TASKS_INPUT + " ?? '') ~ ',') contains '," + escaped + ",') }}";
     }
 
     List<String> collectNamespaceFiles(String source) {
@@ -63,6 +71,21 @@ final class OfflineFlowGraphYaml {
                 nodes,
                 edges
         );
+    }
+
+    OfflineFlowInspector.InspectedGraph inspectGraph(String source) {
+        Map<String, Object> root = yaml.loadRoot(source);
+        String flowId = yaml.requiredString(root, "id");
+        String namespace = yaml.requiredString(root, "namespace");
+        List<Map<String, Object>> tasks = yaml.requireTasks(root);
+        List<OfflineFlowInspector.InspectedNode> nodes = new ArrayList<>();
+        List<OfflineFlowInspector.InspectedEdge> edges = new ArrayList<>();
+        boolean allLeafTasksHaveRunIf = inspectGraphTasks(tasks, nodes, edges);
+        boolean partialRerunSupported = declaresInput(root, RERUN_TASKS_INPUT)
+                && !nodes.isEmpty()
+                && allLeafTasksHaveRunIf;
+        return new OfflineFlowInspector.InspectedGraph(flowId, namespace, List.copyOf(nodes), List.copyOf(edges),
+                partialRerunSupported);
     }
 
     String unbindSqlDataSources(String source, Set<String> taskIds) {
@@ -171,13 +194,7 @@ final class OfflineFlowGraphYaml {
         }
 
         Map<String, Object> root = yaml.loadRoot(existingSource);
-        if (parameterCompilation != null) {
-            if (parameterCompilation.inputs().isEmpty()) {
-                root.remove("inputs");
-            } else {
-                root.put("inputs", parameterCompilation.inputs());
-            }
-        }
+        applyCompiledInputs(root, parameterCompilation, !nodes.isEmpty());
 
         // Build adjacency maps
         Map<String, Set<String>> successors = new LinkedHashMap<>();
@@ -224,6 +241,7 @@ final class OfflineFlowGraphYaml {
         for (String taskId : sorted) {
             Map<String, Object> taskDef = getOrCreateTaskDef(
                     existingTaskMap, taskId, nodes, dataSourceMap, parameterCompilation);
+            taskDef.put("runIf", buildRerunRunIfExpression(taskId));
 
             // Wrap in DagTask
             Map<String, Object> dagTaskEntry = new LinkedHashMap<>();
@@ -382,6 +400,27 @@ final class OfflineFlowGraphYaml {
     }
 
     private OfflineFlowNode parseLeafNode(Map<String, Object> task) {
+        NodeDescriptor descriptor = parseTaskDescriptor(task, true);
+        return new OfflineFlowNode(
+                descriptor.taskId(),
+                descriptor.kind(),
+                descriptor.scriptPath(),
+                descriptor.dataSourceId(),
+                descriptor.dataSourceType(),
+                descriptor.transferConfigPath()
+        );
+    }
+
+    private OfflineFlowInspector.InspectedNode parseInspectedNode(Map<String, Object> task) {
+        NodeDescriptor descriptor = parseTaskDescriptor(task, false);
+        return new OfflineFlowInspector.InspectedNode(
+                descriptor.taskId(),
+                descriptor.kind(),
+                descriptor.dataSourceType()
+        );
+    }
+
+    private NodeDescriptor parseTaskDescriptor(Map<String, Object> task, boolean requireScriptPath) {
         String taskId = yaml.requiredString(task, "id");
         OfflineTaskMetadataCodec.ParsedTaskMetadata metadata = OfflineTaskMetadataCodec.parse(
                 yaml.readOptionalString(task, "description")
@@ -389,54 +428,53 @@ final class OfflineFlowGraphYaml {
         Long dataSourceId = metadata.dataSourceId();
         String dataSourceType = metadata.dataSourceType();
         String nodeKind = metadata.nodeKind();
-        String scriptPath = "TRANSFER".equalsIgnoreCase(nodeKind) ? null : readScriptPath(task);
+        String scriptPath = "TRANSFER".equalsIgnoreCase(nodeKind)
+                ? null
+                : (requireScriptPath ? readScriptPath(task) : readOptionalScriptPath(task));
 
         // Backward compatibility for older YAML that stored datasource metadata on labels.
-        if (dataSourceId == null) {
-            Object labels = task.get("labels");
-            if (labels instanceof Map<?, ?> labelMap) {
-                Object dsIdObj = labelMap.get("wbdataDataSourceId");
-                if (dsIdObj != null) {
-                    try {
-                        dataSourceId = Long.parseLong(dsIdObj.toString());
-                    } catch (NumberFormatException ignored) {
-                        // ignore malformed historical metadata
-                    }
+        if (dataSourceId == null && task.get("labels") instanceof Map<?, ?> labelMap) {
+            Object dsIdObj = labelMap.get("wbdataDataSourceId");
+            if (dsIdObj != null) {
+                try {
+                    dataSourceId = Long.parseLong(dsIdObj.toString());
+                } catch (NumberFormatException ignored) {
+                    // ignore malformed historical metadata
                 }
             }
         }
 
-        // Infer kind and type
         String typeAttr = yaml.readOptionalString(task, "type");
-        if (typeAttr != null) {
-            if (dataSourceType == null || dataSourceType.isBlank()) {
-                if (OfflineNodeTaskCompiler.isJdbcQueryTaskType(typeAttr)) {
-                    String prefix = typeAttr.startsWith(OfflineNodeTaskCompiler.WB_DATA_JDBC_TASK_PREFIX)
-                            ? OfflineNodeTaskCompiler.WB_DATA_JDBC_TASK_PREFIX
-                            : OfflineNodeTaskCompiler.KESTRA_JDBC_TASK_PREFIX;
-                    dataSourceType = typeAttr.substring(prefix.length()).split("\\.")[0].toUpperCase();
-                    if ("GENERIC".equals(dataSourceType)) {
-                        dataSourceType = "HIVE";
-                    }
-                } else if (OfflineNodeTaskCompiler.HIVE_QUERY_TASK_TYPE.equals(typeAttr)) {
+        if (typeAttr != null && (dataSourceType == null || dataSourceType.isBlank())) {
+            if (OfflineNodeTaskCompiler.isJdbcQueryTaskType(typeAttr)) {
+                String prefix = typeAttr.startsWith(OfflineNodeTaskCompiler.WB_DATA_JDBC_TASK_PREFIX)
+                        ? OfflineNodeTaskCompiler.WB_DATA_JDBC_TASK_PREFIX
+                        : OfflineNodeTaskCompiler.KESTRA_JDBC_TASK_PREFIX;
+                dataSourceType = typeAttr.substring(prefix.length()).split("\\.")[0].toUpperCase();
+                if ("GENERIC".equals(dataSourceType)) {
                     dataSourceType = "HIVE";
                 }
+            } else if (OfflineNodeTaskCompiler.HIVE_QUERY_TASK_TYPE.equals(typeAttr)) {
+                dataSourceType = "HIVE";
             }
         }
 
         if (nodeKind == null || nodeKind.isBlank()) {
-            if (scriptPath.endsWith(".hql")
+            if ((scriptPath != null && scriptPath.endsWith(".hql"))
                     || ("HIVE".equalsIgnoreCase(dataSourceType)
                     && (OfflineNodeTaskCompiler.SHELL_COMMANDS_TASK_TYPE.equals(typeAttr)
                     || OfflineNodeTaskCompiler.HIVE_QUERY_TASK_TYPE.equals(typeAttr)))) {
                 nodeKind = "HIVE_SQL";
+            } else if ((scriptPath != null && scriptPath.endsWith(".sql"))
+                    || OfflineNodeTaskCompiler.isJdbcQueryTaskType(typeAttr)) {
+                nodeKind = "SQL";
             } else {
-                nodeKind = scriptPath.endsWith(".sql") ? "SQL" : "SHELL";
+                nodeKind = "SHELL";
             }
         }
         nodeKind = OfflineFlowNodeKinds.canonicalize(nodeKind, dataSourceType);
 
-        return new OfflineFlowNode(
+        return new NodeDescriptor(
                 taskId,
                 nodeKind,
                 scriptPath,
@@ -444,6 +482,111 @@ final class OfflineFlowGraphYaml {
                 dataSourceType,
                 metadata.transferConfigPath()
         );
+    }
+
+    private record NodeDescriptor(
+            String taskId,
+            String kind,
+            String scriptPath,
+            Long dataSourceId,
+            String dataSourceType,
+            String transferConfigPath
+    ) {
+    }
+
+    @SuppressWarnings("unchecked")
+    private void applyCompiledInputs(Map<String, Object> root,
+                                     FlowParameterCompiler.Compilation parameterCompilation,
+                                     boolean includeRerunTasksInput) {
+        List<Map<String, Object>> inputs = new ArrayList<>();
+        if (parameterCompilation != null) {
+            for (Map<String, Object> input : parameterCompilation.inputs()) {
+                if (input != null && !RERUN_TASKS_INPUT.equals(input.get("id"))) {
+                    inputs.add(new LinkedHashMap<>(input));
+                }
+            }
+        } else if (root.get("inputs") instanceof List<?> existingInputs) {
+            for (Object rawInput : existingInputs) {
+                if (rawInput instanceof Map<?, ?> rawMap && !RERUN_TASKS_INPUT.equals(rawMap.get("id"))) {
+                    inputs.add(new LinkedHashMap<>((Map<String, Object>) rawMap));
+                }
+            }
+        }
+        if (includeRerunTasksInput) {
+            Map<String, Object> rerunInput = new LinkedHashMap<>();
+            rerunInput.put("id", RERUN_TASKS_INPUT);
+            rerunInput.put("type", "STRING");
+            rerunInput.put("required", false);
+            inputs.add(rerunInput);
+        }
+        if (inputs.isEmpty()) {
+            root.remove("inputs");
+        } else {
+            root.put("inputs", List.copyOf(inputs));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean inspectGraphTasks(List<Map<String, Object>> tasks,
+                                      List<OfflineFlowInspector.InspectedNode> outNodes,
+                                      List<OfflineFlowInspector.InspectedEdge> outEdges) {
+        boolean allLeafTasksHaveRunIf = true;
+        for (Map<String, Object> task : tasks) {
+            if (OfflineFlowDependencyYaml.GATE_TASK_ID.equals(yaml.readOptionalString(task, "id"))) {
+                continue;
+            }
+            if (yaml.isDagTask(task)) {
+                Object rawChildTasks = task.get("tasks");
+                if (rawChildTasks instanceof List<?> rawList) {
+                    for (Map<String, Object> dagTaskEntry : yaml.castTaskList(rawList)) {
+                        Object rawInner = dagTaskEntry.get("task");
+                        if (!(rawInner instanceof Map<?, ?> innerMap)) {
+                            continue;
+                        }
+                        Map<String, Object> actualTask = (Map<String, Object>) innerMap;
+                        OfflineFlowInspector.InspectedNode node = parseInspectedNode(actualTask);
+                        outNodes.add(node);
+                        allLeafTasksHaveRunIf &= hasRerunRunIf(actualTask);
+
+                        Object dependsOn = dagTaskEntry.get("dependsOn");
+                        if (dependsOn instanceof List<?> predIds) {
+                            for (Object predId : predIds) {
+                                if (predId != null) {
+                                    outEdges.add(new OfflineFlowInspector.InspectedEdge(
+                                            predId.toString(), node.taskId()));
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                outNodes.add(parseInspectedNode(task));
+                allLeafTasksHaveRunIf &= hasRerunRunIf(task);
+            }
+        }
+        return allLeafTasksHaveRunIf;
+    }
+
+    private String readOptionalScriptPath(Map<String, Object> task) {
+        List<String> includePaths = readNamespaceIncludePathsFromTask(task);
+        return includePaths.isEmpty() ? null : includePaths.getFirst();
+    }
+
+    private boolean hasRerunRunIf(Map<String, Object> task) {
+        String runIf = yaml.readOptionalString(task, "runIf");
+        return runIf != null && runIf.contains(RERUN_TASKS_INPUT);
+    }
+
+    private boolean declaresInput(Map<String, Object> root, String inputId) {
+        if (!(root.get("inputs") instanceof List<?> rawInputs)) {
+            return false;
+        }
+        for (Object rawInput : rawInputs) {
+            if (rawInput instanceof Map<?, ?> inputMap && inputId.equals(inputMap.get("id"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @SuppressWarnings("unchecked")

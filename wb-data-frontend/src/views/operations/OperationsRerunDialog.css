@@ -1,0 +1,45 @@
+.dialog-content.operations-rerun-dialog {
+    display: flex;
+    flex-direction: column;
+    width: min(880px, calc(100vw - 48px));
+    max-width: 880px;
+    max-height: 88vh;
+}
+
+.dialog-content.operations-rerun-dialog--compact {
+    width: min(560px, calc(100vw - 48px));
+    max-width: 560px;
+}
+
+.operations-rerun-dialog .dialog-header,
+.operations-rerun-dialog .dialog-footer {
+    flex-shrink: 0;
+}
+
+.operations-rerun-dialog__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px 24px;
+}
+
+.operations-rerun-dialog__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.operations-rerun-dialog__footer-summary {
+    font-size: 0.78rem;
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.operations-rerun-dialog__footer-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+}

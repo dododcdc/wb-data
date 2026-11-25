@@ -365,7 +365,7 @@ export default function Layout() {
         item.children.some((child) => location.pathname === child.path || location.pathname.startsWith(child.path + '/'));
 
     return (
-        <TooltipProvider delayDuration={400}>
+        <TooltipProvider delayDuration={400} disableHoverableContent>
         <div className="layout-container">
             <header className="global-navbar">
                 <TopProgressBar visible={showRouteProgress} settling={routeProgressSettling} />

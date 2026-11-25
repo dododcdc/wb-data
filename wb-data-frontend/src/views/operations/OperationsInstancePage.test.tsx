@@ -2,16 +2,19 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReactNode } from 'react';
 
 import {
     getOperationsExecution,
     getOperationsExecutionLogs,
+    getOperationsExecutionRerunContext,
     getOperationsInstanceDiagnosis,
+    markOperationsExecutionSuccess,
     rerunOperationsExecution,
     stopOperationsExecution,
     type OperationsInstanceDiagnosis,
 } from '../../api/operations';
-import { formatLocalDateTime } from '../../lib/dateTime';
+import { formatBrowserDateTime, formatLocalDateTime } from '../../lib/dateTime';
 import { useAuthStore } from '../../utils/auth';
 import OperationsInstancePage from './OperationsInstancePage';
 import {
@@ -28,9 +31,37 @@ const { showSuccess, showError } = vi.hoisted(() => ({
 vi.mock('../../api/operations', () => ({
     getOperationsExecution: vi.fn(),
     getOperationsExecutionLogs: vi.fn(),
+    getOperationsExecutionRerunContext: vi.fn(),
     getOperationsInstanceDiagnosis: vi.fn(),
+    markOperationsExecutionSuccess: vi.fn(),
     rerunOperationsExecution: vi.fn(),
     stopOperationsExecution: vi.fn(),
+}));
+
+vi.mock('@xyflow/react', () => ({
+    ReactFlowProvider: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+    ReactFlow: ({
+        nodes,
+        nodeTypes,
+    }: {
+        nodes: Array<{ id: string; type?: string; data: Record<string, unknown> }>;
+        nodeTypes?: Record<string, React.ComponentType<{ data: Record<string, unknown> }>>;
+    }) => (
+        <div>
+            {nodes.map((node) => {
+                const Renderer = node.type ? nodeTypes?.[node.type] : undefined;
+                return <div key={node.id}>{Renderer ? <Renderer data={node.data} /> : node.id}</div>;
+            })}
+        </div>
+    ),
+    Handle: () => null,
+    Position: { Top: 'top', Bottom: 'bottom' },
+    MarkerType: { ArrowClosed: 'arrowclosed' },
+    BackgroundVariant: { Dots: 'dots' },
+    Background: () => null,
+    Controls: () => null,
+    useNodesInitialized: () => true,
+    useReactFlow: () => ({ fitView: vi.fn(() => Promise.resolve(true)) }),
 }));
 
 vi.mock('../../hooks/useOperationFeedback', () => ({
@@ -48,7 +79,9 @@ vi.mock('react-virtuoso', () => ({
 
 const getOperationsExecutionMock = vi.mocked(getOperationsExecution);
 const getOperationsExecutionLogsMock = vi.mocked(getOperationsExecutionLogs);
+const getOperationsExecutionRerunContextMock = vi.mocked(getOperationsExecutionRerunContext);
 const getOperationsInstanceDiagnosisMock = vi.mocked(getOperationsInstanceDiagnosis);
+const markOperationsExecutionSuccessMock = vi.mocked(markOperationsExecutionSuccess);
 const rerunOperationsExecutionMock = vi.mocked(rerunOperationsExecution);
 const stopOperationsExecutionMock = vi.mocked(stopOperationsExecution);
 
@@ -205,6 +238,18 @@ describe('OperationsInstancePage', () => {
                 },
             ]);
         });
+        getOperationsExecutionRerunContextMock.mockResolvedValue({
+            executionId: 'exec-1',
+            namespace: 'g4-feature-policy-review',
+            flowId: 'daily_policy',
+            partialRerunSupported: false,
+            graphChanged: false,
+            fallbackReason: null,
+            nodes: [],
+            edges: [],
+            defaultSelectedTaskIds: [],
+            requiredTaskIds: [],
+        });
     });
 
     afterEach(() => {
@@ -229,7 +274,7 @@ describe('OperationsInstancePage', () => {
         );
     }
 
-    it('loads instance diagnosis and focuses failed task logs', async () => {
+    it('loads instance overview by default and switches to logs tab when inspecting a node', async () => {
         renderPage();
 
         expect(await screen.findByText('daily_policy')).toBeTruthy();
@@ -238,21 +283,31 @@ describe('OperationsInstancePage', () => {
         expect(screen.getByText('Asia/Shanghai')).toBeTruthy();
         expect(screen.getByText('已启用')).toBeTruthy();
         expect(screen.getAllByText(formatLocalDateTime(new Date('2026-06-07T00:00:00Z'))).length).toBeGreaterThan(0);
-        expect(screen.queryByRole('button', { name: '查看 flow_dag 日志' })).toBeNull();
+
+        const overviewPanel = screen.getByRole('tabpanel', { name: '运行概览' });
+        expect(within(overviewPanel).queryByRole('button', { name: '查看 flow_dag 日志' })).toBeNull();
+        expect(within(overviewPanel).getByText(formatBrowserDateTime('2026-06-07T01:03:10Z'))).toBeTruthy();
+        expect(within(overviewPanel).getByText('2m 8s')).toBeTruthy();
+        expect(getOperationsExecutionLogsMock).not.toHaveBeenCalled();
+
         const summary = screen.getByLabelText('执行摘要');
         expect(within(summary).getByText('节点数').nextElementSibling?.textContent).toBe('2');
-        await waitFor(() => expect(getOperationsExecutionLogsMock).toHaveBeenCalledWith(4, 'exec-1', 'load_policy'));
-        expect(await screen.findByText('load failed on row 42')).toBeTruthy();
 
-        fireEvent.click(screen.getByRole('button', { name: '查看 extract_policy 日志' }));
+        fireEvent.click(within(overviewPanel).getByRole('button', { name: '查看 extract_policy 日志' }));
 
         await waitFor(() => expect(getOperationsExecutionLogsMock).toHaveBeenCalledWith(4, 'exec-1', 'extract_policy'));
         expect(await screen.findByText('extract finished')).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('button', { name: '查看 load_policy 日志' }));
+        await waitFor(() => expect(getOperationsExecutionLogsMock).toHaveBeenCalledWith(4, 'exec-1', 'load_policy'));
+        expect(await screen.findByText('load failed on row 42')).toBeTruthy();
     });
 
     it('refreshes diagnosis, execution and logs from one action', async () => {
         renderPage();
 
+        expect(await screen.findByRole('tabpanel', { name: '运行概览' })).toBeTruthy();
+        fireEvent.click(screen.getByRole('tab', { name: '执行日志' }));
         await waitFor(() => expect(getOperationsExecutionLogsMock).toHaveBeenCalledWith(4, 'exec-1', 'load_policy'));
         const diagnosisCalls = getOperationsInstanceDiagnosisMock.mock.calls.length;
         const detailCalls = getOperationsExecutionMock.mock.calls.length;
@@ -280,7 +335,7 @@ describe('OperationsInstancePage', () => {
 
         expect(await screen.findByRole('heading', { name: '确认重跑任务' })).toBeTruthy();
         expect(rerunOperationsExecutionMock).not.toHaveBeenCalled();
-        fireEvent.click(screen.getByRole('checkbox', { name: '沿用原执行的手动覆盖值' }));
+        fireEvent.click(await screen.findByRole('checkbox', { name: '沿用原执行的手动覆盖值' }));
         fireEvent.click(screen.getByRole('button', { name: '确认重跑' }));
 
         await waitFor(() => expect(rerunOperationsExecutionMock).toHaveBeenCalledWith(
@@ -335,7 +390,7 @@ describe('OperationsInstancePage', () => {
         renderPage('/operations/instances?branch=feature%2Fpolicy-review&flowId=daily_policy&period=2026-06-07&execution=exec-1');
 
         expect(await screen.findByText('本期共 2 次执行')).toBeTruthy();
-        expect(screen.getByText('重跑')).toBeTruthy();
+        expect(screen.getByText('手动重跑')).toBeTruthy();
         await waitFor(() => expect(getOperationsExecutionMock).toHaveBeenCalledWith(4, 'exec-1'));
 
         fireEvent.click(screen.getAllByRole('button', { name: /2026/ })[0]!);
@@ -343,7 +398,7 @@ describe('OperationsInstancePage', () => {
         await waitFor(() => expect(getOperationsExecutionMock).toHaveBeenCalledWith(4, 'exec-2'));
     });
 
-    it('opens upstream drawer and drills into accessible upstream', async () => {
+    it('opens upstream drawer with timing details and drills into accessible upstream', async () => {
         getOperationsInstanceDiagnosisMock.mockResolvedValue(buildDiagnosis({
             state: 'WAITING_UPSTREAM',
             reason: '依赖闸门等待上游同期实例: 组二/task_b',
@@ -357,7 +412,11 @@ describe('OperationsInstancePage', () => {
                     state: 'NOT_FIRED',
                     satisfied: false,
                     accessible: true,
-                    executionId: null,
+                    executionId: 'exec-b',
+                    plannedAt: '2026-06-07T01:00:00Z',
+                    startDate: '2026-06-07T01:00:05Z',
+                    endDate: '2026-06-07T01:02:15Z',
+                    durationMs: 130000,
                 },
                 {
                     groupId: 3,
@@ -381,6 +440,10 @@ describe('OperationsInstancePage', () => {
         expect(within(drawer).getByText('task_c')).toBeTruthy();
         expect(within(drawer).getByText('未满足闸门')).toBeTruthy();
         expect(within(drawer).getByText('已满足闸门')).toBeTruthy();
+        expect(within(drawer).getByText(formatBrowserDateTime('2026-06-07T01:00:00Z'))).toBeTruthy();
+        expect(within(drawer).getByText(formatBrowserDateTime('2026-06-07T01:00:05Z'))).toBeTruthy();
+        expect(within(drawer).getByText(formatBrowserDateTime('2026-06-07T01:02:15Z'))).toBeTruthy();
+        expect(within(drawer).getByText('2m 10s')).toBeTruthy();
         expect(within(drawer).getByRole('button', { name: /task_c/ })).toHaveProperty('disabled', true);
 
         fireEvent.click(within(drawer).getByRole('button', { name: /task_b/ }));
@@ -467,6 +530,7 @@ describe('OperationsInstancePage', () => {
         expect(within(panel).getByText('手动覆盖')).toBeTruthy();
         expect(within(panel).getByText('固定值')).toBeTruthy();
 
+        fireEvent.click(screen.getByRole('tab', { name: /运行概览/ }));
         fireEvent.click(screen.getByRole('button', { name: '查看 load_policy 日志' }));
         expect(await screen.findByRole('tabpanel', { name: '执行日志' })).toBeTruthy();
     });
@@ -581,6 +645,8 @@ describe('OperationsInstancePage', () => {
         });
         renderPage();
 
+        expect(await screen.findByRole('tabpanel', { name: '运行概览' })).toBeTruthy();
+        fireEvent.click(screen.getByRole('tab', { name: '执行日志' }));
         await waitFor(() => expect(getOperationsExecutionLogsMock).toHaveBeenCalledWith(4, 'exec-1', 'load_policy'));
 
         const liveToggle = await screen.findByRole('button', { name: '自动刷新 5s' });
@@ -602,6 +668,8 @@ describe('OperationsInstancePage', () => {
     it('omits the period stepper, hides repeated taskId columns in single-node logs, and quiets zero-count level pills', async () => {
         renderPage();
 
+        expect(await screen.findByRole('tabpanel', { name: '运行概览' })).toBeTruthy();
+        fireEvent.click(screen.getByRole('tab', { name: '执行日志' }));
         expect(await screen.findByText('load failed on row 42')).toBeTruthy();
 
         expect(screen.queryByRole('group', { name: '业务期切换' })).toBeNull();
@@ -620,5 +688,212 @@ describe('OperationsInstancePage', () => {
 
         fireEvent.click(errorPill);
         expect(errorPill.className).toContain('is-active');
+    });
+
+    it('renders auto-retry badges and RETRIED diagnosis status distinctly from manual reruns', async () => {
+        getOperationsInstanceDiagnosisMock.mockResolvedValue(buildDiagnosis({
+            state: 'RETRIED',
+            reason: '上次执行失败，正在等待系统自动重试',
+            executions: [
+                {
+                    id: 'exec-2',
+                    status: 'RETRIED',
+                    plannedAt: '2026-06-07T00:00:00Z',
+                    createdAt: '2026-06-07T01:05:00Z',
+                    startDate: '2026-06-07T01:05:01Z',
+                    endDate: '2026-06-07T01:05:10Z',
+                    durationMs: 9000,
+                    rerun: true,
+                    rerunType: 'AUTO',
+                    retryAttempt: 1,
+                },
+            ],
+        }));
+        getOperationsExecutionMock.mockResolvedValue({
+            id: 'exec-2',
+            namespace: 'g4-feature-policy-review',
+            flowId: 'daily_policy',
+            branch: 'feature/policy-review',
+            status: 'RETRIED',
+            plannedAt: '2026-06-07T00:00:00Z',
+            createdAt: '2026-06-07T01:05:00Z',
+            startDate: '2026-06-07T01:05:01Z',
+            endDate: '2026-06-07T01:05:10Z',
+            durationMs: 9000,
+            rerunnable: false,
+            stoppable: false,
+            taskRuns: [],
+            inputs: {},
+            labels: {},
+            parameterResolutionStatus: 'NONE',
+            parameters: [],
+            rerun: true,
+            rerunType: 'AUTO',
+            retryAttempt: 1,
+        });
+
+        renderPage('/operations/instances?branch=feature%2Fpolicy-review&flowId=daily_policy&period=2026-06-07&execution=exec-2');
+
+        expect(await screen.findByText('上次执行失败，正在等待系统自动重试')).toBeTruthy();
+        expect(screen.getByText('已重试')).toBeTruthy();
+        expect(screen.getByText('本次执行为自动重试')).toBeTruthy();
+        expect(screen.getByText('自动重试 #1')).toBeTruthy();
+    });
+
+    it('renders partial rerun badge, skipped task status, and defaults logs focus to executed node', async () => {
+        getOperationsInstanceDiagnosisMock.mockResolvedValue(buildDiagnosis({
+            state: 'SUCCESS',
+            executions: [
+                {
+                    id: 'exec-partial',
+                    status: 'SUCCESS',
+                    plannedAt: '2026-06-07T00:00:00Z',
+                    createdAt: '2026-06-07T01:15:00Z',
+                    startDate: '2026-06-07T01:15:01Z',
+                    endDate: '2026-06-07T01:15:30Z',
+                    durationMs: 29000,
+                    rerun: true,
+                    rerunType: 'MANUAL',
+                    retryAttempt: null,
+                    partialRerun: true,
+                    rerunSelectedTaskCount: 1,
+                    rerunTotalTaskCount: 2,
+                },
+            ],
+        }));
+        getOperationsExecutionMock.mockResolvedValue({
+            id: 'exec-partial',
+            namespace: 'g4-feature-policy-review',
+            flowId: 'daily_policy',
+            branch: 'feature/policy-review',
+            status: 'SUCCESS',
+            plannedAt: '2026-06-07T00:00:00Z',
+            createdAt: '2026-06-07T01:15:00Z',
+            startDate: '2026-06-07T01:15:01Z',
+            endDate: '2026-06-07T01:15:30Z',
+            durationMs: 29000,
+            rerunnable: false,
+            stoppable: false,
+            taskRuns: [
+                {
+                    taskId: 'extract_policy',
+                    status: 'SKIPPED',
+                    startDate: '2026-06-07T01:15:01Z',
+                    endDate: '2026-06-07T01:15:01Z',
+                    durationMs: 0,
+                },
+                {
+                    taskId: 'load_policy',
+                    status: 'SUCCESS',
+                    startDate: '2026-06-07T01:15:02Z',
+                    endDate: '2026-06-07T01:15:30Z',
+                    durationMs: 28000,
+                },
+            ],
+            inputs: { wbdata_rerun_tasks: 'load_policy' },
+            labels: { wbdataRerunSelectedCount: '1', wbdataRerunTotalCount: '2' },
+            parameterResolutionStatus: 'NONE',
+            parameters: [],
+            rerun: true,
+            rerunType: 'MANUAL',
+            retryAttempt: null,
+            partialRerun: true,
+            rerunSelectedTaskCount: 1,
+            rerunTotalTaskCount: 2,
+        });
+
+        renderPage('/operations/instances?branch=feature%2Fpolicy-review&flowId=daily_policy&period=2026-06-07&execution=exec-partial');
+
+        expect(await screen.findByText('手动重跑 · 1/2')).toBeTruthy();
+        expect(screen.getByText('已跳过')).toBeTruthy();
+        const summary = screen.getByLabelText('执行摘要');
+        expect(within(summary).getByText('节点数').nextElementSibling?.textContent).toBe('1 / 2（1 已跳过）');
+        expect(getOperationsExecutionLogsMock).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('tab', { name: '执行日志' }));
+        await waitFor(() => expect(getOperationsExecutionLogsMock).toHaveBeenCalledWith(4, 'exec-partial', 'load_policy'));
+    });
+
+    it('confirms mark-success on failed execution and renders FORCE_SUCCESS banner with preserved failed nodes and error logs', async () => {
+        markOperationsExecutionSuccessMock.mockResolvedValue(undefined);
+        renderPage();
+
+        const markBtn = await screen.findByRole('button', { name: '置成功' });
+        fireEvent.click(markBtn);
+
+        expect(await screen.findByRole('heading', { name: '确认置成功' })).toBeTruthy();
+        expect(markOperationsExecutionSuccessMock).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('button', { name: '确认置成功' }));
+        await waitFor(() => expect(markOperationsExecutionSuccessMock).toHaveBeenCalledWith(4, 'exec-1'));
+        expect(showSuccess).toHaveBeenCalledWith('已置为成功');
+
+        cleanup();
+        getOperationsInstanceDiagnosisMock.mockResolvedValue(buildDiagnosis({
+            state: 'FORCE_SUCCESS',
+            executions: [
+                {
+                    id: 'exec-1',
+                    status: 'FORCE_SUCCESS',
+                    plannedAt: '2026-06-07T00:00:00Z',
+                    createdAt: '2026-06-07T01:00:00Z',
+                    startDate: '2026-06-07T01:00:02Z',
+                    endDate: '2026-06-07T01:03:12Z',
+                    durationMs: 190000,
+                    rerun: false,
+                },
+            ],
+        }));
+        getOperationsExecutionMock.mockResolvedValue({
+            id: 'exec-1',
+            namespace: 'g4-feature-policy-review',
+            flowId: 'daily_policy',
+            branch: 'feature/policy-review',
+            status: 'FORCE_SUCCESS',
+            plannedAt: '2026-06-07T00:00:00Z',
+            createdAt: '2026-06-07T01:00:00Z',
+            startDate: '2026-06-07T01:00:02Z',
+            endDate: '2026-06-07T01:03:12Z',
+            durationMs: 190000,
+            rerunnable: false,
+            stoppable: false,
+            markableSuccess: false,
+            forceSuccess: true,
+            forceSuccessBy: '系统管理员',
+            forceSuccessAt: '2026-06-07T01:10:00Z',
+            taskRuns: [
+                {
+                    taskId: 'extract_policy',
+                    status: 'SUCCESS',
+                    startDate: '2026-06-07T01:00:03Z',
+                    endDate: '2026-06-07T01:01:00Z',
+                    durationMs: 57000,
+                },
+                {
+                    taskId: 'load_policy',
+                    status: 'FAILED',
+                    startDate: '2026-06-07T01:01:02Z',
+                    endDate: '2026-06-07T01:03:10Z',
+                    durationMs: 128000,
+                },
+            ],
+            inputs: {},
+            labels: {},
+            parameterResolutionStatus: 'NONE',
+            parameters: [],
+        });
+
+        renderPage();
+
+        expect(await screen.findByText('人工置成功')).toBeTruthy();
+        expect(screen.queryByRole('button', { name: '重跑任务' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '置成功' })).toBeNull();
+        expect(screen.getByText(/已人工置成功（操作人：系统管理员/)).toBeTruthy();
+        expect(screen.getByText(new RegExp(formatBrowserDateTime('2026-06-07T01:10:00Z')))).toBeTruthy();
+
+        const overviewPanel = screen.getByRole('tabpanel', { name: '运行概览' });
+        expect(within(overviewPanel).getByText('失败')).toBeTruthy();
+        fireEvent.click(within(overviewPanel).getByRole('button', { name: '查看 load_policy 日志' }));
+        expect(await screen.findByText('load failed on row 42')).toBeTruthy();
     });
 });

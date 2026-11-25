@@ -32,6 +32,7 @@ function renderDialog(overrides: Partial<ComponentProps<typeof ScheduleDialog>> 
         hasLocalOrUnpushedChanges: false,
         onOpenChange: vi.fn(),
         onPeriodChange: vi.fn(),
+        onRetryChange: vi.fn(),
         onSave: vi.fn(),
         onToggle: vi.fn(),
         ...overrides,
@@ -246,7 +247,7 @@ describe('ScheduleDialog', () => {
             />,
         );
         expect(screen.getByText(/当前线上版本未配置定时调度触发器/)).toBeTruthy();
-        expect(screen.getByText('已关闭')).toBeTruthy();
+        expect(screen.getAllByText('已关闭')).toHaveLength(2);
     });
 
     it('supports continuous hourly start, end and step controls with automatic step clamping', async () => {
@@ -357,5 +358,65 @@ describe('ScheduleDialog', () => {
         expect(within(dialog).queryByRole('button', { name: '清空' })).toBeNull();
         expect((within(dialog).getByRole('button', { name: '1时' }) as HTMLButtonElement).disabled).toBe(true);
         expect(within(dialog).getByRole('button', { name: '14时' }).getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('defaults failure auto-retry to off, toggles on with warning and controls, and renders read-only retry info', async () => {
+        const { props, rerender } = renderDialog();
+        const dialog = screen.getByRole('dialog', { name: '调度配置' });
+        const retrySwitch = within(dialog).getByRole('switch', { name: '开启失败自动重试' }) as HTMLButtonElement;
+        expect(retrySwitch.getAttribute('aria-checked')).toBe('false');
+        expect(within(dialog).queryByRole('combobox', { name: '重试次数' })).toBeNull();
+        expect(within(dialog).queryByText(/重跑整个任务/)).toBeNull();
+
+        fireEvent.click(retrySwitch);
+        expect(props.onRetryChange).toHaveBeenCalledWith({
+            retryEnabled: true,
+            retryCount: 3,
+            retryIntervalMinutes: 5,
+        });
+
+        rerender(
+            <ScheduleDialog
+                {...props}
+                period="HOURLY"
+                cron="0 * * * *"
+                retryEnabled
+                retryCount={3}
+                retryIntervalMinutes={20}
+            />,
+        );
+        expect(within(dialog).getByRole('switch', { name: '开启失败自动重试' }).getAttribute('aria-checked')).toBe('true');
+        expect(within(dialog).getByText(
+            '失败后将自动重跑整个任务（从头执行全部节点，而非仅重跑失败节点及其下游），请确认任务支持重复执行（幂等）。',
+        )).toBeTruthy();
+        expect(within(dialog).getByText(/跨越小时级调度周期/)).toBeTruthy();
+
+        fireEvent.click(within(dialog).getByRole('combobox', { name: '重试次数' }));
+        const countOption = await screen.findByRole('option', { name: '5 次' });
+        fireEvent.mouseMove(countOption);
+        fireEvent.click(countOption);
+        expect(props.onRetryChange).toHaveBeenLastCalledWith({ retryCount: 5 });
+
+        fireEvent.click(within(dialog).getByRole('combobox', { name: '重试间隔' }));
+        const intervalOption = await screen.findByRole('option', { name: '10 分钟' });
+        fireEvent.mouseMove(intervalOption);
+        fireEvent.click(intervalOption);
+        expect(props.onRetryChange).toHaveBeenLastCalledWith({ retryIntervalMinutes: 10 });
+
+        rerender(
+            <ScheduleDialog
+                {...props}
+                readOnly
+                period="DAILY"
+                cron="0 2 * * *"
+                retryEnabled
+                retryCount={4}
+                retryIntervalMinutes={15}
+                schedule={makeSchedule({ enabled: true, retryEnabled: true, retryCount: 4, retryIntervalMinutes: 15 })}
+            />,
+        );
+        expect((within(dialog).getByRole('switch', { name: '开启失败自动重试' }) as HTMLButtonElement).disabled).toBe(true);
+        expect((within(dialog).getByRole('combobox', { name: '重试次数' }) as HTMLElement).textContent).toContain('4 次');
+        expect((within(dialog).getByRole('combobox', { name: '重试间隔' }) as HTMLElement).textContent).toContain('15 分钟');
     });
 });

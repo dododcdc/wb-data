@@ -191,4 +191,45 @@ describe('Flow schedule draft', () => {
         expect(next.workingDraft.runtimeTimezone).toBe('Asia/Shanghai');
         expect(next.workingDraft.schedule?.timezone).toBe('Asia/Shanghai');
     });
+
+    it('marks schedule retry changes as dirty and normalizes disabled retry values', () => {
+        const session = createFlowDraftSession({
+            path: '_flows/example.yml',
+            serverDocument: makeDocument({
+                runtimeTimezone: 'Asia/Shanghai',
+                schedule: {
+                    cron: '0 2 * * *',
+                    timezone: 'Asia/Shanghai',
+                    enabled: true,
+                    period: 'DAILY',
+                    retryEnabled: false,
+                    retryCount: null,
+                    retryIntervalMinutes: null,
+                },
+            }),
+            snapshot: null,
+        });
+
+        const disabledWithStaleValues = updateFlowScheduleDraft(session, {
+            cron: '0 2 * * *',
+            timezone: 'Asia/Shanghai',
+            enabled: true,
+            period: 'DAILY',
+            retryEnabled: false,
+            retryCount: 3,
+            retryIntervalMinutes: 5,
+        });
+        expect(hasFlowDraftChanges(disabledWithStaleValues)).toBe(false);
+
+        const enabledRetry = updateFlowScheduleDraft(session, {
+            cron: '0 2 * * *',
+            timezone: 'Asia/Shanghai',
+            enabled: true,
+            period: 'DAILY',
+            retryEnabled: true,
+            retryCount: 3,
+            retryIntervalMinutes: 5,
+        });
+        expect(hasFlowDraftChanges(enabledRetry)).toBe(true);
+    });
 });

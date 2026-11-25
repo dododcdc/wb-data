@@ -219,6 +219,83 @@ class KestraHttpClientTest {
         Mockito.verify(httpClient, Mockito.times(2)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
     }
 
+    @Test
+    void getExecution_parsesOriginalIdAndAttemptNumber() throws Exception {
+        HttpClient httpClient = Mockito.mock(HttpClient.class);
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response(200, """
+                        {
+                          "id": "exec-retry-2",
+                          "originalId": "exec-origin-1",
+                          "namespace": "g4-main",
+                          "flowId": "daily",
+                          "state": {"current": "SUCCESS"},
+                          "metadata": {
+                            "attemptNumber": 2,
+                            "originalCreatedDate": "2026-11-24T00:00:00Z"
+                          }
+                        }
+                        """));
+        KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
+
+        KestraExecutionSnapshot snapshot = client.getExecution("exec-retry-2");
+
+        assertThat(snapshot.id()).isEqualTo("exec-retry-2");
+        assertThat(snapshot.originalId()).isEqualTo("exec-origin-1");
+        assertThat(snapshot.attemptNumber()).isEqualTo(2);
+        assertThat(snapshot.status()).isEqualTo("SUCCESS");
+    }
+
+    @Test
+    void setExecutionLabels_postsJsonArrayToLabelsEndpoint() throws Exception {
+        HttpClient httpClient = Mockito.mock(HttpClient.class);
+        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+        when(httpClient.send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response(200, "{}"));
+        KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
+
+        Map<String, String> labels = new java.util.LinkedHashMap<>();
+        labels.put("wbdataForceSuccess", "true");
+        labels.put("wbdataForceSuccessBy", "系统管理员");
+        client.setExecutionLabels("exec-1", labels);
+
+        HttpRequest request = requestCaptor.getValue();
+        assertThat(request.method()).isEqualTo("POST");
+        assertThat(request.uri()).isEqualTo(URI.create("http://localhost:8090/api/v1/main/executions/exec-1/labels"));
+        assertThat(request.headers().firstValue("Content-Type")).contains("application/json");
+        String body = new String(readBody(request), java.nio.charset.StandardCharsets.UTF_8);
+        var tree = new ObjectMapper().readTree(body);
+        assertThat(tree.isArray()).isTrue();
+        assertThat(tree).hasSize(2);
+        assertThat(tree.get(0).get("key").asText()).isEqualTo("wbdataForceSuccess");
+        assertThat(tree.get(0).get("value").asText()).isEqualTo("true");
+        assertThat(tree.get(1).get("key").asText()).isEqualTo("wbdataForceSuccessBy");
+        assertThat(tree.get(1).get("value").asText()).isEqualTo("系统管理员");
+    }
+
+    @Test
+    void changeExecutionStatus_postsStatusQueryParamAndMapsErrors() throws Exception {
+        HttpClient httpClient = Mockito.mock(HttpClient.class);
+        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+        when(httpClient.send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response(200, "{}"))
+                .thenReturn(response(409, "conflict"));
+        KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
+
+        client.changeExecutionStatus("exec-1", "SUCCESS");
+
+        HttpRequest request = requestCaptor.getValue();
+        assertThat(request.method()).isEqualTo("POST");
+        assertThat(request.uri()).isEqualTo(
+                URI.create("http://localhost:8090/api/v1/main/executions/exec-1/change-status?status=SUCCESS"));
+
+        assertThatThrownBy(() -> client.changeExecutionStatus("exec-1", "SUCCESS"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode().value())
+                        .isEqualTo(409))
+                .hasMessageContaining("conflict");
+    }
+
     private OfflineKestraProperties properties() {
         OfflineKestraProperties properties = new OfflineKestraProperties();
         properties.setBaseUrl("http://localhost:8090");

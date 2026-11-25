@@ -2,11 +2,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReactNode } from 'react';
 
 import { getOfflineRepoStatus } from '../../api/offline';
 import {
     getOperationsExecution,
+    getOperationsExecutionRerunContext,
     listOperationsExecutions,
+    markOperationsExecutionSuccess,
     rerunOperationsExecution,
     stopOperationsExecution,
 } from '../../api/operations';
@@ -27,9 +30,37 @@ vi.mock('../../api/offline', () => ({
 
 vi.mock('../../api/operations', () => ({
     getOperationsExecution: vi.fn(),
+    getOperationsExecutionRerunContext: vi.fn(),
     listOperationsExecutions: vi.fn(),
+    markOperationsExecutionSuccess: vi.fn(),
     rerunOperationsExecution: vi.fn(),
     stopOperationsExecution: vi.fn(),
+}));
+
+vi.mock('@xyflow/react', () => ({
+    ReactFlowProvider: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+    ReactFlow: ({
+        nodes,
+        nodeTypes,
+    }: {
+        nodes: Array<{ id: string; type?: string; data: Record<string, unknown> }>;
+        nodeTypes?: Record<string, React.ComponentType<{ data: Record<string, unknown> }>>;
+    }) => (
+        <div>
+            {nodes.map((node) => {
+                const Renderer = node.type ? nodeTypes?.[node.type] : undefined;
+                return <div key={node.id}>{Renderer ? <Renderer data={node.data} /> : node.id}</div>;
+            })}
+        </div>
+    ),
+    Handle: () => null,
+    Position: { Top: 'top', Bottom: 'bottom' },
+    MarkerType: { ArrowClosed: 'arrowclosed' },
+    BackgroundVariant: { Dots: 'dots' },
+    Background: () => null,
+    Controls: () => null,
+    useNodesInitialized: () => true,
+    useReactFlow: () => ({ fitView: vi.fn(() => Promise.resolve(true)) }),
 }));
 
 vi.mock('../../hooks/useOperationFeedback', () => ({
@@ -73,6 +104,8 @@ vi.mock('./OperationsTimeFilter', () => ({
 
 const listOperationsExecutionsMock = vi.mocked(listOperationsExecutions);
 const getOperationsExecutionMock = vi.mocked(getOperationsExecution);
+const getOperationsExecutionRerunContextMock = vi.mocked(getOperationsExecutionRerunContext);
+const markOperationsExecutionSuccessMock = vi.mocked(markOperationsExecutionSuccess);
 const rerunOperationsExecutionMock = vi.mocked(rerunOperationsExecution);
 const stopOperationsExecutionMock = vi.mocked(stopOperationsExecution);
 const getOfflineRepoStatusMock = vi.mocked(getOfflineRepoStatus);
@@ -156,6 +189,23 @@ describe('OperationsCenter', () => {
                     durationMs: 60000,
                     rerunnable: false,
                     rerun: true,
+                    rerunType: 'MANUAL',
+                },
+                {
+                    id: 'exec-3',
+                    namespace: 'g4-feature-policy-review',
+                    flowId: 'auto_retry_job',
+                    branch: 'feature/policy-review',
+                    status: 'RETRIED',
+                    plannedAt: '2026-06-06T22:00:00Z',
+                    createdAt: '2026-06-06T23:00:00Z',
+                    startDate: '2026-06-06T23:00:01Z',
+                    endDate: '2026-06-06T23:00:10Z',
+                    durationMs: 9000,
+                    rerunnable: false,
+                    rerun: true,
+                    rerunType: 'AUTO',
+                    retryAttempt: 1,
                 },
             ],
         });
@@ -181,6 +231,18 @@ describe('OperationsCenter', () => {
                 value: '2026-06-07',
                 source: 'MANUAL_OVERRIDE',
             }],
+        });
+        getOperationsExecutionRerunContextMock.mockResolvedValue({
+            executionId: 'exec-1',
+            namespace: 'g4-feature-policy-review',
+            flowId: 'daily_policy',
+            partialRerunSupported: false,
+            graphChanged: false,
+            fallbackReason: null,
+            nodes: [],
+            edges: [],
+            defaultSelectedTaskIds: [],
+            requiredTaskIds: [],
         });
         window.localStorage.clear();
     });
@@ -212,7 +274,9 @@ describe('OperationsCenter', () => {
         renderPage();
 
         expect(await screen.findByText('daily_policy')).toBeTruthy();
-        expect(screen.getByText('重跑')).toBeTruthy();
+        expect(screen.getByText('手动重跑')).toBeTruthy();
+        expect(screen.getByText('自动重试 #1')).toBeTruthy();
+        expect(screen.getAllByText('已重试').length).toBeGreaterThan(0);
         expect(screen.queryByText('运维中心')).toBeNull();
         expect(screen.getAllByText('feature/policy-review').length).toBeGreaterThan(0);
         expect(screen.getAllByText('失败').length).toBeGreaterThan(0);
@@ -600,5 +664,26 @@ describe('OperationsCenter', () => {
                 })
             );
         });
+    });
+
+    it('includes FORCE_SUCCESS status filter and confirms mark-success action', async () => {
+        markOperationsExecutionSuccessMock.mockResolvedValue(undefined);
+        renderPage();
+
+        const statusSelect = await screen.findByTestId('status-select') as HTMLSelectElement;
+        expect(Array.from(statusSelect.options).some((opt) => opt.value === 'FORCE_SUCCESS' && opt.text === '人工置成功'))
+            .toBe(true);
+
+        const markBtn = await screen.findByRole('button', { name: '置成功 daily_policy' });
+        fireEvent.click(markBtn);
+
+        expect(await screen.findByRole('heading', { name: '确认置成功' })).toBeTruthy();
+        expect(markOperationsExecutionSuccessMock).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('button', { name: '确认置成功' }));
+
+        await waitFor(() => expect(markOperationsExecutionSuccessMock).toHaveBeenCalledWith(4, 'exec-1'));
+        expect(showSuccess).toHaveBeenCalledWith('已置为成功');
+        await waitFor(() => expect(listOperationsExecutionsMock).toHaveBeenCalledTimes(2));
     });
 });

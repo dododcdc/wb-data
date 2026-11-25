@@ -257,10 +257,25 @@ function diffSchedule(base: OfflineFlowVersionSnapshot, target: OfflineFlowVersi
     const fields: FieldVersionDiff[] = [];
     const baseSchedule = base.document.schedule;
     const targetSchedule = target.document.schedule;
+    const baseRetryEnabled = Boolean(baseSchedule?.retryEnabled);
+    const targetRetryEnabled = Boolean(targetSchedule?.retryEnabled);
     addField(fields, 'period', baseSchedule?.period ?? null, targetSchedule?.period ?? null);
     addField(fields, 'cron', baseSchedule?.cron ?? null, targetSchedule?.cron ?? null);
     addField(fields, 'timezone', baseSchedule?.timezone ?? null, targetSchedule?.timezone ?? null);
     addField(fields, 'enabled', baseSchedule?.enabled ?? null, targetSchedule?.enabled ?? null);
+    addField(fields, 'retryEnabled', baseRetryEnabled, targetRetryEnabled);
+    addField(
+        fields,
+        'retryCount',
+        baseRetryEnabled ? (baseSchedule?.retryCount ?? null) : null,
+        targetRetryEnabled ? (targetSchedule?.retryCount ?? null) : null,
+    );
+    addField(
+        fields,
+        'retryIntervalMinutes',
+        baseRetryEnabled ? (baseSchedule?.retryIntervalMinutes ?? null) : null,
+        targetRetryEnabled ? (targetSchedule?.retryIntervalMinutes ?? null) : null,
+    );
     addField(fields, 'runtimeTimezone', base.document.runtimeTimezone ?? null, target.document.runtimeTimezone ?? null);
     return fields;
 }

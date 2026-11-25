@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarClock, LoaderCircle, RotateCcw, TriangleAlert } from 'lucide-react';
+import { CalendarClock, Info, LoaderCircle, RotateCcw, TriangleAlert } from 'lucide-react';
 
 import {
     getOperationsExecution,
+    getOperationsExecutionRerunContext,
     type OperationsExecutionDetail,
+    type OperationsExecutionRerunRequest,
 } from '../../api/operations';
 import { Button } from '../../components/ui/button';
 import {
@@ -16,6 +18,9 @@ import {
     DialogTitle,
 } from '../../components/ui/dialog';
 import { formatBrowserDateTime } from '../../lib/dateTime';
+import { OperationsRerunCanvas } from './OperationsRerunCanvas';
+import './OperationsRerunDialog.css';
+import { toggleRerunNodeSelection } from './rerunSelection';
 
 interface OperationsRerunDialogProps {
     open: boolean;
@@ -24,7 +29,7 @@ interface OperationsRerunDialogProps {
     detail?: OperationsExecutionDetail | null;
     pending: boolean;
     onOpenChange: (open: boolean) => void;
-    onConfirm: (reuseManualOverrides: boolean) => void;
+    onConfirm: (payload: OperationsExecutionRerunRequest) => void;
 }
 
 export function OperationsRerunDialog({
@@ -37,12 +42,22 @@ export function OperationsRerunDialog({
     onConfirm,
 }: OperationsRerunDialogProps) {
     const [reuseManualOverrides, setReuseManualOverrides] = useState(false);
+    const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(() => new Set());
+    const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+
     const detailQuery = useQuery({
         queryKey: ['operations-execution', groupId, executionId],
         queryFn: () => getOperationsExecution(groupId, executionId ?? ''),
         enabled: open && Boolean(executionId) && !detail,
     });
+    const rerunContextQuery = useQuery({
+        queryKey: ['operations-execution-rerun-context', groupId, executionId],
+        queryFn: () => getOperationsExecutionRerunContext(groupId, executionId ?? ''),
+        enabled: open && Boolean(executionId),
+    });
+
     const resolvedDetail = detail ?? detailQuery.data ?? null;
+    const rerunContext = rerunContextQuery.data ?? null;
     const manualOverrides = useMemo(
         () => resolvedDetail?.parameters.filter((parameter) => parameter.source === 'MANUAL_OVERRIDE') ?? [],
         [resolvedDetail],
@@ -50,9 +65,98 @@ export function OperationsRerunDialog({
     const snapshotUnavailable = resolvedDetail?.parameterResolutionStatus === 'UNAVAILABLE';
     const snapshotChanged = resolvedDetail?.parameterSnapshotChanged === true;
 
+    const requiredTaskIdSet = useMemo(
+        () => new Set(rerunContext?.requiredTaskIds ?? []),
+        [rerunContext],
+    );
+    const orderedNodeIds = useMemo(
+        () => rerunContext?.nodes.map((node) => node.taskId) ?? [],
+        [rerunContext],
+    );
+
     useEffect(() => {
         setReuseManualOverrides(false);
+        setFeedbackMessage(null);
     }, [executionId, open]);
+
+    useEffect(() => {
+        if (!open) {
+            setSelectedTaskIds(new Set());
+            return;
+        }
+        if (rerunContext) {
+            setSelectedTaskIds(new Set(rerunContext.defaultSelectedTaskIds));
+            setFeedbackMessage(null);
+        }
+    }, [open, rerunContext]);
+
+    const handleToggleNode = useCallback((taskId: string) => {
+        if (!rerunContext || !rerunContext.partialRerunSupported) {
+            setFeedbackMessage('当前线上版本暂不支持按节点取消勾选，请确认后重跑整个任务。');
+            return;
+        }
+        setSelectedTaskIds((prev) => {
+            const result = toggleRerunNodeSelection(
+                prev,
+                taskId,
+                rerunContext.edges,
+                requiredTaskIdSet,
+                orderedNodeIds,
+            );
+            if (result.blockedReason === 'required') {
+                setFeedbackMessage(`节点「${taskId}」为失败/未执行节点或其下游，必须包含在本次重跑中。`);
+                return prev;
+            }
+            if (result.autoAdded.length > 0) {
+                setFeedbackMessage(`为避免数据断层，已自动联动勾选路径节点：${result.autoAdded.join('、')}`);
+            } else if (result.autoRemoved.length > 0) {
+                setFeedbackMessage(`为避免数据断层，已同步取消上游节点：${result.autoRemoved.join('、')}`);
+            } else {
+                setFeedbackMessage(null);
+            }
+            return result.nextSelected;
+        });
+    }, [orderedNodeIds, requiredTaskIdSet, rerunContext]);
+
+    const handleSelectAll = useCallback(() => {
+        if (!rerunContext) return;
+        setSelectedTaskIds(new Set(rerunContext.nodes.map((node) => node.taskId)));
+        setFeedbackMessage(null);
+    }, [rerunContext]);
+
+    const handleResetDefault = useCallback(() => {
+        if (!rerunContext) return;
+        setSelectedTaskIds(new Set(rerunContext.defaultSelectedTaskIds));
+        setFeedbackMessage(null);
+    }, [rerunContext]);
+
+    const orderedSelected = useMemo(() => {
+        if (!rerunContext) return [];
+        return rerunContext.nodes
+            .map((node) => node.taskId)
+            .filter((taskId) => selectedTaskIds.has(taskId));
+    }, [rerunContext, selectedTaskIds]);
+
+    const totalNodes = rerunContext?.nodes.length ?? 0;
+    const isPartialRerun = Boolean(
+        rerunContext?.partialRerunSupported && orderedSelected.length > 0 && orderedSelected.length < totalNodes,
+    );
+    const hasNodes = totalNodes > 0;
+    const isLoadingInitial = (detailQuery.isLoading && !resolvedDetail)
+        || (rerunContextQuery.isLoading && !rerunContext);
+    const hasFatalError = (detailQuery.isError && !resolvedDetail)
+        || (rerunContextQuery.isError && !rerunContext);
+
+    const handleConfirmClick = () => {
+        if (isPartialRerun) {
+            onConfirm({
+                reuseManualOverrides,
+                selectedTaskIds: orderedSelected,
+            });
+            return;
+        }
+        onConfirm({ reuseManualOverrides });
+    };
 
     const handleOpenChange = (nextOpen: boolean) => {
         if (!pending) onOpenChange(nextOpen);
@@ -60,29 +164,82 @@ export function OperationsRerunDialog({
 
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
-            <DialogContent style={{ maxWidth: '560px' }} hideClose={pending}>
+            <DialogContent
+                className={hasNodes ? 'operations-rerun-dialog' : 'operations-rerun-dialog operations-rerun-dialog--compact'}
+                hideClose={pending}
+            >
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <RotateCcw size={18} />
                         确认重跑任务
                     </DialogTitle>
                     <DialogDescription>
-                        将创建一条新的执行记录，原执行不会被修改。
+                        将创建一条新的执行记录，原执行不会被修改；可按需勾选上游已成功节点一并重跑。
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-4 px-6 py-4">
-                    {detailQuery.isLoading && !resolvedDetail ? (
-                        <div className="flex min-h-28 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
+                <div className="operations-rerun-dialog__body space-y-4">
+                    {isLoadingInitial ? (
+                        <div className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
                             <LoaderCircle className="animate-spin" size={16} />
-                            正在读取原执行参数...
+                            正在读取原执行参数与任务画布...
                         </div>
-                    ) : detailQuery.isError && !resolvedDetail ? (
-                        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
-                            原执行详情读取失败，暂时不能安全重跑。
+                    ) : hasFatalError ? (
+                        <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
+                            <span>
+                                {rerunContextQuery.isError && !rerunContext
+                                    ? '任务画布与节点状态读取失败，暂时不能重跑。'
+                                    : '原执行详情读取失败，暂时不能安全重跑。'}
+                            </span>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                    if (detailQuery.isError) void detailQuery.refetch();
+                                    if (rerunContextQuery.isError) void rerunContextQuery.refetch();
+                                }}
+                            >
+                                重试
+                            </Button>
                         </div>
-                    ) : resolvedDetail ? (
+                    ) : resolvedDetail && rerunContext ? (
                         <>
+                            {rerunContext.fallbackReason ? (
+                                <div
+                                    className={rerunContext.graphChanged
+                                        ? 'flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-700'
+                                        : 'flex gap-2 rounded-lg border bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground'}
+                                    role={rerunContext.graphChanged ? 'alert' : 'status'}
+                                >
+                                    {rerunContext.graphChanged ? (
+                                        <TriangleAlert className="mt-0.5 shrink-0" size={15} />
+                                    ) : (
+                                        <Info className="mt-0.5 shrink-0" size={15} />
+                                    )}
+                                    <span>{rerunContext.fallbackReason}</span>
+                                </div>
+                            ) : null}
+
+                            {hasNodes ? (
+                                <OperationsRerunCanvas
+                                    nodes={rerunContext.nodes}
+                                    edges={rerunContext.edges}
+                                    selectedTaskIds={selectedTaskIds}
+                                    requiredTaskIds={requiredTaskIdSet}
+                                    partialRerunSupported={rerunContext.partialRerunSupported}
+                                    disabled={pending}
+                                    feedbackMessage={feedbackMessage}
+                                    onToggleNode={handleToggleNode}
+                                    onSelectAll={handleSelectAll}
+                                    onResetDefault={handleResetDefault}
+                                />
+                            ) : (
+                                <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                                    当前任务暂无编排节点，将直接重跑整条任务。
+                                </div>
+                            )}
+
                             <div className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-2">
                                 <div>
                                     <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -150,18 +307,25 @@ export function OperationsRerunDialog({
                     ) : null}
                 </div>
 
-                <DialogFooter>
-                    <Button type="button" variant="outline" disabled={pending} onClick={() => handleOpenChange(false)}>
-                        取消
-                    </Button>
-                    <Button
-                        type="button"
-                        disabled={pending || !resolvedDetail}
-                        onClick={() => onConfirm(reuseManualOverrides)}
-                    >
-                        {pending ? <LoaderCircle className="animate-spin" /> : <RotateCcw />}
-                        {pending ? '正在重跑...' : '确认重跑'}
-                    </Button>
+                <DialogFooter className="operations-rerun-dialog__footer">
+                    {isPartialRerun ? (
+                        <span className="operations-rerun-dialog__footer-summary">
+                            将执行 {orderedSelected.length} 个节点，跳过 {totalNodes - orderedSelected.length} 个节点
+                        </span>
+                    ) : null}
+                    <div className="operations-rerun-dialog__footer-actions">
+                        <Button type="button" variant="outline" disabled={pending} onClick={() => handleOpenChange(false)}>
+                            取消
+                        </Button>
+                        <Button
+                            type="button"
+                            disabled={pending || !resolvedDetail || !rerunContext || (hasNodes && orderedSelected.length === 0)}
+                            onClick={handleConfirmClick}
+                        >
+                            {pending ? <LoaderCircle className="animate-spin" /> : <RotateCcw />}
+                            {pending ? '正在重跑...' : '确认重跑'}
+                        </Button>
+                    </div>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

@@ -52,7 +52,10 @@ public class OfflineScheduleController {
                 request.cron(),
                 request.period(),
                 request.contentHash(),
-                request.fileUpdatedAt()
+                request.fileUpdatedAt(),
+                request.retryEnabled(),
+                request.retryCount(),
+                request.retryIntervalMinutes()
         );
         return offlineFlowDependencyService.withDependencyGraphLock(() -> {
             offlineFlowDependencyService.assertScheduleChangeAllowed(

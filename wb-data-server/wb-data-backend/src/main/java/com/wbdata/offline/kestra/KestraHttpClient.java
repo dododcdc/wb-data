@@ -37,6 +37,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class KestraHttpClient implements KestraClient {
 
     private final OfflineKestraProperties properties;
+    private final ObjectMapper objectMapper;
     private final KestraPayloadParser payloadParser;
     private final HttpClient httpClient;
     private final OfflineFlowInspector flowInspector = new OfflineFlowInspector();
@@ -57,6 +58,7 @@ public class KestraHttpClient implements KestraClient {
 
     KestraHttpClient(OfflineKestraProperties properties, ObjectMapper objectMapper, HttpClient httpClient) {
         this.properties = properties;
+        this.objectMapper = objectMapper;
         this.payloadParser = new KestraPayloadParser(objectMapper);
         this.httpClient = httpClient;
     }
@@ -273,6 +275,51 @@ public class KestraHttpClient implements KestraClient {
         );
         if (!(response.statusCode() == 200 || response.statusCode() == 202 || response.statusCode() == 204)) {
             throw toKestraException(response, "停止执行失败");
+        }
+    }
+
+    @Override
+    public void setExecutionLabels(String executionId, Map<String, String> labels) {
+        ensureCredentialsConfigured();
+        List<Map<String, String>> entries = new ArrayList<>();
+        if (labels != null) {
+            labels.forEach((key, value) -> {
+                if (key != null && !key.isBlank()) {
+                    entries.add(Map.of("key", key, "value", value == null ? "" : value));
+                }
+            });
+        }
+        byte[] body;
+        try {
+            body = objectMapper.writeValueAsBytes(entries);
+        } catch (IOException ex) {
+            throw new IllegalStateException("序列化执行标签失败", ex);
+        }
+        HttpResponse<byte[]> response = send(
+                "POST",
+                "/api/v1/" + properties.getTenant() + "/executions/" + encode(executionId) + "/labels",
+                body,
+                "application/json",
+                "application/json"
+        );
+        if (!isSuccessful(response.statusCode())) {
+            throw toKestraException(response, "更新执行标签失败");
+        }
+    }
+
+    @Override
+    public void changeExecutionStatus(String executionId, String status) {
+        ensureCredentialsConfigured();
+        HttpResponse<byte[]> response = send(
+                "POST",
+                "/api/v1/" + properties.getTenant() + "/executions/" + encode(executionId)
+                        + "/change-status?status=" + encodeQueryParam(status),
+                null,
+                null,
+                "application/json"
+        );
+        if (!isSuccessful(response.statusCode())) {
+            throw toKestraException(response, "修改执行状态失败");
         }
     }
 

@@ -70,7 +70,8 @@ public class WaitUpstream extends Task implements RunnableTask<WaitUpstream.Wait
     static final String SCHEDULE_PERIOD_LABEL = "wbdataSchedulePeriod";
     static final Set<State.Type> SATISFIED_STATES = EnumSet.of(State.Type.SUCCESS);
     static final Set<State.Type> TERMINAL_STATES = EnumSet.of(
-            State.Type.SUCCESS, State.Type.WARNING, State.Type.FAILED, State.Type.KILLED, State.Type.CANCELLED);
+            State.Type.SUCCESS, State.Type.WARNING, State.Type.FAILED,
+            State.Type.KILLED, State.Type.CANCELLED, State.Type.RETRIED);
     private static final int HEARTBEAT_POLLS = 20;
 
     @Schema(title = "前置任务列表", description = "仅允许相同调度频率；留空表示无需等待前置任务（仍按 failurePolicy 校验上一期状态）")
@@ -185,7 +186,7 @@ public class WaitUpstream extends Task implements RunnableTask<WaitUpstream.Wait
         }
     }
 
-    /** 上一期失败策略：存在上一期执行且无一 SUCCESS 且全部终态 → 挡住本期。 */
+    /** 上一期失败策略：存在上一期执行且无一 SUCCESS、全部终态且最新一次并非 RETRIED 等待自动重试 → 挡住本期。 */
     private void assertPreviousPeriodSucceeded(Logger logger, ExecutionRepositoryInterface executionRepository,
                                                String tenant, String namespace, String flowId,
                                                SchedulePeriod period, String ownCron, ZoneId zone, ZonedDateTime planned,
@@ -193,16 +194,22 @@ public class WaitUpstream extends Task implements RunnableTask<WaitUpstream.Wait
         String previousKey = ScheduleKeys.previousPeriodKey(period, ownCron, planned);
         List<Execution> previous = matchingExecutions(executionRepository, tenant, namespace, flowId,
                 period, zone, previousKey, pageable);
-        if (previous.isEmpty()) {
-            return;
-        }
-        boolean anySuccess = previous.stream().anyMatch(e -> SATISFIED_STATES.contains(e.getState().getCurrent()));
-        boolean allTerminal = previous.stream().allMatch(e -> TERMINAL_STATES.contains(e.getState().getCurrent()));
-        if (!anySuccess && allTerminal) {
+        if (isPreviousPeriodBlocked(previous)) {
             logger.warn("上一期 {} 终态非 SUCCESS，本期 {} 按 PAUSE 策略暂停", previousKey, scheduleKey);
             throw new GatePausedException("上一期 " + previousKey + " 终态非 SUCCESS，PAUSE 策略暂停本期 " + scheduleKey
                     + "；请恢复上一期后重跑该期");
         }
+    }
+
+    static boolean isPreviousPeriodBlocked(List<Execution> previous) {
+        if (previous == null || previous.isEmpty()) {
+            return false;
+        }
+        boolean anySuccess = previous.stream().anyMatch(e -> SATISFIED_STATES.contains(e.getState().getCurrent()));
+        boolean allTerminal = previous.stream().allMatch(e -> TERMINAL_STATES.contains(e.getState().getCurrent()));
+        State firstState = previous.getFirst().getState();
+        boolean waitingForAutoRetry = firstState != null && firstState.getCurrent() == State.Type.RETRIED;
+        return !anySuccess && allTerminal && !waitingForAutoRetry;
     }
 
     private boolean isSatisfied(ExecutionRepositoryInterface executionRepository, String tenant,

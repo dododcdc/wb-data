@@ -38,6 +38,9 @@ interface ScheduleDialogProps {
     cron: string;
     period: OfflineSchedulePeriod;
     timezone: string;
+    retryEnabled?: boolean;
+    retryCount?: number;
+    retryIntervalMinutes?: number;
     saving: boolean;
     flowId: string | null;
     readOnly?: boolean;
@@ -48,6 +51,11 @@ interface ScheduleDialogProps {
     dependencyNotice?: ReactNode;
     onOpenChange: (open: boolean) => void;
     onPeriodChange: (period: OfflineSchedulePeriod, parts?: SchedulePeriodParts) => void;
+    onRetryChange?: (patch: {
+        retryEnabled?: boolean;
+        retryCount?: number;
+        retryIntervalMinutes?: number;
+    }) => void;
     onSave: () => void;
     onToggle: (enabled: boolean) => void;
 }
@@ -69,6 +77,8 @@ const WEEK_DAY_OPTIONS = [1, 2, 3, 4, 5, 6, 7];
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 const WEEK_DAY_NAMES = ['一', '二', '三', '四', '五', '六', '日'];
 const DEFAULT_CONTINUOUS_RANGE = { startHour: 0, endHour: 23, step: 1 };
+const RETRY_COUNT_OPTIONS = [1, 2, 3, 4, 5];
+const BASE_RETRY_INTERVAL_OPTIONS = [1, 2, 3, 5, 10, 15, 20, 30, 60];
 
 function clampContinuousStep(startHour: number, endHour: number, step: number): number {
     if (step <= 1 || startHour + step <= endHour) {
@@ -125,6 +135,9 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
         cron,
         period,
         timezone,
+        retryEnabled = false,
+        retryCount = 3,
+        retryIntervalMinutes = 5,
         saving,
         flowId,
         readOnly = false,
@@ -135,6 +148,7 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
         dependencyNotice,
         onOpenChange,
         onPeriodChange,
+        onRetryChange,
         onSave,
         onToggle,
     } = props;
@@ -176,6 +190,7 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
     const periodId = useId();
     const hourlyModeId = useId();
     const previewId = useId();
+    const retrySwitchId = useId();
 
     useEffect(() => {
         if (!open) setPreviewExpanded(false);
@@ -226,6 +241,25 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
         const next = !enabled;
         if (next && (cronInvalid || hourlyIncomplete)) return;
         onToggle(next);
+    };
+
+    const effectiveRetryCount = retryCount >= 1 && retryCount <= 5 ? retryCount : 3;
+    const effectiveRetryIntervalMinutes =
+        retryIntervalMinutes >= 1 && retryIntervalMinutes <= 60 ? retryIntervalMinutes : 5;
+    const retryIntervalOptions = useMemo(() => {
+        if (BASE_RETRY_INTERVAL_OPTIONS.includes(effectiveRetryIntervalMinutes)) {
+            return BASE_RETRY_INTERVAL_OPTIONS;
+        }
+        return [...BASE_RETRY_INTERVAL_OPTIONS, effectiveRetryIntervalMinutes].sort((a, b) => a - b);
+    }, [effectiveRetryIntervalMinutes]);
+
+    const handleRetryToggle = () => {
+        if (effectiveDisabled || !onRetryChange) return;
+        onRetryChange({
+            retryEnabled: !retryEnabled,
+            retryCount: effectiveRetryCount,
+            retryIntervalMinutes: effectiveRetryIntervalMinutes,
+        });
     };
 
     const showNoRemoteAlert = !readOnly && !hasRemote;
@@ -624,6 +658,69 @@ export function ScheduleDialog(props: ScheduleDialogProps) {
                                 <span className="offline-schedule-toggle-state">{enabled ? '已开启' : '已关闭'}</span>
                             ) : null}
                         </div>
+                    </div>
+
+                    <div className="offline-schedule-retry-section">
+                        <div className="offline-schedule-toggle-row">
+                            <label htmlFor={retrySwitchId} className="offline-schedule-field-label">失败自动重试</label>
+                            <div className="offline-schedule-toggle-control">
+                                <button
+                                    id={retrySwitchId}
+                                    type="button"
+                                    role="switch"
+                                    aria-label="开启失败自动重试"
+                                    aria-checked={retryEnabled}
+                                    disabled={effectiveDisabled}
+                                    onClick={handleRetryToggle}
+                                    className="offline-switch"
+                                >
+                                    <span className="offline-switch-thumb" aria-hidden="true" />
+                                </button>
+                                {readOnly ? (
+                                    <span className="offline-schedule-toggle-state">{retryEnabled ? '已开启' : '已关闭'}</span>
+                                ) : null}
+                            </div>
+                        </div>
+                        {retryEnabled ? (
+                            <div className="offline-schedule-retry-panel">
+                                <div className="offline-schedule-retry-fields">
+                                    <div className="offline-schedule-retry-field">
+                                        <span className="offline-schedule-retry-field-label">重试次数</span>
+                                        <NumberSelect
+                                            value={effectiveRetryCount}
+                                            options={RETRY_COUNT_OPTIONS}
+                                            suffix=" 次"
+                                            ariaLabel="重试次数"
+                                            disabled={effectiveDisabled}
+                                            popupContainer={popupContainer}
+                                            className="offline-schedule-period-select--compact"
+                                            onChange={(nextCount) => onRetryChange?.({ retryCount: nextCount })}
+                                        />
+                                    </div>
+                                    <div className="offline-schedule-retry-field">
+                                        <span className="offline-schedule-retry-field-label">重试间隔</span>
+                                        <NumberSelect
+                                            value={effectiveRetryIntervalMinutes}
+                                            options={retryIntervalOptions}
+                                            suffix=" 分钟"
+                                            ariaLabel="重试间隔"
+                                            disabled={effectiveDisabled}
+                                            popupContainer={popupContainer}
+                                            className="offline-schedule-period-select--step"
+                                            onChange={(nextInterval) => onRetryChange?.({ retryIntervalMinutes: nextInterval })}
+                                        />
+                                    </div>
+                                </div>
+                                <p className="offline-schedule-retry-warning">
+                                    失败后将自动重跑整个任务（从头执行全部节点，而非仅重跑失败节点及其下游），请确认任务支持重复执行（幂等）。
+                                </p>
+                                {effectivePeriod === 'HOURLY' && effectiveRetryCount * effectiveRetryIntervalMinutes >= 60 ? (
+                                    <p className="offline-schedule-retry-hourly-note">
+                                        提示：总重试等待时间可能跨越小时级调度周期，请结合任务耗时合理配置。
+                                    </p>
+                                ) : null}
+                            </div>
+                        ) : null}
                     </div>
 
                     <section className="offline-schedule-preview" aria-labelledby={`${previewId}-heading`}>

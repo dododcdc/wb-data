@@ -50,7 +50,10 @@ final class OfflineFlowDebugYaml {
         Map<String, Object> root = yaml.loadRoot(source);
         root.put("namespace", debugNamespace);
         root.remove("triggers");
+        root.remove("retry");
         dependencyYaml.stripDependencyGate(root);
+        removeDebugRerunInput(root);
+        stripRunIf(yaml.requireTasks(root));
 
         Map<String, Object> labels = new LinkedHashMap<>();
         labels.putAll(yaml.asStringObjectMap(root.get("labels")));
@@ -144,6 +147,45 @@ final class OfflineFlowDebugYaml {
                 wrapper.remove("dependsOn");
             } else {
                 wrapper.put("dependsOn", retained);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void removeDebugRerunInput(Map<String, Object> root) {
+        if (!(root.get("inputs") instanceof List<?> rawInputs)) {
+            return;
+        }
+        List<Map<String, Object>> retained = new ArrayList<>();
+        for (Object rawInput : rawInputs) {
+            if (rawInput instanceof Map<?, ?> inputMap
+                    && !OfflineFlowGraphYaml.RERUN_TASKS_INPUT.equals(inputMap.get("id"))) {
+                retained.add(new LinkedHashMap<>((Map<String, Object>) inputMap));
+            }
+        }
+        if (retained.isEmpty()) {
+            root.remove("inputs");
+        } else {
+            root.put("inputs", retained);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void stripRunIf(List<Map<String, Object>> tasks) {
+        for (Map<String, Object> task : tasks) {
+            task.remove("runIf");
+            Object childTasks = task.get("tasks");
+            if (!(childTasks instanceof List<?> rawChildTasks) || rawChildTasks.isEmpty()) {
+                continue;
+            }
+            if (yaml.isDagTask(task)) {
+                for (Map<String, Object> wrapper : yaml.castTaskList(rawChildTasks)) {
+                    if (wrapper.get("task") instanceof Map<?, ?> innerTask) {
+                        ((Map<String, Object>) innerTask).remove("runIf");
+                    }
+                }
+            } else {
+                stripRunIf(yaml.castTaskList(rawChildTasks));
             }
         }
     }

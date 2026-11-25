@@ -82,7 +82,29 @@ class WaitUpstreamStaticsTest {
     void stateSets_matchSpec() {
         assertThat(WaitUpstream.SATISFIED_STATES).containsExactly(State.Type.SUCCESS);
         assertThat(WaitUpstream.TERMINAL_STATES).containsExactlyInAnyOrder(
-                State.Type.SUCCESS, State.Type.WARNING, State.Type.FAILED, State.Type.KILLED, State.Type.CANCELLED);
+                State.Type.SUCCESS, State.Type.WARNING, State.Type.FAILED,
+                State.Type.KILLED, State.Type.CANCELLED, State.Type.RETRIED);
+    }
+
+    @Test
+    void isPreviousPeriodBlocked_respectsRetriedGapAndTerminalStates() {
+        assertThat(WaitUpstream.isPreviousPeriodBlocked(List.of())).isFalse();
+        assertThat(WaitUpstream.isPreviousPeriodBlocked(List.of(executionWithState(State.Type.RETRIED)))).isFalse();
+        assertThat(WaitUpstream.isPreviousPeriodBlocked(List.of(
+                executionWithState(State.Type.FAILED), executionWithState(State.Type.RETRIED)))).isTrue();
+        assertThat(WaitUpstream.isPreviousPeriodBlocked(List.of(
+                executionWithState(State.Type.SUCCESS), executionWithState(State.Type.RETRIED)))).isFalse();
+        assertThat(WaitUpstream.isPreviousPeriodBlocked(List.of(
+                executionWithState(State.Type.RUNNING), executionWithState(State.Type.RETRIED)))).isFalse();
+    }
+
+    private Execution executionWithState(State.Type stateType) {
+        return Execution.builder()
+                .id("exec-" + stateType.name())
+                .namespace("wbtest")
+                .flowId("test-flow")
+                .state(new State(stateType, List.of()))
+                .build();
     }
 
     private Execution execution(Map<String, Object> inputs, Map<String, Object> triggerVariables) {

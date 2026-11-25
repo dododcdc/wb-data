@@ -5,10 +5,12 @@ import { useNavigate } from 'react-router-dom';
 import { getOfflineRepoStatus } from '../../api/offline';
 import {
     listOperationsExecutions,
+    markOperationsExecutionSuccess,
     rerunOperationsExecution,
     stopOperationsExecution,
     type OperationsExecutionListItem,
     type OperationsExecutionListQuery,
+    type OperationsExecutionRerunRequest,
     type OperationsExecutionStatusCounts,
 } from '../../api/operations';
 import { SimpleSelect } from '../../components/SimpleSelect';
@@ -36,9 +38,11 @@ const STATUS_OPTIONS = [
     { value: ALL_STATUSES, label: '全部状态' },
     { value: 'ACTIVE', label: '进行中' },
     { value: 'SUCCESS', label: '成功' },
+    { value: 'FORCE_SUCCESS', label: '人工置成功' },
     { value: 'FAILED', label: '失败' },
     { value: 'RUNNING', label: '执行中' },
     { value: 'RETRYING', label: '重试中' },
+    { value: 'RETRIED', label: '已重试' },
     { value: 'CREATED', label: '已创建' },
     { value: 'QUEUED', label: '排队中' },
     { value: 'CANCELLED', label: '已取消' },
@@ -105,6 +109,8 @@ export default function OperationsCenter() {
     const [rerunTarget, setRerunTarget] = useState<OperationsExecutionListItem | null>(null);
     const [pendingStopId, setPendingStopId] = useState<string | null>(null);
     const [stopTarget, setStopTarget] = useState<OperationsExecutionListItem | null>(null);
+    const [pendingMarkSuccessId, setPendingMarkSuccessId] = useState<string | null>(null);
+    const [markSuccessTarget, setMarkSuccessTarget] = useState<OperationsExecutionListItem | null>(null);
 
     useEffect(() => {
         const now = Date.now();
@@ -118,6 +124,7 @@ export default function OperationsCenter() {
         setBranchInitializedGroupId(null);
         setRerunTarget(null);
         setStopTarget(null);
+        setMarkSuccessTarget(null);
     }, [groupId]);
 
     const repoStatusQuery = useQuery({
@@ -182,12 +189,12 @@ export default function OperationsCenter() {
     );
 
     const rerunMutation = useMutation({
-        mutationFn: ({ executionId, reuseManualOverrides }: {
+        mutationFn: ({ executionId, payload }: {
             executionId: string;
-            reuseManualOverrides: boolean;
+            payload: OperationsExecutionRerunRequest;
         }) => {
             if (groupId == null) throw new Error('missing group');
-            return rerunOperationsExecution(groupId, executionId, { reuseManualOverrides });
+            return rerunOperationsExecution(groupId, executionId, payload);
         },
         onMutate: ({ executionId }) => {
             setPendingRerunId(executionId);
@@ -226,6 +233,29 @@ export default function OperationsCenter() {
         },
     });
 
+    const markSuccessMutation = useMutation({
+        mutationFn: (executionId: string) => {
+            if (groupId == null) throw new Error('missing group');
+            return markOperationsExecutionSuccess(groupId, executionId);
+        },
+        onMutate: (executionId) => {
+            setPendingMarkSuccessId(executionId);
+        },
+        onSuccess: () => {
+            setMarkSuccessTarget(null);
+            showSuccess('已置为成功');
+            refreshExecutions();
+            void queryClient.invalidateQueries({ queryKey: ['operations-instance-diagnosis'] });
+            void queryClient.invalidateQueries({ queryKey: ['operations-execution'] });
+        },
+        onError: (error) => {
+            showError(error, '置成功失败');
+        },
+        onSettled: () => {
+            setPendingMarkSuccessId(null);
+        },
+    });
+
     const rows = useMemo(() => executionsQuery.data?.executions ?? [], [executionsQuery.data?.executions]);
     const total = executionsQuery.data?.total ?? rows.length;
     const displayPage = executionsQuery.data?.page ?? currentPage;
@@ -237,7 +267,7 @@ export default function OperationsCenter() {
         if (executionsQuery.data?.statusCounts) return executionsQuery.data.statusCounts;
         return {
             total,
-            success: rows.filter((row) => row.status === 'SUCCESS').length,
+            success: rows.filter((row) => row.status === 'SUCCESS' || row.status === 'FORCE_SUCCESS').length,
             failed: rows.filter((row) => row.status === 'FAILED').length,
             active: rows.filter((row) => isActiveStatus(row.status)).length,
             stopped: rows.filter((row) => row.status === 'KILLED' || row.status === 'CANCELLED').length,
@@ -446,15 +476,18 @@ export default function OperationsCenter() {
                     rows={rows}
                     canRerun={canOperate}
                     canStop={canOperate}
+                    canMarkSuccess={canOperate}
                     errorMessage={executionsQuery.error instanceof Error ? executionsQuery.error.message : ''}
                     hasFooter={total > 0}
                     isLoading={isInitialLoading}
                     isRefreshing={isRefreshing}
                     pendingRerunId={pendingRerunId}
                     pendingStopId={pendingStopId}
+                    pendingMarkSuccessId={pendingMarkSuccessId}
                     onOpenDetail={openExecutionDetail}
                     onRerun={setRerunTarget}
                     onStop={setStopTarget}
+                    onMarkSuccess={setMarkSuccessTarget}
                     onResetFilters={handleResetFilters}
                     onRetry={refreshExecutions}
                 />
@@ -478,9 +511,9 @@ export default function OperationsCenter() {
                 onOpenChange={(open) => {
                     if (!open) setRerunTarget(null);
                 }}
-                onConfirm={(reuseManualOverrides) => {
+                onConfirm={(payload) => {
                     if (!rerunTarget) return;
-                    rerunMutation.mutate({ executionId: rerunTarget.id, reuseManualOverrides });
+                    rerunMutation.mutate({ executionId: rerunTarget.id, payload });
                 }}
             />
             <ConfirmDialog
@@ -498,6 +531,23 @@ export default function OperationsCenter() {
                 isLoading={stopMutation.isPending}
                 onConfirm={() => {
                     if (stopTarget) stopMutation.mutate(stopTarget.id);
+                }}
+            />
+            <ConfirmDialog
+                open={markSuccessTarget != null}
+                onOpenChange={(open) => {
+                    if (!open && !markSuccessMutation.isPending) setMarkSuccessTarget(null);
+                }}
+                title="确认置成功"
+                description={markSuccessTarget
+                    ? `将任务「${markSuccessTarget.flowId}」的本次执行状态置为「人工置成功」。下游等待任务将自动放行，原始失败节点与报错日志会完整保留；置成功后本次执行不可再重跑。`
+                    : undefined}
+                confirmText="确认置成功"
+                variant="success"
+                icon="success"
+                isLoading={markSuccessMutation.isPending}
+                onConfirm={() => {
+                    if (markSuccessTarget) markSuccessMutation.mutate(markSuccessTarget.id);
                 }}
             />
         </main>

@@ -14,6 +14,7 @@ import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
 import com.wbdata.operations.dto.OperationsExecutionListItem;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
 import com.wbdata.operations.dto.OperationsExecutionQuery;
+import com.wbdata.operations.dto.OperationsExecutionRerunContextResponse;
 import com.wbdata.operations.dto.OperationsExecutionRerunResponse;
 import com.wbdata.operations.dto.OperationsExecutionStatusCounts;
 import com.wbdata.operations.entity.WbOperationExecutionAction;
@@ -48,7 +49,9 @@ class OperationsExecutionServiceTest {
                 .containsExactly(
                         "id", "namespace", "flowId", "branch", "status",
                         "plannedAt", "createdAt", "startDate", "endDate", "durationMs",
-                        "rerunnable", "stoppable", "rerun"
+                        "rerunnable", "stoppable", "rerun", "rerunType", "retryAttempt",
+                        "partialRerun", "rerunSelectedTaskCount", "rerunTotalTaskCount",
+                        "markableSuccess"
                 );
         assertThat(Arrays.stream(OperationsExecutionDetailResponse.class.getRecordComponents())
                 .map(component -> component.getName()))
@@ -56,7 +59,10 @@ class OperationsExecutionServiceTest {
                         "id", "namespace", "flowId", "branch", "status",
                         "plannedAt", "createdAt", "startDate", "endDate", "durationMs",
                         "rerunnable", "stoppable", "taskRuns", "inputs", "labels",
-                        "parameterResolutionStatus", "parameters", "parameterSnapshotChanged"
+                        "parameterResolutionStatus", "parameters", "parameterSnapshotChanged",
+                        "rerun", "rerunType", "retryAttempt",
+                        "partialRerun", "rerunSelectedTaskCount", "rerunTotalTaskCount",
+                        "markableSuccess", "forceSuccess", "forceSuccessBy", "forceSuccessAt"
                 );
         assertThat(Arrays.stream(OperationsExecutionListResponse.class.getRecordComponents())
                 .map(component -> component.getName()))
@@ -848,7 +854,7 @@ class OperationsExecutionServiceTest {
 
     @Test
     void stopExecution_rejectsTerminalStatuses() {
-        for (String status : List.of("SUCCESS", "FAILED", "KILLED", "CANCELLED")) {
+        for (String status : List.of("SUCCESS", "FAILED", "KILLED", "CANCELLED", "RETRIED")) {
             GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
             KestraClient kestraClient = Mockito.mock(KestraClient.class);
             WbOperationExecutionActionMapper actionMapper = Mockito.mock(WbOperationExecutionActionMapper.class);
@@ -899,6 +905,361 @@ class OperationsExecutionServiceTest {
         service.stopExecution(4L, 9L, "exec-queued");
 
         verify(kestraClient).killExecution("exec-queued");
+    }
+
+    @Test
+    void listAndDetail_distinguishManualRerunFromAutoRetry_andKeepRetriedNonRerunnable() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        WbOperationExecutionActionMapper actionMapper = Mockito.mock(WbOperationExecutionActionMapper.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient, actionMapper);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+
+        KestraExecutionSnapshot firstAttempt = new KestraExecutionSnapshot(
+                "exec-1", "g4-main", "daily_job", "RETRIED", null,
+                Instant.parse("2026-06-07T01:00:00Z"), Instant.parse("2026-06-07T01:00:01Z"),
+                Instant.parse("2026-06-07T01:00:05Z"), List.of(), Map.of(), Map.of(), Map.of(),
+                "exec-1", 1);
+        KestraExecutionSnapshot autoRetry = new KestraExecutionSnapshot(
+                "exec-2", "g4-main", "daily_job", "FAILED", null,
+                Instant.parse("2026-06-07T01:05:00Z"), Instant.parse("2026-06-07T01:05:01Z"),
+                Instant.parse("2026-06-07T01:05:05Z"), List.of(), Map.of(), Map.of(), Map.of(),
+                "exec-1", 2);
+        KestraExecutionSnapshot manualRerun = new KestraExecutionSnapshot(
+                "exec-3", "g4-main", "daily_job", "RETRIED", null,
+                Instant.parse("2026-06-07T01:10:00Z"), Instant.parse("2026-06-07T01:10:01Z"),
+                Instant.parse("2026-06-07T01:10:05Z"), List.of(), Map.of(), Map.of(), Map.of(),
+                "exec-3", 1);
+        KestraExecutionSnapshot autoRetryAfterManual = new KestraExecutionSnapshot(
+                "exec-4", "g4-main", "daily_job", "SUCCESS", null,
+                Instant.parse("2026-06-07T01:15:00Z"), Instant.parse("2026-06-07T01:15:01Z"),
+                Instant.parse("2026-06-07T01:15:05Z"), List.of(), Map.of(), Map.of(), Map.of(),
+                "exec-3", 2);
+
+        when(kestraClient.searchExecutions(searchFilter("g4-main"))).thenReturn(
+                List.of(firstAttempt, autoRetry, manualRerun, autoRetryAfterManual));
+        when(kestraClient.getExecution("exec-2")).thenReturn(autoRetry);
+        when(kestraClient.getExecution("exec-3")).thenReturn(manualRerun);
+        when(kestraClient.getFlowSource("g4-main", "daily_job")).thenReturn("id: daily_job\nnamespace: g4-main\ntasks: []");
+
+        WbOperationExecutionAction manualAction = new WbOperationExecutionAction();
+        manualAction.setActionType("RERUN");
+        manualAction.setNewExecutionId("exec-3");
+        when(actionMapper.selectList(Mockito.any())).thenReturn(List.of(manualAction));
+
+        OperationsExecutionListResponse response = service.listExecutions(
+                4L, listQuery("main", null, null, FROM, TO));
+
+        assertThat(response.executions()).extracting("id")
+                .containsExactly("exec-4", "exec-3", "exec-2", "exec-1");
+        assertThat(response.statusCounts()).isEqualTo(new OperationsExecutionStatusCounts(4, 1, 1, 0, 0));
+
+        OperationsExecutionListItem item4 = response.executions().get(0);
+        assertThat(item4.rerun()).isTrue();
+        assertThat(item4.rerunType()).isEqualTo("AUTO");
+        assertThat(item4.retryAttempt()).isEqualTo(1);
+
+        OperationsExecutionListItem item3 = response.executions().get(1);
+        assertThat(item3.rerun()).isTrue();
+        assertThat(item3.rerunType()).isEqualTo("MANUAL");
+        assertThat(item3.retryAttempt()).isNull();
+        assertThat(item3.rerunnable()).isFalse();
+        assertThat(item3.stoppable()).isFalse();
+
+        OperationsExecutionListItem item2 = response.executions().get(2);
+        assertThat(item2.rerun()).isTrue();
+        assertThat(item2.rerunType()).isEqualTo("AUTO");
+        assertThat(item2.retryAttempt()).isEqualTo(1);
+
+        OperationsExecutionListItem item1 = response.executions().get(3);
+        assertThat(item1.rerun()).isFalse();
+        assertThat(item1.rerunType()).isEqualTo("NONE");
+        assertThat(item1.retryAttempt()).isNull();
+        assertThat(item1.rerunnable()).isFalse();
+
+        OperationsExecutionDetailResponse autoDetail = service.getExecution(4L, "exec-2");
+        assertThat(autoDetail.rerun()).isTrue();
+        assertThat(autoDetail.rerunType()).isEqualTo("AUTO");
+        assertThat(autoDetail.retryAttempt()).isEqualTo(1);
+
+        OperationsExecutionDetailResponse manualDetail = service.getExecution(4L, "exec-3");
+        assertThat(manualDetail.rerun()).isTrue();
+        assertThat(manualDetail.rerunType()).isEqualTo("MANUAL");
+        assertThat(manualDetail.retryAttempt()).isNull();
+        assertThat(manualDetail.rerunnable()).isFalse();
+    }
+
+    @Test
+    void partialRerun_buildsContextValidatesAndSubmitsPartialLabelsAndInputs() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        WbOperationExecutionActionMapper actionMapper = Mockito.mock(WbOperationExecutionActionMapper.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient, actionMapper);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+
+        String flowSource = """
+                id: daily_job
+                namespace: g4-main
+                inputs:
+                  - id: wbdata_planned_time
+                    type: DATETIME
+                    required: false
+                  - id: wbdata_rerun_tasks
+                    type: STRING
+                    required: false
+                tasks:
+                  - id: flow_dag
+                    type: io.kestra.plugin.core.flow.Dag
+                    tasks:
+                      - task:
+                          id: extract
+                          type: io.kestra.plugin.scripts.shell.Commands
+                          runIf: "{{ (inputs.wbdata_rerun_tasks ?? '') == '' or ((',' ~ (inputs.wbdata_rerun_tasks ?? '') ~ ',') contains ',extract,') }}"
+                          commands: ["echo 1"]
+                      - dependsOn: ["extract"]
+                        task:
+                          id: transform
+                          type: io.kestra.plugin.scripts.shell.Commands
+                          runIf: "{{ (inputs.wbdata_rerun_tasks ?? '') == '' or ((',' ~ (inputs.wbdata_rerun_tasks ?? '') ~ ',') contains ',transform,') }}"
+                          commands: ["echo 2"]
+                      - dependsOn: ["transform"]
+                        task:
+                          id: load
+                          type: io.kestra.plugin.scripts.shell.Commands
+                          runIf: "{{ (inputs.wbdata_rerun_tasks ?? '') == '' or ((',' ~ (inputs.wbdata_rerun_tasks ?? '') ~ ',') contains ',load,') }}"
+                          commands: ["echo 3"]
+                """;
+        KestraExecutionSnapshot original = execution(
+                "exec-1", "g4-main", "daily_job", "FAILED",
+                "2026-06-07T00:00:00Z", "2026-06-07T01:00:00Z",
+                "2026-06-07T01:00:01Z", "2026-06-07T01:02:00Z",
+                List.of(
+                        taskRun("flow_dag", "FAILED"),
+                        taskRun("extract", "SUCCESS"),
+                        taskRun("transform", "FAILED")
+                )
+        );
+        when(kestraClient.getExecution("exec-1")).thenReturn(original);
+        when(kestraClient.getFlowSource("g4-main", "daily_job")).thenReturn(flowSource);
+
+        OperationsExecutionRerunContextResponse context = service.getRerunContext(4L, "exec-1");
+        assertThat(context.partialRerunSupported()).isTrue();
+        assertThat(context.defaultSelectedTaskIds()).containsExactly("transform", "load");
+        assertThat(context.requiredTaskIds()).containsExactly("transform", "load");
+        assertThat(context.nodes()).extracting("executionStatus")
+                .containsExactly("SUCCESS", "FAILED", "NOT_RUN");
+
+        // Invalid partial request with missing required node should fail before creating execution
+        assertThatThrownBy(() -> service.rerunExecution(4L, 9L, "exec-1", false, List.of("extract", "transform")))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        ex -> assertThat(ex.getReason()).contains("load"));
+        verify(kestraClient, never()).createExecution(
+                Mockito.anyString(), Mockito.anyString(), Mockito.anyMap(), Mockito.anyMap());
+
+        when(kestraClient.createExecution(
+                Mockito.eq("g4-main"), Mockito.eq("daily_job"), Mockito.anyMap(), Mockito.anyMap()))
+                .thenReturn(execution("rerun-partial", "g4-main", "daily_job", "CREATED", "2026-06-07T01:10:00Z"));
+        when(actionMapper.insert(Mockito.any())).thenReturn(1);
+
+        service.rerunExecution(4L, 9L, "exec-1", false, List.of("load", "transform"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> inputsCaptor = ArgumentCaptor.forClass(Map.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> labelsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(kestraClient).createExecution(
+                Mockito.eq("g4-main"), Mockito.eq("daily_job"), inputsCaptor.capture(), labelsCaptor.capture());
+        assertThat(inputsCaptor.getValue())
+                .containsEntry("wbdata_planned_time", "2026-06-07T00:00:00Z")
+                .containsEntry("wbdata_rerun_tasks", "transform,load");
+        assertThat(labelsCaptor.getValue())
+                .containsEntry("wbdataParameterOverrideKeys", "__none__")
+                .containsEntry("wbdataRerunSelectedCount", "2")
+                .containsEntry("wbdataRerunTotalCount", "3");
+
+        // Full selection normalizes back to full rerun (omits wbdata_rerun_tasks & partial labels)
+        service.rerunExecution(4L, 9L, "exec-1", false, List.of("extract", "transform", "load"));
+        verify(kestraClient, Mockito.times(2)).createExecution(
+                Mockito.eq("g4-main"), Mockito.eq("daily_job"), inputsCaptor.capture(), labelsCaptor.capture());
+        assertThat(inputsCaptor.getValue()).doesNotContainKey("wbdata_rerun_tasks");
+        assertThat(labelsCaptor.getValue())
+                .doesNotContainKey("wbdataRerunSelectedCount")
+                .doesNotContainKey("wbdataRerunTotalCount");
+
+        // Created partial rerun detail & list expose partial counts and keep parameterResolutionStatus NONE
+        KestraExecutionSnapshot createdPartial = new KestraExecutionSnapshot(
+                "rerun-partial", "g4-main", "daily_job", "SUCCESS",
+                Instant.parse("2026-06-07T00:00:00Z"),
+                Instant.parse("2026-06-07T01:10:00Z"),
+                Instant.parse("2026-06-07T01:10:01Z"),
+                Instant.parse("2026-06-07T01:10:30Z"),
+                List.of(taskRun("extract", "SKIPPED"), taskRun("transform", "SUCCESS"), taskRun("load", "SUCCESS")),
+                Map.of("wbdata_planned_time", "2026-06-07T00:00:00Z", "wbdata_rerun_tasks", "transform,load"),
+                Map.of("wbdataRerunSelectedCount", "2", "wbdataRerunTotalCount", "3"),
+                Map.of()
+        );
+        WbOperationExecutionAction partialAction = new WbOperationExecutionAction();
+        partialAction.setActionType("RERUN");
+        partialAction.setNewExecutionId("rerun-partial");
+        when(actionMapper.selectList(Mockito.any())).thenReturn(List.of(partialAction));
+        when(kestraClient.getExecution("rerun-partial")).thenReturn(createdPartial);
+        when(kestraClient.searchExecutions(searchFilter("g4-main"))).thenReturn(List.of(createdPartial));
+
+        OperationsExecutionDetailResponse detail = service.getExecution(4L, "rerun-partial");
+        assertThat(detail.parameterResolutionStatus()).isEqualTo("NONE");
+        assertThat(detail.partialRerun()).isTrue();
+        assertThat(detail.rerunSelectedTaskCount()).isEqualTo(2);
+        assertThat(detail.rerunTotalTaskCount()).isEqualTo(3);
+
+        OperationsExecutionListResponse list = service.listExecutions(4L, listQuery("main", null, null, FROM, TO));
+        assertThat(list.executions().getFirst().partialRerun()).isTrue();
+        assertThat(list.executions().getFirst().rerunSelectedTaskCount()).isEqualTo(2);
+        assertThat(list.executions().getFirst().rerunTotalTaskCount()).isEqualTo(3);
+    }
+
+    @Test
+    void markExecutionSuccess_labelsBeforeStatusChangeWritesAuditAndRejectsNonMarkableStates() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        WbOperationExecutionActionMapper actionMapper = Mockito.mock(WbOperationExecutionActionMapper.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient, actionMapper);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+
+        KestraExecutionSnapshot failed = new KestraExecutionSnapshot(
+                "exec-fail", "g4-main", "daily_job", "FAILED",
+                Instant.parse("2026-06-07T00:00:00Z"),
+                Instant.parse("2026-06-07T01:00:00Z"),
+                Instant.parse("2026-06-07T01:00:01Z"),
+                Instant.parse("2026-06-07T01:00:10Z"),
+                List.of(taskRun("step_a", "SUCCESS"), taskRun("step_b", "FAILED")),
+                Map.of(),
+                Map.of("wbdataParameterOverrideKeys", "__none__", "system.correlationId", "exec-fail"),
+                Map.of()
+        );
+        when(kestraClient.getExecution("exec-fail")).thenReturn(failed);
+        when(actionMapper.insert(Mockito.any())).thenReturn(1);
+
+        service.markExecutionSuccess(4L, 9L, "系统管理员", "exec-fail");
+
+        var inOrder = Mockito.inOrder(kestraClient);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> labelsCaptor = ArgumentCaptor.forClass(Map.class);
+        inOrder.verify(kestraClient).setExecutionLabels(Mockito.eq("exec-fail"), labelsCaptor.capture());
+        inOrder.verify(kestraClient).changeExecutionStatus("exec-fail", "SUCCESS");
+
+        assertThat(labelsCaptor.getValue())
+                .containsEntry("wbdataParameterOverrideKeys", "__none__")
+                .containsEntry(OperationsForceSuccess.LABEL_FORCE_SUCCESS, "true")
+                .containsEntry(OperationsForceSuccess.LABEL_FORCE_SUCCESS_BY, "系统管理员")
+                .doesNotContainKey("system.correlationId")
+                .containsKey(OperationsForceSuccess.LABEL_FORCE_SUCCESS_AT);
+        assertThat(Long.parseLong(labelsCaptor.getValue().get(OperationsForceSuccess.LABEL_FORCE_SUCCESS_AT)))
+                .isPositive();
+
+        ArgumentCaptor<WbOperationExecutionAction> actionCaptor = ArgumentCaptor.forClass(WbOperationExecutionAction.class);
+        verify(actionMapper).insert(actionCaptor.capture());
+        assertThat(actionCaptor.getValue().getActionType()).isEqualTo("MARK_SUCCESS");
+        assertThat(actionCaptor.getValue().getOriginalExecutionId()).isEqualTo("exec-fail");
+        assertThat(actionCaptor.getValue().getNewExecutionId()).isNull();
+        assertThat(actionCaptor.getValue().getRequestedBy()).isEqualTo(9L);
+
+        // KILLED and CANCELLED are also markable
+        when(kestraClient.getExecution("exec-killed"))
+                .thenReturn(execution("exec-killed", "g4-main", "daily_job", "KILLED", "2026-06-07T01:00:00Z"));
+        when(kestraClient.getExecution("exec-cancelled"))
+                .thenReturn(execution("exec-cancelled", "g4-main", "daily_job", "CANCELLED", "2026-06-07T01:00:00Z"));
+        service.markExecutionSuccess(4L, 9L, "admin", "exec-killed");
+        service.markExecutionSuccess(4L, 9L, "admin", "exec-cancelled");
+
+        // SUCCESS, FORCE_SUCCESS, RUNNING, RETRIED are rejected
+        for (String disallowed : List.of("SUCCESS", "RUNNING", "RETRIED")) {
+            when(kestraClient.getExecution("exec-" + disallowed))
+                    .thenReturn(execution("exec-" + disallowed, "g4-main", "daily_job", disallowed, "2026-06-07T01:00:00Z"));
+            assertThatThrownBy(() -> service.markExecutionSuccess(4L, 9L, "admin", "exec-" + disallowed))
+                    .isInstanceOfSatisfying(ResponseStatusException.class,
+                            ex -> assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+        }
+        KestraExecutionSnapshot alreadyForced = new KestraExecutionSnapshot(
+                "exec-forced", "g4-main", "daily_job", "SUCCESS",
+                Instant.parse("2026-06-07T00:00:00Z"),
+                Instant.parse("2026-06-07T01:00:00Z"),
+                Instant.parse("2026-06-07T01:00:01Z"),
+                Instant.parse("2026-06-07T01:00:10Z"),
+                List.of(taskRun("step_b", "FAILED")),
+                Map.of(),
+                Map.of(OperationsForceSuccess.LABEL_FORCE_SUCCESS, "true"),
+                Map.of()
+        );
+        when(kestraClient.getExecution("exec-forced")).thenReturn(alreadyForced);
+        assertThatThrownBy(() -> service.markExecutionSuccess(4L, 9L, "admin", "exec-forced"))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        ex -> assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void forceSuccess_translatesListFilterCountsDetailAndDisallowsRerunWhileKeepingFailedTaskRuns() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+
+        Instant forcedAt = Instant.parse("2026-06-07T01:15:00Z");
+        KestraExecutionSnapshot forcedExec = new KestraExecutionSnapshot(
+                "exec-forced", "g4-main", "daily_job", "SUCCESS",
+                Instant.parse("2026-06-07T00:00:00Z"),
+                Instant.parse("2026-06-07T01:00:00Z"),
+                Instant.parse("2026-06-07T01:00:01Z"),
+                Instant.parse("2026-06-07T01:00:10Z"),
+                List.of(
+                        taskRun("step_a", "SUCCESS", "2026-06-07T01:00:01Z", "2026-06-07T01:00:05Z"),
+                        taskRun("step_b", "FAILED", "2026-06-07T01:00:05Z", "2026-06-07T01:00:10Z")
+                ),
+                Map.of(),
+                Map.of(
+                        OperationsForceSuccess.LABEL_FORCE_SUCCESS, "true",
+                        OperationsForceSuccess.LABEL_FORCE_SUCCESS_BY, "系统管理员",
+                        OperationsForceSuccess.LABEL_FORCE_SUCCESS_AT, String.valueOf(forcedAt.toEpochMilli())
+                ),
+                Map.of()
+        );
+        KestraExecutionSnapshot organicSuccess = execution("exec-ok", "g4-main", "daily_job", "SUCCESS", "2026-06-07T01:05:00Z");
+        KestraExecutionSnapshot failedExec = execution("exec-fail", "g4-main", "daily_job", "FAILED", "2026-06-07T01:10:00Z");
+
+        when(kestraClient.searchExecutions(searchFilter("g4-main")))
+                .thenReturn(List.of(forcedExec, organicSuccess, failedExec));
+        when(kestraClient.getExecution("exec-forced")).thenReturn(forcedExec);
+
+        OperationsExecutionListResponse allList = service.listExecutions(4L, listQuery("main", null, null, FROM, TO));
+        assertThat(allList.statusCounts()).isEqualTo(new OperationsExecutionStatusCounts(3, 2, 1, 0, 0));
+        assertThat(allList.executions()).extracting("id", "status", "rerunnable", "markableSuccess")
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("exec-fail", "FAILED", true, true),
+                        org.assertj.core.groups.Tuple.tuple("exec-ok", "SUCCESS", false, false),
+                        org.assertj.core.groups.Tuple.tuple("exec-forced", "FORCE_SUCCESS", false, false)
+                );
+
+        OperationsExecutionListResponse forceOnly = service.listExecutions(4L, listQuery("main", null, "FORCE_SUCCESS", FROM, TO));
+        assertThat(forceOnly.executions()).extracting("id").containsExactly("exec-forced");
+
+        OperationsExecutionListResponse successGroup = service.listExecutions(4L, listQuery("main", null, "SUCCESS", FROM, TO));
+        assertThat(successGroup.executions()).extracting("id").containsExactly("exec-ok", "exec-forced");
+
+        OperationsExecutionDetailResponse detail = service.getExecution(4L, "exec-forced");
+        assertThat(detail.status()).isEqualTo("FORCE_SUCCESS");
+        assertThat(detail.rerunnable()).isFalse();
+        assertThat(detail.markableSuccess()).isFalse();
+        assertThat(detail.forceSuccess()).isTrue();
+        assertThat(detail.forceSuccessBy()).isEqualTo("系统管理员");
+        assertThat(detail.forceSuccessAt()).isEqualTo(forcedAt);
+        assertThat(detail.taskRuns()).extracting("taskId", "status")
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("step_a", "SUCCESS"),
+                        org.assertj.core.groups.Tuple.tuple("step_b", "FAILED")
+                );
+
+        assertThatThrownBy(() -> service.rerunExecution(4L, 9L, "exec-forced", false))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        ex -> assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     private static OperationsExecutionService service(GitSyncConfigService gitSyncConfigService,

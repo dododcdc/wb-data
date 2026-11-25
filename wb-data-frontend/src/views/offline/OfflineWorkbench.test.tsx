@@ -1387,6 +1387,9 @@ describe('OfflineWorkbench commit UI', () => {
                     timezone: 'Asia/Shanghai',
                     enabled: true,
                     period: 'HOURLY',
+                    retryEnabled: false,
+                    retryCount: null,
+                    retryIntervalMinutes: null,
                 },
             }));
         }, { timeout: 10000 });

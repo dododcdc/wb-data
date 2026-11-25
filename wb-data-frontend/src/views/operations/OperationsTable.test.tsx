@@ -132,4 +132,161 @@ describe('OperationsTable', () => {
         );
         expect(screen.queryByRole('button', { name: '停止 hourly_sync' })).toBeNull();
     });
+
+    it('distinguishes manual rerun, auto retry badges, and retried status', () => {
+        renderTable({
+            rows: [
+                {
+                    ...execution,
+                    id: 'exec-retried',
+                    flowId: 'flow_retried',
+                    status: 'RETRIED',
+                    rerunnable: false,
+                    rerun: false,
+                    rerunType: 'NONE',
+                },
+                {
+                    ...execution,
+                    id: 'exec-auto-numbered',
+                    flowId: 'flow_auto_1',
+                    status: 'SUCCESS',
+                    rerunnable: false,
+                    rerun: true,
+                    rerunType: 'AUTO',
+                    retryAttempt: 2,
+                },
+                {
+                    ...execution,
+                    id: 'exec-auto-plain',
+                    flowId: 'flow_auto_2',
+                    status: 'RUNNING',
+                    rerunnable: false,
+                    rerun: true,
+                    rerunType: 'AUTO',
+                    retryAttempt: null,
+                },
+                {
+                    ...execution,
+                    id: 'exec-manual',
+                    flowId: 'flow_manual',
+                    status: 'SUCCESS',
+                    rerunnable: false,
+                    rerun: true,
+                    rerunType: 'MANUAL',
+                },
+                {
+                    ...execution,
+                    id: 'exec-manual-partial',
+                    flowId: 'flow_manual_partial',
+                    status: 'SUCCESS',
+                    rerunnable: false,
+                    rerun: true,
+                    rerunType: 'MANUAL',
+                    partialRerun: true,
+                    rerunSelectedTaskCount: 2,
+                    rerunTotalTaskCount: 4,
+                },
+            ],
+        });
+
+        expect(screen.getByText('已重试')).toBeTruthy();
+        expect(screen.getByText('自动重试 #2')).toBeTruthy();
+        expect(screen.getByText('自动重试')).toBeTruthy();
+        expect(screen.getByText('手动重跑')).toBeTruthy();
+        const partialBadge = screen.getByText('手动重跑 · 2/4');
+        expect(partialBadge.getAttribute('title')).toBe('手动部分重跑（执行 2 / 共 4 个节点）');
+    });
+
+    it('renders concise action tooltip text separate from row-qualified aria-label', async () => {
+        render(
+            <TooltipProvider delayDuration={0} disableHoverableContent>
+                <OperationsTable
+                    rows={[
+                        execution,
+                        {
+                            ...execution,
+                            id: 'exec-run',
+                            flowId: 'hourly_sync',
+                            status: 'RUNNING',
+                            rerunnable: false,
+                            stoppable: true,
+                        },
+                    ]}
+                    canRerun
+                    canStop
+                    isLoading={false}
+                    isRefreshing={false}
+                    errorMessage=""
+                    hasFooter
+                    pendingRerunId={null}
+                    onOpenDetail={vi.fn()}
+                    onRerun={vi.fn()}
+                    onStop={vi.fn()}
+                    onResetFilters={vi.fn()}
+                    onRetry={vi.fn()}
+                />
+            </TooltipProvider>,
+        );
+
+        const detailBtn = screen.getByRole('button', { name: '查看 daily_policy 详情' });
+        fireEvent.focus(detailBtn);
+        const detailTooltip = await screen.findByRole('tooltip');
+        expect(detailTooltip.textContent).toBe('查看详情');
+        expect(detailTooltip.closest<HTMLElement>('[data-radix-popper-content-wrapper]')?.style.pointerEvents).toBe('none');
+
+        const rerunBtn = screen.getByRole('button', { name: '重跑 daily_policy' });
+        fireEvent.focus(rerunBtn);
+        expect((await screen.findByRole('tooltip')).textContent).toBe('重跑');
+
+        const stopBtn = screen.getByRole('button', { name: '停止 hourly_sync' });
+        fireEvent.focus(stopBtn);
+        expect((await screen.findByRole('tooltip')).textContent).toBe('停止');
+    });
+
+    it('renders mark-success action on markable rows, teal pill on FORCE_SUCCESS, and hides action without permission', async () => {
+        const forcedRow: OperationsExecutionListItem = {
+            ...execution,
+            id: 'exec-forced',
+            flowId: 'forced_job',
+            status: 'FORCE_SUCCESS',
+            rerunnable: false,
+            stoppable: false,
+            markableSuccess: false,
+        };
+        const { props, rerender } = renderTable({
+            rows: [execution, forcedRow],
+            canMarkSuccess: true,
+            onMarkSuccess: vi.fn(),
+        });
+
+        // Failed row shows all 3 buttons directly without overflow menu
+        expect(screen.queryByRole('button', { name: '更多操作' })).toBeNull();
+        const detailBtn = screen.getByRole('button', { name: '查看 daily_policy 详情' });
+        const rerunBtn = screen.getByRole('button', { name: '重跑 daily_policy' });
+        const markBtn = screen.getByRole('button', { name: '置成功 daily_policy' });
+        expect(detailBtn).toBeTruthy();
+        expect(rerunBtn).toBeTruthy();
+        expect(markBtn).toBeTruthy();
+
+        fireEvent.focus(markBtn);
+        expect((await screen.findByRole('tooltip')).textContent).toBe('置成功');
+
+        fireEvent.click(markBtn);
+        expect(props.onMarkSuccess).toHaveBeenCalledWith(execution);
+        expect(props.onOpenDetail).not.toHaveBeenCalled();
+
+        // FORCE_SUCCESS renders teal pill and hides rerun & mark-success
+        const forcedPill = screen.getByText('人工置成功');
+        expect(forcedPill.className).toContain('is-teal');
+        expect(screen.queryByRole('button', { name: '重跑 forced_job' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '置成功 forced_job' })).toBeNull();
+
+        // Without write permission, mark-success button disappears
+        rerender(
+            <TooltipProvider>
+                <OperationsTable {...props} rows={[execution, forcedRow]} canMarkSuccess={false} />
+            </TooltipProvider>,
+        );
+        expect(screen.queryByRole('button', { name: '置成功 daily_policy' })).toBeNull();
+    });
 });

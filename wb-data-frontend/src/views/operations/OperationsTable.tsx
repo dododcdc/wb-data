@@ -1,6 +1,12 @@
-import { Activity, ExternalLink, RotateCcw, Square } from 'lucide-react';
+import { Activity, CheckCheck, ExternalLink, RotateCcw, Square } from 'lucide-react';
 import type { OperationsExecutionListItem } from '../../api/operations';
-import { getExecutionPresentation, getExecutionStatusLabel, isStoppable } from '../../components/execution/executionPresentation';
+import {
+    getExecutionPresentation,
+    getExecutionStatusLabel,
+    getRerunBadgeMeta,
+    isMarkableSuccess,
+    isStoppable,
+} from '../../components/execution/executionPresentation';
 import { Button } from '../../components/ui/button';
 import { DataList, type DataListColumn } from '../../components/ui/list/DataList';
 import { RowActions, type RowActionItem } from '../../components/ui/list/RowActions';
@@ -11,15 +17,18 @@ interface OperationsTableProps {
     rows: OperationsExecutionListItem[];
     canRerun: boolean;
     canStop?: boolean;
+    canMarkSuccess?: boolean;
     isLoading: boolean;
     isRefreshing: boolean;
     errorMessage: string;
     hasFooter: boolean;
     pendingRerunId: string | null;
     pendingStopId?: string | null;
+    pendingMarkSuccessId?: string | null;
     onOpenDetail: (executionId: string) => void;
     onRerun: (row: OperationsExecutionListItem) => void;
     onStop?: (row: OperationsExecutionListItem) => void;
+    onMarkSuccess?: (row: OperationsExecutionListItem) => void;
     onResetFilters: () => void;
     onRetry: () => void;
 }
@@ -33,7 +42,8 @@ function formatDuration(durationMs: number | null) {
     return `${minutes}m ${rest}s`;
 }
 
-function statusTone(status: string): 'success' | 'danger' | 'info' | 'neutral' {
+function statusTone(status: string): 'success' | 'teal' | 'danger' | 'info' | 'neutral' {
+    if (status === 'FORCE_SUCCESS') return 'teal';
     const tone = getExecutionPresentation(status).dotTone;
     if (tone === 'success') return 'success';
     if (tone === 'failed') return 'danger';
@@ -46,15 +56,18 @@ export function OperationsTable(props: OperationsTableProps) {
         rows,
         canRerun,
         canStop = false,
+        canMarkSuccess = false,
         isLoading,
         isRefreshing,
         errorMessage,
         hasFooter,
         pendingRerunId,
         pendingStopId = null,
+        pendingMarkSuccessId = null,
         onOpenDetail,
         onRerun,
         onStop,
+        onMarkSuccess,
         onResetFilters,
         onRetry,
     } = props;
@@ -63,7 +76,8 @@ export function OperationsTable(props: OperationsTableProps) {
         const actions: RowActionItem[] = [
             {
                 key: 'detail',
-                label: `查看 ${row.flowId} 详情`,
+                label: '查看详情',
+                ariaLabel: `查看 ${row.flowId} 详情`,
                 icon: ExternalLink,
                 onClick: () => onOpenDetail(row.id),
             },
@@ -71,7 +85,8 @@ export function OperationsTable(props: OperationsTableProps) {
         if ((row.stoppable ?? isStoppable(row.status)) && canStop && onStop) {
             actions.push({
                 key: 'stop',
-                label: `停止 ${row.flowId}`,
+                label: '停止',
+                ariaLabel: `停止 ${row.flowId}`,
                 icon: Square,
                 tone: 'danger',
                 pending: pendingStopId === row.id,
@@ -81,10 +96,21 @@ export function OperationsTable(props: OperationsTableProps) {
         if (row.rerunnable && canRerun) {
             actions.push({
                 key: 'rerun',
-                label: `重跑 ${row.flowId}`,
+                label: '重跑',
+                ariaLabel: `重跑 ${row.flowId}`,
                 icon: RotateCcw,
                 pending: pendingRerunId === row.id,
                 onClick: () => onRerun(row),
+            });
+        }
+        if ((row.markableSuccess ?? isMarkableSuccess(row.status)) && canMarkSuccess && onMarkSuccess) {
+            actions.push({
+                key: 'mark-success',
+                label: '置成功',
+                ariaLabel: `置成功 ${row.flowId}`,
+                icon: CheckCheck,
+                pending: pendingMarkSuccessId === row.id,
+                onClick: () => onMarkSuccess(row),
             });
         }
         return actions;
@@ -96,12 +122,22 @@ export function OperationsTable(props: OperationsTableProps) {
             header: '任务',
             primary: true,
             width: '20%',
-            cell: (row) => (
-                <span className="operations-flow-cell">
-                    <span className="operations-flow" title={row.flowId}>{row.flowId}</span>
-                    {row.rerun ? <span className="operations-rerun-badge">重跑</span> : null}
-                </span>
-            ),
+            cell: (row) => {
+                const rerunBadge = getRerunBadgeMeta(row);
+                return (
+                    <span className="operations-flow-cell">
+                        <span className="operations-flow" title={row.flowId}>{row.flowId}</span>
+                        {rerunBadge ? (
+                            <span
+                                className={`operations-rerun-badge operations-rerun-badge--${rerunBadge.kind}`}
+                                title={rerunBadge.title}
+                            >
+                                {rerunBadge.label}
+                            </span>
+                        ) : null}
+                    </span>
+                );
+            },
         },
         {
             key: 'branch',
@@ -113,7 +149,7 @@ export function OperationsTable(props: OperationsTableProps) {
         {
             key: 'status',
             header: '状态',
-            width: 100,
+            width: 116,
             cell: (row) => <StatusPill tone={statusTone(row.status)}>{getExecutionStatusLabel(row.status)}</StatusPill>,
         },
         {
@@ -149,8 +185,8 @@ export function OperationsTable(props: OperationsTableProps) {
             key: 'actions',
             header: '操作',
             align: 'right',
-            width: 90,
-            cell: (row) => <RowActions items={getActions(row)} />,
+            width: 116,
+            cell: (row) => <RowActions items={getActions(row)} maxVisible={3} />,
         },
     ];
 

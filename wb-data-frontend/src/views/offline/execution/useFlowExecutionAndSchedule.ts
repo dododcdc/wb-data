@@ -73,6 +73,9 @@ export function useFlowExecutionAndSchedule({
     const [scheduleSaving] = useState(false);
     const [scheduleCron, setScheduleCron] = useState('');
     const [schedulePeriod, setSchedulePeriod] = useState<OfflineSchedulePeriod>('DAILY');
+    const [scheduleRetryEnabled, setScheduleRetryEnabled] = useState(false);
+    const [scheduleRetryCount, setScheduleRetryCount] = useState(3);
+    const [scheduleRetryIntervalMinutes, setScheduleRetryIntervalMinutes] = useState(5);
     const scheduleTimezone = draftSession?.workingDraft.runtimeTimezone || defaultTimezone;
     const groupIdRef = useRef(groupId);
     const actionVersionRef = useRef(0);
@@ -108,6 +111,9 @@ export function useFlowExecutionAndSchedule({
         setSchedule(null);
         setScheduleCron('');
         setSchedulePeriod('DAILY');
+        setScheduleRetryEnabled(false);
+        setScheduleRetryCount(3);
+        setScheduleRetryIntervalMinutes(5);
         setScheduleDialogOpen(false);
         setExecutionContextDialogOpen(false);
         setExecutionDialogOpen(false);
@@ -341,13 +347,24 @@ export function useFlowExecutionAndSchedule({
         scheduleLoadVersionRef.current = loadVersion;
         setSchedule(null);
         setScheduleCron('');
+        setScheduleRetryEnabled(false);
+        setScheduleRetryCount(3);
+        setScheduleRetryIntervalMinutes(5);
 
         const draftSchedule = draftSession?.path === path
             ? draftSession.workingDraft.schedule
             : null;
         if (draftSchedule) {
+            const retryEnabled = Boolean(draftSchedule.retryEnabled);
+            const retryCount = retryEnabled && draftSchedule.retryCount ? draftSchedule.retryCount : 3;
+            const retryIntervalMinutes = retryEnabled && draftSchedule.retryIntervalMinutes
+                ? draftSchedule.retryIntervalMinutes
+                : 5;
             setScheduleCron(draftSchedule.cron);
             setSchedulePeriod(draftSchedule.period);
+            setScheduleRetryEnabled(retryEnabled);
+            setScheduleRetryCount(retryCount);
+            setScheduleRetryIntervalMinutes(retryIntervalMinutes);
             setSchedule({
                 groupId,
                 path,
@@ -356,6 +373,9 @@ export function useFlowExecutionAndSchedule({
                 timezone: draftSchedule.timezone,
                 enabled: draftSchedule.enabled,
                 period: draftSchedule.period,
+                retryEnabled,
+                retryCount: retryEnabled ? retryCount : null,
+                retryIntervalMinutes: retryEnabled ? retryIntervalMinutes : null,
                 contentHash: '',
                 fileUpdatedAt: 0,
             });
@@ -368,15 +388,26 @@ export function useFlowExecutionAndSchedule({
         try {
             const nextSchedule = await getOfflineSchedule(groupId, path);
             if (!isCurrentScheduleLoad()) return;
+            const retryEnabled = Boolean(nextSchedule.retryEnabled);
+            const retryCount = retryEnabled && nextSchedule.retryCount ? nextSchedule.retryCount : 3;
+            const retryIntervalMinutes = retryEnabled && nextSchedule.retryIntervalMinutes
+                ? nextSchedule.retryIntervalMinutes
+                : 5;
             setSchedule(nextSchedule);
             setScheduleCron(nextSchedule.cron);
             setSchedulePeriod(nextSchedule.period);
+            setScheduleRetryEnabled(retryEnabled);
+            setScheduleRetryCount(retryCount);
+            setScheduleRetryIntervalMinutes(retryIntervalMinutes);
         } catch (error) {
             if (!isCurrentScheduleLoad()) return;
             if (error instanceof AxiosError && error.response?.status === 404) {
                 setSchedule(null);
                 setScheduleCron('0 2 * * *');
                 setSchedulePeriod('DAILY');
+                setScheduleRetryEnabled(false);
+                setScheduleRetryCount(3);
+                setScheduleRetryIntervalMinutes(5);
                 return;
             }
             showFeedback({
@@ -398,6 +429,22 @@ export function useFlowExecutionAndSchedule({
         setScheduleCron(buildCronFromPeriodParts(period, base));
     }, [scheduleCron]);
 
+    const changeScheduleRetry = useCallback((patch: {
+        retryEnabled?: boolean;
+        retryCount?: number;
+        retryIntervalMinutes?: number;
+    }) => {
+        if (patch.retryEnabled !== undefined) {
+            setScheduleRetryEnabled(patch.retryEnabled);
+        }
+        if (patch.retryCount !== undefined) {
+            setScheduleRetryCount(patch.retryCount);
+        }
+        if (patch.retryIntervalMinutes !== undefined) {
+            setScheduleRetryIntervalMinutes(patch.retryIntervalMinutes);
+        }
+    }, []);
+
     const stageSchedule = useCallback(async () => {
         if (!draftSession) return;
         if (!isValidCronExpression(scheduleCron, scheduleTimezone)) {
@@ -413,6 +460,9 @@ export function useFlowExecutionAndSchedule({
             timezone: scheduleTimezone,
             enabled: schedule?.enabled ?? false,
             period: schedulePeriod,
+            retryEnabled: scheduleRetryEnabled,
+            retryCount: scheduleRetryEnabled ? scheduleRetryCount : null,
+            retryIntervalMinutes: scheduleRetryEnabled ? scheduleRetryIntervalMinutes : null,
         });
         setDraftSession(nextSession);
         setScheduleDialogOpen(false);
@@ -421,7 +471,18 @@ export function useFlowExecutionAndSchedule({
             title: '调度配置已暂存',
             detail: '自动保存后生效',
         });
-    }, [draftSession, schedule?.enabled, scheduleCron, schedulePeriod, scheduleTimezone, setDraftSession, showFeedback]);
+    }, [
+        draftSession,
+        schedule?.enabled,
+        scheduleCron,
+        schedulePeriod,
+        scheduleRetryCount,
+        scheduleRetryEnabled,
+        scheduleRetryIntervalMinutes,
+        scheduleTimezone,
+        setDraftSession,
+        showFeedback,
+    ]);
 
     const toggleSchedule = useCallback(async (enabled: boolean) => {
         if (!draftSession) return;
@@ -434,14 +495,25 @@ export function useFlowExecutionAndSchedule({
             });
             return;
         }
+        const retryCount = scheduleRetryEnabled ? scheduleRetryCount : null;
+        const retryIntervalMinutes = scheduleRetryEnabled ? scheduleRetryIntervalMinutes : null;
         const nextSession = updateFlowScheduleDraft(draftSession, {
             cron: scheduleCron,
             timezone: scheduleTimezone,
             enabled,
             period: schedulePeriod,
+            retryEnabled: scheduleRetryEnabled,
+            retryCount,
+            retryIntervalMinutes,
         });
         setDraftSession(nextSession);
-        setSchedule((prev) => prev ? { ...prev, enabled } : {
+        setSchedule((prev) => prev ? {
+            ...prev,
+            enabled,
+            retryEnabled: scheduleRetryEnabled,
+            retryCount,
+            retryIntervalMinutes,
+        } : {
             groupId: groupId!,
             path: activeFlowPath!,
             triggerId: 'schedule',
@@ -449,6 +521,9 @@ export function useFlowExecutionAndSchedule({
             timezone: scheduleTimezone,
             enabled,
             period: schedulePeriod,
+            retryEnabled: scheduleRetryEnabled,
+            retryCount,
+            retryIntervalMinutes,
             contentHash: '',
             fileUpdatedAt: 0,
         });
@@ -457,7 +532,19 @@ export function useFlowExecutionAndSchedule({
             title: enabled ? '调度开启已暂存' : '调度关闭已暂存',
             detail: '推送远程后生效',
         });
-    }, [activeFlowPath, draftSession, groupId, scheduleCron, schedulePeriod, scheduleTimezone, setDraftSession, showFeedback]);
+    }, [
+        activeFlowPath,
+        draftSession,
+        groupId,
+        scheduleCron,
+        schedulePeriod,
+        scheduleRetryCount,
+        scheduleRetryEnabled,
+        scheduleRetryIntervalMinutes,
+        scheduleTimezone,
+        setDraftSession,
+        showFeedback,
+    ]);
 
     return {
         executionDialogOpen,
@@ -486,6 +573,10 @@ export function useFlowExecutionAndSchedule({
         setScheduleCron,
         schedulePeriod,
         changeSchedulePeriod,
+        scheduleRetryEnabled,
+        scheduleRetryCount,
+        scheduleRetryIntervalMinutes,
+        changeScheduleRetry,
         scheduleTimezone,
         scheduleSaving,
         refreshExecutions,

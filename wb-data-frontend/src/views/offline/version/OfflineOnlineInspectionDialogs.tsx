@@ -57,10 +57,14 @@ export function OfflineOnlineInspectionDialogs({
                 cron={onlineScheduleResponse?.cron ?? ''}
                 period={onlineScheduleResponse?.period ?? 'DAILY'}
                 timezone={onlineDocument.runtimeTimezone || onlineScheduleResponse?.timezone || defaultTimezone}
+                retryEnabled={Boolean(onlineScheduleResponse?.retryEnabled)}
+                retryCount={onlineScheduleResponse?.retryCount ?? 3}
+                retryIntervalMinutes={onlineScheduleResponse?.retryIntervalMinutes ?? 5}
                 saving={false}
                 flowId={onlineDocument.flowId ?? null}
                 onOpenChange={onScheduleDialogOpenChange}
                 onPeriodChange={NOOP}
+                onRetryChange={NOOP}
                 onSave={NOOP}
                 onToggle={NOOP}
             />

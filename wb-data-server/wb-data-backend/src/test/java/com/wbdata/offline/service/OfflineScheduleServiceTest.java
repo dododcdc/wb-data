@@ -165,6 +165,59 @@ class OfflineScheduleServiceTest {
                         ex -> assertThat(ex.getReason()).contains("小时调度 Cron 不合法"));
     }
 
+    @Test
+    void updateSchedule_persistsRetrySettingsAndPreservesWhenOmitted() throws Exception {
+        OfflineProperties properties = offlineProperties();
+        RepoLockManager repoLockManager = new RepoLockManager();
+        OfflineFlowContentService contentService = new OfflineFlowContentService(
+                properties, repoLockManager, new OfflineKestraFlowFileService(properties));
+        OfflineScheduleService scheduleService = new OfflineScheduleService(contentService);
+
+        var initial = contentService.saveFlowContent(new SaveOfflineFlowRequest(
+                1L,
+                "_flows/retry/flow.yaml",
+                """
+                        id: retry
+                        namespace: pg-1
+                        labels:
+                          wbdataRuntimeTimezone: Asia/Shanghai
+                        tasks: []
+                        """,
+                null,
+                0L
+        ));
+
+        var withRetry = scheduleService.updateSchedule(new UpdateOfflineScheduleRequest(
+                1L, "_flows/retry/flow.yaml", "0 2 * * *", OfflineSchedulePeriod.DAILY,
+                initial.contentHash(), initial.fileUpdatedAt(), true, 4, 15));
+        assertThat(withRetry.retryEnabled()).isTrue();
+        assertThat(withRetry.retryCount()).isEqualTo(4);
+        assertThat(withRetry.retryIntervalMinutes()).isEqualTo(15);
+
+        // Legacy 6-arg update without retry fields preserves existing retry config
+        var timeUpdated = scheduleService.updateSchedule(new UpdateOfflineScheduleRequest(
+                1L, "_flows/retry/flow.yaml", "30 3 * * *", OfflineSchedulePeriod.DAILY,
+                withRetry.contentHash(), withRetry.fileUpdatedAt()));
+        assertThat(timeUpdated.retryEnabled()).isTrue();
+        assertThat(timeUpdated.retryCount()).isEqualTo(4);
+        assertThat(timeUpdated.retryIntervalMinutes()).isEqualTo(15);
+
+        var fetched = scheduleService.getSchedule(1L, "_flows/retry/flow.yaml");
+        assertThat(fetched.retryEnabled()).isTrue();
+        assertThat(fetched.retryCount()).isEqualTo(4);
+        assertThat(fetched.retryIntervalMinutes()).isEqualTo(15);
+
+        var disabledRetry = scheduleService.updateSchedule(new UpdateOfflineScheduleRequest(
+                1L, "_flows/retry/flow.yaml", "30 3 * * *", OfflineSchedulePeriod.DAILY,
+                timeUpdated.contentHash(), timeUpdated.fileUpdatedAt(), false, null, null));
+        assertThat(disabledRetry.retryEnabled()).isFalse();
+        assertThat(disabledRetry.retryCount()).isNull();
+        assertThat(disabledRetry.retryIntervalMinutes()).isNull();
+        String kestraYaml = Files.readString(properties.resolveRepoPath(1L)
+                .resolve(".wb-data/kestra-flows/retry.yaml"));
+        assertThat(kestraYaml).doesNotContain("retry:");
+    }
+
     private OfflineProperties offlineProperties() {
         OfflineProperties properties = new OfflineProperties();
         properties.setRepoBaseDir(tempDir.toString());

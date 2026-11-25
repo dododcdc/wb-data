@@ -64,8 +64,19 @@ public class OperationsInstanceDiagnosisService {
 
     static final String GATE_TASK_ID = "wb_upstream_gate";
     static final Duration FIRE_GRACE = Duration.ofMinutes(10);
-    private static final Set<String> SATISFIED_STATES = Set.of("SUCCESS");
-    private static final Set<String> TERMINAL_STATES = Set.of("SUCCESS", "WARNING", "FAILED", "KILLED", "CANCELLED");
+    private static final Set<String> SATISFIED_STATES = Set.of(
+            "SUCCESS",
+            OperationsForceSuccess.STATUS_FORCE_SUCCESS
+    );
+    private static final Set<String> TERMINAL_STATES = Set.of(
+            "SUCCESS",
+            OperationsForceSuccess.STATUS_FORCE_SUCCESS,
+            "WARNING",
+            "FAILED",
+            "KILLED",
+            "CANCELLED",
+            "RETRIED"
+    );
     private static final Set<String> ACTIVE_STATES = Set.of("CREATED", "QUEUED", "RUNNING", "RETRYING");
 
     private final GitSyncConfigService gitSyncConfigService;
@@ -167,6 +178,9 @@ public class OperationsInstanceDiagnosisService {
                             ? "依赖闸门等待上游同期实例超过一个调度周期"
                             : "等待上游同期实例超过一个调度周期: " + formatUpstreamNames(waiting, groupNames);
                 }
+            } else if ("RETRIED".equals(nullSafe(representative.status()))) {
+                state = "RETRIED";
+                reason = "上次执行失败，正在等待系统自动重试";
             } else {
                 state = representative.status();
             }
@@ -261,14 +275,33 @@ public class OperationsInstanceDiagnosisService {
         List<KestraExecutionSnapshot> matches = findPeriodExecutions(upstreamNamespace, dependency.flowId(),
                 upstreamSchedule.period(), upstreamZone, scheduleKey, periodStart, periodEnd, upstreamNow);
         KestraExecutionSnapshot representative = matches.isEmpty() ? null : matches.getFirst();
-        boolean satisfied = matches.stream().anyMatch(execution -> SATISFIED_STATES.contains(execution.status()));
-        String state = satisfied ? "SUCCESS"
+        boolean satisfied = matches.stream()
+                .anyMatch(execution -> SATISFIED_STATES.contains(OperationsForceSuccess.effectiveStatus(execution)));
+        boolean hasOrganicSuccess = matches.stream()
+                .anyMatch(execution -> "SUCCESS".equals(OperationsForceSuccess.effectiveStatus(execution)));
+        String state = hasOrganicSuccess ? "SUCCESS"
+                : satisfied ? OperationsForceSuccess.STATUS_FORCE_SUCCESS
                 : representative == null ? STATE_NOT_FIRED
-                : nullSafe(representative.status());
+                : nullSafe(OperationsForceSuccess.effectiveStatus(representative));
+        ZonedDateTime representativePlanned = representative == null
+                ? null
+                : executionPlannedTime(representative, upstreamZone);
+        Instant plannedAt = representativePlanned != null
+                ? representativePlanned.toInstant()
+                : OperationsScheduleWindows.cronTime(upstreamSchedule.cron())
+                        .flatMap(cronTime -> OperationsScheduleWindows.plannedFire(cronTime, periodStart, periodEnd))
+                        .map(ZonedDateTime::toInstant)
+                        .orElse(null);
+        Instant startDate = representative == null
+                ? null
+                : (representative.startDate() != null ? representative.startDate() : representative.createdAt());
+        Instant endDate = representative == null ? null : representative.endDate();
+        Long durationMs = durationMs(startDate, endDate);
         return new OperationsInstanceUpstreamItem(dependency.groupId(),
                 groupNames.get(dependency.groupId()), dependency.flowId(), upstreamNamespace,
                 scheduleKey, state, satisfied, accessible,
-                representative == null ? null : representative.id());
+                representative == null ? null : representative.id(),
+                plannedAt, startDate, endDate, durationMs);
     }
 
     private boolean previousPeriodBlocked(String namespace,
@@ -284,9 +317,13 @@ public class OperationsInstanceDiagnosisService {
         if (previous.isEmpty()) {
             return false;
         }
-        boolean anySuccess = previous.stream().anyMatch(execution -> SATISFIED_STATES.contains(execution.status()));
-        boolean allTerminal = previous.stream().allMatch(execution -> TERMINAL_STATES.contains(execution.status()));
-        return !anySuccess && allTerminal;
+        boolean anySuccess = previous.stream()
+                .anyMatch(execution -> SATISFIED_STATES.contains(OperationsForceSuccess.effectiveStatus(execution)));
+        boolean allTerminal = previous.stream()
+                .allMatch(execution -> TERMINAL_STATES.contains(OperationsForceSuccess.effectiveStatus(execution)));
+        boolean waitingForAutoRetry = "RETRIED".equals(
+                nullSafe(OperationsForceSuccess.effectiveStatus(previous.getFirst())));
+        return !anySuccess && allTerminal && !waitingForAutoRetry;
     }
 
     /** 与闸门 matchingExecutions 同语义：按计划时间换算 scheduleKey 后匹配；窗口外扩以覆盖延迟重跑。 */
@@ -412,15 +449,21 @@ public class OperationsInstanceDiagnosisService {
     private OperationsInstanceExecutionItem toExecutionItem(KestraExecutionSnapshot execution, Set<String> rerunIds) {
         String input = execution.inputs() == null ? null : execution.inputs().get(ExecutionTimeContext.PLANNED_TIME_INPUT);
         Instant plannedAt = Optional.ofNullable(parseInstant(input)).orElse(execution.plannedAt());
+        OperationsRerunClassifier.Classification classification = OperationsRerunClassifier.classify(execution, rerunIds);
         return new OperationsInstanceExecutionItem(
                 execution.id(),
-                execution.status(),
+                OperationsForceSuccess.effectiveStatus(execution),
                 plannedAt,
                 execution.createdAt(),
                 execution.startDate(),
                 execution.endDate(),
                 durationMs(execution.startDate(), execution.endDate()),
-                rerunIds.contains(execution.id())
+                classification.rerun(),
+                classification.rerunType(),
+                classification.retryAttempt(),
+                classification.partialRerun(),
+                classification.rerunSelectedTaskCount(),
+                classification.rerunTotalTaskCount()
         );
     }
 
