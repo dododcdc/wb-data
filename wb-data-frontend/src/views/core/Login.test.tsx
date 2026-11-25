@@ -51,6 +51,18 @@ describe('Login Component', () => {
         expect(login).not.toHaveBeenCalled();
     });
 
+    it('rejects whitespace-only credentials without calling the API', async () => {
+        renderLogin();
+
+        fireEvent.change(screen.getByLabelText('用户名'), { target: { value: '   ' } });
+        fireEvent.change(screen.getByLabelText('密码'), { target: { value: '   ' } });
+        fireEvent.click(screen.getByRole('button', { name: '登录' }));
+
+        expect(await screen.findByText('请输入用户名')).toBeTruthy();
+        expect(await screen.findByText('请输入密码')).toBeTruthy();
+        expect(login).not.toHaveBeenCalled();
+    });
+
     it('submits form, saves credentials and redirects to root by default', async () => {
         vi.mocked(login).mockResolvedValue({
             accessToken: 'test-token',
@@ -102,6 +114,24 @@ describe('Login Component', () => {
 
         expect(await screen.findByText('用户名或密码错误')).toBeTruthy();
         expect(useAuthStore.getState().token).toBeNull();
+    });
+
+    it('clears the server error banner once the user edits the credentials', async () => {
+        vi.mocked(login).mockRejectedValue(new Error('用户名或密码错误'));
+
+        renderLogin();
+
+        fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'admin' } });
+        fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'wrong-pass' } });
+        fireEvent.click(screen.getByRole('button', { name: '登录' }));
+
+        expect(await screen.findByText('用户名或密码错误')).toBeTruthy();
+
+        fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'correct-pass' } });
+
+        await waitFor(() => {
+            expect(screen.queryByText('用户名或密码错误')).toBeNull();
+        });
     });
 
     it('toggles password visibility without submitting the form', () => {
