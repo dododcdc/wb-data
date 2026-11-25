@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Search } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getOfflineRepoStatus } from '../../api/offline';
 import {
     listOperationsExecutions,
@@ -49,6 +49,24 @@ const STATUS_OPTIONS = [
     { value: 'KILLED', label: '已停止' },
 ];
 
+const VALID_STATUS_FILTER_VALUES = new Set(STATUS_OPTIONS.map((option) => option.value));
+
+function resolveInitialStatusFilter(rawStatus: string | null) {
+    const normalized = rawStatus?.trim().toUpperCase();
+    return normalized && VALID_STATUS_FILTER_VALUES.has(normalized) ? normalized : ALL_STATUSES;
+}
+
+function resolveInitialBranchFilter(rawBranch: string | null) {
+    const trimmed = rawBranch?.trim();
+    if (!trimmed) {
+        return { initialized: false, value: '' };
+    }
+    if (trimmed === '__all__' || trimmed === ALL_BRANCHES) {
+        return { initialized: true, value: '' };
+    }
+    return { initialized: true, value: trimmed };
+}
+
 function normalizeDateTimeInput(value: string) {
     return parseLocalDateTime(value)?.toISOString() ?? null;
 }
@@ -86,6 +104,7 @@ function rememberPageSize(pageSize: number) {
 export default function OperationsCenter() {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const { showSuccess, showError } = useOperationFeedback();
     const currentGroup = useAuthStore((state) => state.currentGroup);
     const permissions = useAuthStore((state) => state.permissions);
@@ -93,9 +112,11 @@ export default function OperationsCenter() {
     const groupId = currentGroup?.id ?? null;
     const canOperate = systemAdmin || permissions.includes('offline.write');
 
-    const [branchFilter, setBranchFilter] = useState('');
+    const [branchFilter, setBranchFilter] = useState(
+        () => resolveInitialBranchFilter(searchParams.get('branch')).value,
+    );
     const [flowFilter, setFlowFilter] = useState('');
-    const [statusFilter, setStatusFilter] = useState(ALL_STATUSES);
+    const [statusFilter, setStatusFilter] = useState(() => resolveInitialStatusFilter(searchParams.get('status')));
     const [rollingWindowMs, setRollingWindowMs] = useState<number | null>(DEFAULT_ROLLING_WINDOW_MS);
     const [fromFilter, setFromFilter] = useState(() => (
         formatLocalDateTime(new Date(Date.now() - DEFAULT_ROLLING_WINDOW_MS))
@@ -103,7 +124,9 @@ export default function OperationsCenter() {
     const [toFilter, setToFilter] = useState(() => formatLocalDateTime(new Date(Date.now())));
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(readStoredPageSize);
-    const [branchInitializedGroupId, setBranchInitializedGroupId] = useState<number | null>(null);
+    const [branchInitializedGroupId, setBranchInitializedGroupId] = useState<number | null>(() => (
+        resolveInitialBranchFilter(searchParams.get('branch')).initialized ? groupId : null
+    ));
     const [autoRefresh, setAutoRefresh] = useState(true);
     const [pendingRerunId, setPendingRerunId] = useState<string | null>(null);
     const [rerunTarget, setRerunTarget] = useState<OperationsExecutionListItem | null>(null);
@@ -111,8 +134,12 @@ export default function OperationsCenter() {
     const [stopTarget, setStopTarget] = useState<OperationsExecutionListItem | null>(null);
     const [pendingMarkSuccessId, setPendingMarkSuccessId] = useState<string | null>(null);
     const [markSuccessTarget, setMarkSuccessTarget] = useState<OperationsExecutionListItem | null>(null);
+    const prevGroupIdRef = useRef<number | null>(groupId);
 
     useEffect(() => {
+        const groupChanged = prevGroupIdRef.current !== groupId;
+        prevGroupIdRef.current = groupId;
+        if (!groupChanged) return;
         const now = Date.now();
         setBranchFilter('');
         setFlowFilter('');

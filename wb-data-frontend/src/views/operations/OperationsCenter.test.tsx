@@ -254,15 +254,16 @@ describe('OperationsCenter', () => {
         vi.restoreAllMocks();
     });
 
-    function renderPage() {
+    function renderPage(initialEntry = '/') {
         const queryClient = new QueryClient({
             defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
         });
         render(
             <TooltipProvider><QueryClientProvider client={queryClient}>
-                <MemoryRouter>
+                <MemoryRouter initialEntries={[initialEntry]}>
                     <Routes>
                         <Route path="/" element={<OperationsCenter />} />
+                        <Route path="/operations" element={<OperationsCenter />} />
                         <Route path="/operations/instances" element={<div>execution detail route</div>} />
                     </Routes>
                 </MemoryRouter>
@@ -685,5 +686,51 @@ describe('OperationsCenter', () => {
         await waitFor(() => expect(markOperationsExecutionSuccessMock).toHaveBeenCalledWith(4, 'exec-1'));
         expect(showSuccess).toHaveBeenCalledWith('已置为成功');
         await waitFor(() => expect(listOperationsExecutionsMock).toHaveBeenCalledTimes(2));
+    });
+
+    it('initializes status filter from ?status= URL query parameter', async () => {
+        renderPage('/operations?status=FAILED');
+
+        await waitFor(() => {
+            expect(listOperationsExecutionsMock).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    groupId: 4,
+                    status: 'FAILED',
+                }),
+            );
+        });
+        const statusSelect = await screen.findByTestId('status-select') as HTMLSelectElement;
+        expect(statusSelect.value).toBe('FAILED');
+    });
+
+    it('initializes branch filter from ?branch= URL query parameter instead of current repo branch', async () => {
+        renderPage('/operations?status=FAILED&branch=main');
+
+        await waitFor(() => {
+            expect(listOperationsExecutionsMock).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    groupId: 4,
+                    branch: 'main',
+                    status: 'FAILED',
+                }),
+            );
+        });
+        const branchSelect = await screen.findByTestId('branch-select') as HTMLSelectElement;
+        expect(branchSelect.value).toBe('main');
+    });
+
+    it('supports ?branch=__all__ URL query parameter to show all synced branches', async () => {
+        renderPage('/operations?branch=__all__');
+
+        await waitFor(() => {
+            expect(listOperationsExecutionsMock).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    groupId: 4,
+                    branch: null,
+                }),
+            );
+        });
+        const branchSelect = await screen.findByTestId('branch-select') as HTMLSelectElement;
+        expect(branchSelect.value).toBe('__all_branches__');
     });
 });
