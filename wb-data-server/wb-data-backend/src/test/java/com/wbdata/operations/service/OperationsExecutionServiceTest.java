@@ -3,6 +3,7 @@ package com.wbdata.operations.service;
 import com.wbdata.git.dto.GitSyncConfigResponse;
 import com.wbdata.git.service.GitSyncConfigService;
 import com.wbdata.offline.kestra.KestraClient;
+import com.wbdata.offline.kestra.KestraExecutionPage;
 import com.wbdata.offline.kestra.KestraExecutionSnapshot;
 import com.wbdata.offline.kestra.KestraLogEntry;
 import com.wbdata.offline.kestra.KestraTaskRunSnapshot;
@@ -78,7 +79,7 @@ class OperationsExecutionServiceTest {
         KestraClient kestraClient = Mockito.mock(KestraClient.class);
         OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
         when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(syncConfigs());
-        when(kestraClient.searchExecutions(searchFilter("g4-feature-policy-review"))).thenReturn(List.of(
+        stubPagedSearch(kestraClient, List.of(
                 execution(
                         "exec-review",
                         "g4-feature-policy-review",
@@ -89,9 +90,7 @@ class OperationsExecutionServiceTest {
                         "2026-06-07T01:00:06Z",
                         List.of(taskRun("load_policy", "FAILED"))
                 ),
-                execution("exec-sync", "g4-feature-policy-review", "sync-flows-g4-feature-policy-review", "SUCCESS", "2026-06-07T00:20:00Z")
-        ));
-        when(kestraClient.searchExecutions(searchFilter("g4-main"))).thenReturn(List.of(
+                execution("exec-sync", "g4-feature-policy-review", "sync-flows-g4-feature-policy-review", "SUCCESS", "2026-06-07T00:20:00Z"),
                 execution("exec-main", "g4-main", "main_job", "SUCCESS", "2026-06-07T00:30:00Z")
         ));
 
@@ -108,8 +107,10 @@ class OperationsExecutionServiceTest {
         assertThat(response.executions()).extracting("id").containsExactly("exec-review", "exec-main");
         assertThat(response.executions().getFirst().branch()).isEqualTo("feature/policy-review");
         assertThat(response.executions().getFirst().rerunnable()).isTrue();
-        verify(kestraClient).searchExecutions(searchFilter("g4-feature-policy-review"));
-        verify(kestraClient).searchExecutions(searchFilter("g4-main"));
+        verify(kestraClient).searchExecutionsPage(
+                searchFilterIn("g4-feature-policy-review,g4-main", FROM.toString(), TO.toString()),
+                1, 50, "state.startDate:desc");
+        verify(kestraClient, never()).searchExecutions(Mockito.any());
     }
 
     @Test
@@ -118,7 +119,7 @@ class OperationsExecutionServiceTest {
         KestraClient kestraClient = Mockito.mock(KestraClient.class);
         OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
         when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(syncConfigs());
-        when(kestraClient.searchExecutions(searchFilter("g4-feature-policy-review"))).thenReturn(List.of(
+        stubPagedSearch(kestraClient, List.of(
                 execution("match", "g4-feature-policy-review", "daily_policy", "FAILED", "2026-06-07T01:00:00Z"),
                 execution("wrong-flow", "g4-feature-policy-review", "monthly_policy", "FAILED", "2026-06-07T01:00:00Z"),
                 execution("wrong-status", "g4-feature-policy-review", "daily_policy", "SUCCESS", "2026-06-07T01:00:00Z"),
@@ -135,8 +136,13 @@ class OperationsExecutionServiceTest {
 
         assertThat(response.selectedBranch()).isEqualTo("feature/policy-review");
         assertThat(response.executions()).extracting("id").containsExactly("match");
-        verify(kestraClient).searchExecutions(searchFilter("g4-feature-policy-review"));
-        verify(kestraClient, never()).searchExecutions(searchFilter("g4-main"));
+        Map<String, String> expectedFilters = searchFilter("g4-feature-policy-review");
+        expectedFilters.put("filters[flowId][REGEX]", "(?i).*daily.*");
+        expectedFilters.put("filters[state][EQUALS]", "FAILED");
+        verify(kestraClient).searchExecutionsPage(expectedFilters, 1, 50, "state.startDate:desc");
+        verify(kestraClient, never()).searchExecutionsPage(
+                Mockito.argThat(filters -> "g4-main".equals(filters.get("filters[namespace][EQUALS]"))),
+                Mockito.anyInt(), Mockito.anyInt(), Mockito.any());
     }
 
     @Test
@@ -147,11 +153,7 @@ class OperationsExecutionServiceTest {
         Instant from = Instant.parse("2026-06-06T00:00:00.123456Z");
         Instant to = Instant.parse("2026-06-08T00:00:00.987654Z");
         when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
-        when(kestraClient.searchExecutions(searchFilter(
-                "g4-main",
-                "2026-06-06T00:00:00.123Z",
-                "2026-06-08T00:00:00.987Z"
-        ))).thenReturn(List.of());
+        stubPagedSearch(kestraClient, List.of());
 
         service.listExecutions(4L, listQuery(
                 "main",
@@ -161,11 +163,11 @@ class OperationsExecutionServiceTest {
                 to
         ));
 
-        verify(kestraClient).searchExecutions(searchFilter(
+        verify(kestraClient).searchExecutionsPage(searchFilter(
                 "g4-main",
                 "2026-06-06T00:00:00.123Z",
                 "2026-06-08T00:00:00.987Z"
-        ));
+        ), 1, 50, "state.startDate:desc");
     }
 
     @Test
@@ -187,6 +189,7 @@ class OperationsExecutionServiceTest {
         assertThat(response.selectedBranch()).isEqualTo("missing");
         assertThat(response.executions()).isEmpty();
         verify(kestraClient, never()).searchExecutions(Mockito.any());
+        verify(kestraClient, never()).searchExecutionsPage(Mockito.any(), Mockito.anyInt(), Mockito.anyInt(), Mockito.any());
     }
 
     @Test
@@ -195,7 +198,7 @@ class OperationsExecutionServiceTest {
         KestraClient kestraClient = Mockito.mock(KestraClient.class);
         OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
         when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(syncConfigs());
-        when(kestraClient.searchExecutions(searchFilter("g4-feature-policy-review"))).thenReturn(List.of(
+        stubPagedSearch(kestraClient, List.of(
                 execution(
                         "fallback-older",
                         "g4-feature-policy-review",
@@ -205,9 +208,7 @@ class OperationsExecutionServiceTest {
                         "2026-06-07T00:15:00Z",
                         null,
                         List.of()
-                )
-        ));
-        when(kestraClient.searchExecutions(searchFilter("g4-main"))).thenReturn(List.of(
+                ),
                 execution("created-newer", "g4-main", "main_job", "SUCCESS", "2026-06-07T00:30:00Z")
         ));
 
@@ -220,6 +221,9 @@ class OperationsExecutionServiceTest {
         ));
 
         assertThat(response.executions()).extracting("id").containsExactly("created-newer", "fallback-older");
+        verify(kestraClient).searchExecutionsPage(
+                searchFilterIn("g4-feature-policy-review,g4-main", FROM.toString(), TO.toString()),
+                1, 50, "state.startDate:desc");
     }
 
     @Test
@@ -228,7 +232,7 @@ class OperationsExecutionServiceTest {
         KestraClient kestraClient = Mockito.mock(KestraClient.class);
         OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
         when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
-        when(kestraClient.searchExecutions(searchFilter("g4-main"))).thenReturn(List.of(
+        stubPagedSearch(kestraClient, List.of(
                 execution(
                         "newest",
                         "g4-main",
@@ -288,7 +292,7 @@ class OperationsExecutionServiceTest {
         KestraClient kestraClient = Mockito.mock(KestraClient.class);
         OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
         when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
-        when(kestraClient.searchExecutions(searchFilter("g4-main"))).thenReturn(List.of(
+        stubPagedSearch(kestraClient, List.of(
                 execution("exec-main", "g4-main", "main_job", "SUCCESS", "2026-06-07T00:30:00Z")
         ));
 
@@ -308,6 +312,131 @@ class OperationsExecutionServiceTest {
     }
 
     @Test
+    void listExecutions_escapesRegexMetacharactersInFlowIdFilter() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        stubPagedSearch(kestraClient, List.of(
+                execution("exec-special", "g4-main", "ods.crm[1]+test", "SUCCESS", "2026-06-07T01:00:00Z")
+        ));
+
+        OperationsExecutionListResponse response = service.listExecutions(4L, listQuery(
+                "main",
+                "ods.crm[1]+test",
+                null,
+                FROM,
+                TO
+        ));
+
+        assertThat(response.executions()).extracting("id").containsExactly("exec-special");
+        Map<String, String> expectedFilters = searchFilter("g4-main");
+        expectedFilters.put("filters[flowId][REGEX]", "(?i).*ods\\.crm\\[1\\]\\+test.*");
+        verify(kestraClient).searchExecutionsPage(expectedFilters, 1, 50, "state.startDate:desc");
+    }
+
+    @Test
+    void listExecutions_clampsOutOfRangePageAndRefetchesLastPage() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        stubPagedSearch(kestraClient, List.of(
+                execution("newest", "g4-main", "hourly", "SUCCESS", "2026-06-07T03:00:00Z"),
+                execution("middle", "g4-main", "hourly", "SUCCESS", "2026-06-07T02:00:00Z"),
+                execution("oldest", "g4-main", "hourly", "SUCCESS", "2026-06-07T01:00:00Z")
+        ));
+
+        OperationsExecutionListResponse response = service.listExecutions(4L, listQuery(
+                "main",
+                null,
+                null,
+                FROM,
+                TO,
+                5,
+                2
+        ));
+
+        assertThat(response.page()).isEqualTo(2);
+        assertThat(response.total()).isEqualTo(3);
+        assertThat(response.totalPages()).isEqualTo(2);
+        assertThat(response.statusCounts().total()).isEqualTo(3);
+        assertThat(response.executions()).extracting("id").containsExactly("oldest");
+        Map<String, String> base = searchFilter("g4-main");
+        verify(kestraClient).searchExecutionsPage(base, 5, 2, "state.startDate:desc");
+        verify(kestraClient).searchExecutionsPage(base, 1, 2, "state.startDate:desc");
+        verify(kestraClient).searchExecutionsPage(base, 2, 2, "state.startDate:desc");
+
+        Mockito.clearInvocations(kestraClient);
+        OperationsExecutionListResponse singlePageResponse = service.listExecutions(4L, listQuery(
+                "main",
+                null,
+                null,
+                FROM,
+                TO,
+                5,
+                5
+        ));
+        assertThat(singlePageResponse.page()).isEqualTo(1);
+        assertThat(singlePageResponse.total()).isEqualTo(3);
+        assertThat(singlePageResponse.totalPages()).isEqualTo(1);
+        assertThat(singlePageResponse.executions()).extracting("id").containsExactly("newest", "middle", "oldest");
+        verify(kestraClient, Mockito.times(1)).searchExecutionsPage(base, 1, 5, "state.startDate:desc");
+    }
+
+    @Test
+    void listExecutions_reusesMainPageTotalWithoutDuplicateCountQuery() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        stubPagedSearch(kestraClient, List.of(
+                execution("exec-fail", "g4-main", "daily", "FAILED", "2026-06-07T01:00:00Z"),
+                execution("exec-ok", "g4-main", "daily", "SUCCESS", "2026-06-07T00:50:00Z")
+        ));
+
+        service.listExecutions(4L, listQuery("main", null, null, FROM, TO));
+        Map<String, String> base = searchFilter("g4-main");
+        verify(kestraClient, never()).searchExecutionsPage(base, 1, 1, null);
+
+        Mockito.clearInvocations(kestraClient);
+        service.listExecutions(4L, listQuery("main", null, "FAILED", FROM, TO));
+        Map<String, String> failedFilters = new LinkedHashMap<>(base);
+        failedFilters.put("filters[state][EQUALS]", "FAILED");
+        verify(kestraClient).searchExecutionsPage(failedFilters, 1, 50, "state.startDate:desc");
+        verify(kestraClient, never()).searchExecutionsPage(failedFilters, 1, 1, null);
+        verify(kestraClient).searchExecutionsPage(base, 1, 1, null);
+    }
+
+    @Test
+    void listExecutions_unknownStatusSkipsPageQueryWhileComputingStatusCounts() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
+        stubPagedSearch(kestraClient, List.of(
+                execution("exec-ok", "g4-main", "daily", "SUCCESS", "2026-06-07T01:00:00Z"),
+                execution("exec-fail", "g4-main", "daily", "FAILED", "2026-06-07T00:50:00Z")
+        ));
+
+        OperationsExecutionListResponse response = service.listExecutions(4L, listQuery(
+                "main",
+                null,
+                "BOGUS",
+                FROM,
+                TO
+        ));
+
+        assertThat(response.total()).isZero();
+        assertThat(response.totalPages()).isZero();
+        assertThat(response.executions()).isEmpty();
+        assertThat(response.statusCounts()).isEqualTo(new OperationsExecutionStatusCounts(2, 1, 1, 0, 0));
+        verify(kestraClient, never()).searchExecutionsPage(
+                Mockito.argThat(filters -> "BOGUS".equals(filters.get("filters[state][EQUALS]"))),
+                Mockito.anyInt(), Mockito.anyInt(), Mockito.any());
+    }
+
+    @Test
     void listExecutions_rejectsInvertedTimeRange() {
         GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
         KestraClient kestraClient = Mockito.mock(KestraClient.class);
@@ -321,6 +450,7 @@ class OperationsExecutionServiceTest {
 
         verify(gitSyncConfigService, never()).listEnabledSyncConfigs(Mockito.anyLong());
         verify(kestraClient, never()).searchExecutions(Mockito.any());
+        verify(kestraClient, never()).searchExecutionsPage(Mockito.any(), Mockito.anyInt(), Mockito.anyInt(), Mockito.any());
     }
 
     @Test
@@ -802,7 +932,7 @@ class OperationsExecutionServiceTest {
         KestraClient kestraClient = Mockito.mock(KestraClient.class);
         OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
         when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(List.of(syncConfig("main", "g4-main")));
-        when(kestraClient.searchExecutions(searchFilter("g4-main"))).thenReturn(List.of(
+        stubPagedSearch(kestraClient, List.of(
                 execution("e-success", "g4-main", "job_a", "SUCCESS", "2026-06-07T01:05:00Z"),
                 execution("e-failed", "g4-main", "job_b", "FAILED", "2026-06-07T01:04:00Z"),
                 execution("e-running", "g4-main", "job_c", "RUNNING", "2026-06-07T01:03:00Z"),
@@ -936,8 +1066,7 @@ class OperationsExecutionServiceTest {
                 Instant.parse("2026-06-07T01:15:05Z"), List.of(), Map.of(), Map.of(), Map.of(),
                 "exec-3", 2);
 
-        when(kestraClient.searchExecutions(searchFilter("g4-main"))).thenReturn(
-                List.of(firstAttempt, autoRetry, manualRerun, autoRetryAfterManual));
+        stubPagedSearch(kestraClient, List.of(firstAttempt, autoRetry, manualRerun, autoRetryAfterManual));
         when(kestraClient.getExecution("exec-2")).thenReturn(autoRetry);
         when(kestraClient.getExecution("exec-3")).thenReturn(manualRerun);
         when(kestraClient.getFlowSource("g4-main", "daily_job")).thenReturn("id: daily_job\nnamespace: g4-main\ntasks: []");
@@ -1103,7 +1232,7 @@ class OperationsExecutionServiceTest {
         partialAction.setNewExecutionId("rerun-partial");
         when(actionMapper.selectList(Mockito.any())).thenReturn(List.of(partialAction));
         when(kestraClient.getExecution("rerun-partial")).thenReturn(createdPartial);
-        when(kestraClient.searchExecutions(searchFilter("g4-main"))).thenReturn(List.of(createdPartial));
+        stubPagedSearch(kestraClient, List.of(createdPartial));
 
         OperationsExecutionDetailResponse detail = service.getExecution(4L, "rerun-partial");
         assertThat(detail.parameterResolutionStatus()).isEqualTo("NONE");
@@ -1225,8 +1354,7 @@ class OperationsExecutionServiceTest {
         KestraExecutionSnapshot organicSuccess = execution("exec-ok", "g4-main", "daily_job", "SUCCESS", "2026-06-07T01:05:00Z");
         KestraExecutionSnapshot failedExec = execution("exec-fail", "g4-main", "daily_job", "FAILED", "2026-06-07T01:10:00Z");
 
-        when(kestraClient.searchExecutions(searchFilter("g4-main")))
-                .thenReturn(List.of(forcedExec, organicSuccess, failedExec));
+        stubPagedSearch(kestraClient, List.of(forcedExec, organicSuccess, failedExec));
         when(kestraClient.getExecution("exec-forced")).thenReturn(forcedExec);
 
         OperationsExecutionListResponse allList = service.listExecutions(4L, listQuery("main", null, null, FROM, TO));
@@ -1332,6 +1460,69 @@ class OperationsExecutionServiceTest {
         );
     }
 
+    private static void stubPagedSearch(KestraClient kestraClient, List<KestraExecutionSnapshot> snapshots) {
+        when(kestraClient.searchExecutionsPage(Mockito.anyMap(), Mockito.anyInt(), Mockito.anyInt(), Mockito.any()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    Map<String, String> filters = invocation.getArgument(0);
+                    int page = invocation.getArgument(1);
+                    int size = invocation.getArgument(2);
+                    String sort = invocation.getArgument(3);
+                    java.util.Set<String> allowedNamespaces = new java.util.HashSet<>();
+                    if (filters.containsKey("filters[namespace][EQUALS]")) {
+                        allowedNamespaces.add(filters.get("filters[namespace][EQUALS]"));
+                    } else if (filters.containsKey("filters[namespace][IN]")) {
+                        allowedNamespaces.addAll(List.of(filters.get("filters[namespace][IN]").split(",")));
+                    }
+                    Instant start = filters.containsKey("startDate") ? Instant.parse(filters.get("startDate")) : Instant.MIN;
+                    Instant end = filters.containsKey("endDate") ? Instant.parse(filters.get("endDate")) : Instant.MAX;
+                    String flowRegex = filters.get("filters[flowId][REGEX]");
+                    java.util.regex.Pattern flowPattern = flowRegex == null
+                            ? null
+                            : java.util.regex.Pattern.compile(flowRegex);
+                    java.util.Set<String> allowedStates = null;
+                    if (filters.containsKey("filters[state][EQUALS]")) {
+                        allowedStates = java.util.Set.of(filters.get("filters[state][EQUALS]"));
+                    } else if (filters.containsKey("filters[state][IN]")) {
+                        allowedStates = new java.util.HashSet<>(List.of(filters.get("filters[state][IN]").split(",")));
+                    }
+                    String expectedForceSuccess = filters.get("filters[labels][EQUALS][wbdataForceSuccess]");
+
+                    java.util.Comparator<KestraExecutionSnapshot> order = "state.startDate:desc".equals(sort)
+                            ? (left, right) -> {
+                                Instant lt = left.createdAt() == null ? left.startDate() : left.createdAt();
+                                Instant rt = right.createdAt() == null ? right.startDate() : right.createdAt();
+                                if (lt == null && rt == null) return 0;
+                                if (lt == null) return 1;
+                                if (rt == null) return -1;
+                                return rt.compareTo(lt);
+                            }
+                            : (left, right) -> 0;
+
+                    java.util.Set<String> finalAllowedStates = allowedStates;
+                    List<KestraExecutionSnapshot> matched = snapshots.stream()
+                            .filter(item -> item.namespace() != null && allowedNamespaces.contains(item.namespace()))
+                            .filter(item -> {
+                                Instant t = item.createdAt() == null ? item.startDate() : item.createdAt();
+                                return t != null && !t.isBefore(start) && !t.isAfter(end);
+                            })
+                            .filter(item -> flowPattern == null
+                                    || (item.flowId() != null && flowPattern.matcher(item.flowId()).matches()))
+                            .filter(item -> finalAllowedStates == null || finalAllowedStates.contains(item.status()))
+                            .filter(item -> expectedForceSuccess == null
+                                    || expectedForceSuccess.equals(item.labels() == null
+                                    ? null : item.labels().get("wbdataForceSuccess")))
+                            .sorted(order)
+                            .toList();
+                    List<KestraExecutionSnapshot> sliced = matched.stream()
+                            .skip((long) (page - 1) * size)
+                            .limit(size)
+                            .toList();
+                    long reportedTotal = (page > 1 && sliced.isEmpty()) ? 0L : matched.size();
+                    return new KestraExecutionPage(sliced, reportedTotal);
+                });
+    }
+
     private static Map<String, String> searchFilter(String namespace) {
         return searchFilter(namespace, FROM.toString(), TO.toString());
     }
@@ -1339,6 +1530,14 @@ class OperationsExecutionServiceTest {
     private static Map<String, String> searchFilter(String namespace, String from, String to) {
         Map<String, String> filters = new LinkedHashMap<>();
         filters.put("filters[namespace][EQUALS]", namespace);
+        filters.put("startDate", from);
+        filters.put("endDate", to);
+        return filters;
+    }
+
+    private static Map<String, String> searchFilterIn(String namespacesCsv, String from, String to) {
+        Map<String, String> filters = new LinkedHashMap<>();
+        filters.put("filters[namespace][IN]", namespacesCsv);
         filters.put("startDate", from);
         filters.put("endDate", to);
         return filters;

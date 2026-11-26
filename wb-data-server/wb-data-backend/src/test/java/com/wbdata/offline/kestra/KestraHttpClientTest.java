@@ -296,6 +296,91 @@ class KestraHttpClientTest {
                 .hasMessageContaining("conflict");
     }
 
+    @Test
+    void searchExecutionsPage_sendsSortAndCsvInFiltersInSingleRequest() throws Exception {
+        HttpClient httpClient = Mockito.mock(HttpClient.class);
+        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+        when(httpClient.send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response(200, """
+                        {
+                          "results": [
+                            {
+                              "id": "exec-2",
+                              "namespace": "g4-main",
+                              "flowId": "crm_daily",
+                              "state": {"current": "FAILED", "startDate": "2026-11-26T10:00:00Z"}
+                            }
+                          ],
+                          "total": 42
+                        }
+                        """));
+        KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
+
+        Map<String, String> filters = new java.util.LinkedHashMap<>();
+        filters.put("filters[namespace][IN]", "g4-main,g4-dev");
+        filters.put("filters[flowId][REGEX]", "(?i).*crm.*");
+        KestraExecutionPage page = client.searchExecutionsPage(filters, 2, 20, "state.startDate:desc");
+
+        HttpRequest request = requestCaptor.getValue();
+        assertThat(request.method()).isEqualTo("GET");
+        assertThat(request.uri().toString()).isEqualTo(
+                "http://localhost:8090/api/v1/main/executions/search?page=2&size=20"
+                        + "&sort=state.startDate%3Adesc"
+                        + "&filters[namespace][IN]=g4-main%2Cg4-dev"
+                        + "&filters[flowId][REGEX]=%28%3Fi%29.*crm.*");
+        assertThat(page.total()).isEqualTo(42L);
+        assertThat(page.results()).extracting(KestraExecutionSnapshot::id).containsExactly("exec-2");
+    }
+
+    @Test
+    void searchExecutionsPage_clampsZeroOrNegativePageAndSizeToOne() throws Exception {
+        HttpClient httpClient = Mockito.mock(HttpClient.class);
+        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+        when(httpClient.send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response(200, """
+                        {
+                          "results": [],
+                          "total": 12
+                        }
+                        """));
+        KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
+
+        KestraExecutionPage page = client.searchExecutionsPage(Map.of("filters[state][EQUALS]", "FAILED"), 0, 0, null);
+
+        assertThat(requestCaptor.getValue().uri().toString())
+                .isEqualTo("http://localhost:8090/api/v1/main/executions/search?page=1&size=1&filters[state][EQUALS]=FAILED");
+        assertThat(page.total()).isEqualTo(12L);
+        assertThat(page.results()).isEmpty();
+    }
+
+    @Test
+    void searchExecutions_stopsAfterTotalReachedAcrossPages() throws Exception {
+        HttpClient httpClient = Mockito.mock(HttpClient.class);
+        StringBuilder firstHundred = new StringBuilder("[");
+        for (int i = 0; i < 100; i++) {
+            if (i > 0) {
+                firstHundred.append(',');
+            }
+            firstHundred.append("""
+                    {"id":"exec-%d","namespace":"g4-main","flowId":"daily","state":{"current":"SUCCESS"}}"""
+                    .formatted(i));
+        }
+        firstHundred.append(']');
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response(200, "{\"results\":" + firstHundred + ",\"total\":101}"))
+                .thenReturn(response(200, """
+                        {"results":[{"id":"exec-100","namespace":"g4-main","flowId":"daily","state":{"current":"SUCCESS"}}],"total":101}
+                        """));
+        KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
+
+        List<KestraExecutionSnapshot> all = client.searchExecutions(Map.of("filters[namespace][EQUALS]", "g4-main"));
+
+        assertThat(all).hasSize(101);
+        assertThat(all.getFirst().id()).isEqualTo("exec-0");
+        assertThat(all.getLast().id()).isEqualTo("exec-100");
+        Mockito.verify(httpClient, Mockito.times(2)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+    }
+
     private OfflineKestraProperties properties() {
         OfflineKestraProperties properties = new OfflineKestraProperties();
         properties.setBaseUrl("http://localhost:8090");

@@ -6,6 +6,7 @@ import com.wbdata.offline.parameter.dto.FlowParameterSnapshot;
 import com.wbdata.git.dto.GitSyncConfigResponse;
 import com.wbdata.git.service.GitSyncConfigService;
 import com.wbdata.offline.kestra.KestraClient;
+import com.wbdata.offline.kestra.KestraExecutionPage;
 import com.wbdata.offline.kestra.KestraExecutionSnapshot;
 import com.wbdata.offline.kestra.KestraLogEntry;
 import com.wbdata.offline.kestra.KestraTaskRunSnapshot;
@@ -37,13 +38,17 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
-import java.util.LinkedHashSet;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 @Slf4j
 @Service
@@ -53,6 +58,15 @@ public class OperationsExecutionService {
     private static final int DEFAULT_PAGE = 1;
     private static final int DEFAULT_PAGE_SIZE = 50;
     private static final int MAX_PAGE_SIZE = 200;
+    private static final String SORT_START_DATE_DESC = "state.startDate:desc";
+    private static final String ACTIVE_STATES_PARAM = "CREATED,QUEUED,RUNNING,PAUSED,RETRYING";
+    private static final String STOPPED_STATES_PARAM = "KILLED,CANCELLED";
+    private static final String REGEX_META_CHARS = "\\.^$*+?()[]{}|";
+    private static final Set<String> KNOWN_KESTRA_STATES = Set.of(
+            "CREATED", "RUNNING", "PAUSED", "RESTARTED", "KILLING",
+            "SUCCESS", "WARNING", "FAILED", "KILLED", "CANCELLED",
+            "QUEUED", "RETRYING", "RETRIED", "SKIPPED", "BREAKPOINT"
+    );
     private static final String PARAMETER_OVERRIDE_KEYS_LABEL = "wbdataParameterOverrideKeys";
     private static final String NO_PARAMETER_OVERRIDES_LABEL_VALUE = "__none__";
     private static final Set<String> SYSTEM_INPUT_KEYS = Set.of(
@@ -78,62 +92,117 @@ public class OperationsExecutionService {
         Instant to = effectiveQuery.to() == null ? Instant.now() : effectiveQuery.to();
         Instant from = effectiveQuery.from() == null ? to.minus(Duration.ofHours(24)) : effectiveQuery.from();
         LinkedHashMap<String, String> namespaceToBranch = scopedNamespaces(groupId);
-        List<String> targetNamespaces = targetNamespaces(namespaceToBranch, blankToNull(effectiveQuery.branch()));
+        List<String> targetNamespaces = targetNamespaces(namespaceToBranch, blankToNull(effectiveQuery.branch()))
+                .stream()
+                .filter(this::isBusinessNamespace)
+                .toList();
+        int pageSize = normalizePageSize(effectiveQuery.pageSize());
+        if (targetNamespaces.isEmpty()) {
+            return new OperationsExecutionListResponse(
+                    namespaceToBranch.values().stream().toList(),
+                    blankToNull(effectiveQuery.branch()),
+                    from,
+                    to,
+                    DEFAULT_PAGE,
+                    pageSize,
+                    0,
+                    0,
+                    List.of(),
+                    new OperationsExecutionStatusCounts(0, 0, 0, 0, 0)
+            );
+        }
 
-        int totalCount = 0;
-        int successCount = 0;
-        int failedCount = 0;
-        int activeCount = 0;
-        int stoppedCount = 0;
-        List<OperationsExecutionListItem> executions = new ArrayList<>();
-        Map<String, KestraExecutionSnapshot> snapshotsById = new LinkedHashMap<>();
-        for (String namespace : targetNamespaces) {
-            List<KestraExecutionSnapshot> snapshots = kestraClient.searchExecutions(buildExecutionSearchFilters(namespace, from, to));
-            if (snapshots == null) {
-                continue;
-            }
-            for (KestraExecutionSnapshot execution : snapshots) {
-                if (!isBusinessExecution(execution, namespaceToBranch)) {
-                    continue;
+        int requestedPage = effectiveQuery.page() == null || effectiveQuery.page() < DEFAULT_PAGE
+                ? DEFAULT_PAGE
+                : effectiveQuery.page();
+        String flowFilter = blankToNull(effectiveQuery.flowId());
+        String statusRaw = blankToNull(effectiveQuery.status());
+        String normalizedStatus = statusRaw == null ? null : statusRaw.toUpperCase(Locale.ROOT);
+        Map<String, String> baseFilters = buildBaseSearchFilters(targetNamespaces, from, to, flowFilter);
+        Optional<Map<String, String>> pageFiltersOpt = buildStatusFilters(baseFilters, normalizedStatus);
+
+        KestraExecutionPage mainPage;
+        Long fetchedTotalCount;
+        Long fetchedSuccessCount;
+        Long fetchedFailedCount;
+        Long fetchedActiveCount;
+        Long fetchedStoppedCount;
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<KestraExecutionPage> pageFuture = pageFiltersOpt.isPresent()
+                    ? executor.submit(() -> safePage(kestraClient.searchExecutionsPage(
+                            pageFiltersOpt.get(), requestedPage, pageSize, SORT_START_DATE_DESC)))
+                    : null;
+            Future<Long> totalFuture = normalizedStatus == null
+                    ? null
+                    : submitCountQuery(executor, baseFilters);
+            Future<Long> successFuture = "SUCCESS".equals(normalizedStatus)
+                    ? null
+                    : submitCountQuery(executor, withSingleState(baseFilters, "SUCCESS"));
+            Future<Long> failedFuture = "FAILED".equals(normalizedStatus)
+                    ? null
+                    : submitCountQuery(executor, withSingleState(baseFilters, "FAILED"));
+            Future<Long> activeFuture = "ACTIVE".equals(normalizedStatus)
+                    ? null
+                    : submitCountQuery(executor, withStateIn(baseFilters, ACTIVE_STATES_PARAM));
+            Future<Long> stoppedFuture = "STOPPED".equals(normalizedStatus)
+                    ? null
+                    : submitCountQuery(executor, withStateIn(baseFilters, STOPPED_STATES_PARAM));
+
+            mainPage = pageFuture == null ? KestraExecutionPage.empty() : awaitFuture(pageFuture);
+            fetchedTotalCount = totalFuture == null ? null : awaitFuture(totalFuture);
+            fetchedSuccessCount = successFuture == null ? null : awaitFuture(successFuture);
+            fetchedFailedCount = failedFuture == null ? null : awaitFuture(failedFuture);
+            fetchedActiveCount = activeFuture == null ? null : awaitFuture(activeFuture);
+            fetchedStoppedCount = stoppedFuture == null ? null : awaitFuture(stoppedFuture);
+        }
+
+        if (pageFiltersOpt.isPresent()) {
+            if (requestedPage > DEFAULT_PAGE && mainPage.results().isEmpty() && mainPage.total() == 0) {
+                KestraExecutionPage firstPage = safePage(kestraClient.searchExecutionsPage(
+                        pageFiltersOpt.get(), DEFAULT_PAGE, pageSize, SORT_START_DATE_DESC));
+                int firstTotal = toCount(firstPage.total());
+                int firstTotalPages = firstTotal == 0 ? 0 : (int) Math.ceil((double) firstTotal / pageSize);
+                if (firstTotalPages <= DEFAULT_PAGE) {
+                    mainPage = firstPage;
+                } else {
+                    int clampedPage = normalizePage(effectiveQuery.page(), firstTotalPages);
+                    mainPage = safePage(kestraClient.searchExecutionsPage(
+                            pageFiltersOpt.get(), clampedPage, pageSize, SORT_START_DATE_DESC));
                 }
-                String branch = namespaceToBranch.get(execution.namespace());
-                if (!matchesBaseFilters(execution, branch, effectiveQuery, from, to)) {
-                    continue;
+            } else {
+                int initialTotal = toCount(mainPage.total());
+                int initialTotalPages = initialTotal == 0 ? 0 : (int) Math.ceil((double) initialTotal / pageSize);
+                if (initialTotalPages > 0 && requestedPage > initialTotalPages) {
+                    int clampedPage = normalizePage(effectiveQuery.page(), initialTotalPages);
+                    mainPage = safePage(kestraClient.searchExecutionsPage(
+                            pageFiltersOpt.get(), clampedPage, pageSize, SORT_START_DATE_DESC));
                 }
-                totalCount++;
-                String effectiveStatus = OperationsForceSuccess.effectiveStatus(execution);
-                String normalizedStatus = effectiveStatus == null ? "" : effectiveStatus.toUpperCase(Locale.ROOT);
-                if ("SUCCESS".equals(normalizedStatus)
-                        || OperationsForceSuccess.STATUS_FORCE_SUCCESS.equals(normalizedStatus)) {
-                    successCount++;
-                } else if ("FAILED".equals(normalizedStatus)) {
-                    failedCount++;
-                } else if (stoppable(normalizedStatus)) {
-                    activeCount++;
-                } else if ("KILLED".equals(normalizedStatus) || "CANCELLED".equals(normalizedStatus)) {
-                    stoppedCount++;
-                }
-                if (!matchesStatusFilter(effectiveStatus, effectiveQuery.status())) {
-                    continue;
-                }
-                if (execution.id() != null) {
-                    snapshotsById.put(execution.id(), execution);
-                }
-                executions.add(toListItem(execution, branch));
             }
         }
 
-        executions.sort(this::compareByExecutionTimeDescending);
-        int total = executions.size();
-        int pageSize = normalizePageSize(effectiveQuery.pageSize());
+        int total = toCount(mainPage.total());
         int totalPages = total == 0 ? 0 : (int) Math.ceil((double) total / pageSize);
-        int page = normalizePage(effectiveQuery.page(), totalPages);
-        List<OperationsExecutionListItem> pageExecutions = executions.stream()
-                .skip((long) (page - 1) * pageSize)
-                .limit(pageSize)
-                .toList();
-        Set<String> manualRerunIds = findRerunIds(pageExecutions.stream().map(OperationsExecutionListItem::id).toList());
-        pageExecutions = pageExecutions.stream()
+        int effectivePage = normalizePage(effectiveQuery.page(), totalPages);
+        int totalCount = fetchedTotalCount == null ? total : toCount(fetchedTotalCount);
+        int successCount = fetchedSuccessCount == null ? total : toCount(fetchedSuccessCount);
+        int failedCount = fetchedFailedCount == null ? total : toCount(fetchedFailedCount);
+        int activeCount = fetchedActiveCount == null ? total : toCount(fetchedActiveCount);
+        int stoppedCount = fetchedStoppedCount == null ? total : toCount(fetchedStoppedCount);
+
+        Map<String, KestraExecutionSnapshot> snapshotsById = new LinkedHashMap<>();
+        List<OperationsExecutionListItem> rawPageItems = new java.util.ArrayList<>(mainPage.results().size());
+        for (KestraExecutionSnapshot execution : mainPage.results()) {
+            if (!isBusinessExecution(execution, namespaceToBranch)) {
+                continue;
+            }
+            if (execution.id() != null) {
+                snapshotsById.put(execution.id(), execution);
+            }
+            rawPageItems.add(toListItem(execution, namespaceToBranch.get(execution.namespace())));
+        }
+
+        Set<String> manualRerunIds = findRerunIds(rawPageItems.stream().map(OperationsExecutionListItem::id).toList());
+        List<OperationsExecutionListItem> pageExecutions = rawPageItems.stream()
                 .map(item -> {
                     OperationsRerunClassifier.Classification classification = OperationsRerunClassifier.classify(
                             snapshotsById.get(item.id()), manualRerunIds);
@@ -152,7 +221,7 @@ public class OperationsExecutionService {
                 blankToNull(effectiveQuery.branch()),
                 from,
                 to,
-                page,
+                effectivePage,
                 pageSize,
                 total,
                 totalPages,
@@ -440,12 +509,95 @@ public class OperationsExecutionService {
                 .toList();
     }
 
-    private Map<String, String> buildExecutionSearchFilters(String namespace, Instant from, Instant to) {
+    private boolean isBusinessNamespace(String namespace) {
+        return namespace != null && !"system".equals(namespace) && !namespace.startsWith("wb-debug-");
+    }
+
+    private Map<String, String> buildBaseSearchFilters(List<String> namespaces,
+                                                       Instant from,
+                                                       Instant to,
+                                                       String flowFilter) {
         Map<String, String> filters = new LinkedHashMap<>();
-        filters.put("filters[namespace][EQUALS]", namespace);
+        if (namespaces.size() == 1) {
+            filters.put("filters[namespace][EQUALS]", namespaces.getFirst());
+        } else {
+            filters.put("filters[namespace][IN]", String.join(",", namespaces));
+        }
         filters.put("startDate", toKestraSearchInstant(from));
         filters.put("endDate", toKestraSearchInstant(to));
+        if (flowFilter != null) {
+            filters.put("filters[flowId][REGEX]", toCaseInsensitiveContainsRegex(flowFilter));
+        }
         return filters;
+    }
+
+    private Optional<Map<String, String>> buildStatusFilters(Map<String, String> baseFilters, String statusFilter) {
+        if (statusFilter == null) {
+            return Optional.of(new LinkedHashMap<>(baseFilters));
+        }
+        return switch (statusFilter) {
+            case "SUCCESS" -> Optional.of(withSingleState(baseFilters, "SUCCESS"));
+            case OperationsForceSuccess.STATUS_FORCE_SUCCESS -> {
+                Map<String, String> filters = withSingleState(baseFilters, "SUCCESS");
+                filters.put("filters[labels][EQUALS][" + OperationsForceSuccess.LABEL_FORCE_SUCCESS + "]", "true");
+                yield Optional.of(filters);
+            }
+            case "ACTIVE" -> Optional.of(withStateIn(baseFilters, ACTIVE_STATES_PARAM));
+            case "STOPPED" -> Optional.of(withStateIn(baseFilters, STOPPED_STATES_PARAM));
+            default -> KNOWN_KESTRA_STATES.contains(statusFilter)
+                    ? Optional.of(withSingleState(baseFilters, statusFilter))
+                    : Optional.empty();
+        };
+    }
+
+    private Map<String, String> withSingleState(Map<String, String> baseFilters, String state) {
+        Map<String, String> filters = new LinkedHashMap<>(baseFilters);
+        filters.put("filters[state][EQUALS]", state);
+        return filters;
+    }
+
+    private Map<String, String> withStateIn(Map<String, String> baseFilters, String statesCsv) {
+        Map<String, String> filters = new LinkedHashMap<>(baseFilters);
+        filters.put("filters[state][IN]", statesCsv);
+        return filters;
+    }
+
+    private Future<Long> submitCountQuery(ExecutorService executor, Map<String, String> filters) {
+        return executor.submit(() -> safePage(kestraClient.searchExecutionsPage(filters, 1, 1, null)).total());
+    }
+
+    private KestraExecutionPage safePage(KestraExecutionPage page) {
+        return page == null ? KestraExecutionPage.empty() : page;
+    }
+
+    private <T> T awaitFuture(Future<T> future) {
+        try {
+            return future.get();
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("查询 Kestra 执行列表被中断", ex);
+        } catch (ExecutionException ex) {
+            if (ex.getCause() instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException("查询 Kestra 执行列表失败", ex.getCause());
+        }
+    }
+
+    private int toCount(long total) {
+        return (int) Math.min(Integer.MAX_VALUE, Math.max(0L, total));
+    }
+
+    private String toCaseInsensitiveContainsRegex(String literal) {
+        StringBuilder escaped = new StringBuilder(literal.length() + 16);
+        for (int i = 0; i < literal.length(); i++) {
+            char c = literal.charAt(i);
+            if (REGEX_META_CHARS.indexOf(c) >= 0) {
+                escaped.append('\\');
+            }
+            escaped.append(c);
+        }
+        return "(?i).*" + escaped + ".*";
     }
 
     private String toKestraSearchInstant(Instant instant) {
@@ -466,38 +618,6 @@ public class OperationsExecutionService {
             return false;
         }
         return !execution.flowId().startsWith("sync-flows-");
-    }
-
-    private boolean matchesBaseFilters(KestraExecutionSnapshot execution,
-                                       String branch,
-                                       OperationsExecutionQuery query,
-                                       Instant from,
-                                       Instant to) {
-        String branchFilter = blankToNull(query.branch());
-        if (branchFilter != null && !branchFilter.equals(branch)) {
-            return false;
-        }
-        String flowFilter = blankToNull(query.flowId());
-        if (flowFilter != null && !containsIgnoreCase(execution.flowId(), flowFilter)) {
-            return false;
-        }
-        Instant executionTime = execution.createdAt() == null ? execution.startDate() : execution.createdAt();
-        return executionTime != null && !executionTime.isBefore(from) && !executionTime.isAfter(to);
-    }
-
-    private boolean matchesStatusFilter(String status, String requestedStatus) {
-        String statusFilter = blankToNull(requestedStatus);
-        if (statusFilter == null) {
-            return true;
-        }
-        if ("ACTIVE".equalsIgnoreCase(statusFilter)) {
-            return stoppable(status);
-        }
-        if ("SUCCESS".equalsIgnoreCase(statusFilter)) {
-            return "SUCCESS".equalsIgnoreCase(status)
-                    || OperationsForceSuccess.STATUS_FORCE_SUCCESS.equalsIgnoreCase(status);
-        }
-        return status != null && status.equalsIgnoreCase(statusFilter);
     }
 
     private OperationsExecutionListItem toListItem(KestraExecutionSnapshot execution, String branch) {
@@ -700,25 +820,6 @@ public class OperationsExecutionService {
         return endDate.toEpochMilli() - startDate.toEpochMilli();
     }
 
-    private int compareByExecutionTimeDescending(OperationsExecutionListItem left, OperationsExecutionListItem right) {
-        Instant leftTime = executionTime(left);
-        Instant rightTime = executionTime(right);
-        if (leftTime == null && rightTime == null) {
-            return 0;
-        }
-        if (leftTime == null) {
-            return 1;
-        }
-        if (rightTime == null) {
-            return -1;
-        }
-        return rightTime.compareTo(leftTime);
-    }
-
-    private Instant executionTime(OperationsExecutionListItem item) {
-        return item.createdAt() == null ? item.startDate() : item.createdAt();
-    }
-
     private int normalizePage(Integer requestedPage, int totalPages) {
         int page = requestedPage == null || requestedPage < DEFAULT_PAGE ? DEFAULT_PAGE : requestedPage;
         if (totalPages == 0) {
@@ -752,10 +853,6 @@ public class OperationsExecutionService {
                 || "RUNNING".equals(normalized)
                 || "PAUSED".equals(normalized)
                 || "RETRYING".equals(normalized);
-    }
-
-    private boolean containsIgnoreCase(String value, String expected) {
-        return value.toLowerCase(Locale.ROOT).contains(expected.toLowerCase(Locale.ROOT));
     }
 
     private String blankToNull(String value) {

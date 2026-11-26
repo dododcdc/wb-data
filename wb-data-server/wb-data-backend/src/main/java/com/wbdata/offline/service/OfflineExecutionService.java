@@ -20,6 +20,7 @@ import com.wbdata.offline.execution.dto.ExecutionTaskRun;
 import com.wbdata.offline.execution.dto.OfflineExecutionResponse;
 import com.wbdata.offline.execution.dto.OfflineExecutionScriptResponse;
 import com.wbdata.offline.kestra.KestraClient;
+import com.wbdata.offline.kestra.KestraExecutionPage;
 import com.wbdata.offline.kestra.KestraExecutionSnapshot;
 import com.wbdata.offline.kestra.KestraLogEntry;
 import com.wbdata.offline.kestra.KestraTaskRunSnapshot;
@@ -49,6 +50,9 @@ import java.util.Set;
 public class OfflineExecutionService {
 
     private static final String TRANSFER_DOCKER_TASK_RUNNER_TYPE = "io.kestra.plugin.scripts.runner.docker.Docker";
+    private static final int DEBUG_EXECUTION_LIST_LIMIT = 100;
+    private static final String SORT_START_DATE_DESC = "state.startDate:desc";
+    private static final String ACTIVE_DEBUG_STATES = "CREATED,QUEUED,RUNNING,PAUSED";
 
     private final KestraClient kestraClient;
     private final OfflineKestraProperties offlineKestraProperties;
@@ -250,10 +254,18 @@ public class OfflineExecutionService {
 
     public List<OfflineExecutionListItem> listExecutions(Long groupId, String flowPath, Long requestedBy) {
         String branch = readCurrentBranch(groupId);
-        return kestraClient.searchExecutions(buildExecutionSearchFilters(groupId, flowPath, requestedBy, branch)).stream()
+        KestraExecutionPage page = kestraClient.searchExecutionsPage(
+                buildExecutionSearchFilters(groupId, flowPath, requestedBy, branch),
+                1,
+                DEBUG_EXECUTION_LIST_LIMIT,
+                SORT_START_DATE_DESC
+        );
+        List<KestraExecutionSnapshot> results = page == null ? List.of() : page.results();
+        return results.stream()
                 .filter(execution -> matchesRequestedBy(execution, requestedBy))
                 .filter(execution -> matchesBranch(execution, branch))
-                .sorted(Comparator.comparing(KestraExecutionSnapshot::createdAt).reversed())
+                .sorted(Comparator.comparing(KestraExecutionSnapshot::createdAt,
+                        Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(this::toListItem)
                 .toList();
     }
@@ -384,7 +396,9 @@ public class OfflineExecutionService {
     public int stopAllExecutions(Long groupId, String flowPath) {
         int stoppedCount = 0;
         String branch = readCurrentBranch(groupId);
-        for (KestraExecutionSnapshot execution : kestraClient.searchExecutions(buildExecutionSearchFilters(groupId, flowPath, null, branch))) {
+        Map<String, String> filters = buildExecutionSearchFilters(groupId, flowPath, null, branch);
+        filters.put("filters[state][IN]", ACTIVE_DEBUG_STATES);
+        for (KestraExecutionSnapshot execution : kestraClient.searchExecutions(filters)) {
             if (isRunning(execution.status()) && matchesBranch(execution, branch)) {
                 kestraClient.killExecution(execution.id());
                 stoppedCount++;

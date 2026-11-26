@@ -5,6 +5,7 @@ import com.wbdata.offline.service.OfflineFlowInspector;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wbdata.offline.config.OfflineKestraProperties;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -33,8 +34,12 @@ import java.util.concurrent.locks.ReentrantLock;
  * Kestra API 的 HTTP 传输层：认证、请求发送、错误映射与端点路径拼装。
  * JSON payload 解析见 {@link KestraPayloadParser}，multipart 构造见 {@link KestraMultipartBodies}。
  */
+@Slf4j
 @Service
 public class KestraHttpClient implements KestraClient {
+
+    private static final int FULL_SEARCH_PAGE_SIZE = 100;
+    private static final int MAX_FULL_SEARCH_PAGES = 100;
 
     private final OfflineKestraProperties properties;
     private final ObjectMapper objectMapper;
@@ -179,40 +184,55 @@ public class KestraHttpClient implements KestraClient {
 
     @Override
     public List<KestraExecutionSnapshot> searchExecutions(Map<String, String> filters) {
-        ensureCredentialsConfigured();
         List<KestraExecutionSnapshot> executions = new ArrayList<>();
         int page = 1;
-        int size = 100;
-        while (true) {
-            HttpResponse<byte[]> response = send(
-                    "GET",
-                    buildExecutionSearchPath(filters, page, size),
-                    null,
-                    null,
-                    "application/json"
-            );
-            if (!isSuccessful(response.statusCode())) {
-                throw toKestraException(response, "查询执行列表失败");
+        while (page <= MAX_FULL_SEARCH_PAGES) {
+            KestraExecutionPage pageResult = searchExecutionsPage(filters, page, FULL_SEARCH_PAGE_SIZE, null);
+            List<KestraExecutionSnapshot> results = pageResult.results();
+            if (results.isEmpty()) {
+                break;
             }
-            try {
-                JsonNode root = payloadParser.readTree(response.body());
-                JsonNode results = root.path("results");
-                if (!results.isArray() || results.isEmpty()) {
-                    break;
-                }
+            executions.addAll(results);
+            if (executions.size() >= pageResult.total() || results.size() < FULL_SEARCH_PAGE_SIZE) {
+                break;
+            }
+            page++;
+        }
+        if (page > MAX_FULL_SEARCH_PAGES) {
+            log.warn("Kestra 全量检索触发上限保护: maxPages={}, loaded={}", MAX_FULL_SEARCH_PAGES, executions.size());
+        }
+        return executions;
+    }
+
+    @Override
+    public KestraExecutionPage searchExecutionsPage(Map<String, String> filters, int page, int size, String sort) {
+        ensureCredentialsConfigured();
+        int safePage = Math.max(1, page);
+        int safeSize = Math.max(1, size);
+        HttpResponse<byte[]> response = send(
+                "GET",
+                buildExecutionSearchPath(filters, safePage, safeSize, sort),
+                null,
+                null,
+                "application/json"
+        );
+        if (!isSuccessful(response.statusCode())) {
+            throw toKestraException(response, "查询执行列表失败");
+        }
+        try {
+            JsonNode root = payloadParser.readTree(response.body());
+            JsonNode results = root.path("results");
+            List<KestraExecutionSnapshot> executions = new ArrayList<>();
+            if (results.isArray()) {
                 for (JsonNode item : results) {
                     executions.add(payloadParser.readExecution(item));
                 }
-                int total = root.path("total").asInt(executions.size());
-                if (executions.size() >= total || results.size() < size) {
-                    break;
-                }
-                page++;
-            } catch (IOException ex) {
-                throw new IllegalStateException("解析 Kestra 执行列表失败", ex);
             }
+            long total = root.path("total").asLong(executions.size());
+            return new KestraExecutionPage(executions, total);
+        } catch (IOException ex) {
+            throw new IllegalStateException("解析 Kestra 执行列表失败", ex);
         }
-        return executions;
     }
 
     @Override
@@ -424,13 +444,16 @@ public class KestraHttpClient implements KestraClient {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
-    private String buildExecutionSearchPath(Map<String, String> filters, int page, int size) {
+    private String buildExecutionSearchPath(Map<String, String> filters, int page, int size, String sort) {
         StringBuilder path = new StringBuilder("/api/v1/")
                 .append(properties.getTenant())
                 .append("/executions/search?page=")
                 .append(page)
                 .append("&size=")
                 .append(size);
+        if (sort != null && !sort.isBlank()) {
+            path.append("&sort=").append(encodeQueryParam(sort));
+        }
         if (filters != null) {
             filters.forEach((key, value) -> {
                 if (value != null && !value.isBlank()) {

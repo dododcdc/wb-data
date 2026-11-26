@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,16 +43,16 @@ public class GitSyncExecutionReconciliationService {
         List<WbGitSyncConfig> configs = syncConfigMapper.selectList(new LambdaQueryWrapper<WbGitSyncConfig>());
         for (WbGitSyncConfig config : configs) {
             try {
-                var executions = kestraClient.searchExecutions(Map.of(
-                        "filters[namespace][EQUALS]", GitSyncFlowSourceBuilder.SYSTEM_NAMESPACE,
-                        "filters[flowId][EQUALS]", GitSyncFlowSourceBuilder.buildSyncFlowId(
-                                config.getGroupId(), config.getBranch())));
+                Map<String, String> filters = new LinkedHashMap<>();
+                filters.put("filters[namespace][EQUALS]", GitSyncFlowSourceBuilder.SYSTEM_NAMESPACE);
+                filters.put("filters[flowId][EQUALS]", GitSyncFlowSourceBuilder.buildSyncFlowId(
+                        config.getGroupId(), config.getBranch()));
+                var page = kestraClient.searchExecutionsPage(filters, 1, 1, "state.startDate:desc");
+                var executions = page == null ? List.<KestraExecutionSnapshot>of() : page.results();
                 if (executions.isEmpty()) {
                     reconcileMissingExecution(config);
                 } else {
-                    executions.stream()
-                            .max(Comparator.comparing(this::executionTime))
-                            .ifPresent(execution -> reconcileExecution(config, execution));
+                    reconcileExecution(config, executions.getFirst());
                 }
             } catch (RuntimeException ex) {
                 log.warn("同步执行对账失败: groupId={}, branch={}, message={}",
@@ -169,19 +169,6 @@ public class GitSyncExecutionReconciliationService {
 
     private String normalizeNamespace(String source, String namespace) {
         return source.replaceFirst("(?m)^namespace:\\s*.*$", "namespace: " + namespace).trim();
-    }
-
-    private Instant executionTime(KestraExecutionSnapshot execution) {
-        if (execution.createdAt() != null) {
-            return execution.createdAt();
-        }
-        if (execution.startDate() != null) {
-            return execution.startDate();
-        }
-        if (execution.endDate() != null) {
-            return execution.endDate();
-        }
-        return Instant.EPOCH;
     }
 
     private LocalDateTime toLocalDateTime(Instant instant) {
