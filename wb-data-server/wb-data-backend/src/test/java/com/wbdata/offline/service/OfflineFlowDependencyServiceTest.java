@@ -516,6 +516,23 @@ class OfflineFlowDependencyServiceTest {
         assertThat(fixture.service().getConfig(1L, "_flows/self/flow.yaml", fixture.groups(1L)).dependencies()).isEmpty();
     }
 
+    @Test
+    void searchCandidatesSupportsLimitCapAndIncludeRefsLookup() throws Exception {
+        Fixture fixture = new Fixture();
+        fixture.writeFlow(1L, "self", fixture.scheduledFlow("self", 1L, "0 1 * * *", "DAILY", Map.of()));
+        fixture.writeFlow(1L, "alpha", fixture.scheduledFlow("alpha", 1L, "0 1 * * *", "DAILY", Map.of()));
+        fixture.writeFlow(1L, "beta", fixture.scheduledFlow("beta", 1L, "0 1 * * *", "DAILY", Map.of()));
+        fixture.writeFlow(2L, "gamma", fixture.scheduledFlow("gamma", 2L, "0 1 * * *", "DAILY", Map.of()));
+        var groups = fixture.groups(1L, 2L);
+
+        var limited = fixture.service().searchCandidates(1L, "_flows/self/flow.yaml", null, 2, null, groups);
+        assertThat(limited).extracting(OfflineDependencyCandidateResponse::flowId).containsExactly("alpha", "beta");
+
+        var hydrated = fixture.service().searchCandidates(
+                1L, "_flows/self/flow.yaml", "ignored-when-includeRefs", null, List.of("2:gamma", "bad-ref", "1:self"), groups);
+        assertThat(hydrated).extracting(OfflineDependencyCandidateResponse::flowId).containsExactly("gamma");
+    }
+
     private class Fixture {
         private final OfflineProperties properties;
         private final RepoLockManager repoLockManager = new RepoLockManager();

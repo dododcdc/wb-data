@@ -49,11 +49,10 @@ class GitSyncExecutionReconciliationServiceTest {
     @Test
     void confirmsMatchingOutputsAndNormalizedFlowSource() {
         WbGitSyncConfig config = config();
-        when(gitCommandService.listFlowFilesAtRevision(4L, SHA))
-                .thenReturn(List.of(".wb-data/kestra-flows/daily.yaml"));
-        when(gitCommandService.readFlowFileAtRevision(4L, SHA, ".wb-data/kestra-flows/daily.yaml"))
-                .thenReturn(flowSource("pg-4"));
-        when(kestraClient.getFlowSource("g4-main", "daily")).thenReturn(flowSource("g4-main"));
+        when(gitCommandService.readFlowFilesAtRevision(4L, SHA))
+                .thenReturn(Map.of(".wb-data/kestra-flows/daily.yaml", flowSource("pg-4")));
+        when(kestraClient.exportNamespaceFlowSources("g4-main"))
+                .thenReturn(Map.of("daily", flowSource("g4-main")));
 
         service.reconcileExecution(config, execution("SUCCESS", Map.of("start_sha", SHA, "end_sha", SHA)));
 
@@ -62,6 +61,8 @@ class GitSyncExecutionReconciliationServiceTest {
         assertThat(config.getLastEvidenceAt()).isEqualTo(LocalDateTime.ofInstant(
                 Instant.parse("2026-11-08T01:00:00Z"), ZoneId.systemDefault()));
         verify(syncConfigMapper).update(Mockito.eq(config), any(LambdaUpdateWrapper.class));
+        verify(gitCommandService, never()).readFlowFileAtRevision(Mockito.anyLong(), Mockito.anyString(), Mockito.anyString());
+        verify(kestraClient, never()).getFlowSource(Mockito.anyString(), Mockito.anyString());
     }
 
     @Test
@@ -115,15 +116,32 @@ class GitSyncExecutionReconciliationServiceTest {
         other.setBranch("feature-a");
         String namespace = GitSyncFlowSourceBuilder.buildKestraNamespace(4L, "feature/a");
         when(syncConfigMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(other));
-        when(gitCommandService.listFlowFilesAtRevision(4L, SHA))
-                .thenReturn(List.of(".wb-data/kestra-flows/daily.yaml"));
-        when(gitCommandService.readFlowFileAtRevision(4L, SHA, ".wb-data/kestra-flows/daily.yaml"))
-                .thenReturn(flowSource("pg-4"));
-        when(kestraClient.getFlowSource(namespace, "daily")).thenReturn(flowSource(namespace));
+        when(gitCommandService.readFlowFilesAtRevision(4L, SHA))
+                .thenReturn(Map.of(".wb-data/kestra-flows/daily.yaml", flowSource("pg-4")));
+        when(kestraClient.exportNamespaceFlowSources(namespace))
+                .thenReturn(Map.of("daily", flowSource(namespace)));
 
         service.reconcileExecution(config, execution("SUCCESS", Map.of("start_sha", SHA, "end_sha", SHA)));
 
         assertThat(config.getDeploymentEvidence()).isEqualTo("CONFIRMED");
+    }
+
+    @Test
+    void marksMissingOrMismatchedFlowSourceUnknownDuringBulkVerification() {
+        WbGitSyncConfig missingConfig = config();
+        when(gitCommandService.readFlowFilesAtRevision(4L, SHA))
+                .thenReturn(Map.of(".wb-data/kestra-flows/daily.yaml", flowSource("pg-4")));
+        when(kestraClient.exportNamespaceFlowSources("g4-main")).thenReturn(Map.of());
+
+        service.reconcileExecution(missingConfig, execution("SUCCESS", Map.of("start_sha", SHA, "end_sha", SHA)));
+        assertThat(missingConfig.getDeploymentEvidence()).isEqualTo("UNKNOWN");
+
+        WbGitSyncConfig mismatchConfig = config();
+        when(kestraClient.exportNamespaceFlowSources("g4-main"))
+                .thenReturn(Map.of("daily", "id: daily\nnamespace: g4-main\ntasks:\n  - id: drift\n"));
+
+        service.reconcileExecution(mismatchConfig, execution("SUCCESS", Map.of("start_sha", SHA, "end_sha", SHA)));
+        assertThat(mismatchConfig.getDeploymentEvidence()).isEqualTo("UNKNOWN");
     }
 
     @Test
@@ -159,11 +177,10 @@ class GitSyncExecutionReconciliationServiceTest {
     void reconcile_fetchesOnlyLatestSingleExecutionViaPagedSearch() {
         WbGitSyncConfig config = config();
         when(syncConfigMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(config), List.of());
-        when(gitCommandService.listFlowFilesAtRevision(4L, SHA))
-                .thenReturn(List.of(".wb-data/kestra-flows/daily.yaml"));
-        when(gitCommandService.readFlowFileAtRevision(4L, SHA, ".wb-data/kestra-flows/daily.yaml"))
-                .thenReturn(flowSource("pg-4"));
-        when(kestraClient.getFlowSource("g4-main", "daily")).thenReturn(flowSource("g4-main"));
+        when(gitCommandService.readFlowFilesAtRevision(4L, SHA))
+                .thenReturn(Map.of(".wb-data/kestra-flows/daily.yaml", flowSource("pg-4")));
+        when(kestraClient.exportNamespaceFlowSources("g4-main"))
+                .thenReturn(Map.of("daily", flowSource("g4-main")));
         when(kestraClient.searchExecutionsPage(
                 Map.of(
                         "filters[namespace][EQUALS]", GitSyncFlowSourceBuilder.SYSTEM_NAMESPACE,

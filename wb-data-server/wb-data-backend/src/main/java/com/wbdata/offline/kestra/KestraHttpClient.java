@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.util.UriUtils;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.Proxy;
 import java.net.ProxySelector;
@@ -24,11 +26,15 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
  * Kestra API 的 HTTP 传输层：认证、请求发送、错误映射与端点路径拼装。
@@ -40,6 +46,8 @@ public class KestraHttpClient implements KestraClient {
 
     private static final int FULL_SEARCH_PAGE_SIZE = 100;
     private static final int MAX_FULL_SEARCH_PAGES = 100;
+    private static final int MAX_ZIP_ENTRY_BYTES = 10 * 1024 * 1024;
+    private static final int MAX_ZIP_TOTAL_BYTES = 256 * 1024 * 1024;
 
     private final OfflineKestraProperties properties;
     private final ObjectMapper objectMapper;
@@ -249,6 +257,65 @@ public class KestraHttpClient implements KestraClient {
             throw toKestraException(response, "查询执行脚本失败");
         }
         return payloadParser.readFlowSource(response.body());
+    }
+
+    @Override
+    public Map<String, String> exportNamespaceFlowSources(String namespace) {
+        ensureCredentialsConfigured();
+        HttpResponse<byte[]> response = send(
+                "GET",
+                "/api/v1/" + properties.getTenant() + "/flows/export/by-query?namespace=" + encodeQueryParam(namespace),
+                null,
+                null,
+                "*/*"
+        );
+        if (!isSuccessful(response.statusCode())) {
+            throw toKestraException(response, "批量导出命名空间任务失败");
+        }
+        return readExportedFlowZip(response.body(), namespace);
+    }
+
+    private Map<String, String> readExportedFlowZip(byte[] body, String expectedNamespace) {
+        if (body == null || body.length == 0) {
+            return Map.of();
+        }
+        Map<String, String> sources = new LinkedHashMap<>();
+        long totalBytes = 0;
+        byte[] buffer = new byte[8192];
+        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(body), StandardCharsets.UTF_8)) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    continue;
+                }
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                int entryBytes = 0;
+                int read;
+                while ((read = zis.read(buffer)) != -1) {
+                    entryBytes += read;
+                    totalBytes += read;
+                    if (entryBytes > MAX_ZIP_ENTRY_BYTES || totalBytes > MAX_ZIP_TOTAL_BYTES) {
+                        throw new IllegalStateException("Kestra 导出压缩包体积超出限制");
+                    }
+                    out.write(buffer, 0, read);
+                }
+                String source = out.toString(StandardCharsets.UTF_8);
+                try {
+                    OfflineFlowInspector.FlowIdentity identity = flowInspector.parseIdentity(source);
+                    if (identity != null
+                            && expectedNamespace.equals(identity.namespace())
+                            && identity.flowId() != null
+                            && !identity.flowId().isBlank()) {
+                        sources.put(identity.flowId(), source);
+                    }
+                } catch (RuntimeException ignored) {
+                    // Ignore malformed YAML entries; caller treats missing expected flowId as verification mismatch.
+                }
+            }
+            return Collections.unmodifiableMap(sources);
+        } catch (IOException ex) {
+            throw new IllegalStateException("解析 Kestra 导出任务压缩包失败", ex);
+        }
     }
 
     @Override

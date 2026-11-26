@@ -14,6 +14,8 @@ import {
     LocateFixed,
     Plus,
     RefreshCcw,
+    Search,
+    X,
 } from 'lucide-react';
 
 import type {
@@ -111,7 +113,9 @@ export function OfflineWorkbenchSidebar({
 }: OfflineWorkbenchSidebarProps) {
     const branchSwitcherRef = useRef<HTMLDivElement>(null);
     const treeHandleRef = useRef<OfflineRepoTreeHandle>(null);
+    const isSearchComposingRef = useRef(false);
     const [treeVisible, setTreeVisible] = useState(true);
+    const [treeSearch, setTreeSearch] = useState('');
     const branchMenuOpen = branch.menuOpen;
     const setBranchMenuOpen = branch.onMenuOpenChange;
     const currentBranch = useMemo(
@@ -132,6 +136,20 @@ export function OfflineWorkbenchSidebar({
     useEffect(() => {
         setTreeVisible(true);
     }, [tree.data?.groupId]);
+
+    useEffect(() => {
+        isSearchComposingRef.current = false;
+        setTreeSearch('');
+        treeHandleRef.current?.setSearch(null);
+    }, [tree.data?.groupId, branch.label]);
+
+    const applyTreeSearch = (nextValue: string) => {
+        const trimmed = nextValue.trim();
+        if (trimmed && !treeVisible) {
+            setTreeVisible(true);
+        }
+        treeHandleRef.current?.setSearch(trimmed || null);
+    };
 
     useEffect(() => {
         if (!branchMenuOpen) return;
@@ -422,6 +440,53 @@ export function OfflineWorkbenchSidebar({
                     </div>
                 ) : (
                     <div className="offline-tree-shell">
+                        <div className="offline-tree-search">
+                            <Search size={13} className="offline-tree-search-icon" aria-hidden="true" />
+                            <input
+                                type="search"
+                                className="offline-tree-search-input"
+                                aria-label="筛选任务"
+                                placeholder="筛选任务..."
+                                value={treeSearch}
+                                onCompositionStart={() => {
+                                    isSearchComposingRef.current = true;
+                                }}
+                                onCompositionEnd={(event) => {
+                                    isSearchComposingRef.current = false;
+                                    const next = event.currentTarget.value;
+                                    setTreeSearch(next);
+                                    applyTreeSearch(next);
+                                }}
+                                onChange={(event) => {
+                                    const next = event.target.value;
+                                    setTreeSearch(next);
+                                    if (!isSearchComposingRef.current) {
+                                        applyTreeSearch(next);
+                                    }
+                                }}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Escape' && treeSearch) {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        setTreeSearch('');
+                                        applyTreeSearch('');
+                                    }
+                                }}
+                            />
+                            {treeSearch ? (
+                                <button
+                                    type="button"
+                                    className="offline-tree-search-clear"
+                                    aria-label="清空任务筛选"
+                                    onClick={() => {
+                                        setTreeSearch('');
+                                        applyTreeSearch('');
+                                    }}
+                                >
+                                    <X size={12} aria-hidden="true" />
+                                </button>
+                            ) : null}
+                        </div>
                         <button
                             type="button"
                             className={`offline-tree-root-label${treeVisible ? '' : ' is-collapsed'}`}
@@ -449,6 +514,7 @@ export function OfflineWorkbenchSidebar({
                                 selectedTreePath={tree.activeFlowPath ? flowApiPathToTreePath(tree.activeFlowPath) : null}
                                 canWrite={tree.canWrite && !busy && !branch.switching}
                                 iconSpriteSheet={SCHEDULE_BADGE_SPRITE}
+                                noSearchMatchesText="没有匹配的任务"
                                 renderBadge={renderScheduleBadge}
                                 onOpenFlow={tree.onOpenFlow}
                                 onMoveNode={tree.onMoveNode}

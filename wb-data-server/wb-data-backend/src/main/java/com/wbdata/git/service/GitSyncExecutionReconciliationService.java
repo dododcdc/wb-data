@@ -151,11 +151,15 @@ public class GitSyncExecutionReconciliationService {
     private boolean verifyDeployedSources(WbGitSyncConfig config, String revision) {
         try {
             String namespace = GitSyncFlowSourceBuilder.buildKestraNamespace(config.getGroupId(), config.getBranch());
-            for (String path : gitCommandService.listFlowFilesAtRevision(config.getGroupId(), revision)) {
-                String expected = gitCommandService.readFlowFileAtRevision(config.getGroupId(), revision, path);
+            Map<String, String> expectedByPath = gitCommandService.readFlowFilesAtRevision(config.getGroupId(), revision);
+            if (expectedByPath == null || expectedByPath.isEmpty()) {
+                return true;
+            }
+            Map<String, String> actualByFlowId = kestraClient.exportNamespaceFlowSources(namespace);
+            for (String expected : expectedByPath.values()) {
                 String flowId = flowInspector.parseIdentity(expected).flowId();
-                String actual = kestraClient.getFlowSource(namespace, flowId);
-                if (!normalizeNamespace(expected, namespace).equals(normalizeNamespace(actual, namespace))) {
+                String actual = actualByFlowId == null ? null : actualByFlowId.get(flowId);
+                if (actual == null || !normalizeNamespace(expected, namespace).equals(normalizeNamespace(actual, namespace))) {
                     return false;
                 }
             }

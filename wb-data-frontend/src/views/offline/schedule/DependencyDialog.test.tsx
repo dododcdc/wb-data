@@ -144,7 +144,7 @@ describe('DependencyDialog', () => {
         fireEvent.change(search, { target: { value: 'nothing-matches' } });
         expect(screen.getByText('没有匹配的任务')).toBeTruthy();
         expect(searchOfflineDependencyCandidates).toHaveBeenCalledTimes(1);
-        expect(searchOfflineDependencyCandidates).toHaveBeenCalledWith(1, '_flows/当前任务/flow.yaml');
+        expect(searchOfflineDependencyCandidates).toHaveBeenCalledWith(1, '_flows/当前任务/flow.yaml', undefined, { limit: 101 });
         expect(getOfflineDependents).toHaveBeenCalledTimes(1);
         expect(getOfflineDependents).toHaveBeenCalledWith(1, '_flows/当前任务/flow.yaml');
     });
@@ -520,5 +520,53 @@ describe('DependencyDialog', () => {
             failurePolicy: 'CONTINUE',
             crossGroupDependency: 'ALLOW',
         });
+    });
+
+    it('hydrates missing selected dependencies and uses debounced server search with stale-race protection when truncated', async () => {
+        const firstBatch = Array.from({ length: 101 }, (_, index) => makeCandidate({ flowId: `cand_${index}` }));
+        const hydratedUpstream = makeCandidate({ groupId: 2, groupName: '数仓二组', flowId: 'selected_beyond_top_100' });
+        const staleSearch = deferred<OfflineDependencyCandidate[]>();
+        const freshSearch = deferred<OfflineDependencyCandidate[]>();
+
+        vi.mocked(searchOfflineDependencyCandidates)
+            .mockResolvedValueOnce(firstBatch)
+            .mockResolvedValueOnce([hydratedUpstream])
+            .mockReturnValueOnce(staleSearch.promise)
+            .mockReturnValueOnce(freshSearch.promise);
+
+        renderDialog({
+            document: makeDocument({
+                dependencyConfig: {
+                    dependencies: [{ groupId: 2, flowId: 'selected_beyond_top_100' }],
+                    failurePolicy: 'CONTINUE',
+                    crossGroupDependency: 'ALLOW',
+                },
+            }),
+        });
+
+        await loaded();
+        expect(searchOfflineDependencyCandidates).toHaveBeenNthCalledWith(
+            2, 1, '_flows/当前任务/flow.yaml', undefined, { includeRefs: [{ groupId: 2, flowId: 'selected_beyond_top_100' }] },
+        );
+        expect(within(screen.getByRole('list', { name: '已选前置任务' })).getByText('selected_beyond_top_100')).toBeTruthy();
+        expect(within(screen.getByRole('list', { name: '候选任务' })).getAllByRole('listitem')).toHaveLength(100);
+        expect(screen.getByText('已展示前 100 项，输入关键词实时检索更多任务')).toBeTruthy();
+
+        const search = screen.getByRole('searchbox', { name: '添加前置任务' });
+        fireEvent.change(search, { target: { value: 'stale' } });
+        await new Promise((resolve) => setTimeout(resolve, 260));
+        fireEvent.change(search, { target: { value: 'fresh' } });
+        await new Promise((resolve) => setTimeout(resolve, 260));
+
+        await act(async () => {
+            freshSearch.resolve([makeCandidate({ flowId: 'fresh_hit' })]);
+            staleSearch.resolve([makeCandidate({ flowId: 'stale_hit' })]);
+        });
+
+        await waitFor(() => {
+            expect(addButton('数据平台', 'fresh_hit')).toBeTruthy();
+        });
+        expect(screen.queryByRole('button', { name: '添加 数据平台 / stale_hit' })).toBeNull();
+        expect(screen.queryByText('已展示前 100 项，输入关键词实时检索更多任务')).toBeNull();
     });
 });

@@ -12,14 +12,23 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 持有仓库锁的 Git 操作入口：负责任务级/仓库级提交、推送与历史文件读取，
@@ -64,6 +73,171 @@ public class GitCommandService extends GitRepositoryOperations {
                 .lines()
                 .filter(path -> !path.isBlank())
                 .toList());
+    }
+
+    /**
+     * 单次批量读取指定 Git 提交下的所有 Kestra 发布任务文件内容，避免按文件逐次 fork git 进程。
+     */
+    public Map<String, String> readFlowFilesAtRevision(Long groupId, String revision) {
+        validateRevision(revision);
+        return repoLockManager.withLock(groupId, () -> readFlowFilesAtRevisionUnlocked(repoPath(groupId), revision));
+    }
+
+    private Map<String, String> readFlowFilesAtRevisionUnlocked(Path repoPath, String revision) {
+        byte[] treeOutput = runGitRawStdout(repoPath, "ls-tree", "-r", "-z", revision, "--", ".wb-data/kestra-flows");
+        List<GitBlobRef> blobs = parseLsTreeNullSeparated(treeOutput);
+        if (blobs.isEmpty()) {
+            return Map.of();
+        }
+        return readBlobsBatch(repoPath, blobs);
+    }
+
+    private List<GitBlobRef> parseLsTreeNullSeparated(byte[] output) {
+        List<GitBlobRef> refs = new ArrayList<>();
+        int start = 0;
+        for (int i = 0; i <= output.length; i++) {
+            if (i < output.length && output[i] != 0) {
+                continue;
+            }
+            if (i > start) {
+                String entry = new String(output, start, i - start, StandardCharsets.UTF_8);
+                int tabIndex = entry.indexOf('\t');
+                if (tabIndex > 0) {
+                    String meta = entry.substring(0, tabIndex);
+                    String path = entry.substring(tabIndex + 1);
+                    String[] parts = meta.split("\\s+");
+                    if (parts.length == 3 && "blob".equals(parts[1]) && path.startsWith(".wb-data/kestra-flows/")) {
+                        refs.add(new GitBlobRef(path, parts[2]));
+                    }
+                }
+            }
+            start = i + 1;
+        }
+        return refs;
+    }
+
+    private Map<String, String> readBlobsBatch(Path repoPath, List<GitBlobRef> blobs) {
+        Process process;
+        try {
+            process = new ProcessBuilder("git", "-C", repoPath.toString(), "cat-file", "--batch")
+                    .start();
+        } catch (IOException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Git 命令执行失败: " + ex.getMessage(), ex);
+        }
+
+        CompletableFuture<Void> stdinFuture = CompletableFuture.runAsync(() -> {
+            try (OutputStream stdin = process.getOutputStream()) {
+                for (GitBlobRef blob : blobs) {
+                    stdin.write((blob.sha() + "\n").getBytes(StandardCharsets.US_ASCII));
+                }
+                stdin.flush();
+            } catch (IOException ex) {
+                throw new IllegalStateException("写入 git cat-file --batch 输入失败", ex);
+            }
+        });
+        CompletableFuture<byte[]> stderrFuture = CompletableFuture.supplyAsync(() -> {
+            try (InputStream stderr = process.getErrorStream()) {
+                return stderr.readAllBytes();
+            } catch (IOException ex) {
+                return new byte[0];
+            }
+        });
+
+        Map<String, String> contents = new LinkedHashMap<>(blobs.size());
+        try (BufferedInputStream stdout = new BufferedInputStream(process.getInputStream())) {
+            for (GitBlobRef blob : blobs) {
+                String header = readAsciiLine(stdout);
+                if (header == null) {
+                    throw new IllegalStateException("git cat-file --batch 输出提前结束: " + blob.path());
+                }
+                String[] parts = header.split("\\s+");
+                if (parts.length < 3 || "missing".equals(parts[1])) {
+                    throw new GitException("Git 提交中缺少对象: " + blob.path() + " (" + blob.sha() + ")");
+                }
+                int size = Integer.parseInt(parts[2]);
+                byte[] bytes = stdout.readNBytes(size);
+                if (bytes.length != size) {
+                    throw new IllegalStateException("读取 Git 对象内容不完整: " + blob.path());
+                }
+                int trailingNewline = stdout.read();
+                if (trailingNewline != '\n') {
+                    throw new IllegalStateException("git cat-file --batch 对象分隔符异常: " + blob.path());
+                }
+                contents.put(blob.path(), new String(bytes, StandardCharsets.UTF_8));
+            }
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Git 命令执行超时");
+            }
+            stdinFuture.join();
+            byte[] stderr = stderrFuture.join();
+            if (process.exitValue() != 0) {
+                throw new GitException(sanitizeGitOutput(new String(stderr, StandardCharsets.UTF_8).trim(), Map.of()));
+            }
+            return Collections.unmodifiableMap(contents);
+        } catch (IOException ex) {
+            process.destroyForcibly();
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Git 命令执行失败: " + ex.getMessage(), ex);
+        } catch (InterruptedException ex) {
+            process.destroyForcibly();
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Git 命令被中断", ex);
+        }
+    }
+
+    private byte[] runGitRawStdout(Path repoPath, String... args) {
+        List<String> command = new ArrayList<>(args.length + 3);
+        command.add("git");
+        command.add("-C");
+        command.add(repoPath.toString());
+        command.addAll(List.of(args));
+        try {
+            Process process = new ProcessBuilder(command).start();
+            CompletableFuture<byte[]> stderrFuture = CompletableFuture.supplyAsync(() -> {
+                try (InputStream stderr = process.getErrorStream()) {
+                    return stderr.readAllBytes();
+                } catch (IOException ex) {
+                    return new byte[0];
+                }
+            });
+            byte[] stdout;
+            try (InputStream in = process.getInputStream()) {
+                stdout = in.readAllBytes();
+            }
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Git 命令执行超时");
+            }
+            byte[] stderr = stderrFuture.join();
+            if (process.exitValue() != 0) {
+                throw new GitException(sanitizeGitOutput(new String(stderr, StandardCharsets.UTF_8).trim(), Map.of()));
+            }
+            return stdout;
+        } catch (IOException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Git 命令执行失败: " + ex.getMessage(), ex);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Git 命令被中断", ex);
+        }
+    }
+
+    private String readAsciiLine(BufferedInputStream in) throws IOException {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream(64);
+        int b;
+        boolean readAny = false;
+        while ((b = in.read()) != -1) {
+            readAny = true;
+            if (b == '\n') {
+                break;
+            }
+            if (b != '\r') {
+                buffer.write(b);
+            }
+        }
+        return readAny ? buffer.toString(StandardCharsets.US_ASCII) : null;
+    }
+
+    private record GitBlobRef(String path, String sha) {
     }
 
     public String readFlowFileAtRevision(Long groupId, String revision, String path) {

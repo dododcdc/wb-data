@@ -731,6 +731,39 @@ class GitCommandServiceTest {
         }
     }
 
+    @Test
+    void readFlowFilesAtRevision_readsMultipleFlowFilesIncludingUtf8PathsInBatch() throws Exception {
+        OfflineProperties properties = new OfflineProperties();
+        properties.setRepoBaseDir(tempDir.toString());
+        properties.setRepoDirPrefix("wb-data-");
+        GitCommandService service = new GitCommandService(
+                properties, Mockito.mock(OfflineGitRemotePort.class),
+                Mockito.mock(OfflineFlowDocumentService.class), publishRecordService(), new RepoLockManager());
+        Path repo = properties.resolveRepoPath(1L);
+        initRepo(repo);
+        write(repo, ".wb-data/kestra-flows/daily.yaml", "id: daily\nnamespace: pg-1\ntasks: []\n");
+        write(repo, ".wb-data/kestra-flows/业务域/订单同步.yaml", "id: order_sync\nnamespace: pg-1\ntasks:\n  - id: step1\n");
+        write(repo, "_flows/daily/flow.yaml", "id: raw\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "v1");
+        String sha1 = git(repo, "rev-parse", "HEAD");
+
+        write(repo, ".wb-data/kestra-flows/daily.yaml", "id: daily_v2\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "v2");
+
+        Map<String, String> flows = service.readFlowFilesAtRevision(1L, sha1);
+        assertThat(flows).containsExactlyInAnyOrderEntriesOf(Map.of(
+                ".wb-data/kestra-flows/daily.yaml", "id: daily\nnamespace: pg-1\ntasks: []\n",
+                ".wb-data/kestra-flows/业务域/订单同步.yaml", "id: order_sync\nnamespace: pg-1\ntasks:\n  - id: step1\n"
+        ));
+
+        git(repo, "rm", "-r", ".wb-data/kestra-flows");
+        git(repo, "commit", "-m", "empty");
+        String shaEmpty = git(repo, "rev-parse", "HEAD");
+        assertThat(service.readFlowFilesAtRevision(1L, shaEmpty)).isEmpty();
+    }
+
     private static OfflinePublishHistoryPort publishRecordService() {
         OfflinePublishHistoryPort port = Mockito.mock(OfflinePublishHistoryPort.class);
         when(port.recordPush(

@@ -60,9 +60,11 @@ public class OfflineDependencyController {
     @GetMapping("/candidates")
     public Result<List<OfflineDependencyCandidateResponse>> searchCandidates(@RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
                                                                              @RequestParam String path,
-                                                                             @RequestParam(required = false) String keyword) {
+                                                                             @RequestParam(required = false) String keyword,
+                                                                             @RequestParam(required = false) Integer limit,
+                                                                             @RequestParam(required = false) List<String> includeRefs) {
         return Result.success(offlineFlowDependencyService.searchCandidates(
-                context.groupId(), path, keyword, authContextService.listAccessibleGroups(context.user())));
+                context.groupId(), path, keyword, limit, includeRefs, authContextService.listAccessibleGroups(context.user())));
     }
 
     @Operation(summary = "查询依赖当前任务的下游任务")

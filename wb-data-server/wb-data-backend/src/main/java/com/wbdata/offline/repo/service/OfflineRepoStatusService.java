@@ -32,7 +32,7 @@ public class OfflineRepoStatusService {
         if (!Files.isDirectory(repoPath) || !Files.isDirectory(repoPath.resolve(".git"))) {
             return Set.of();
         }
-        String porcelain = runGitCommand(repoPath, "status", "--porcelain");
+        String porcelain = runGitCommandRaw(repoPath, "status", "--porcelain");
         List<String> changedFlows = workingTreeStatus.inspect(porcelain).changedFlows();
         if (changedFlows == null || changedFlows.isEmpty()) {
             return Set.of();

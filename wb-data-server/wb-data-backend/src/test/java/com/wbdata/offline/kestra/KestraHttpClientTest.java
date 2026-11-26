@@ -19,6 +19,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -381,6 +383,33 @@ class KestraHttpClientTest {
         Mockito.verify(httpClient, Mockito.times(2)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
     }
 
+    @Test
+    void exportNamespaceFlowSources_extractsMatchingNamespaceFlowsFromZip() throws Exception {
+        HttpClient httpClient = Mockito.mock(HttpClient.class);
+        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+        byte[] zip = zipEntries(Map.of(
+                "g4-main-daily.yml", "id: daily\nnamespace: g4-main\ntasks: []\n",
+                "g4-main-hourly.yml", "id: hourly\nnamespace: g4-main\ntasks: []\n",
+                "other-ns-job.yml", "id: leak\nnamespace: other-ns\ntasks: []\n"
+        ));
+        when(httpClient.send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response(200, zip))
+                .thenReturn(response(200, zipEntries(Map.of())));
+        KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
+
+        Map<String, String> flows = client.exportNamespaceFlowSources("g4-main");
+
+        HttpRequest request = requestCaptor.getValue();
+        assertThat(request.method()).isEqualTo("GET");
+        assertThat(request.uri()).isEqualTo(
+                URI.create("http://localhost:8090/api/v1/main/flows/export/by-query?namespace=g4-main"));
+        assertThat(flows).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "daily", "id: daily\nnamespace: g4-main\ntasks: []\n",
+                "hourly", "id: hourly\nnamespace: g4-main\ntasks: []\n"
+        ));
+        assertThat(client.exportNamespaceFlowSources("g4-empty")).isEmpty();
+    }
+
     private OfflineKestraProperties properties() {
         OfflineKestraProperties properties = new OfflineKestraProperties();
         properties.setBaseUrl("http://localhost:8090");
@@ -391,6 +420,22 @@ class KestraHttpClientTest {
     }
 
     private HttpResponse<byte[]> response(int status, String body) {
+        return response(status, body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private byte[] zipEntries(Map<String, String> entries) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (ZipOutputStream zos = new ZipOutputStream(baos, java.nio.charset.StandardCharsets.UTF_8)) {
+            for (var entry : entries.entrySet()) {
+                zos.putNextEntry(new ZipEntry(entry.getKey()));
+                zos.write(entry.getValue().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                zos.closeEntry();
+            }
+        }
+        return baos.toByteArray();
+    }
+
+    private HttpResponse<byte[]> response(int status, byte[] bodyBytes) {
         return new HttpResponse<>() {
             @Override
             public int statusCode() {
@@ -414,7 +459,7 @@ class KestraHttpClientTest {
 
             @Override
             public byte[] body() {
-                return body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                return bodyBytes;
             }
 
             @Override
