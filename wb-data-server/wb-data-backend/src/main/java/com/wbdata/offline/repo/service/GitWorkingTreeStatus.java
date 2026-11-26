@@ -18,14 +18,21 @@ import java.util.Set;
 class GitWorkingTreeStatus {
 
     void ensureClean(String statusOutput) {
-        if (statusOutput.isBlank()) {
+        if (statusOutput == null || statusOutput.isBlank()) {
             return;
+        }
+        throw new DirtyWorkingTreeException(inspect(statusOutput));
+    }
+
+    public DirtyWorkingTreeResponse inspect(String statusOutput) {
+        if (statusOutput == null || statusOutput.isBlank()) {
+            return new DirtyWorkingTreeResponse(List.of(), List.of(), 0, List.of());
         }
         List<GitStatusEntry> changedFiles = statusOutput.lines()
                 .map(this::parseStatusEntry)
                 .filter(entry -> !entry.path().isBlank())
                 .toList();
-        throw new DirtyWorkingTreeException(summarizeDirtyWorkingTree(changedFiles));
+        return summarizeDirtyWorkingTree(changedFiles);
     }
 
     private DirtyWorkingTreeResponse summarizeDirtyWorkingTree(List<GitStatusEntry> changedFiles) {
