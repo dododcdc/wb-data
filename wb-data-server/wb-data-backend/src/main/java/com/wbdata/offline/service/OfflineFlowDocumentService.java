@@ -24,6 +24,7 @@ import com.wbdata.offline.service.OfflineFlowDocumentStore.DocumentSnapshot;
 import com.wbdata.offline.transfer.service.TransferConfigFileService;
 import com.wbdata.offline.transfer.service.TransferParameters;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -88,7 +89,6 @@ public class OfflineFlowDocumentService {
         );
     }
 
-    @Autowired
     public OfflineFlowDocumentService(OfflineProperties offlineProperties,
                                       OfflineFlowContentService offlineFlowContentService,
                                       RepoLockManager repoLockManager,
@@ -100,6 +100,35 @@ public class OfflineFlowDocumentService {
                                       ExecutionParameterSnapshotRegistry executionParameterSnapshotRegistry,
                                       OfflineTransferProperties transferProperties,
                                       OfflineHiveConfigStore hiveConfigStore) {
+        this(
+                offlineProperties,
+                offlineFlowContentService,
+                repoLockManager,
+                kestraFlowFileService,
+                transferConfigFileService,
+                parameterSnapshotStore,
+                parameterBindingAssembler,
+                graphDraftBuilder,
+                executionParameterSnapshotRegistry,
+                transferProperties,
+                hiveConfigStore,
+                null
+        );
+    }
+
+    @Autowired
+    public OfflineFlowDocumentService(OfflineProperties offlineProperties,
+                                      OfflineFlowContentService offlineFlowContentService,
+                                      RepoLockManager repoLockManager,
+                                      OfflineKestraFlowFileService kestraFlowFileService,
+                                      TransferConfigFileService transferConfigFileService,
+                                      FlowParameterSnapshotStore parameterSnapshotStore,
+                                      FlowParameterBindingAssembler parameterBindingAssembler,
+                                      FlowGraphDraftBuilder graphDraftBuilder,
+                                      ExecutionParameterSnapshotRegistry executionParameterSnapshotRegistry,
+                                      OfflineTransferProperties transferProperties,
+                                      OfflineHiveConfigStore hiveConfigStore,
+                                      @Nullable OfflineFlowIndexService offlineFlowIndexService) {
         this.repoLockManager = repoLockManager;
         OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport(transferProperties);
         FlowParameterCompiler parameterCompiler = new FlowParameterCompiler();
@@ -125,7 +154,8 @@ public class OfflineFlowDocumentService {
                 hiveConfigStore,
                 yamlSupport,
                 parameterCompiler,
-                store
+                store,
+                offlineFlowIndexService
         );
         this.rollback = new OfflineFlowDocumentRollback(
                 offlineProperties,
@@ -137,7 +167,8 @@ public class OfflineFlowDocumentService {
                 executionParameterSnapshotRegistry,
                 hiveConfigStore,
                 yamlSupport,
-                store
+                store,
+                offlineFlowIndexService
         );
     }
 

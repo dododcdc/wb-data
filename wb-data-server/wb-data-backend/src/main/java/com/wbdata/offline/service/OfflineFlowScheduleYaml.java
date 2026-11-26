@@ -34,7 +34,10 @@ final class OfflineFlowScheduleYaml {
     }
 
     OfflineFlowYamlSupport.ScheduleData readSchedule(String source) {
-        Map<String, Object> root = yaml.loadRoot(source);
+        return readSchedule(yaml.loadRoot(source));
+    }
+
+    OfflineFlowYamlSupport.ScheduleData readSchedule(Map<String, Object> root) {
         Map<String, Object> trigger = findScheduleTrigger(root);
         if (trigger == null) {
             return null;

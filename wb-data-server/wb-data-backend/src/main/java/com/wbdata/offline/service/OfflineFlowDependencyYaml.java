@@ -41,12 +41,17 @@ final class OfflineFlowDependencyYaml {
     }
 
     OfflineFlowDependencySettings readDependencyConfig(String source) {
+        Map<String, Object> root = yaml.loadRoot(source);
         return new OfflineFlowDependencySettings(
-                readDependencies(source), readFailurePolicy(source), readCrossGroupDependency(source));
+                readDependencies(root), readFailurePolicy(root), readCrossGroupDependency(root));
     }
 
     List<OfflineFlowDependencyRef> readDependencies(String source) {
-        return parseDependenciesLabel(readLabel(source, DEPENDENCIES_LABEL));
+        return readDependencies(yaml.loadRoot(source));
+    }
+
+    List<OfflineFlowDependencyRef> readDependencies(Map<String, Object> root) {
+        return parseDependenciesLabel(yaml.readLabelValue(root, DEPENDENCIES_LABEL));
     }
 
     static List<OfflineFlowDependencyRef> parseDependenciesLabel(String value) {
@@ -83,17 +88,21 @@ final class OfflineFlowDependencyYaml {
     }
 
     OfflineFailurePolicy readFailurePolicy(String source) {
-        return parseEnumLabel(readLabel(source, FAILURE_POLICY_LABEL),
+        return readFailurePolicy(yaml.loadRoot(source));
+    }
+
+    OfflineFailurePolicy readFailurePolicy(Map<String, Object> root) {
+        return parseEnumLabel(yaml.readLabelValue(root, FAILURE_POLICY_LABEL),
                 OfflineFailurePolicy.class, OfflineFailurePolicy.CONTINUE);
     }
 
     OfflineCrossGroupDependency readCrossGroupDependency(String source) {
-        return parseEnumLabel(readLabel(source, CROSS_GROUP_DEPENDENCY_LABEL),
-                OfflineCrossGroupDependency.class, OfflineCrossGroupDependency.ALLOW);
+        return readCrossGroupDependency(yaml.loadRoot(source));
     }
 
-    private String readLabel(String source, String key) {
-        return yaml.readLabelValue(yaml.loadRoot(source), key);
+    OfflineCrossGroupDependency readCrossGroupDependency(Map<String, Object> root) {
+        return parseEnumLabel(yaml.readLabelValue(root, CROSS_GROUP_DEPENDENCY_LABEL),
+                OfflineCrossGroupDependency.class, OfflineCrossGroupDependency.ALLOW);
     }
 
     private static <E extends Enum<E>> E parseEnumLabel(String value, Class<E> type, E fallback) {

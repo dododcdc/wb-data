@@ -16,6 +16,7 @@ import com.wbdata.offline.schedule.dto.OfflineFlowSchedule;
 import com.wbdata.offline.service.FlowGraphDraftBuilder.GraphDraft;
 import com.wbdata.offline.service.OfflineFlowDocumentStore.DocumentSnapshot;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
@@ -44,6 +45,8 @@ final class OfflineFlowDocumentWriter {
     private final OfflineFlowYamlSupport yamlSupport;
     private final FlowParameterCompiler parameterCompiler;
     private final OfflineFlowDocumentStore store;
+    @Nullable
+    private final OfflineFlowIndexService offlineFlowIndexService;
 
     OfflineFlowDocumentWriter(OfflineProperties offlineProperties,
                               OfflineFlowContentService offlineFlowContentService,
@@ -55,7 +58,8 @@ final class OfflineFlowDocumentWriter {
                               OfflineHiveConfigStore hiveConfigStore,
                               OfflineFlowYamlSupport yamlSupport,
                               FlowParameterCompiler parameterCompiler,
-                              OfflineFlowDocumentStore store) {
+                              OfflineFlowDocumentStore store,
+                              @Nullable OfflineFlowIndexService offlineFlowIndexService) {
         this.offlineProperties = offlineProperties;
         this.offlineFlowContentService = offlineFlowContentService;
         this.kestraFlowFileService = kestraFlowFileService;
@@ -67,6 +71,7 @@ final class OfflineFlowDocumentWriter {
         this.yamlSupport = yamlSupport;
         this.parameterCompiler = parameterCompiler;
         this.store = store;
+        this.offlineFlowIndexService = offlineFlowIndexService;
     }
 
     OfflineFlowDocumentResponse saveUnlocked(SaveOfflineFlowDocumentRequest request) {
@@ -139,6 +144,11 @@ final class OfflineFlowDocumentWriter {
 
             if (request.layout() != null && !request.layout().isEmpty()) {
                 store.saveLayout(request.groupId(), request.path(), request.layout());
+            }
+
+            if (offlineFlowIndexService != null) {
+                String savedYaml = Files.readString(flowFile, StandardCharsets.UTF_8);
+                offlineFlowIndexService.onFlowSaved(request.groupId(), request.path(), savedYaml, flowFile);
             }
 
             return store.readSnapshot(request.groupId(), request.path()).response();
