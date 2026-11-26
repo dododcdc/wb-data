@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import {
     getOfflineDependents,
@@ -43,9 +43,17 @@ interface DependencyDialogProps {
 
 type LoadState =
     | { status: 'loading' | 'error' }
-    | { status: 'ready'; candidates: OfflineDependencyCandidate[]; dependents: OfflineDependentItem[] };
+    | {
+        status: 'ready';
+        serverSearchMode: boolean;
+        candidates: OfflineDependencyCandidate[];
+        candidatesTruncated: boolean;
+        dependents: OfflineDependentItem[];
+    };
 
 const MAX_DEPENDENCIES = 20;
+const CANDIDATE_DISPLAY_LIMIT = 100;
+const SERVER_SEARCH_DEBOUNCE_MS = 200;
 const PERIOD_LABELS: Record<OfflineSchedulePeriod, string> = {
     HOURLY: '每小时',
     DAILY: '每天',
@@ -168,37 +176,108 @@ function DependencyDialogSession({
         crossGroupDependency: document.dependencyConfig?.crossGroupDependency ?? 'ALLOW',
     }));
     const [load, setLoad] = useState<LoadState>({ status: 'loading' });
+    const [knownCandidates, setKnownCandidates] = useState<Map<string, OfflineDependencyCandidate>>(() => new Map());
+    const [searching, setSearching] = useState(false);
     const [attempt, setAttempt] = useState(0);
     const [keyword, setKeyword] = useState('');
     const [filterQuery, setFilterQuery] = useState('');
     // Ref, not state: marking composition must not re-render, or React would
     // restore the controlled value mid-composition and destroy the IME session.
     const isComposingRef = useRef(false);
+    const searchSeqRef = useRef(0);
+    const hasSearchedOnServerRef = useRef(false);
+    const initialDependenciesRef = useRef(document.dependencyConfig?.dependencies);
     const id = useId();
     const path = document.path;
 
     useEffect(() => {
         let active = true;
-        // Fetch the complete visible set once. Search must not race with earlier keywords.
+        searchSeqRef.current += 1;
+        hasSearchedOnServerRef.current = false;
+        setSearching(false);
+
         Promise.all([
-            searchOfflineDependencyCandidates(groupId, path),
+            searchOfflineDependencyCandidates(groupId, path, undefined, { limit: CANDIDATE_DISPLAY_LIMIT + 1 }),
             getOfflineDependents(groupId, path),
-        ]).then(([candidates, dependents]) => {
-            if (active) setLoad({ status: 'ready', candidates, dependents });
+        ]).then(async ([rawCandidates, dependents]) => {
+            if (!active) return;
+            const truncated = rawCandidates.length > CANDIDATE_DISPLAY_LIMIT;
+            const visible = rawCandidates.slice(0, CANDIDATE_DISPLAY_LIMIT);
+            const known = new Map(rawCandidates.map((candidate) => [refKey(candidate), candidate]));
+            const missingRefs = (initialDependenciesRef.current ?? []).filter((ref) => !known.has(refKey(ref)));
+            if (truncated && missingRefs.length > 0) {
+                const hydrated = await searchOfflineDependencyCandidates(groupId, path, undefined, { includeRefs: missingRefs });
+                if (!active) return;
+                hydrated.forEach((candidate) => {
+                    known.set(refKey(candidate), candidate);
+                });
+            }
+            setKnownCandidates(known);
+            setLoad({
+                status: 'ready',
+                serverSearchMode: truncated,
+                candidates: visible,
+                candidatesTruncated: truncated,
+                dependents,
+            });
         }).catch(() => {
             if (active) setLoad({ status: 'error' });
         });
         return () => { active = false; };
     }, [groupId, path, attempt]);
 
-    const candidatesByRef = useMemo(() => new Map(
-        load.status === 'ready' ? load.candidates.map((candidate) => [refKey(candidate), candidate]) : [],
-    ), [load]);
-    const selectedKeys = new Set(settings.dependencies.map(refKey));
     const query = filterQuery.trim().toLocaleLowerCase();
-    const candidates = Array.from(candidatesByRef.values()).filter((candidate) => (
-        [candidate.flowId, candidate.path, groupLabel(candidate)].some((value) => value.toLocaleLowerCase().includes(query))
-    ));
+    const serverSearchMode = load.status === 'ready' && load.serverSearchMode;
+
+    useEffect(() => {
+        if (load.status !== 'ready' || !serverSearchMode) {
+            return;
+        }
+        if (!hasSearchedOnServerRef.current && query === '') {
+            return;
+        }
+        hasSearchedOnServerRef.current = true;
+        const seq = ++searchSeqRef.current;
+        setSearching(true);
+        const timer = window.setTimeout(() => {
+            searchOfflineDependencyCandidates(groupId, path, query || undefined, { limit: CANDIDATE_DISPLAY_LIMIT + 1 })
+                .then((raw) => {
+                    if (searchSeqRef.current !== seq) return;
+                    const truncated = raw.length > CANDIDATE_DISPLAY_LIMIT;
+                    const visible = raw.slice(0, CANDIDATE_DISPLAY_LIMIT);
+                    setKnownCandidates((prev) => {
+                        const next = new Map(prev);
+                        raw.forEach((candidate) => next.set(refKey(candidate), candidate));
+                        return next;
+                    });
+                    setLoad((prev) => (prev.status === 'ready'
+                        ? { ...prev, candidates: visible, candidatesTruncated: truncated }
+                        : prev));
+                    setSearching(false);
+                })
+                .catch(() => {
+                    if (searchSeqRef.current === seq) {
+                        setSearching(false);
+                    }
+                });
+        }, SERVER_SEARCH_DEBOUNCE_MS);
+        return () => {
+            window.clearTimeout(timer);
+            searchSeqRef.current += 1;
+        };
+    }, [load.status, serverSearchMode, groupId, path, query]);
+
+    const selectedKeys = new Set(settings.dependencies.map(refKey));
+    const candidates = load.status === 'ready'
+        ? (serverSearchMode
+            ? load.candidates.slice(0, CANDIDATE_DISPLAY_LIMIT)
+            : load.candidates
+                .filter((candidate) => (
+                    [candidate.flowId, candidate.path, groupLabel(candidate)]
+                        .some((value) => value.toLocaleLowerCase().includes(query))
+                ))
+                .slice(0, CANDIDATE_DISPLAY_LIMIT))
+        : [];
     const crossGroupDependents = load.status === 'ready'
         ? load.dependents.filter((dependent) => dependent.groupId !== groupId)
         : [];
@@ -206,7 +285,7 @@ function DependencyDialogSession({
     const crossGroupLocked = crossGroupDependents.length > 0;
     const atLimit = settings.dependencies.length >= MAX_DEPENDENCIES;
     const selectedItems = settings.dependencies.map((ref) => {
-        const candidate = candidatesByRef.get(refKey(ref));
+        const candidate = knownCandidates.get(refKey(ref));
         const reason = load.status !== 'ready' ? null : candidate
             ? unavailableReason(candidate, groupId, document)
             : '任务不可见或已不存在，请移除后暂存';
@@ -296,7 +375,7 @@ function DependencyDialogSession({
                     </section>
 
                     {!readOnly ? (
-                        <section aria-labelledby={`${id}-search-label`} aria-busy={load.status === 'loading'} className="offline-dependency-search-section">
+                        <section aria-labelledby={`${id}-search-label`} aria-busy={load.status === 'loading' || searching} className="offline-dependency-search-section">
                             <label id={`${id}-search-label`} htmlFor={`${id}-search`} className="sr-only">添加前置任务</label>
                             <div className="offline-dependency-search">
                                 <Search size={15} aria-hidden="true" />
@@ -320,6 +399,11 @@ function DependencyDialogSession({
                                     aria-controls={`${id}-candidates`}
                                 />
                             </div>
+                            {load.status === 'ready' && load.candidatesTruncated ? (
+                                <p className="offline-dependency-hint" role="note">
+                                    已展示前 {CANDIDATE_DISPLAY_LIMIT} 项，输入关键词实时检索更多任务
+                                </p>
+                            ) : null}
                             <ListShell
                                 state={load.status === 'loading'
                                     ? 'loading'

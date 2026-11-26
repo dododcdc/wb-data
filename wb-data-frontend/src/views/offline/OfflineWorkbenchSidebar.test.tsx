@@ -277,4 +277,101 @@ describe('OfflineWorkbenchSidebar', () => {
         const switchRow = screen.getByRole('button', { name: '切换到 develop' });
         expect(switchRow.querySelector('.offline-branch-row-check')).toBeNull();
     });
+
+    it('filters tasks with IME protection, expands collapsed tree, clears on Escape/button, and resets on branch change', () => {
+        const data = createTree(['alpha_task', 'beta_task']);
+        const props = {
+            isGroupAdmin: true,
+            branch: {
+                label: 'feature/policy-review',
+                canSwitch: true,
+                menuOpen: false,
+                tooltipOpen: false,
+                loading: false,
+                switching: false,
+                branches: [{
+                    name: 'feature/policy-review',
+                    current: true,
+                    local: true,
+                    remote: false,
+                    remoteName: null,
+                    trackingBranch: null,
+                }],
+                dirtyState: null,
+                onToggleMenu: vi.fn(),
+                onMenuOpenChange: vi.fn(),
+                onTooltipOpenChange: vi.fn(),
+                onSwitch: vi.fn(),
+            },
+            repository: {
+                available: true,
+                loading: false,
+                committing: false,
+                pushLoading: false,
+                canCommit: false,
+                canPush: false,
+                dirty: false,
+                ahead: false,
+                onRefresh: vi.fn(),
+                onOpenCommit: vi.fn(),
+                onOpenPush: vi.fn(),
+            },
+            creation: {
+                canWrite: true,
+                menuOpen: false,
+                onMenuOpenChange: vi.fn(),
+                onOpenNewFlow: vi.fn(),
+                onOpenNewFolder: vi.fn(),
+            },
+            tree: {
+                data,
+                loading: false,
+                flowLoading: false,
+                activeFlowPath: null,
+                canWrite: true,
+                onOpenFlow: vi.fn(),
+                onContextMenu: vi.fn(),
+                onMoveNode: vi.fn(),
+            },
+        };
+
+        const view = render(<OfflineWorkbenchSidebar {...props} />, { wrapper: TooltipProvider });
+        const search = screen.getByRole('searchbox', { name: '筛选任务' }) as HTMLInputElement;
+
+        // Collapse root, then type a filter -> auto-expands tree.
+        fireEvent.click(view.container.querySelector('button.offline-tree-root-label')!);
+        expect(screen.queryByRole('button', { name: 'alpha_task' })).toBeNull();
+
+        fireEvent.compositionStart(search);
+        fireEvent.change(search, { target: { value: 'missing-ime' } });
+        expect(search.value).toBe('missing-ime');
+        expect(screen.queryByText('没有匹配的任务')).toBeNull();
+
+        fireEvent.compositionEnd(search, { target: { value: 'alpha' } });
+        expect(screen.getByRole('button', { name: 'alpha_task' })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'beta_task' })).toBeNull();
+
+        fireEvent.change(search, { target: { value: 'nonexistent' } });
+        expect(screen.getByRole('status').textContent).toBe('没有匹配的任务');
+
+        fireEvent.keyDown(search, { key: 'Escape' });
+        expect(search.value).toBe('');
+        expect(screen.getByRole('button', { name: 'beta_task' })).toBeTruthy();
+
+        fireEvent.change(search, { target: { value: 'beta' } });
+        expect(screen.queryByRole('button', { name: 'alpha_task' })).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: '清空任务筛选' }));
+        expect(search.value).toBe('');
+        expect(screen.getByRole('button', { name: 'alpha_task' })).toBeTruthy();
+
+        fireEvent.change(search, { target: { value: 'alpha' } });
+        view.rerender(
+            <OfflineWorkbenchSidebar
+                {...props}
+                branch={{ ...props.branch, label: 'main' }}
+            />,
+        );
+        expect(search.value).toBe('');
+        expect(screen.getByRole('button', { name: 'beta_task' })).toBeTruthy();
+    });
 });

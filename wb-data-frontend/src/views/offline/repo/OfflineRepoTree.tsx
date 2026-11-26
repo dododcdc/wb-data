@@ -50,6 +50,7 @@ interface OfflineRepoTreeProps extends OfflineRepoTreeCallbacks {
     iconSpriteSheet?: string;
     directoriesOnly?: boolean;
     readonly?: boolean;
+    noSearchMatchesText?: string;
 }
 
 const HOST_THEME_STYLE = {
@@ -109,7 +110,7 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
     function OfflineRepoTree(props, ref) {
         const {
             root, recentFlowPaths, dataKey, selectedTreePath, canWrite, className, iconSpriteSheet,
-            directoriesOnly = false, readonly = false,
+            directoriesOnly = false, readonly = false, noSearchMatchesText = '没有匹配的目录',
         } = props;
         const callbacksRef = useRef(props);
         callbacksRef.current = props;
@@ -294,7 +295,7 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
                     if (label && name && label.title !== name) label.title = name;
                 }}
             >
-                {noSearchMatches ? <p className="offline-rail-empty" role="status">没有匹配的目录</p> : null}
+                {noSearchMatches ? <p className="offline-rail-empty" role="status">{noSearchMatchesText}</p> : null}
                 <div hidden={noSearchMatches} style={{ height: '100%' }}>
                     <FileTree model={model} style={{ ...HOST_THEME_STYLE, display: 'block', height: '100%' }} />
                 </div>

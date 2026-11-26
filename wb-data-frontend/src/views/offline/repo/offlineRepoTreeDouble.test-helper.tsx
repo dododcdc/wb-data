@@ -24,7 +24,7 @@ export const OfflineRepoTree = forwardRef<OfflineRepoTreeHandle, OfflineRepoTree
                 data-recent-flows={(props.recentFlowPaths ?? []).join(',')}
                 data-revealed-flow={revealedFlowPath ?? ''}
             >
-                {search && nodes.length === 0 ? <p role="status">没有匹配的目录</p> : null}
+                {search && nodes.length === 0 ? <p role="status">{props.noSearchMatchesText ?? '没有匹配的目录'}</p> : null}
                 {nodes.map(([path, node]) => (
                     <button
                         key={path}

@@ -48,6 +48,7 @@ import java.util.stream.Collectors;
 public class OfflineFlowDependencyService {
 
     static final int MAX_DEPENDENCIES = 20;
+    private static final int MAX_CANDIDATE_LIMIT = 500;
 
     private final OfflineProperties offlineProperties;
     private final OfflineFlowContentService offlineFlowContentService;
@@ -335,22 +336,76 @@ public class OfflineFlowDependencyService {
 
     public List<OfflineDependencyCandidateResponse> searchCandidates(Long groupId, String path, String keyword,
                                                                      List<ProjectGroupContextItem> accessibleGroups) {
+        return searchCandidates(groupId, path, keyword, null, null, accessibleGroups);
+    }
+
+    public List<OfflineDependencyCandidateResponse> searchCandidates(Long groupId,
+                                                                     String path,
+                                                                     String keyword,
+                                                                     Integer limit,
+                                                                     List<String> includeRefs,
+                                                                     List<ProjectGroupContextItem> accessibleGroups) {
         String selfFlowId = resolveCandidateSelfId(groupId, path);
         Map<Long, String> groupNames = groupNames(accessibleGroups);
+        Comparator<FlowDependencySnapshot> order = Comparator
+                .comparing((FlowDependencySnapshot snapshot) -> groupNames.getOrDefault(snapshot.groupId(), ""),
+                        String.CASE_INSENSITIVE_ORDER)
+                .thenComparing(FlowDependencySnapshot::flowId, String.CASE_INSENSITIVE_ORDER);
+
+        if (includeRefs != null && !includeRefs.isEmpty()) {
+            Set<OfflineFlowDependencyRef> requestedRefs = parseIncludeRefs(includeRefs);
+            if (requestedRefs.isEmpty()) {
+                return List.of();
+            }
+            return scanAccessible(accessibleGroups).values().stream()
+                    .filter(snapshot -> !(snapshot.groupId().equals(groupId) && snapshot.flowId().equals(selfFlowId)))
+                    .filter(snapshot -> requestedRefs.contains(new OfflineFlowDependencyRef(snapshot.groupId(), snapshot.flowId())))
+                    .sorted(order)
+                    .map(snapshot -> toCandidateResponse(snapshot, groupNames))
+                    .toList();
+        }
+
         String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
-        return scanAccessible(accessibleGroups).values().stream()
+        var stream = scanAccessible(accessibleGroups).values().stream()
                 .filter(snapshot -> !(snapshot.groupId().equals(groupId) && snapshot.flowId().equals(selfFlowId)))
                 .filter(snapshot -> normalizedKeyword.isEmpty()
                         || snapshot.flowId().toLowerCase(Locale.ROOT).contains(normalizedKeyword)
                         || snapshot.path().toLowerCase(Locale.ROOT).contains(normalizedKeyword)
                         || groupNames.getOrDefault(snapshot.groupId(), "").toLowerCase(Locale.ROOT).contains(normalizedKeyword))
-                .sorted(Comparator.comparing((FlowDependencySnapshot snapshot) -> groupNames.getOrDefault(snapshot.groupId(), ""),
-                                String.CASE_INSENSITIVE_ORDER)
-                        .thenComparing(FlowDependencySnapshot::flowId, String.CASE_INSENSITIVE_ORDER))
-                .map(snapshot -> new OfflineDependencyCandidateResponse(snapshot.groupId(), groupNames.get(snapshot.groupId()),
-                        snapshot.flowId(), snapshot.path(), snapshot.hasSchedule(), snapshot.period(), snapshot.crossGroupDependency(),
-                        snapshot.cron(), snapshot.timezone(), snapshot.enabled()))
-                .toList();
+                .sorted(order);
+        if (limit != null && limit > 0) {
+            stream = stream.limit(Math.min(limit, MAX_CANDIDATE_LIMIT));
+        }
+        return stream.map(snapshot -> toCandidateResponse(snapshot, groupNames)).toList();
+    }
+
+    private OfflineDependencyCandidateResponse toCandidateResponse(FlowDependencySnapshot snapshot, Map<Long, String> groupNames) {
+        return new OfflineDependencyCandidateResponse(snapshot.groupId(), groupNames.get(snapshot.groupId()),
+                snapshot.flowId(), snapshot.path(), snapshot.hasSchedule(), snapshot.period(), snapshot.crossGroupDependency(),
+                snapshot.cron(), snapshot.timezone(), snapshot.enabled());
+    }
+
+    private Set<OfflineFlowDependencyRef> parseIncludeRefs(List<String> includeRefs) {
+        Set<OfflineFlowDependencyRef> refs = new LinkedHashSet<>();
+        for (String raw : includeRefs) {
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            int colon = raw.indexOf(':');
+            if (colon <= 0 || colon >= raw.length() - 1) {
+                continue;
+            }
+            try {
+                Long refGroupId = Long.parseLong(raw.substring(0, colon).trim());
+                String refFlowId = raw.substring(colon + 1).trim();
+                if (!refFlowId.isEmpty()) {
+                    refs.add(new OfflineFlowDependencyRef(refGroupId, refFlowId));
+                }
+            } catch (NumberFormatException ignored) {
+                // Skip malformed client ref entries without aborting lookup.
+            }
+        }
+        return refs;
     }
 
     public List<OfflineDependentItemResponse> findDependents(Long groupId, String path,

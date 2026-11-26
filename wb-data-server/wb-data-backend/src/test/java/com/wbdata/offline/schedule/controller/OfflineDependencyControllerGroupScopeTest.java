@@ -73,11 +73,13 @@ class OfflineDependencyControllerGroupScopeTest {
         String path = "_flows/jack/test/flow.yaml";
 
         controller.getDependencies(context, path);
-        controller.searchCandidates(context, path, "ods");
+        controller.searchCandidates(context, path, "ods", null, null);
+        controller.searchCandidates(context, path, "ods", 100, List.of("9:daily"));
         controller.findDependents(context, path);
 
         verify(service).getConfig(4L, path, accessibleGroups);
-        verify(service).searchCandidates(4L, path, "ods", accessibleGroups);
+        verify(service).searchCandidates(4L, path, "ods", null, null, accessibleGroups);
+        verify(service).searchCandidates(4L, path, "ods", 100, List.of("9:daily"), accessibleGroups);
         verify(service).findDependents(4L, path, accessibleGroups);
     }
 

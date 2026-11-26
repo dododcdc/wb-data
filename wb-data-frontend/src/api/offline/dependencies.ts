@@ -85,10 +85,28 @@ export const updateOfflineDependencies = (payload: UpdateOfflineDependenciesRequ
     });
 };
 
-export const searchOfflineDependencyCandidates = (groupId: number, path: string, keyword?: string) => {
+export interface SearchDependencyCandidatesOptions {
+    limit?: number;
+    includeRefs?: readonly OfflineFlowDependencyRef[];
+}
+
+export const searchOfflineDependencyCandidates = (
+    groupId: number,
+    path: string,
+    keyword?: string,
+    options?: SearchDependencyCandidatesOptions,
+) => {
     const params = new URLSearchParams({ path });
     if (keyword && keyword.trim()) {
         params.set('keyword', keyword.trim());
+    }
+    if (options?.limit != null && options.limit > 0) {
+        params.set('limit', String(options.limit));
+    }
+    if (options?.includeRefs) {
+        for (const ref of options.includeRefs) {
+            params.append('includeRefs', `${ref.groupId}:${ref.flowId}`);
+        }
     }
     return request.get<unknown, OfflineDependencyCandidate[]>(
         `${offlinePath(groupId, '/dependencies/candidates')}?${params.toString()}`
