@@ -3,6 +3,7 @@ package com.wbdata.offline.repo.service;
 import com.sun.net.httpserver.HttpServer;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
+import com.wbdata.offline.service.OfflineFlowIndexService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
@@ -27,6 +28,7 @@ import java.util.zip.GZIPInputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class GitCommandServiceTest {
@@ -682,6 +684,42 @@ class GitCommandServiceTest {
             throw new IOException("git upload-pack failed with exit code " + exit);
         }
         return stdout;
+    }
+
+    @Test
+    void commitRepo_writesKestraIgnoreOnlyWhenDirtyAndReconcilesIndexOnBranchSwitch() throws Exception {
+        OfflineProperties properties = new OfflineProperties();
+        properties.setRepoBaseDir(tempDir.toString());
+        properties.setRepoDirPrefix("wb-data-");
+        OfflineFlowDocumentService flowDocumentService = Mockito.mock(OfflineFlowDocumentService.class);
+        OfflineFlowIndexService indexService = Mockito.mock(OfflineFlowIndexService.class);
+        GitCommandService service = new GitCommandService(
+                properties, Mockito.mock(OfflineGitRemotePort.class), flowDocumentService, publishRecordService(), new RepoLockManager());
+        service.setOfflineFlowIndexService(indexService);
+
+        Path repo = properties.resolveRepoPath(1L);
+        initRepo(repo);
+        write(repo, "_flows/example/flow.yaml", "id: example\nnamespace: pg-1\ntasks: []\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "init");
+
+        // Clean working tree: commitRepo must NOT silently create .kestraignore
+        GitCommandService.CommitResult cleanResult = service.commitRepo(1L, "noop");
+        assertThat(cleanResult.message()).contains("暂无改动");
+        assertThat(repo.resolve(OfflineKestraIgnoreSupport.KESTRA_IGNORE_FILENAME)).doesNotExist();
+
+        // Dirty working tree: commitRepo adds .kestraignore before committing
+        write(repo, "scripts/example/run.sh", "echo ok\n");
+        GitCommandService.CommitResult dirtyResult = service.commitRepo(1L, "add script");
+        assertThat(dirtyResult.success()).isTrue();
+        assertThat(repo.resolve(OfflineKestraIgnoreSupport.KESTRA_IGNORE_FILENAME)).isRegularFile();
+        assertThat(git(repo, "status", "--porcelain")).isBlank();
+
+        // Branch creation and switch must reconcile group index
+        service.createBranch(1L, "feature/idx", "main");
+        service.switchBranch(1L, "main");
+        service.mergeBranch(1L, "feature/idx", "main");
+        verify(indexService, Mockito.times(3)).reconcileGroup(1L);
     }
 
     private static Set<Path> listTempAskPassScripts() throws IOException {

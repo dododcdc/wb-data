@@ -1,12 +1,14 @@
 package com.wbdata.offline.repo.service;
 
 import com.wbdata.offline.service.OfflineFlowDocumentService;
+import com.wbdata.offline.service.OfflineFlowIndexService;
 
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.repo.dto.BranchListResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -32,6 +34,8 @@ public class GitCommandService extends GitRepositoryOperations {
     private final RepoLockManager repoLockManager;
     private final GitBranchOperations branchOperations;
     private ApplicationEventPublisher applicationEventPublisher = event -> {};
+    @Nullable
+    private OfflineFlowIndexService offlineFlowIndexService;
 
     public record PushResult(boolean success, String message, String remoteUrl, boolean remoteCreated, boolean remoteDeleted) {}
     public record CommitResult(boolean success, String message) {}
@@ -91,15 +95,33 @@ public class GitCommandService extends GitRepositoryOperations {
     }
 
     public String createBranch(Long groupId, String name, String baseBranch) {
-        return repoLockManager.withLock(groupId, () -> branchOperations.createBranch(groupId, name, baseBranch));
+        return repoLockManager.withLock(groupId, () -> {
+            try {
+                return branchOperations.createBranch(groupId, name, baseBranch);
+            } finally {
+                reconcileIndex(groupId);
+            }
+        });
     }
 
     public String switchBranch(Long groupId, String branch) {
-        return repoLockManager.withLock(groupId, () -> branchOperations.switchBranch(groupId, branch));
+        return repoLockManager.withLock(groupId, () -> {
+            try {
+                return branchOperations.switchBranch(groupId, branch);
+            } finally {
+                reconcileIndex(groupId);
+            }
+        });
     }
 
     public String mergeBranch(Long groupId, String source, String target) {
-        return repoLockManager.withLock(groupId, () -> branchOperations.mergeBranch(groupId, source, target));
+        return repoLockManager.withLock(groupId, () -> {
+            try {
+                return branchOperations.mergeBranch(groupId, source, target);
+            } finally {
+                reconcileIndex(groupId);
+            }
+        });
     }
 
     public void deleteBranch(Long groupId, String branch, boolean force) {
@@ -272,6 +294,12 @@ public class GitCommandService extends GitRepositoryOperations {
             return new CommitResult(true, "暂无改动需提交");
         }
 
+        try {
+            OfflineKestraIgnoreSupport.ensureKestraIgnoreIfMissing(repoPath);
+        } catch (IOException ex) {
+            throw new IllegalStateException("生成 .kestraignore 失败", ex);
+        }
+
         runGit(repoPath, "add", "-A");
 
         String message = (commitMessage == null || commitMessage.isBlank())
@@ -334,10 +362,12 @@ public class GitCommandService extends GitRepositoryOperations {
 
         String branch = getCurrentBranch(repoPath);
         String beforeSha = readOriginBranchSha(repoPath, groupId, branch);
+        boolean rebased = false;
         try {
             runRemoteGit(repoPath, gitRemotePort, groupId, "push", "-u", "origin", "HEAD");
         } catch (GitException ex) {
             try {
+                rebased = true;
                 runRemoteGit(repoPath, gitRemotePort, groupId, "pull", "--rebase");
                 beforeSha = readOriginBranchSha(repoPath, groupId, branch);
                 runRemoteGit(repoPath, gitRemotePort, groupId, "push", "-u", "origin", "HEAD");
@@ -345,6 +375,10 @@ public class GitCommandService extends GitRepositoryOperations {
                 abortRebase(repoPath);
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "推送失败，已回滚拉取操作，请检查远程分支冲突或 Token 权限");
+            } finally {
+                if (rebased) {
+                    reconcileIndex(groupId);
+                }
             }
         }
 
@@ -703,6 +737,17 @@ public class GitCommandService extends GitRepositoryOperations {
     @Autowired
     public void setApplicationEventPublisher(ApplicationEventPublisher applicationEventPublisher) {
         this.applicationEventPublisher = applicationEventPublisher == null ? event -> {} : applicationEventPublisher;
+    }
+
+    @Autowired(required = false)
+    public void setOfflineFlowIndexService(@Nullable OfflineFlowIndexService offlineFlowIndexService) {
+        this.offlineFlowIndexService = offlineFlowIndexService;
+    }
+
+    private void reconcileIndex(Long groupId) {
+        if (offlineFlowIndexService != null) {
+            offlineFlowIndexService.reconcileGroup(groupId);
+        }
     }
 
     public String readRemoteBranchSha(Long groupId, String branch) {
