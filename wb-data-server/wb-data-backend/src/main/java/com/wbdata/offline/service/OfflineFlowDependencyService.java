@@ -1,26 +1,27 @@
 package com.wbdata.offline.service;
 
-import com.wbdata.offline.repo.service.RepoLockManager;
-
 import com.wbdata.auth.dto.ProjectGroupContextItem;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.auth.enums.SystemRole;
 import com.wbdata.auth.service.PermissionService;
 import com.wbdata.offline.config.OfflineProperties;
+import com.wbdata.offline.dto.OfflineFlowContentResponse;
+import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
+import com.wbdata.offline.dto.SaveOfflineFlowRequest;
+import com.wbdata.offline.enums.OfflineCrossGroupDependency;
+import com.wbdata.offline.enums.OfflineSchedulePeriod;
+import com.wbdata.offline.repo.service.RepoLockManager;
 import com.wbdata.offline.schedule.dto.OfflineDependencyCandidateResponse;
 import com.wbdata.offline.schedule.dto.OfflineDependencyConfigResponse;
 import com.wbdata.offline.schedule.dto.OfflineDependencyItemResponse;
 import com.wbdata.offline.schedule.dto.OfflineDependentItemResponse;
-import com.wbdata.offline.dto.OfflineFlowContentResponse;
 import com.wbdata.offline.schedule.dto.OfflineFlowDependencyRef;
 import com.wbdata.offline.schedule.dto.OfflineFlowDependencySettings;
-import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
-import com.wbdata.offline.dto.SaveOfflineFlowRequest;
 import com.wbdata.offline.schedule.dto.UpdateOfflineDependenciesRequest;
-import com.wbdata.offline.enums.OfflineCrossGroupDependency;
-import com.wbdata.offline.enums.OfflineSchedulePeriod;
 import com.wbdata.schedule.HourlyCronHours;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -30,6 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashSet;
@@ -53,25 +55,46 @@ public class OfflineFlowDependencyService {
     private final OfflineFlowContentService offlineFlowContentService;
     private final RepoLockManager repoLockManager;
     private final PermissionService permissionService;
+    @Nullable
+    private final OfflineFlowIndexService offlineFlowIndexService;
     private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
 
     public OfflineFlowDependencyService(OfflineProperties offlineProperties,
                                         OfflineFlowContentService offlineFlowContentService,
                                         RepoLockManager repoLockManager,
                                         PermissionService permissionService) {
+        this(offlineProperties, offlineFlowContentService, repoLockManager, permissionService, null);
+    }
+
+    @Autowired
+    public OfflineFlowDependencyService(OfflineProperties offlineProperties,
+                                        OfflineFlowContentService offlineFlowContentService,
+                                        RepoLockManager repoLockManager,
+                                        PermissionService permissionService,
+                                        @Nullable OfflineFlowIndexService offlineFlowIndexService) {
         this.offlineProperties = offlineProperties;
         this.offlineFlowContentService = offlineFlowContentService;
         this.repoLockManager = repoLockManager;
         this.permissionService = permissionService;
+        this.offlineFlowIndexService = offlineFlowIndexService;
+    }
+
+    private boolean useIndex() {
+        return offlineFlowIndexService != null && offlineFlowIndexService.isEnabled();
     }
 
     public OfflineDependencyConfigResponse getConfig(Long groupId, String path,
                                                      List<ProjectGroupContextItem> accessibleGroups) {
         OfflineFlowContentResponse flow = offlineFlowContentService.getFlowContent(groupId, path);
-        Map<OfflineFlowDependencyRef, FlowDependencySnapshot> snapshots = scanAccessible(accessibleGroups);
+        OfflineFlowYamlSupport.FlowIndexMetadata meta = yamlSupport.parseIndexMetadata(flow.content());
         Map<Long, String> groupNames = groupNames(accessibleGroups);
-        List<OfflineDependencyItemResponse> items = yamlSupport.readDependencies(flow.content()).stream()
+        List<OfflineFlowDependencyRef> visibleRefs = meta.dependencies().stream()
                 .filter(ref -> groupNames.containsKey(ref.groupId()))
+                .toList();
+        Map<OfflineFlowDependencyRef, FlowDependencySnapshot> snapshots = useIndex()
+                ? loadIndexedSnapshotsByRefs(visibleRefs)
+                : scanAccessible(accessibleGroups);
+        List<OfflineDependencyItemResponse> items = visibleRefs.stream()
                 .map(ref -> {
                     FlowDependencySnapshot upstream = snapshots.get(ref);
                     return new OfflineDependencyItemResponse(ref.groupId(), groupNames.get(ref.groupId()),
@@ -83,7 +106,7 @@ public class OfflineFlowDependencyService {
                             upstream != null && upstream.enabled());
                 }).toList();
         return new OfflineDependencyConfigResponse(groupId, path, items,
-                yamlSupport.readFailurePolicy(flow.content()), yamlSupport.readCrossGroupDependency(flow.content()),
+                meta.failurePolicy(), meta.crossGroupDependency(),
                 flow.contentHash(), flow.fileUpdatedAt());
     }
 
@@ -105,9 +128,9 @@ public class OfflineFlowDependencyService {
                             groupId,
                             yamlSupport.parseIdentity(offlineFlowContentService.getFlowContent(groupId, path).content()).flowId())
                     : null;
-            var snapshots = scanAll();
+            DependencyGraphView graphView = prepareMutationGraphView();
             OfflineFlowDocumentService.DependencyRollbackValidator validator = targetFlowContent ->
-                    validateRollbackConfig(groupId, relative, currentSelf, targetFlowContent, accessibleGroups, snapshots);
+                    validateRollbackConfig(groupId, relative, currentSelf, targetFlowContent, accessibleGroups, graphView);
             return rollbackAction.apply(validator);
         });
     }
@@ -115,59 +138,114 @@ public class OfflineFlowDependencyService {
     /** Must be called before taking any group lock; the callback keeps validation and all writes together. */
     public <T> T saveDocument(SaveOfflineFlowDocumentRequest request,
                               List<ProjectGroupContextItem> accessibleGroups, Supplier<T> save) {
-        return withDependencyGraphLock(() -> {
-            Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
-            Path relative = validateFlowPath(request.path());
-            Path flowFile = repoPath.resolve(relative);
-            boolean existsOnDisk = Files.exists(flowFile);
-            String source = existsOnDisk
-                    ? offlineFlowContentService.getFlowContent(request.groupId(), request.path()).content()
-                    : yamlSupport.buildEmptyFlowYaml(relative.getParent().getFileName().toString(), "pg-" + request.groupId());
-            // Validate the requested schedule, not the old persisted frequency, without creating a stub file.
-            String finalSource = yamlSupport.applySchedule(source, request.schedule());
-            OfflineFlowDependencySettings existingSettings = yamlSupport.readDependencyConfig(source);
-            OfflineFlowYamlSupport.ScheduleData existingSchedule = yamlSupport.readSchedule(source);
-            OfflineFlowDependencySettings settings = request.dependencyConfig() == null
-                    ? existingSettings : request.dependencyConfig();
-            OfflineFlowYamlSupport.ScheduleData targetSchedule = yamlSupport.readSchedule(finalSource);
-            var self = new OfflineFlowDependencyRef(request.groupId(), yamlSupport.parseIdentity(source).flowId());
-            var snapshots = scanAll();
-            var existing = snapshots.get(self);
-            if (existing != null && !Path.of(existing.path()).normalize().equals(relative)) {
-                throw invalid("任务标识已存在，请使用其他任务名称");
+        Path relative = validateFlowPath(request.path());
+        if (useIndex()) {
+            SaveFastPathOutcome<T> fastOutcome = trySaveFastPath(request, relative, save);
+            if (fastOutcome.completed()) {
+                return fastOutcome.result();
             }
-            boolean hourlyHoursChanged = existingSchedule != null
-                    && targetSchedule != null
-                    && existingSchedule.period() == OfflineSchedulePeriod.HOURLY
-                    && targetSchedule.period() == OfflineSchedulePeriod.HOURLY
-                    && !Objects.equals(
-                            HourlyCronHours.parseHourlyCronHours(existingSchedule.cron()),
-                            HourlyCronHours.parseHourlyCronHours(targetSchedule.cron()));
-            boolean validateUpstreamStrictly = !existsOnDisk
-                    || !Objects.equals(existingSettings.dependencies(), settings.dependencies())
+        }
+        return withDependencyGraphLock(() -> {
+            DependencyGraphView graphView = prepareMutationGraphView();
+            return repoLockManager.withLock(request.groupId(), () -> {
+                Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
+                Path flowFile = repoPath.resolve(relative);
+                boolean existsOnDisk = Files.exists(flowFile);
+                String source = existsOnDisk
+                        ? offlineFlowContentService.getFlowContent(request.groupId(), request.path()).content()
+                        : yamlSupport.buildEmptyFlowYaml(relative.getParent().getFileName().toString(), "pg-" + request.groupId());
+                // Validate the requested schedule, not the old persisted frequency, without creating a stub file.
+                String finalSource = yamlSupport.applySchedule(source, request.schedule());
+                OfflineFlowYamlSupport.FlowIndexMetadata existingMeta = yamlSupport.parseIndexMetadata(source);
+                OfflineFlowDependencySettings existingSettings = new OfflineFlowDependencySettings(
+                        existingMeta.dependencies(), existingMeta.failurePolicy(), existingMeta.crossGroupDependency());
+                OfflineFlowYamlSupport.ScheduleData existingSchedule = existingMeta.schedule();
+                OfflineFlowDependencySettings settings = request.dependencyConfig() == null
+                        ? existingSettings : request.dependencyConfig();
+                OfflineFlowYamlSupport.ScheduleData targetSchedule = yamlSupport.readSchedule(finalSource);
+                var self = new OfflineFlowDependencyRef(request.groupId(), existingMeta.flowId());
+                FlowDependencySnapshot existing = graphView.findByGroupAndFlowId(request.groupId(), self.flowId());
+                if (existing != null && !Path.of(existing.path()).normalize().equals(relative)) {
+                    throw invalid("任务标识已存在，请使用其他任务名称");
+                }
+                boolean validateUpstreamStrictly = !existsOnDisk
+                        || !Objects.equals(existingSettings.dependencies(), settings.dependencies())
+                        || !Objects.equals(
+                                existingSchedule == null ? null : existingSchedule.period(),
+                                targetSchedule == null ? null : targetSchedule.period())
+                        || hourlyHoursChanged(existingSchedule, targetSchedule);
+                validateConfig(self, targetSchedule, settings, accessibleGroups, graphView, validateUpstreamStrictly);
+                return save.get();
+            });
+        });
+    }
+
+    private <T> SaveFastPathOutcome<T> trySaveFastPath(SaveOfflineFlowDocumentRequest request,
+                                                       Path relative,
+                                                       Supplier<T> save) {
+        return repoLockManager.withLock(request.groupId(), () -> {
+            Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
+            Path flowFile = repoPath.resolve(relative);
+            if (!Files.exists(flowFile)) {
+                return SaveFastPathOutcome.fallback();
+            }
+            String source = offlineFlowContentService.getFlowContent(request.groupId(), request.path()).content();
+            String finalSource = yamlSupport.applySchedule(source, request.schedule());
+            OfflineFlowYamlSupport.FlowIndexMetadata existingMeta = yamlSupport.parseIndexMetadata(source);
+            OfflineFlowDependencySettings settings = request.dependencyConfig() == null
+                    ? new OfflineFlowDependencySettings(
+                            existingMeta.dependencies(), existingMeta.failurePolicy(), existingMeta.crossGroupDependency())
+                    : request.dependencyConfig();
+            OfflineFlowYamlSupport.ScheduleData existingSchedule = existingMeta.schedule();
+            OfflineFlowYamlSupport.ScheduleData targetSchedule = yamlSupport.readSchedule(finalSource);
+            boolean topologyContractChanged = !Objects.equals(existingMeta.dependencies(), settings.dependencies())
+                    || existingMeta.crossGroupDependency() != settings.crossGroupDependency()
                     || !Objects.equals(
                             existingSchedule == null ? null : existingSchedule.period(),
                             targetSchedule == null ? null : targetSchedule.period())
-                    || hourlyHoursChanged;
-            validateConfig(self, targetSchedule, settings, accessibleGroups, snapshots, validateUpstreamStrictly);
-            return save.get();
+                    || hourlyHoursChanged(existingSchedule, targetSchedule);
+            if (topologyContractChanged) {
+                return SaveFastPathOutcome.fallback();
+            }
+            return SaveFastPathOutcome.completed(save.get());
         });
+    }
+
+    private boolean hourlyHoursChanged(@Nullable OfflineFlowYamlSupport.ScheduleData existingSchedule,
+                                     @Nullable OfflineFlowYamlSupport.ScheduleData targetSchedule) {
+        return existingSchedule != null
+                && targetSchedule != null
+                && existingSchedule.period() == OfflineSchedulePeriod.HOURLY
+                && targetSchedule.period() == OfflineSchedulePeriod.HOURLY
+                && !Objects.equals(
+                        HourlyCronHours.parseHourlyCronHours(existingSchedule.cron()),
+                        HourlyCronHours.parseHourlyCronHours(targetSchedule.cron()));
     }
 
     public OfflineDependencyConfigResponse updateConfig(UpdateOfflineDependenciesRequest request,
                                                         List<ProjectGroupContextItem> accessibleGroups) {
         return withDependencyGraphLock(() -> {
+            DependencyGraphView graphView = prepareMutationGraphView();
             OfflineFlowContentResponse current = offlineFlowContentService.getFlowContent(request.groupId(), request.path());
+            OfflineFlowYamlSupport.FlowIndexMetadata meta = yamlSupport.parseIndexMetadata(current.content());
             OfflineFlowDependencySettings settings = new OfflineFlowDependencySettings(
                     request.dependencies(), request.failurePolicy(), request.crossGroupDependency());
-            validateConfig(new OfflineFlowDependencyRef(request.groupId(), yamlSupport.parseIdentity(current.content()).flowId()),
-                    yamlSupport.readSchedule(current.content()), settings, accessibleGroups, scanAll(), true);
+            validateConfig(new OfflineFlowDependencyRef(request.groupId(), meta.flowId()),
+                    meta.schedule(), settings, accessibleGroups, graphView, true);
             String updated = yamlSupport.applyDependencyConfig(current.content(), settings.dependencies(),
                     settings.failurePolicy(), settings.crossGroupDependency());
             offlineFlowContentService.saveFlowContent(new SaveOfflineFlowRequest(request.groupId(), request.path(),
                     updated, request.contentHash(), request.fileUpdatedAt()));
             return getConfig(request.groupId(), request.path(), accessibleGroups);
         });
+    }
+
+    private DependencyGraphView prepareMutationGraphView() {
+        if (useIndex()) {
+            offlineFlowIndexService.assertGraphHealthy();
+            return indexedGraphView();
+        }
+        return diskGraphView(scanAll());
     }
 
     private Path validateFlowPath(String path) {
@@ -187,42 +265,45 @@ public class OfflineFlowDependencyService {
                                                 OfflineFlowDependencyRef currentSelf,
                                                 String targetFlowContent,
                                                 List<ProjectGroupContextItem> accessibleGroups,
-                                                Map<OfflineFlowDependencyRef, FlowDependencySnapshot> snapshots) {
-        OfflineFlowDependencyRef self = new OfflineFlowDependencyRef(
-                groupId, yamlSupport.parseIdentity(targetFlowContent).flowId());
-        FlowDependencySnapshot existing = snapshots.get(self);
+                                                DependencyGraphView graphView) {
+        OfflineFlowYamlSupport.FlowIndexMetadata meta = yamlSupport.parseIndexMetadata(targetFlowContent);
+        OfflineFlowDependencyRef self = new OfflineFlowDependencyRef(groupId, meta.flowId());
+        FlowDependencySnapshot existing = graphView.findByGroupAndFlowId(groupId, self.flowId());
         if (existing != null && !Path.of(existing.path()).normalize().equals(relative)) {
             throw invalid("任务标识已存在，请使用其他任务名称");
         }
         if (currentSelf != null && !currentSelf.equals(self)) {
-            List<FlowDependencySnapshot> dependents = findDependentsIn(snapshots.values(), currentSelf);
+            List<FlowDependencySnapshot> dependents = graphView.findDirectDependents(currentSelf);
             if (!dependents.isEmpty()) {
                 throw invalid("存在下游任务依赖，不能修改任务标识: "
                         + formatDependents(dependents, accessibleGroups) + "，请先解除依赖");
             }
         }
-        OfflineFlowYamlSupport.ScheduleData schedule = yamlSupport.readSchedule(targetFlowContent);
-        OfflineFlowDependencySettings settings = yamlSupport.readDependencyConfig(targetFlowContent);
+        OfflineFlowYamlSupport.ScheduleData schedule = meta.schedule();
+        OfflineFlowDependencySettings settings = new OfflineFlowDependencySettings(
+                meta.dependencies(), meta.failurePolicy(), meta.crossGroupDependency());
         validateBasicRefs(self, settings.dependencies());
         List<String> upstreamIssues = collectUpstreamIssues(
-                self, schedule, settings.dependencies(), accessibleGroups, snapshots);
-        validateCycleAndDownstreams(self, schedule, settings, accessibleGroups, snapshots);
+                self, schedule, settings.dependencies(), accessibleGroups, graphView);
+        validateCycleAndDownstreams(self, schedule, settings, accessibleGroups, graphView);
         return upstreamIssues;
     }
 
-    private void validateConfig(OfflineFlowDependencyRef self, OfflineFlowYamlSupport.ScheduleData schedule,
-                                OfflineFlowDependencySettings settings, List<ProjectGroupContextItem> accessibleGroups,
-                                Map<OfflineFlowDependencyRef, FlowDependencySnapshot> snapshots,
+    private void validateConfig(OfflineFlowDependencyRef self,
+                                OfflineFlowYamlSupport.ScheduleData schedule,
+                                OfflineFlowDependencySettings settings,
+                                List<ProjectGroupContextItem> accessibleGroups,
+                                DependencyGraphView graphView,
                                 boolean validateUpstreamStrictly) {
         validateBasicRefs(self, settings.dependencies());
         if (validateUpstreamStrictly) {
             List<String> upstreamIssues = collectUpstreamIssues(
-                    self, schedule, settings.dependencies(), accessibleGroups, snapshots);
+                    self, schedule, settings.dependencies(), accessibleGroups, graphView);
             if (!upstreamIssues.isEmpty()) {
                 throw invalid(upstreamIssues.getFirst());
             }
         }
-        validateCycleAndDownstreams(self, schedule, settings, accessibleGroups, snapshots);
+        validateCycleAndDownstreams(self, schedule, settings, accessibleGroups, graphView);
     }
 
     private void validateBasicRefs(OfflineFlowDependencyRef self, List<OfflineFlowDependencyRef> refs) {
@@ -245,11 +326,11 @@ public class OfflineFlowDependencyService {
                                              OfflineFlowYamlSupport.ScheduleData schedule,
                                              OfflineFlowDependencySettings settings,
                                              List<ProjectGroupContextItem> accessibleGroups,
-                                             Map<OfflineFlowDependencyRef, FlowDependencySnapshot> snapshots) {
-        if (createsCycle(snapshots, self, settings.dependencies())) {
+                                             DependencyGraphView graphView) {
+        if (graphView.createsCycle(self, settings.dependencies())) {
             throw invalid("依赖配置会形成循环，请调整前置任务");
         }
-        List<FlowDependencySnapshot> dependents = findDependentsIn(snapshots.values(), self);
+        List<FlowDependencySnapshot> dependents = graphView.findDirectDependents(self);
         if (settings.crossGroupDependency() == OfflineCrossGroupDependency.DENY
                 && dependents.stream().anyMatch(item -> !item.groupId().equals(self.groupId()))) {
             throw invalid("存在跨项目组下游依赖，不能关闭跨项目组依赖开关，请先解除相关依赖");
@@ -280,19 +361,23 @@ public class OfflineFlowDependencyService {
                                                OfflineFlowYamlSupport.ScheduleData schedule,
                                                List<OfflineFlowDependencyRef> refs,
                                                List<ProjectGroupContextItem> accessibleGroups,
-                                               Map<OfflineFlowDependencyRef, FlowDependencySnapshot> snapshots) {
+                                               DependencyGraphView graphView) {
         List<String> issues = new ArrayList<>();
         boolean selfHasStandardPeriod = standard(schedule == null ? null : schedule.period());
         if (!refs.isEmpty() && !selfHasStandardPeriod) {
             issues.add("本任务需先配置标准调度频率，才能配置前置依赖");
         }
         Set<Long> accessibleIds = groupNames(accessibleGroups).keySet();
+        List<OfflineFlowDependencyRef> accessibleRefs = refs.stream()
+                .filter(ref -> accessibleIds.contains(ref.groupId()))
+                .toList();
+        Map<OfflineFlowDependencyRef, FlowDependencySnapshot> upstreamsByRef = graphView.findFlowsByRefs(accessibleRefs);
         for (OfflineFlowDependencyRef ref : refs) {
             if (!accessibleIds.contains(ref.groupId())) {
                 issues.add("无权引用前置任务，请检查项目组访问权限");
                 continue;
             }
-            FlowDependencySnapshot upstream = snapshots.get(ref);
+            FlowDependencySnapshot upstream = upstreamsByRef.get(ref);
             if (upstream == null) {
                 issues.add("前置任务不存在: " + ref.flowId());
                 continue;
@@ -338,7 +423,10 @@ public class OfflineFlowDependencyService {
         String selfFlowId = resolveCandidateSelfId(groupId, path);
         Map<Long, String> groupNames = groupNames(accessibleGroups);
         String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
-        return scanAccessible(accessibleGroups).values().stream()
+        Collection<FlowDependencySnapshot> candidates = useIndex()
+                ? loadIndexedSnapshotsByGroups(groupNames.keySet())
+                : scanAccessible(accessibleGroups).values();
+        return candidates.stream()
                 .filter(snapshot -> !(snapshot.groupId().equals(groupId) && snapshot.flowId().equals(selfFlowId)))
                 .filter(snapshot -> normalizedKeyword.isEmpty()
                         || snapshot.flowId().toLowerCase(Locale.ROOT).contains(normalizedKeyword)
@@ -357,7 +445,13 @@ public class OfflineFlowDependencyService {
                                                              List<ProjectGroupContextItem> accessibleGroups) {
         OfflineFlowDependencyRef self = resolveSelfRef(groupId, path);
         Map<Long, String> groupNames = groupNames(accessibleGroups);
-        return findDependentsIn(scanAccessible(accessibleGroups).values(), self).stream()
+        List<FlowDependencySnapshot> dependents = useIndex()
+                ? offlineFlowIndexService.findDirectDependents(self).stream()
+                        .filter(item -> groupNames.containsKey(item.groupId()))
+                        .map(this::toSnapshot)
+                        .toList()
+                : findDependentsIn(scanAccessible(accessibleGroups).values(), self);
+        return dependents.stream()
                 .map(item -> new OfflineDependentItemResponse(item.groupId(), groupNames.get(item.groupId()),
                         item.flowId(), item.path(), item.period(), item.cron()))
                 .toList();
@@ -365,9 +459,47 @@ public class OfflineFlowDependencyService {
 
     public void assertDeletionAllowed(Long groupId, String path, List<ProjectGroupContextItem> accessibleGroups) {
         withDependencyGraphLock(() -> {
-            List<FlowDependencySnapshot> dependents = findDependentsIn(scanAll().values(), resolveSelfRef(groupId, path));
+            DependencyGraphView graphView = prepareMutationGraphView();
+            List<FlowDependencySnapshot> dependents = graphView.findDirectDependents(resolveSelfRef(groupId, path));
             if (!dependents.isEmpty()) {
                 throw invalid("存在下游任务依赖，无法删除: " + formatDependents(dependents, accessibleGroups) + "，请先解除依赖");
+            }
+            return null;
+        });
+    }
+
+    public void assertFolderDeletionAllowed(Long groupId, String folderPath, List<ProjectGroupContextItem> accessibleGroups) {
+        String normalizedFolder = normalizeFolderPath(folderPath);
+        if (normalizedFolder == null) {
+            return;
+        }
+        String prefix = normalizedFolder + "/";
+        withDependencyGraphLock(() -> {
+            List<FlowDependencySnapshot> externalDependents;
+            if (useIndex()) {
+                offlineFlowIndexService.assertGraphHealthy();
+                externalDependents = offlineFlowIndexService.findExternalDependentsOfFolder(groupId, prefix).stream()
+                        .map(this::toSnapshot)
+                        .toList();
+            } else {
+                Map<OfflineFlowDependencyRef, FlowDependencySnapshot> snapshots = scanAll();
+                Set<OfflineFlowDependencyRef> folderRefs = snapshots.values().stream()
+                        .filter(item -> groupId.equals(item.groupId())
+                                && OfflineFlowIndexService.normalizeFlowPath(item.path()).startsWith(prefix))
+                        .map(item -> new OfflineFlowDependencyRef(item.groupId(), item.flowId()))
+                        .collect(Collectors.toSet());
+                if (folderRefs.isEmpty()) {
+                    externalDependents = List.of();
+                } else {
+                    externalDependents = snapshots.values().stream()
+                            .filter(item -> !folderRefs.contains(new OfflineFlowDependencyRef(item.groupId(), item.flowId())))
+                            .filter(item -> item.dependencies().stream().anyMatch(folderRefs::contains))
+                            .toList();
+                }
+            }
+            if (!externalDependents.isEmpty()) {
+                throw invalid("存在下游任务依赖，无法删除文件夹: "
+                        + formatDependents(externalDependents, accessibleGroups) + "，请先解除依赖");
             }
             return null;
         });
@@ -381,15 +513,31 @@ public class OfflineFlowDependencyService {
     public void assertScheduleChangeAllowed(Long groupId, String path, OfflineSchedulePeriod newPeriod, String newCron,
                                             List<ProjectGroupContextItem> accessibleGroups) {
         withDependencyGraphLock(() -> {
+            DependencyGraphView graphView = prepareMutationGraphView();
             OfflineFlowContentResponse flow = offlineFlowContentService.getFlowContent(groupId, path);
-            OfflineFlowYamlSupport.ScheduleData schedule = yamlSupport.readSchedule(flow.content());
+            OfflineFlowYamlSupport.FlowIndexMetadata meta = yamlSupport.parseIndexMetadata(flow.content());
+            OfflineFlowYamlSupport.ScheduleData schedule = meta.schedule();
             String targetCron = newCron != null ? newCron : (schedule == null ? "" : schedule.cron());
             var proposed = new OfflineFlowYamlSupport.ScheduleData("schedule", targetCron,
                     schedule == null ? null : schedule.timezone(), schedule != null && schedule.enabled(), newPeriod);
-            validateConfig(new OfflineFlowDependencyRef(groupId, yamlSupport.parseIdentity(flow.content()).flowId()),
-                    proposed, yamlSupport.readDependencyConfig(flow.content()), accessibleGroups, scanAll(), true);
+            OfflineFlowDependencySettings settings = new OfflineFlowDependencySettings(
+                    meta.dependencies(), meta.failurePolicy(), meta.crossGroupDependency());
+            validateConfig(new OfflineFlowDependencyRef(groupId, meta.flowId()),
+                    proposed, settings, accessibleGroups, graphView, true);
             return null;
         });
+    }
+
+    @Nullable
+    private String normalizeFolderPath(@Nullable String folderPath) {
+        if (folderPath == null || folderPath.isBlank()) {
+            return null;
+        }
+        Path relative = Path.of(folderPath.trim().replace('\\', '/')).normalize();
+        if (relative.isAbsolute() || !relative.startsWith("_flows") || relative.equals(Path.of("_flows"))) {
+            return null;
+        }
+        return relative.toString().replace('\\', '/').replaceAll("/+$", "");
     }
 
     private String resolveCandidateSelfId(Long groupId, String path) {
@@ -412,13 +560,13 @@ public class OfflineFlowDependencyService {
         return new OfflineFlowDependencyRef(groupId, yamlSupport.parseIdentity(flow.content()).flowId());
     }
 
-    private List<FlowDependencySnapshot> findDependentsIn(java.util.Collection<FlowDependencySnapshot> snapshots,
+    private List<FlowDependencySnapshot> findDependentsIn(Collection<FlowDependencySnapshot> snapshots,
                                                           OfflineFlowDependencyRef self) {
         return snapshots.stream().filter(snapshot -> snapshot.dependencies().contains(self)).toList();
     }
 
-    private boolean createsCycle(Map<OfflineFlowDependencyRef, FlowDependencySnapshot> snapshots,
-                                 OfflineFlowDependencyRef self, List<OfflineFlowDependencyRef> newDependencies) {
+    private boolean createsCycleInMap(Map<OfflineFlowDependencyRef, FlowDependencySnapshot> snapshots,
+                                      OfflineFlowDependencyRef self, List<OfflineFlowDependencyRef> newDependencies) {
         Set<OfflineFlowDependencyRef> visited = new HashSet<>();
         Deque<OfflineFlowDependencyRef> stack = new ArrayDeque<>(newDependencies);
         while (!stack.isEmpty()) {
@@ -435,6 +583,89 @@ public class OfflineFlowDependencyService {
             }
         }
         return false;
+    }
+
+    private Map<OfflineFlowDependencyRef, FlowDependencySnapshot> loadIndexedSnapshotsByRefs(
+            Collection<OfflineFlowDependencyRef> refs) {
+        Map<OfflineFlowDependencyRef, FlowDependencySnapshot> result = new LinkedHashMap<>();
+        offlineFlowIndexService.findFlowsByRefs(refs)
+                .forEach((ref, indexed) -> result.put(ref, toSnapshot(indexed)));
+        return result;
+    }
+
+    private List<FlowDependencySnapshot> loadIndexedSnapshotsByGroups(Collection<Long> groupIds) {
+        return offlineFlowIndexService.findFlowsByGroupIds(groupIds).stream()
+                .map(this::toSnapshot)
+                .toList();
+    }
+
+    private FlowDependencySnapshot toSnapshot(OfflineFlowIndexService.IndexedFlowSnapshot indexed) {
+        return new FlowDependencySnapshot(
+                indexed.groupId(),
+                indexed.path(),
+                indexed.flowId(),
+                indexed.hasSchedule(),
+                indexed.period(),
+                List.of(),
+                indexed.crossGroupDependency(),
+                indexed.cron(),
+                indexed.timezone(),
+                indexed.enabled()
+        );
+    }
+
+    private DependencyGraphView indexedGraphView() {
+        return new DependencyGraphView() {
+            @Override
+            public @Nullable FlowDependencySnapshot findByGroupAndFlowId(Long groupId, String flowId) {
+                OfflineFlowIndexService.IndexedFlowSnapshot found =
+                        offlineFlowIndexService.findByGroupAndFlowId(groupId, flowId);
+                return found == null ? null : toSnapshot(found);
+            }
+
+            @Override
+            public Map<OfflineFlowDependencyRef, FlowDependencySnapshot> findFlowsByRefs(
+                    Collection<OfflineFlowDependencyRef> refs) {
+                return loadIndexedSnapshotsByRefs(refs);
+            }
+
+            @Override
+            public List<FlowDependencySnapshot> findDirectDependents(OfflineFlowDependencyRef self) {
+                return offlineFlowIndexService.findDirectDependents(self).stream()
+                        .map(OfflineFlowDependencyService.this::toSnapshot)
+                        .toList();
+            }
+
+            @Override
+            public boolean createsCycle(OfflineFlowDependencyRef self, List<OfflineFlowDependencyRef> newDependencies) {
+                return offlineFlowIndexService.createsCycle(self, newDependencies);
+            }
+        };
+    }
+
+    private DependencyGraphView diskGraphView(Map<OfflineFlowDependencyRef, FlowDependencySnapshot> snapshots) {
+        return new DependencyGraphView() {
+            @Override
+            public @Nullable FlowDependencySnapshot findByGroupAndFlowId(Long groupId, String flowId) {
+                return snapshots.get(new OfflineFlowDependencyRef(groupId, flowId));
+            }
+
+            @Override
+            public Map<OfflineFlowDependencyRef, FlowDependencySnapshot> findFlowsByRefs(
+                    Collection<OfflineFlowDependencyRef> refs) {
+                return snapshots;
+            }
+
+            @Override
+            public List<FlowDependencySnapshot> findDirectDependents(OfflineFlowDependencyRef self) {
+                return findDependentsIn(snapshots.values(), self);
+            }
+
+            @Override
+            public boolean createsCycle(OfflineFlowDependencyRef self, List<OfflineFlowDependencyRef> newDependencies) {
+                return createsCycleInMap(snapshots, self, newDependencies);
+            }
+        };
     }
 
     private Map<OfflineFlowDependencyRef, FlowDependencySnapshot> scanAccessible(List<ProjectGroupContextItem> accessibleGroups) {
@@ -496,12 +727,13 @@ public class OfflineFlowDependencyService {
                         && "flow.yaml".equals(candidate.getFileName().toString())).toList()) {
                     try {
                         String content = Files.readString(flowFile, StandardCharsets.UTF_8);
-                        var schedule = yamlSupport.readSchedule(content);
+                        OfflineFlowYamlSupport.FlowIndexMetadata meta = yamlSupport.parseIndexMetadata(content);
+                        var schedule = meta.schedule();
                         snapshots.add(new FlowDependencySnapshot(groupId,
                                 repoPath.relativize(flowFile).toString().replace('\\', '/'),
-                                yamlSupport.parseIdentity(content).flowId(), schedule != null,
-                                schedule == null ? null : schedule.period(), yamlSupport.readDependencies(content),
-                                yamlSupport.readCrossGroupDependency(content), schedule == null ? null : schedule.cron(),
+                                meta.flowId(), schedule != null,
+                                schedule == null ? null : schedule.period(), meta.dependencies(),
+                                meta.crossGroupDependency(), schedule == null ? null : schedule.cron(),
                                 schedule == null ? null : schedule.timezone(), schedule != null && schedule.enabled()));
                     } catch (RuntimeException | IOException ex) {
                         if (strict) {
@@ -535,6 +767,27 @@ public class OfflineFlowDependencyService {
 
     private ResponseStatusException invalid(String message) {
         return new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, message);
+    }
+
+    private interface DependencyGraphView {
+        @Nullable
+        FlowDependencySnapshot findByGroupAndFlowId(Long groupId, String flowId);
+
+        Map<OfflineFlowDependencyRef, FlowDependencySnapshot> findFlowsByRefs(Collection<OfflineFlowDependencyRef> refs);
+
+        List<FlowDependencySnapshot> findDirectDependents(OfflineFlowDependencyRef self);
+
+        boolean createsCycle(OfflineFlowDependencyRef self, List<OfflineFlowDependencyRef> newDependencies);
+    }
+
+    private record SaveFastPathOutcome<T>(boolean completed, @Nullable T result) {
+        private static <T> SaveFastPathOutcome<T> fallback() {
+            return new SaveFastPathOutcome<>(false, null);
+        }
+
+        private static <T> SaveFastPathOutcome<T> completed(T result) {
+            return new SaveFastPathOutcome<>(true, result);
+        }
     }
 
     record FlowDependencySnapshot(Long groupId, String path, String flowId, boolean hasSchedule,

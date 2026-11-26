@@ -4,8 +4,10 @@ import com.wbdata.auth.context.AuthContext;
 import com.wbdata.auth.context.RequireGroupAuth;
 import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
+import com.wbdata.auth.service.AuthContextService;
 import com.wbdata.auth.service.AuthSession;
 import com.wbdata.common.Result;
+import com.wbdata.offline.service.OfflineFlowDependencyService;
 import com.wbdata.offline.repo.dto.BranchListResponse;
 import com.wbdata.offline.repo.dto.CreateFolderRequest;
 import com.wbdata.offline.repo.dto.DeleteFolderRequest;
@@ -51,6 +53,8 @@ public class OfflineRepoController {
     private final OfflineRepoStatusService offlineRepoStatusService;
     private final OfflineRepoTreeService offlineRepoTreeService;
     private final GitCommandService gitCommandService;
+    private final OfflineFlowDependencyService offlineFlowDependencyService;
+    private final AuthContextService authContextService;
 
     @Operation(summary = "获取项目组离线仓库状态")
     @GetMapping("/repo/status")
@@ -208,8 +212,12 @@ public class OfflineRepoController {
     @DeleteMapping("/repo/folder")
     public Result<Void> deleteFolder(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
                                      @Valid @RequestBody DeleteFolderRequest request) {
-        offlineRepoTreeService.deleteFolder(context.groupId(), request.path());
-        return Result.success(null);
+        return offlineFlowDependencyService.withDependencyGraphLock(() -> {
+            offlineFlowDependencyService.assertFolderDeletionAllowed(
+                    context.groupId(), request.path(), authContextService.listAccessibleGroups(context.user()));
+            offlineRepoTreeService.deleteFolder(context.groupId(), request.path());
+            return Result.success(null);
+        });
     }
 
     @Operation(summary = "移动离线仓库中的文件夹（含跨目录，重命名视为同目录移动）")

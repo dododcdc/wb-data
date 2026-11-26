@@ -17,6 +17,7 @@ import com.wbdata.offline.service.OfflineFlowDocumentStore.DocumentSnapshot;
 import com.wbdata.offline.transfer.dto.TransferConfig;
 import com.wbdata.offline.transfer.service.TransferConfigFileService;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
@@ -47,6 +48,8 @@ final class OfflineFlowDocumentRollback {
     private final OfflineHiveConfigStore hiveConfigStore;
     private final OfflineFlowYamlSupport yamlSupport;
     private final OfflineFlowDocumentStore store;
+    @Nullable
+    private final OfflineFlowIndexService offlineFlowIndexService;
 
     OfflineFlowDocumentRollback(OfflineProperties offlineProperties,
                                 OfflineKestraFlowFileService kestraFlowFileService,
@@ -57,7 +60,8 @@ final class OfflineFlowDocumentRollback {
                                 ExecutionParameterSnapshotRegistry executionParameterSnapshotRegistry,
                                 OfflineHiveConfigStore hiveConfigStore,
                                 OfflineFlowYamlSupport yamlSupport,
-                                OfflineFlowDocumentStore store) {
+                                OfflineFlowDocumentStore store,
+                                @Nullable OfflineFlowIndexService offlineFlowIndexService) {
         this.offlineProperties = offlineProperties;
         this.kestraFlowFileService = kestraFlowFileService;
         this.transferConfigFileService = transferConfigFileService;
@@ -68,6 +72,7 @@ final class OfflineFlowDocumentRollback {
         this.hiveConfigStore = hiveConfigStore;
         this.yamlSupport = yamlSupport;
         this.store = store;
+        this.offlineFlowIndexService = offlineFlowIndexService;
     }
 
     RollbackOfflineFlowResponse rollbackUnlocked(RollbackOfflineFlowRequest request,
@@ -117,6 +122,9 @@ final class OfflineFlowDocumentRollback {
             Files.createDirectories(flowFile.getParent());
             Files.writeString(flowFile, targetFlowContent, StandardCharsets.UTF_8);
             kestraFlowFileService.syncFlowFile(repoPath, request.path());
+            if (offlineFlowIndexService != null) {
+                offlineFlowIndexService.onFlowSaved(request.groupId(), request.path(), targetFlowContent, flowFile);
+            }
 
             OfflineFlowDocumentResponse restored = store.readSnapshot(request.groupId(), request.path()).response();
             FlowParameterBindingResponse restoredBinding = restored.parameterBinding();

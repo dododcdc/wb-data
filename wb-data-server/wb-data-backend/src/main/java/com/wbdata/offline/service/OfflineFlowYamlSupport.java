@@ -63,6 +63,16 @@ final class OfflineFlowYamlSupport {
         return new FlowIdentity(yaml.requiredString(root, "namespace"), yaml.requiredString(root, "id"));
     }
 
+    FlowIndexMetadata parseIndexMetadata(String source) {
+        Map<String, Object> root = yaml.loadRoot(source);
+        String flowId = yaml.requiredString(root, "id");
+        ScheduleData schedule = scheduleYaml.readSchedule(root);
+        List<OfflineFlowDependencyRef> dependencies = dependencyYaml.readDependencies(root);
+        OfflineFailurePolicy failurePolicy = dependencyYaml.readFailurePolicy(root);
+        OfflineCrossGroupDependency crossGroupDependency = dependencyYaml.readCrossGroupDependency(root);
+        return new FlowIndexMetadata(flowId, schedule, dependencies, failurePolicy, crossGroupDependency);
+    }
+
     String readLabel(String source, String key) {
         return yaml.readLabelValue(yaml.loadRoot(source), key);
     }
@@ -226,6 +236,15 @@ final class OfflineFlowYamlSupport {
     }
 
     record FlowIdentity(String namespace, String flowId) {
+    }
+
+    record FlowIndexMetadata(
+            String flowId,
+            ScheduleData schedule,
+            List<OfflineFlowDependencyRef> dependencies,
+            OfflineFailurePolicy failurePolicy,
+            OfflineCrossGroupDependency crossGroupDependency
+    ) {
     }
 
     record FlowDocument(

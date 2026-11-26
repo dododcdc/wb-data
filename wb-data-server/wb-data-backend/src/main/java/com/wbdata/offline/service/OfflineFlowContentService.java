@@ -7,6 +7,7 @@ import com.wbdata.offline.dto.OfflineFlowContentResponse;
 import com.wbdata.offline.dto.SaveOfflineFlowRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -25,22 +26,33 @@ public class OfflineFlowContentService {
     private final RepoLockManager repoLockManager;
     private final OfflineKestraFlowFileService kestraFlowFileService;
     private final OfflineRecentFlowService recentFlowService;
+    @Nullable
+    private final OfflineFlowIndexService offlineFlowIndexService;
 
     public OfflineFlowContentService(OfflineProperties offlineProperties,
                                      RepoLockManager repoLockManager,
                                      OfflineKestraFlowFileService kestraFlowFileService) {
-        this(offlineProperties, repoLockManager, kestraFlowFileService, new OfflineRecentFlowService(null));
+        this(offlineProperties, repoLockManager, kestraFlowFileService, new OfflineRecentFlowService(null), null);
+    }
+
+    public OfflineFlowContentService(OfflineProperties offlineProperties,
+                                     RepoLockManager repoLockManager,
+                                     OfflineKestraFlowFileService kestraFlowFileService,
+                                     OfflineRecentFlowService recentFlowService) {
+        this(offlineProperties, repoLockManager, kestraFlowFileService, recentFlowService, null);
     }
 
     @Autowired
     public OfflineFlowContentService(OfflineProperties offlineProperties,
                                      RepoLockManager repoLockManager,
                                      OfflineKestraFlowFileService kestraFlowFileService,
-                                     OfflineRecentFlowService recentFlowService) {
+                                     OfflineRecentFlowService recentFlowService,
+                                     @Nullable OfflineFlowIndexService offlineFlowIndexService) {
         this.offlineProperties = offlineProperties;
         this.repoLockManager = repoLockManager;
         this.kestraFlowFileService = kestraFlowFileService;
         this.recentFlowService = recentFlowService;
+        this.offlineFlowIndexService = offlineFlowIndexService;
     }
 
     public OfflineFlowContentResponse getFlowContent(Long groupId, String path) {
@@ -77,6 +89,9 @@ public class OfflineFlowContentService {
             Files.createDirectories(flowPath.getParent());
             Files.writeString(flowPath, request.content(), StandardCharsets.UTF_8);
             kestraFlowFileService.syncFlowFile(repoPath, request.path());
+            if (offlineFlowIndexService != null) {
+                offlineFlowIndexService.onFlowSaved(request.groupId(), request.path(), request.content(), flowPath);
+            }
             return readFlowContent(request.groupId(), request.path(), flowPath);
         } catch (IOException ex) {
             throw new IllegalStateException("保存任务文件失败", ex);
@@ -141,6 +156,9 @@ public class OfflineFlowContentService {
         } catch (IOException ex) {
             throw new IllegalStateException("删除任务失败", ex);
         }
+        if (offlineFlowIndexService != null) {
+            offlineFlowIndexService.onFlowDeleted(groupId, path);
+        }
         recentFlowService.onFlowDeleted(groupId, path);
     }
 
@@ -156,6 +174,9 @@ public class OfflineFlowContentService {
             OfflineRepoPaths.moveDirectory(repoPath, flowDir, newFlowDir, true, kestraFlowFileService);
         } catch (IOException ex) {
             throw new IllegalStateException("移动任务失败", ex);
+        }
+        if (offlineFlowIndexService != null) {
+            offlineFlowIndexService.onFlowMoved(groupId, path, newPath, newFlowDir.resolve("flow.yaml"));
         }
         recentFlowService.onFlowMoved(groupId, path, newPath);
     }

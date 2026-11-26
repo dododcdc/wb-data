@@ -16,22 +16,23 @@ import java.util.Map;
  */
 final class FlowYamlCodec {
 
-    private final Yaml yaml;
-
-    FlowYamlCodec() {
+    private final ThreadLocal<Yaml> yaml = ThreadLocal.withInitial(() -> {
         DumperOptions options = new DumperOptions();
         options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
         options.setPrettyFlow(true);
-        this.yaml = new Yaml(options);
+        return new Yaml(options);
+    });
+
+    FlowYamlCodec() {
     }
 
     String dump(Map<String, Object> root) {
-        return yaml.dump(root);
+        return yaml.get().dump(root);
     }
 
     @SuppressWarnings("unchecked")
     Map<String, Object> loadRoot(String source) {
-        Object loaded = yaml.load(source);
+        Object loaded = yaml.get().load(source);
         if (!(loaded instanceof Map<?, ?> rawRoot)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Flow YAML 格式不合法");
         }
