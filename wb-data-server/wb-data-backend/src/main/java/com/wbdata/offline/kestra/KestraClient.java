@@ -27,6 +27,13 @@ public interface KestraClient {
 
     java.util.List<KestraExecutionSnapshot> searchExecutions(java.util.Map<String, String> filters);
 
+    default KestraExecutionPage searchExecutionsPage(java.util.Map<String, String> filters,
+                                                     int page,
+                                                     int size,
+                                                     String sort) {
+        throw new UnsupportedOperationException("searchExecutionsPage not implemented");
+    }
+
     String getFlowSource(String namespace, String flowId);
 
     KestraExecutionSnapshot getExecution(String executionId);

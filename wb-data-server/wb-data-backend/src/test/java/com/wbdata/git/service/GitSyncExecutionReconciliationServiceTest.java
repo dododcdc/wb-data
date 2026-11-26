@@ -6,6 +6,7 @@ import com.wbdata.git.entity.WbGitSyncConfig;
 import com.wbdata.git.mapper.WbGitSyncConfigMapper;
 import com.wbdata.git.mapper.WbOfflinePublishRecordMapper;
 import com.wbdata.offline.kestra.KestraClient;
+import com.wbdata.offline.kestra.KestraExecutionPage;
 import com.wbdata.offline.kestra.KestraExecutionSnapshot;
 import com.wbdata.offline.repo.service.GitCommandService;
 import org.junit.jupiter.api.BeforeEach;
@@ -152,6 +153,43 @@ class GitSyncExecutionReconciliationServiceTest {
         assertThat(config.getDeploymentEvidence()).isEqualTo("CONFIRMED");
         verify(syncConfigMapper, never()).updateById(config);
         verify(syncConfigMapper, never()).update(Mockito.eq(config), any(LambdaUpdateWrapper.class));
+    }
+
+    @Test
+    void reconcile_fetchesOnlyLatestSingleExecutionViaPagedSearch() {
+        WbGitSyncConfig config = config();
+        when(syncConfigMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(config), List.of());
+        when(gitCommandService.listFlowFilesAtRevision(4L, SHA))
+                .thenReturn(List.of(".wb-data/kestra-flows/daily.yaml"));
+        when(gitCommandService.readFlowFileAtRevision(4L, SHA, ".wb-data/kestra-flows/daily.yaml"))
+                .thenReturn(flowSource("pg-4"));
+        when(kestraClient.getFlowSource("g4-main", "daily")).thenReturn(flowSource("g4-main"));
+        when(kestraClient.searchExecutionsPage(
+                Map.of(
+                        "filters[namespace][EQUALS]", GitSyncFlowSourceBuilder.SYSTEM_NAMESPACE,
+                        "filters[flowId][EQUALS]", "sync-flows-g4-main"
+                ),
+                1,
+                1,
+                "state.startDate:desc"
+        )).thenReturn(new KestraExecutionPage(
+                List.of(execution("SUCCESS", Map.of("start_sha", SHA, "end_sha", SHA))),
+                1200L
+        ));
+
+        service.reconcile();
+
+        verify(kestraClient).searchExecutionsPage(
+                Map.of(
+                        "filters[namespace][EQUALS]", GitSyncFlowSourceBuilder.SYSTEM_NAMESPACE,
+                        "filters[flowId][EQUALS]", "sync-flows-g4-main"
+                ),
+                1,
+                1,
+                "state.startDate:desc"
+        );
+        verify(kestraClient, never()).searchExecutions(any());
+        assertThat(config.getDeploymentEvidence()).isEqualTo("CONFIRMED");
     }
 
     private WbGitSyncConfig config() {

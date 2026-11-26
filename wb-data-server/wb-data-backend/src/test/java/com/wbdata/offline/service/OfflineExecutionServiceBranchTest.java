@@ -12,6 +12,7 @@ import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.config.TransferRunner;
 import com.wbdata.offline.kestra.KestraClient;
+import com.wbdata.offline.kestra.KestraExecutionPage;
 import com.wbdata.offline.kestra.KestraExecutionSnapshot;
 import com.wbdata.offline.kestra.KestraLogEntry;
 import com.wbdata.offline.kestra.KestraTaskRunSnapshot;
@@ -147,13 +148,14 @@ class OfflineExecutionServiceBranchTest {
     void listExecutions_filtersByCurrentBranchLabel() {
         KestraClient kestraClient = Mockito.mock(KestraClient.class);
         OfflineExecutionService service = service(kestraClient, repoStatusService("feature/pipeline"));
-        when(kestraClient.searchExecutions(any())).thenReturn(List.of());
+        when(kestraClient.searchExecutionsPage(any(), Mockito.eq(1), Mockito.eq(100), Mockito.eq("state.startDate:desc")))
+                .thenReturn(KestraExecutionPage.empty());
 
         service.listExecutions(1L, "_flows/example/flow.yaml", 7L);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, String>> filters = ArgumentCaptor.forClass(Map.class);
-        verify(kestraClient).searchExecutions(filters.capture());
+        verify(kestraClient).searchExecutionsPage(filters.capture(), Mockito.eq(1), Mockito.eq(100), Mockito.eq("state.startDate:desc"));
         assertThat(filters.getValue()).containsEntry("filters[labels][EQUALS][wbdataBranch]", "feature/pipeline");
         assertThat(filters.getValue().get("filters[namespace][EQUALS]"))
                 .matches("wb-debug-g1-bfeature-pipeline-[a-f0-9]{8}-u7");
@@ -181,6 +183,10 @@ class OfflineExecutionServiceBranchTest {
 
         int stopped = service.stopAllExecutions(1L, "_flows/example/flow.yaml");
 
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> filters = ArgumentCaptor.forClass(Map.class);
+        verify(kestraClient).searchExecutions(filters.capture());
+        assertThat(filters.getValue()).containsEntry("filters[state][IN]", "CREATED,QUEUED,RUNNING,PAUSED");
         assertThat(stopped).isEqualTo(1);
         verify(kestraClient).killExecution("exec-current");
         verify(kestraClient, never()).killExecution("exec-other");
@@ -493,12 +499,13 @@ class OfflineExecutionServiceBranchTest {
         assertThat(kestraCalledUnderLock).isFalse();
 
         branchReadLocked.set(false);
-        when(kestraClient.searchExecutions(any())).thenAnswer(inv -> {
-            if (lockActive.get()) {
-                kestraCalledUnderLock.set(true);
-            }
-            return List.of();
-        });
+        when(kestraClient.searchExecutionsPage(any(), Mockito.eq(1), Mockito.eq(100), Mockito.eq("state.startDate:desc")))
+                .thenAnswer(inv -> {
+                    if (lockActive.get()) {
+                        kestraCalledUnderLock.set(true);
+                    }
+                    return KestraExecutionPage.empty();
+                });
         service.listExecutions(1L, "_flows/example/flow.yaml", 7L);
         assertThat(branchReadLocked).isTrue();
         assertThat(kestraCalledUnderLock).isFalse();
