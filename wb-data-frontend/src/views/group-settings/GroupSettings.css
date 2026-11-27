@@ -1,23 +1,24 @@
 
 .gs-page {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    height: calc(100vh - 56px - 48px);
-    min-height: calc(100vh - 56px - 48px);
+    gap: 10px;
     overflow: hidden;
 }
 
 .gs-info-card,
 .gs-members-panel {
     border: 1px solid var(--color-border);
-    border-radius: 18px;
+    border-radius: 12px;
     background: var(--color-bg-primary);
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-sm);
 }
 
 .gs-info-card {
-    padding: 20px 24px;
+    flex: 0 0 auto;
+    padding: 14px 18px;
 }
 
 .gs-info-display {
@@ -118,17 +119,20 @@
 }
 
 .gs-members-panel {
+    flex: 0 1 auto;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
 }
 
 .gs-members-header {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 16px 18px 0;
+    padding: 10px 16px 0;
 }
 
 .gs-tab-group {
@@ -168,41 +172,45 @@
 }
 
 .gs-members-content {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
 }
 
 .gs-members-search-row {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 18px 0;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 16px 0;
 }
 
 .gs-search-shell {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     flex: 1 1 320px;
-    max-width: 420px;
+    max-width: 380px;
     min-width: 0;
-    height: 40px;
-    padding: 0 12px;
+    height: 32px;
+    padding: 0 10px;
     border: 1px solid var(--color-border);
-    border-radius: 10px;
-    background: var(--color-bg-primary);
+    border-radius: 8px;
+    background: var(--admin-list-board-bg);
     color: var(--color-text-muted);
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .gs-search-shell:hover {
-    border-color: var(--color-focus);
+    border-color: var(--color-border-strong);
 }
 
 .gs-search-shell:focus-within {
     border-color: var(--color-focus);
-    box-shadow: 0 0 0 4px var(--color-focus-glow);
+    box-shadow: 0 0 0 3px var(--color-focus-glow);
 }
 
 .gs-search-shell input {
@@ -211,7 +219,7 @@
     outline: none;
     background: transparent;
     color: var(--color-text-primary);
-    font-size: 0.9rem;
+    font-size: 0.8125rem;
     font-weight: 500;
     line-height: 1.4;
     font-family: var(--font-sans);
@@ -222,7 +230,12 @@
 }
 
 .gs-members-body {
-    padding: 0 18px 16px;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0 16px 14px;
+    overflow: hidden;
 }
 
 .gs-dialog-content {
@@ -344,12 +357,12 @@
 
 @media (max-width: 900px) {
     .gs-page {
-        height: calc(100vh - 56px - 36px);
-        min-height: calc(100vh - 56px - 36px);
+        flex: 1;
+        min-height: 0;
     }
 
     .gs-info-card {
-        padding: 16px;
+        padding: 14px 16px;
     }
 
     .gs-members-body {
@@ -358,7 +371,10 @@
 }
 
 @media (max-width: 720px) {
-    .gs-page {
+    .gs-page,
+    .gs-members-panel,
+    .gs-members-content,
+    .gs-members-body {
         height: auto;
         min-height: auto;
         overflow: visible;

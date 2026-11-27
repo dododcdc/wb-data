@@ -69,20 +69,25 @@ export function GroupTable(props: GroupTableProps) {
             key: 'identity',
             header: '项目组',
             primary: true,
-            width: '40%',
+            truncate: true,
+            width: '22%',
+            cell: (item) => <span title={item.name}>{item.name}</span>,
+        },
+        {
+            key: 'description',
+            header: '描述',
+            truncate: true,
+            width: '28%',
             cell: (item) => (
-                <div className="wb-list-cell-stack">
-                    <span title={item.name}>{item.name}</span>
-                    <span className="wb-list-secondary wb-list-secondary-text" title={item.description || undefined}>
-                        {item.description || '--'}
-                    </span>
-                </div>
+                <span className="wb-list-secondary wb-list-secondary-text" title={item.description || undefined}>
+                    {item.description || '--'}
+                </span>
             ),
         },
         {
             key: 'status',
             header: '状态',
-            width: 110,
+            width: 92,
             cell: (item) => (
                 <StatusPill tone={item.status === 'active' ? 'success' : 'neutral'}>
                     {item.status === 'active' ? '正常' : '已禁用'}
@@ -94,14 +99,14 @@ export function GroupTable(props: GroupTableProps) {
             header: '成员数',
             align: 'right',
             mono: true,
-            width: 100,
+            width: 84,
             cell: (item) => item.memberCount,
         },
         {
             key: 'createdAt',
             header: '创建时间',
             mono: true,
-            width: 190,
+            width: 156,
             cell: (item) => formatTimestamp(item.createdAt),
         },
         {
@@ -127,7 +132,7 @@ export function GroupTable(props: GroupTableProps) {
             columns={columns}
             rowKey={(item) => item.id}
             ariaLabel="项目组列表"
-            minWidth="860px"
+            minWidth="780px"
             state={state}
             isRefreshing={isRefreshing}
             errorMessage={errorMessage}

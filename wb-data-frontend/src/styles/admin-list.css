@@ -2,15 +2,16 @@
    Keep warm parchment + coral tokens from index.css. */
 
 :root {
-    --admin-list-row-height: 46px;
-    --admin-list-toolbar-height: 40px;
-    --admin-list-radius: 12px;
-    --admin-list-th-size: 0.8125rem; /* 13px */
-    --admin-list-td-size: 0.875rem;
-    --admin-list-cell-pad-y: 10px;
-    --admin-list-cell-pad-x: 14px;
+    --admin-list-row-height: 38px;
+    --admin-list-compact-row-height: 34px;
+    --admin-list-toolbar-height: 32px;
+    --admin-list-radius: 10px;
+    --admin-list-th-size: 0.75rem; /* 12px */
+    --admin-list-td-size: 0.8125rem; /* 13px */
+    --admin-list-cell-pad-y: 6px;
+    --admin-list-cell-pad-x: 12px;
     --admin-list-board-bg: color-mix(in srgb, var(--color-bg-primary) 55%, #FFFFFF);
-    --admin-list-header-bg: color-mix(in srgb, var(--color-bg-secondary) 88%, var(--admin-list-board-bg));
+    --admin-list-header-bg: color-mix(in srgb, var(--color-bg-secondary) 72%, var(--admin-list-board-bg));
 }
 
 .admin-list-page {
@@ -158,13 +159,13 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    flex: 1 1 360px;
-    max-width: 480px;
+    flex: 1 1 320px;
+    max-width: 380px;
     min-width: 0;
-    height: 36px;
-    padding: 0 12px;
+    height: 32px;
+    padding: 0 10px;
     border: 1px solid var(--color-border);
-    border-radius: 10px;
+    border-radius: 8px;
     background: var(--admin-list-board-bg);
     color: var(--color-text-muted);
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
@@ -185,7 +186,7 @@
     outline: none;
     background: transparent;
     color: var(--color-text-primary);
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 500;
     line-height: 1.4;
     font-family: var(--font-sans);

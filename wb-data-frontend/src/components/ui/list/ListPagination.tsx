@@ -67,23 +67,23 @@ export function ListPagination({
                 <div className="wb-list-pagination-pages">
                     <Button
                         variant="outline"
-                        size="icon"
+                        size="icon-sm"
                         type="button"
                         aria-label="上一页"
                         disabled={previousDisabled}
                         onClick={() => goToPage(currentPage - 1)}
                     >
-                        <ChevronLeft size={16} />
+                        <ChevronLeft size={14} />
                     </Button>
                     <Button
                         variant="outline"
-                        size="icon"
+                        size="icon-sm"
                         type="button"
                         aria-label="下一页"
                         disabled={nextDisabled}
                         onClick={() => goToPage(currentPage + 1)}
                     >
-                        <ChevronRight size={16} />
+                        <ChevronRight size={14} />
                     </Button>
                 </div>
             </div>

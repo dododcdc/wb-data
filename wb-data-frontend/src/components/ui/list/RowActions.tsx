@@ -107,7 +107,7 @@ export function RowActions({ items, maxVisible = 2, menuLabel = '更多操作' }
                                     item.onClick();
                                 }}
                             >
-                                <Icon size={16} className={item.pending ? 'wb-list-spin' : undefined} />
+                                <Icon size={14} className={item.pending ? 'wb-list-spin' : undefined} />
                             </button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">{item.label}</TooltipContent>
@@ -136,7 +136,7 @@ export function RowActions({ items, maxVisible = 2, menuLabel = '更多操作' }
                             }
                         }}
                     >
-                        <MoreHorizontal size={16} />
+                        <MoreHorizontal size={14} />
                     </button>
                     {open ? createPortal(
                         <div
@@ -163,7 +163,7 @@ export function RowActions({ items, maxVisible = 2, menuLabel = '更多操作' }
                                             item.onClick();
                                         }}
                                     >
-                                        <Icon size={15} className={item.pending ? 'wb-list-spin' : undefined} />
+                                        <Icon size={14} className={item.pending ? 'wb-list-spin' : undefined} />
                                         {item.label}
                                     </button>
                                 );

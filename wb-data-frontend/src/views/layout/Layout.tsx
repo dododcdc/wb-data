@@ -148,6 +148,13 @@ export default function Layout() {
         }
     };
     const isFullBleedPage = location.pathname.startsWith('/query') || location.pathname.startsWith('/offline');
+    const isListViewportPage =
+        location.pathname === '/datasources'
+        || location.pathname === '/operations'
+        || location.pathname === '/parameters'
+        || location.pathname === '/users'
+        || location.pathname === '/groups'
+        || location.pathname === '/group-settings';
     const [routeIntent, setRouteIntent] = useState<string | null>(null);
 
     const routeBusy = Boolean(routeIntent && routeIntent !== location.pathname);
@@ -527,7 +534,7 @@ export default function Layout() {
             </header>
             <OperationFeedback />
             <main className="main-content">
-                <div className={`content-area ${isFullBleedPage ? 'full-bleed' : ''}`}>
+                <div className={`content-area ${isFullBleedPage ? 'full-bleed' : isListViewportPage ? 'list-viewport' : ''}`.trim()}>
                     <Outlet />
                 </div>
             </main>

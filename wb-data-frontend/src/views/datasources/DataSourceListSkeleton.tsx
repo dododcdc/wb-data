@@ -19,9 +19,11 @@ export default function DataSourceListSkeleton() {
                 <div className="datasource-skeleton-table">
                     {Array.from({ length: SKELETON_ROWS }, (_, index) => (
                         <div className="datasource-skeleton-row" key={index}>
-                            <div className="datasource-skeleton-cell wide">
+                            <div className="datasource-skeleton-cell">
                                 <div className="datasource-skeleton-block datasource-skeleton-line long" />
-                                <div className="datasource-skeleton-block datasource-skeleton-line short" />
+                            </div>
+                            <div className="datasource-skeleton-cell">
+                                <div className="datasource-skeleton-block datasource-skeleton-line medium" />
                             </div>
                             <div className="datasource-skeleton-cell">
                                 <div className="datasource-skeleton-block datasource-skeleton-chip" />

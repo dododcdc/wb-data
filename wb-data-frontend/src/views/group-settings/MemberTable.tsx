@@ -64,7 +64,7 @@ export default function MemberTable(props: MemberTableProps) {
             cell: (member) => {
                 const isSelf = currentUserId === member.userId;
                 return (
-                    <div className="wb-list-cell-stack">
+                    <div className="wb-list-inline-pair">
                         <span title={member.username}>
                             {member.username}
                             {isSelf ? <span className="wb-list-self-marker">我</span> : null}
@@ -79,14 +79,14 @@ export default function MemberTable(props: MemberTableProps) {
         {
             key: 'role',
             header: '项目组角色',
-            width: 140,
+            width: 112,
             cell: (member) => <StatusPill tone="neutral" dot={false}>{getRoleLabel(member.role)}</StatusPill>,
         },
         {
             key: 'createdAt',
             header: '加入时间',
             mono: true,
-            width: 190,
+            width: 156,
             cell: (member) => formatTimestamp(member.createdAt),
         },
     ];
@@ -96,7 +96,7 @@ export default function MemberTable(props: MemberTableProps) {
             key: 'actions',
             header: '操作',
             align: 'right',
-            width: 120,
+            width: 96,
             cell: (member) => currentUserId === member.userId
                 ? <span className="wb-list-action-note">当前账号</span>
                 : <RowActions items={getActions(member)} maxVisible={1} menuLabel={`${member.username}的更多操作`} />,
@@ -117,7 +117,7 @@ export default function MemberTable(props: MemberTableProps) {
             columns={columns}
             rowKey={(member) => member.id}
             ariaLabel="项目组成员列表"
-            minWidth="760px"
+            minWidth="680px"
             state={state}
             isRefreshing={isRefreshing}
             errorMessage={errorMessage}

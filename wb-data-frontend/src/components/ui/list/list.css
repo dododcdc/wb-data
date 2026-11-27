@@ -1,19 +1,34 @@
 .wb-list-panel {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     overflow: hidden;
     border: 1px solid var(--color-border);
-    border-radius: var(--admin-list-radius, 12px);
+    border-radius: var(--admin-list-radius, 10px);
     background: var(--admin-list-board-bg);
+    box-shadow: 0 1px 2px rgba(40, 32, 24, 0.03);
 }
 
 .wb-list-panel.has-footer {
     border-bottom: none;
-    border-radius: var(--admin-list-radius, 12px) var(--admin-list-radius, 12px) 0 0;
+    border-radius: var(--admin-list-radius, 10px) var(--admin-list-radius, 10px) 0 0;
 }
 
 .wb-list-scroll {
-    max-height: clamp(320px, calc(100vh - 248px), 720px);
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: clamp(320px, calc(100vh - 210px), 760px);
     overflow: auto;
+}
+
+.content-area.list-viewport .wb-list-panel {
+    flex: 0 1 auto;
+    min-height: 0;
+}
+
+.content-area.list-viewport .wb-list-scroll {
+    max-height: none;
 }
 
 .wb-list-progress {
@@ -48,14 +63,14 @@
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 14px;
-    margin: 10px 12px 0;
-    padding: 10px 12px;
+    gap: 12px;
+    margin: 8px 12px 0;
+    padding: 8px 12px;
     border: 1px solid var(--color-error-border);
     border-radius: var(--radius-md, 6px);
     background: var(--color-error-bg);
     color: var(--color-error);
-    font-size: var(--admin-list-td-size, 0.875rem);
+    font-size: var(--admin-list-td-size, 0.8125rem);
 }
 
 .wb-list-inline-error strong {
@@ -76,25 +91,28 @@
     position: sticky;
     top: 0;
     z-index: 1;
-    padding: var(--admin-list-cell-pad-y, 10px) var(--admin-list-cell-pad-x, 14px);
+    height: 32px;
+    padding: 0 var(--admin-list-cell-pad-x, 12px);
     border-bottom: 1px solid var(--color-border);
     background: var(--admin-list-header-bg, var(--color-bg-secondary));
-    color: var(--color-text-secondary);
-    font-size: var(--admin-list-th-size, 0.8125rem);
-    font-weight: 600;
+    color: var(--color-text-muted);
+    font-size: var(--admin-list-th-size, 0.75rem);
+    font-weight: 500;
     letter-spacing: 0.01em;
-    line-height: 1.3;
+    line-height: 1.25;
     text-align: left;
     white-space: nowrap;
 }
 
 .wb-list-table td {
-    height: var(--admin-list-row-height, 46px);
-    padding: var(--admin-list-cell-pad-y, 10px) var(--admin-list-cell-pad-x, 14px);
+    height: var(--admin-list-row-height, 38px);
+    padding: var(--admin-list-cell-pad-y, 6px) var(--admin-list-cell-pad-x, 12px);
     border-bottom: 1px solid var(--color-border-subtle);
     color: var(--color-text-primary);
-    font-size: var(--admin-list-td-size, 0.875rem);
+    font-size: var(--admin-list-td-size, 0.8125rem);
+    line-height: 1.35;
     vertical-align: middle;
+    transition: background-color 100ms ease;
 }
 
 .wb-list-table tbody tr:last-child td {
@@ -102,7 +120,51 @@
 }
 
 .wb-list-table tbody tr:hover td {
+    background: color-mix(in srgb, var(--color-bg-secondary) 72%, var(--admin-list-board-bg));
+}
+
+.wb-list-table tbody tr.is-selected td {
+    background: color-mix(in srgb, var(--color-brand-light) 48%, var(--admin-list-board-bg));
+}
+
+.dark .wb-list-table tbody tr:hover td {
     background: var(--color-bg-hover);
+}
+
+.wb-list-checkbox-col {
+    width: 36px;
+    padding-left: 12px !important;
+    padding-right: 4px !important;
+    text-align: center;
+}
+
+.wb-list-checkbox {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: var(--color-brand);
+    vertical-align: middle;
+    cursor: pointer;
+}
+
+.wb-list-checkbox:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.wb-list-selection-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 8px 0 10px;
+    border: 1px solid color-mix(in srgb, var(--color-brand) 32%, var(--color-border));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--color-brand-light) 65%, var(--admin-list-board-bg));
+    color: var(--color-text-primary);
+    font-size: 0.78rem;
+    font-weight: 500;
+    white-space: nowrap;
 }
 
 .wb-list-table tbody tr.is-clickable {
@@ -110,7 +172,7 @@
 }
 
 .wb-list-table tbody tr.is-clickable:hover td:first-child {
-    box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-brand) 35%, transparent);
+    box-shadow: inset 2px 0 0 var(--color-brand);
 }
 
 .wb-list-table tbody tr.is-clickable:focus-visible {
@@ -118,10 +180,14 @@
     outline-offset: -2px;
 }
 
+.wb-list-compact .wb-list-table th {
+    height: 30px;
+    padding: 0 10px;
+}
+
 .wb-list-compact .wb-list-table td {
-    height: 40px;
-    padding-top: 7px;
-    padding-bottom: 7px;
+    height: 34px;
+    padding: 4px 10px;
 }
 
 .wb-list-cell-strong {
@@ -131,8 +197,9 @@
 .wb-list-cell-mono {
     color: var(--color-text-secondary);
     font-family: var(--font-mono);
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
     white-space: nowrap;
 }
 
@@ -153,6 +220,27 @@
     align-items: flex-start;
     gap: 2px;
     min-width: 0;
+}
+
+.wb-list-inline-pair {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+}
+
+.wb-list-inline-pair > :first-child {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wb-list-inline-pair .wb-list-secondary {
+    flex: 0 1 auto;
+    min-width: 0;
+    color: var(--color-text-muted);
 }
 
 .wb-list-primary-action {
@@ -199,7 +287,7 @@
 .wb-list-self-marker {
     display: inline-flex;
     align-items: center;
-    height: 18px;
+    height: 17px;
     margin-left: 6px;
     padding: 0 5px;
     border-radius: 4px;
@@ -220,37 +308,53 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 4px;
+    gap: 2px;
 }
 
 .wb-list-icon-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
     padding: 0;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm, 5px);
+    border: 1px solid transparent;
+    border-radius: 6px;
     background: transparent;
-    color: var(--color-text-secondary);
+    color: var(--color-text-muted);
+    opacity: 0.65;
     cursor: pointer;
+    transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.wb-list-table tbody tr:hover .wb-list-icon-btn,
+.wb-list-table tbody tr:focus-within .wb-list-icon-btn {
+    opacity: 1;
+    color: var(--color-text-secondary);
 }
 
 .wb-list-icon-btn:hover:not([disabled]) {
-    border-color: var(--color-border-strong);
-    background: var(--color-bg-hover);
+    border-color: var(--color-border);
+    background: var(--color-bg-tertiary);
     color: var(--color-text-primary);
+    opacity: 1;
+}
+
+.wb-list-icon-btn.is-danger:hover:not([disabled]) {
+    border-color: var(--color-error-border);
+    background: var(--color-error-bg);
+    color: var(--color-error);
 }
 
 .wb-list-icon-btn:focus-visible,
 .wb-list-menu button:focus-visible {
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;
+    opacity: 1;
 }
 
 .wb-list-icon-btn[disabled] {
-    opacity: 0.55;
+    opacity: 0.45;
     cursor: default;
 }
 
@@ -267,50 +371,51 @@
     align-items: center;
     justify-content: center;
     gap: 5px;
-    min-width: 64px;
-    height: 22px;
-    padding: 0 8px;
+    min-width: 0;
+    height: 20px;
+    padding: 0 7px;
     border: 1px solid transparent;
     border-radius: 999px;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     font-weight: 500;
     line-height: 1;
     white-space: nowrap;
 }
 
 .wb-list-pill-dot {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     background: currentColor;
+    flex-shrink: 0;
 }
 
 .wb-list-pill.is-success {
-    border-color: var(--color-success-border);
+    border-color: color-mix(in srgb, currentColor 16%, transparent);
     background: var(--color-success-bg);
     color: var(--color-success);
 }
 
 .wb-list-pill.is-teal {
-    border-color: rgba(31, 102, 92, 0.24);
-    background: rgba(56, 137, 125, 0.14);
+    border-color: color-mix(in srgb, currentColor 18%, transparent);
+    background: rgba(56, 137, 125, 0.12);
     color: rgb(31, 102, 92);
 }
 
 .wb-list-pill.is-warning {
-    border-color: var(--color-warning-border);
+    border-color: color-mix(in srgb, currentColor 16%, transparent);
     background: var(--color-warning-bg);
     color: var(--color-warning);
 }
 
 .wb-list-pill.is-danger {
-    border-color: var(--color-error-border);
+    border-color: color-mix(in srgb, currentColor 16%, transparent);
     background: var(--color-error-bg);
     color: var(--color-error);
 }
 
 .wb-list-pill.is-info {
-    border-color: var(--color-info-border);
+    border-color: color-mix(in srgb, currentColor 16%, transparent);
     background: var(--color-info-bg);
     color: var(--color-info);
 }
@@ -327,8 +432,8 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    min-height: 180px;
-    padding: 28px 20px;
+    min-height: 160px;
+    padding: 24px 20px;
     text-align: center;
 }
 
@@ -366,9 +471,9 @@
 .wb-list-skeleton-row {
     display: grid;
     align-items: center;
-    gap: 24px;
-    min-height: var(--admin-list-row-height, 46px);
-    padding: 0 var(--admin-list-cell-pad-x, 14px);
+    gap: 20px;
+    min-height: var(--admin-list-row-height, 38px);
+    padding: 0 var(--admin-list-cell-pad-x, 12px);
     border-bottom: 1px solid var(--color-border-subtle);
 }
 
@@ -388,20 +493,23 @@
 }
 
 .wb-list-pagination {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    min-height: 44px;
-    padding: 8px 14px;
+    gap: 10px;
+    min-height: 36px;
+    padding: 4px 12px;
     border: 1px solid var(--color-border);
-    border-radius: 0 0 var(--admin-list-radius, 12px) var(--admin-list-radius, 12px);
-    background: color-mix(in srgb, var(--admin-list-board-bg) 88%, var(--color-bg-secondary));
+    border-top: 1px solid var(--color-border-subtle);
+    border-radius: 0 0 var(--admin-list-radius, 10px) var(--admin-list-radius, 10px);
+    background: var(--admin-list-header-bg, color-mix(in srgb, var(--admin-list-board-bg) 88%, var(--color-bg-secondary)));
 }
 
 .wb-list-pagination-info {
     color: var(--color-text-muted);
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
 
@@ -414,29 +522,38 @@
 
 .wb-list-pagination-controls {
     justify-content: flex-end;
-    gap: 14px;
+    gap: 12px;
 }
 
 .wb-list-pagination-pages {
-    gap: 6px;
+    gap: 4px;
+}
+
+.wb-list-pagination-pages [data-slot="button"] {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
 }
 
 .wb-list-page-size {
     flex-shrink: 0;
-    gap: 8px;
+    gap: 6px;
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     white-space: nowrap;
 }
 
 .wb-list-page-size [data-slot="select-trigger"] {
-    width: 84px;
-    height: 32px;
+    width: 78px;
+    height: 26px;
+    padding: 0 6px 0 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
 }
 
 .wb-list-pagination-status {
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
@@ -444,10 +561,10 @@
 .wb-list-menu {
     position: fixed;
     z-index: 1000;
-    width: 156px;
+    width: 152px;
     padding: 4px;
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-md, 6px);
+    border-radius: 8px;
     background: var(--popover, var(--color-bg-primary));
     box-shadow: var(--shadow-lg);
 }
@@ -457,14 +574,14 @@
     align-items: center;
     gap: 8px;
     width: 100%;
-    height: 32px;
+    height: 28px;
     padding: 0 8px;
     border: none;
     border-radius: var(--radius-sm, 5px);
     background: transparent;
     color: var(--color-text-primary);
     font: inherit;
-    font-size: 0.8125rem;
+    font-size: 0.78rem;
     text-align: left;
     cursor: pointer;
 }
@@ -485,6 +602,10 @@
 @media (max-width: 720px) {
     .wb-list-scroll {
         max-height: none;
+    }
+
+    .wb-list-icon-btn {
+        opacity: 1;
     }
 
     .wb-list-pagination,

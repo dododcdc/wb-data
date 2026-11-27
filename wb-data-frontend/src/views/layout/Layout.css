@@ -458,6 +458,7 @@
 
 .main-content {
     flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: auto;
@@ -469,6 +470,19 @@
     margin: 0 auto;
     padding: 24px 28px;
     box-sizing: border-box;
+}
+
+.content-area.list-viewport {
+    max-width: 1520px;
+    width: 100%;
+    margin: 0 auto;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 14px 24px 16px;
+    overflow: hidden;
 }
 
 .content-area.full-bleed {
@@ -542,6 +556,17 @@
 
     .content-area {
         padding: 18px 16px;
+    }
+
+    .content-area.list-viewport {
+        padding: 12px 14px 14px;
+    }
+}
+
+@media (max-width: 720px) {
+    .content-area.list-viewport {
+        height: auto;
+        overflow: visible;
     }
 }
 

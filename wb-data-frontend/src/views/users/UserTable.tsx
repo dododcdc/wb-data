@@ -69,7 +69,7 @@ export function UserTable(props: UserTableProps) {
             primary: true,
             width: '30%',
             cell: (item) => (
-                <div className="wb-list-cell-stack">
+                <div className="wb-list-inline-pair">
                     <span title={item.username}>{item.username}</span>
                     <span className="wb-list-secondary wb-list-secondary-text" title={item.displayName || undefined}>
                         {item.displayName || '--'}
@@ -80,13 +80,13 @@ export function UserTable(props: UserTableProps) {
         {
             key: 'role',
             header: '系统角色',
-            width: 140,
+            width: 112,
             cell: (item) => <StatusPill tone="neutral" dot={false}>{getSystemRoleLabel(item.systemRole)}</StatusPill>,
         },
         {
             key: 'status',
             header: '状态',
-            width: 110,
+            width: 88,
             cell: (item) => (
                 <StatusPill tone={item.status === 'ACTIVE' ? 'success' : 'neutral'}>
                     {getStatusLabel(item.status)}
@@ -97,14 +97,14 @@ export function UserTable(props: UserTableProps) {
             key: 'lastLoginAt',
             header: '最近登录',
             mono: true,
-            width: 190,
+            width: 156,
             cell: (item) => formatTimestamp(item.lastLoginAt),
         },
         {
             key: 'createdAt',
             header: '创建时间',
             mono: true,
-            width: 190,
+            width: 156,
             cell: (item) => formatTimestamp(item.createdAt),
         },
         {
@@ -130,7 +130,7 @@ export function UserTable(props: UserTableProps) {
             columns={columns}
             rowKey={(item) => item.id}
             ariaLabel="用户列表"
-            minWidth="960px"
+            minWidth="820px"
             state={state}
             isRefreshing={isRefreshing}
             errorMessage={errorMessage}
