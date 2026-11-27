@@ -1,6 +1,7 @@
 import request from '../utils/request';
 import { groupScopedPath } from './groupScoped';
 import type { PageResult } from './datasource';
+import type { AssetOwnerSummary, OwnerStatus, TransferOwnerPayload, TransferOwnerResult } from './groupSettings';
 
 export type ParameterGroupStatus = 'ACTIVE' | 'ARCHIVED';
 export type ParameterValueSource = 'CONSTANT' | 'SYSTEM_TIME';
@@ -27,6 +28,10 @@ export interface ParameterGroupSummary {
     revision: number;
     status: ParameterGroupStatus;
     parameterCount: number;
+    ownerUserId?: number | null;
+    ownerName?: string | null;
+    ownerUsername?: string | null;
+    ownerStatus?: OwnerStatus | null;
     createdBy: number;
     updatedBy: number;
     createdAt: string;
@@ -43,6 +48,7 @@ export interface ParameterGroupListQuery {
     size?: number;
     keyword?: string;
     status?: ParameterGroupStatus;
+    ownerUserId?: number;
 }
 
 export interface CreateParameterGroupRequest {
@@ -50,6 +56,7 @@ export interface CreateParameterGroupRequest {
     name: string;
     description: string | null;
     definitions: ParameterDefinition[];
+    ownerUserId?: number | null;
 }
 
 export interface UpdateParameterGroupRequest {
@@ -57,6 +64,7 @@ export interface UpdateParameterGroupRequest {
     name: string;
     description: string | null;
     definitions: ParameterDefinition[];
+    ownerUserId?: number | null;
 }
 
 export interface ParameterPreviewRequest {
@@ -114,3 +122,9 @@ export const getParameterGroupReferences = (groupId: number, id: number) =>
 
 export const previewParameterGroup = (groupId: number, id: number, data: ParameterPreviewRequest) =>
     request.post<unknown, ParameterPreview>(parameterGroupPath(groupId, `/${id}/preview`), data);
+
+export const getParameterGroupOwners = (groupId: number) =>
+    request.get<unknown, AssetOwnerSummary[]>(parameterGroupPath(groupId, '/owners'));
+
+export const transferParameterGroupOwner = (groupId: number, data: TransferOwnerPayload) =>
+    request.post<unknown, TransferOwnerResult>(parameterGroupPath(groupId, '/transfer-owner'), data);

@@ -1,18 +1,19 @@
 .datasource-page {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    height: calc(100vh - 56px - 48px);
-    min-height: calc(100vh - 56px - 48px);
+    gap: 10px;
     overflow: hidden;
 }
 
 .datasource-toolbar {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: flex-start;
     gap: 10px;
-    min-height: var(--admin-list-toolbar-height, 40px);
+    min-height: var(--admin-list-toolbar-height, 32px);
     padding: 0;
 }
 
@@ -20,13 +21,13 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    flex: 1 1 360px;
-    max-width: 480px;
+    flex: 1 1 320px;
+    max-width: 380px;
     min-width: 0;
-    height: 36px;
-    padding: 0 12px;
+    height: 32px;
+    padding: 0 10px;
     border: 1px solid var(--color-border);
-    border-radius: 10px;
+    border-radius: 8px;
     background: var(--admin-list-board-bg);
     color: var(--color-text-muted);
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
@@ -48,7 +49,7 @@
     outline: none;
     background: transparent;
     color: var(--color-text-primary);
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 500;
     line-height: 1.4;
     font-family: var(--font-sans);
@@ -56,6 +57,17 @@
 
 .datasource-search-shell input::placeholder {
     color: var(--color-input-placeholder);
+}
+
+.datasource-owner-filter {
+    flex: 0 0 184px;
+    min-width: 148px;
+}
+
+.datasource-owner-filter .simple-select-trigger {
+    height: 32px;
+    border-radius: 8px;
+    background: var(--admin-list-board-bg);
 }
 
 .datasource-toolbar-actions {
@@ -67,8 +79,11 @@
 }
 
 .datasource-table-panel {
+    flex: 0 1 auto;
+    min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 .datasource-page-skeleton .datasource-toolbar,
@@ -123,14 +138,15 @@
 .datasource-skeleton-search {
     flex: 1;
     min-width: 0;
-    height: 36px;
-    border-radius: 10px;
+    max-width: 380px;
+    height: 32px;
+    border-radius: 8px;
 }
 
 .datasource-skeleton-button {
-    width: 138px;
-    height: 42px;
-    border-radius: 12px;
+    width: 120px;
+    height: 32px;
+    border-radius: 8px;
 }
 
 .datasource-skeleton-panel {
@@ -181,11 +197,11 @@
 
 .datasource-skeleton-row {
     display: grid;
-    grid-template-columns: 1.6fr 0.8fr 0.8fr 0.7fr 0.9fr 0.9fr;
+    grid-template-columns: 1.1fr 1.4fr 0.6fr 0.6fr 0.7fr 0.9fr 0.7fr;
     gap: 12px;
     align-items: center;
-    min-height: 46px;
-    padding: 0 14px;
+    min-height: 38px;
+    padding: 0 12px;
     border-bottom: 1px solid var(--color-border-subtle);
 }
 
@@ -279,8 +295,8 @@
 
 @media (max-width: 900px) {
     .datasource-page {
-        height: calc(100vh - 56px - 36px);
-        min-height: calc(100vh - 56px - 36px);
+        flex: 1;
+        min-height: 0;
     }
 
     .datasource-toolbar {
@@ -295,7 +311,8 @@
 }
 
 @media (max-width: 720px) {
-    .datasource-page {
+    .datasource-page,
+    .datasource-table-panel {
         height: auto;
         min-height: auto;
         overflow: visible;

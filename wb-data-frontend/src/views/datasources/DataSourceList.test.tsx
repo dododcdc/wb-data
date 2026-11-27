@@ -2,18 +2,51 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Link } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getDataSourcePage, type DataSource } from '../../api/datasource';
+import {
+    getDataSourceOwners,
+    getDataSourcePage,
+    transferDataSourceOwner,
+    type DataSource,
+} from '../../api/datasource';
+import { getGroupOwnerCandidates } from '../../api/groupSettings';
 import { useAuthStore } from '../../utils/auth';
 import DataSourceList from './DataSourceList';
 
-vi.mock('../../api/datasource', () => ({ getDataSourcePage: vi.fn(), deleteDataSource: vi.fn(), testExistingConnection: vi.fn(), updateDataSourceStatus: vi.fn() }));
+vi.mock('../../api/datasource', () => ({
+    getDataSourcePage: vi.fn(),
+    getDataSourceOwners: vi.fn(),
+    transferDataSourceOwner: vi.fn(),
+    deleteDataSource: vi.fn(),
+    testExistingConnection: vi.fn(),
+    updateDataSourceStatus: vi.fn(),
+}));
+vi.mock('../../api/groupSettings', () => ({
+    getGroupOwnerCandidates: vi.fn(),
+}));
 vi.mock('./DataSourceForm', () => ({ default: () => null }));
 vi.mock('./DataSourceTable', () => ({ DataSourceTable: ({ data }: { data: DataSource[] }) => <div>{data.map((item) => <span key={item.id}>{item.name}</span>)}</div> }));
 
 let client: QueryClient;
 beforeEach(() => {
-    useAuthStore.setState({ currentGroup: { id: 1, name: 'Alpha', description: '', role: 'DEVELOPER' }, permissions: ['datasource.read'] });
+    useAuthStore.setState({
+        userInfo: { id: 1, username: 'alice', displayName: 'Alice', systemRole: 'USER' },
+        currentGroup: { id: 1, name: 'Alpha', description: '', role: 'DEVELOPER' },
+        permissions: ['datasource.read', 'datasource.write'],
+    });
     vi.mocked(getDataSourcePage).mockReset();
+    vi.mocked(getDataSourceOwners).mockReset().mockResolvedValue([
+        { userId: 1, username: 'alice', displayName: 'Alice', status: 'ACTIVE', count: 1 },
+        { userId: 2, username: 'bob', displayName: 'Bob', status: 'ACTIVE', count: 2 },
+    ]);
+    vi.mocked(transferDataSourceOwner).mockReset().mockResolvedValue({
+        updatedCount: 2,
+        targetOwnerUserId: 1,
+        targetOwnerName: 'Alice',
+    });
+    vi.mocked(getGroupOwnerCandidates).mockReset().mockResolvedValue([
+        { userId: 1, username: 'alice', displayName: 'Alice', role: 'DEVELOPER' },
+        { userId: 2, username: 'bob', displayName: 'Bob', role: 'GROUP_ADMIN' },
+    ]);
 });
 afterEach(() => { cleanup(); client.clear(); });
 
@@ -56,5 +89,37 @@ describe('DataSourceList group isolation', () => {
         fireEvent.click(screen.getByRole('link', { name: search }));
         await waitFor(() => expect(getDataSourcePage).toHaveBeenCalledTimes(2));
         expect(screen.getByText('Alpha source')).toBeTruthy();
+    });
+
+    it('filters by owner and supports bulk owner transfer', async () => {
+        vi.mocked(getDataSourcePage).mockResolvedValue(page);
+        renderList();
+        await screen.findByText('Alpha source');
+
+        fireEvent.click(screen.getByRole('combobox', { name: '按负责人筛选数据源' }));
+        const bobOption = await screen.findByRole('option', { name: /Bob/ });
+        fireEvent.mouseMove(bobOption);
+        fireEvent.click(bobOption);
+
+        await waitFor(() => {
+            expect(getDataSourcePage).toHaveBeenLastCalledWith(
+                expect.objectContaining({ ownerUserId: 2, page: 1 }),
+            );
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: '批量转移' }));
+        expect(await screen.findByRole('dialog', { name: '批量移交数据源负责人' })).toBeTruthy();
+        fireEvent.click(screen.getByRole('combobox', { name: '新负责人' }));
+        const aliceTarget = await screen.findByRole('option', { name: 'Alice (@alice)' });
+        fireEvent.mouseMove(aliceTarget);
+        fireEvent.click(aliceTarget);
+        fireEvent.click(screen.getByRole('button', { name: '确认转移' }));
+
+        await waitFor(() => {
+            expect(transferDataSourceOwner).toHaveBeenCalledWith(1, {
+                fromOwnerUserId: 2,
+                targetOwnerUserId: 1,
+            });
+        });
     });
 });

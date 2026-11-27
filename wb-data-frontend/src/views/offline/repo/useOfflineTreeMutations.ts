@@ -23,6 +23,7 @@ import { treePathToFlowApiPath, treePathToFolderApiPath } from './repoTreePaths'
 
 interface UseOfflineTreeMutationsParams {
     groupId: number | null;
+    currentUserId?: number | null;
     activeFlowPath: string | null;
     draftSession: FlowDraftSession | null;
     defaultTimezone?: string;
@@ -56,6 +57,7 @@ function buildRenamedFlowPath(path: string, newName: string) {
 
 export function useOfflineTreeMutations({
     groupId,
+    currentUserId = null,
     activeFlowPath,
     draftSession,
     defaultTimezone,
@@ -73,6 +75,7 @@ export function useOfflineTreeMutations({
     const [newFlowParentPath, setNewFlowParentPath] = useState('');
     const [newFlowTimezone, setNewFlowTimezone] = useState(defaultTimezone || 'Asia/Shanghai');
     const [newFlowCrossGroupDependency, setNewFlowCrossGroupDependency] = useState<OfflineCrossGroupDependency>('ALLOW');
+    const [newFlowOwnerUserId, setNewFlowOwnerUserId] = useState<number | null>(currentUserId ?? null);
     const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
     const [newFolderCreating, setNewFolderCreating] = useState(false);
@@ -121,6 +124,12 @@ export function useOfflineTreeMutations({
         }
     }, [defaultTimezone]);
 
+    useEffect(() => {
+        if (!newFlowDialogOpen) {
+            setNewFlowOwnerUserId(currentUserId ?? null);
+        }
+    }, [currentUserId, newFlowDialogOpen]);
+
     const handleCreateFlow = useCallback(async () => {
         if (!groupId || !newFlowName.trim()) return;
         const name = newFlowName.trim();
@@ -138,6 +147,7 @@ export function useOfflineTreeMutations({
                 edges: [],
                 layout: {},
                 runtimeTimezone: newFlowTimezone || defaultTimezone || 'Asia/Shanghai',
+                ...(newFlowOwnerUserId != null ? { ownerUserId: newFlowOwnerUserId } : {}),
                 dependencyConfig: {
                     dependencies: [],
                     failurePolicy: 'CONTINUE',
@@ -159,7 +169,7 @@ export function useOfflineTreeMutations({
         } finally {
             setNewFlowCreating(false);
         }
-    }, [defaultTimezone, groupId, newFlowName, newFlowParentPath, newFlowTimezone, newFlowCrossGroupDependency, openFlowDocument, refreshRepoTree, showFeedback]);
+    }, [defaultTimezone, groupId, newFlowName, newFlowOwnerUserId, newFlowParentPath, newFlowTimezone, newFlowCrossGroupDependency, openFlowDocument, refreshRepoTree, showFeedback]);
 
     const handleCreateFolder = useCallback(async () => {
         if (!groupId || !newFolderName.trim()) return;
@@ -407,8 +417,9 @@ export function useOfflineTreeMutations({
         setNewFlowName('');
         setNewFlowTimezone(defaultTimezone || 'Asia/Shanghai');
         setNewFlowCrossGroupDependency('ALLOW');
+        setNewFlowOwnerUserId(currentUserId ?? null);
         setNewFlowDialogOpen(true);
-    }, [defaultTimezone]);
+    }, [currentUserId, defaultTimezone]);
 
     const openNewFolderDialogFromContext = useCallback((node: OfflineRepoTreeNode) => {
         setContextMenuOpen(false);
@@ -455,8 +466,9 @@ export function useOfflineTreeMutations({
         setNewFlowName('');
         setNewFlowTimezone(defaultTimezone || 'Asia/Shanghai');
         setNewFlowCrossGroupDependency('ALLOW');
+        setNewFlowOwnerUserId(currentUserId ?? null);
         setNewFlowDialogOpen(true);
-    }, [defaultTimezone]);
+    }, [currentUserId, defaultTimezone]);
 
     return {
         newFlowDialogOpen,
@@ -467,6 +479,8 @@ export function useOfflineTreeMutations({
         setNewFlowTimezone,
         newFlowCrossGroupDependency,
         setNewFlowCrossGroupDependency,
+        newFlowOwnerUserId,
+        setNewFlowOwnerUserId,
         newFlowCreating,
         newFlowParentPath,
         setNewFlowParentPath,

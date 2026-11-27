@@ -3,23 +3,34 @@
     width: 100%;
     margin: 0;
     flex-direction: column;
-    gap: 12px;
-    min-height: calc(100vh - 104px);
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.parameter-table-panel {
+    flex: 0 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .parameter-toolbar {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: flex-start;
     gap: 10px;
-    min-height: var(--admin-list-toolbar-height, 40px);
+    min-height: var(--admin-list-toolbar-height, 32px);
     padding: 0;
 }
 
 .parameter-toolbar-filters {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     flex: 1;
     min-width: 0;
 }
@@ -33,9 +44,9 @@
 }
 
 .parameter-page-error {
-    margin: -7px 0 0;
+    margin: -4px 0 0;
     color: var(--color-error);
-    font-size: 0.82rem;
+    font-size: 0.8125rem;
 }
 
 .parameter-search {
@@ -43,12 +54,13 @@
     align-items: center;
     gap: 8px;
     width: min(360px, 100%);
-    height: 36px;
-    padding: 0 12px;
+    height: 32px;
+    padding: 0 10px;
     border: 1px solid var(--color-border);
-    border-radius: 10px;
+    border-radius: 8px;
     background: var(--admin-list-board-bg);
     color: var(--color-text-muted);
+    font-size: 0.8125rem;
 }
 
 .parameter-search:focus-within {
@@ -57,7 +69,7 @@
 }
 
 .parameter-search svg {
-    width: 16px;
+    width: 15px;
 }
 
 .parameter-search input {
@@ -67,15 +79,30 @@
     background: transparent;
     color: var(--color-text-primary);
     font: inherit;
+    font-weight: 500;
 }
 
 .parameter-status-select {
-    width: 132px;
-    height: 36px;
+    width: 124px;
+    height: 32px;
+    border-radius: 8px;
     background: var(--admin-list-board-bg);
+    font-size: 0.8125rem;
+}
+
+.parameter-owner-select {
+    width: 176px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--admin-list-board-bg);
+    font-size: 0.8125rem;
 }
 
 @media (max-width: 720px) {
+    .parameter-page,
+    .parameter-table-panel {
+        overflow: visible;
+    }
     .parameter-toolbar {
         align-items: stretch;
         flex-direction: column;
@@ -93,7 +120,8 @@
         width: 100%;
     }
 
-    .parameter-status-select {
+    .parameter-status-select,
+    .parameter-owner-select {
         width: 100%;
     }
 }
@@ -134,8 +162,18 @@
 
 .parameter-meta-grid {
     display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(200px, 0.9fr);
     flex-shrink: 0;
     gap: 12px;
+}
+
+.parameter-meta-description {
+    grid-column: 1 / -1;
+}
+
+.parameter-owner-field-select {
+    min-height: 38px;
+    border-radius: 9px;
 }
 
 .parameter-meta-grid label,

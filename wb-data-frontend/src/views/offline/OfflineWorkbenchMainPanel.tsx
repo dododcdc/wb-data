@@ -54,6 +54,8 @@ interface OfflineWorkbenchMainPanelProps {
     onExecute: () => void;
     onOpenExecutionDialog: () => void;
     onOpenVersions: () => void;
+    canTransferFlowOwner?: boolean;
+    onOpenTransferFlowOwner?: () => void;
     onDiscardStaleDraft: () => void;
     onRestoreStaleDraft: () => void;
     onNodesChange: Parameters<typeof FlowCanvas>[0]['onNodesChange'];
@@ -136,6 +138,8 @@ export function OfflineWorkbenchMainPanel({
     onExecute,
     onOpenExecutionDialog,
     onOpenVersions,
+    canTransferFlowOwner = false,
+    onOpenTransferFlowOwner,
     onDiscardStaleDraft,
     onRestoreStaleDraft,
     onNodesChange,
@@ -166,6 +170,7 @@ export function OfflineWorkbenchMainPanel({
     const displayedParameterBindingStatus = isOnlineMode
         ? onlineDocument?.parameterBinding?.status
         : flowDocument.parameterBinding?.status;
+    const displayedOwnerDoc = isOnlineMode ? onlineDocument : flowDocument;
     const unconfirmedCopy = isOnlineMode && onlineStatus === 'unconfirmed'
         ? renderUnconfirmedCopy(deploymentConfig)
         : null;
@@ -203,6 +208,12 @@ export function OfflineWorkbenchMainPanel({
                 onExecute={onExecute}
                 onOpenExecutions={onOpenExecutionDialog}
                 onOpenVersions={onOpenVersions}
+                ownerUserId={displayedOwnerDoc?.ownerUserId}
+                ownerName={displayedOwnerDoc?.ownerName}
+                ownerUsername={displayedOwnerDoc?.ownerUsername}
+                ownerStatus={displayedOwnerDoc?.ownerStatus}
+                canTransferOwner={!isOnlineMode && canTransferFlowOwner}
+                onTransferOwner={onOpenTransferFlowOwner}
             />
 
             <section className="offline-canvas-stage">

@@ -226,6 +226,61 @@
     color: var(--color-text-primary);
 }
 
+.offline-tree-owner-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 6px;
+    flex-shrink: 0;
+}
+
+.offline-tree-owner-select {
+    flex: 1;
+    min-width: 0;
+}
+
+.offline-tree-owner-select .simple-select-trigger {
+    height: 28px;
+    min-height: 28px;
+    font-size: 0.78rem;
+    padding: 0 8px;
+    border-radius: 7px;
+}
+
+.offline-tree-owner-transfer-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 7px;
+    background: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: border-color var(--transition-fast), background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.offline-tree-owner-transfer-btn:hover:not(:disabled) {
+    border-color: var(--color-border-strong);
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
+}
+
+.offline-tree-owner-transfer-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.offline-tree-owner-empty {
+    padding: 16px 8px;
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+}
+
 .offline-repo-tree {
     flex: 1;
     min-height: 0;
@@ -517,6 +572,30 @@ button.offline-tree-row {
     height: 12px;
     background: var(--color-border-strong);
     flex-shrink: 0;
+}
+
+.offline-canvas-owner-button,
+.offline-canvas-owner-readonly {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.offline-canvas-owner-button {
+    padding: 2px 6px;
+    margin: -2px -4px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+}
+
+.offline-canvas-owner-button:hover {
+    background: var(--color-bg-hover);
 }
 
 .offline-deployment-badge {

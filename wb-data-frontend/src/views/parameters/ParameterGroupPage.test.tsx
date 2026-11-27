@@ -7,11 +7,14 @@ import {
     archiveParameterGroup,
     createParameterGroup,
     getParameterGroup,
+    getParameterGroupOwners,
     getParameterGroupPage,
     getParameterGroupReferences,
     previewParameterGroup,
+    transferParameterGroupOwner,
     updateParameterGroup,
 } from '../../api/parameterGroups';
+import { getGroupOwnerCandidates } from '../../api/groupSettings';
 import { useAuthStore } from '../../utils/auth';
 import { TooltipProvider } from '../../components/ui/tooltip';
 import ParameterGroupPage from './ParameterGroupPage';
@@ -20,14 +23,23 @@ vi.mock('../../api/parameterGroups', () => ({
     archiveParameterGroup: vi.fn(),
     createParameterGroup: vi.fn(),
     getParameterGroup: vi.fn(),
+    getParameterGroupOwners: vi.fn(),
     getParameterGroupPage: vi.fn(),
     getParameterGroupReferences: vi.fn(),
     previewParameterGroup: vi.fn(),
     restoreParameterGroup: vi.fn(),
+    transferParameterGroupOwner: vi.fn(),
     updateParameterGroup: vi.fn(),
 }));
 
+vi.mock('../../api/groupSettings', () => ({
+    getGroupOwnerCandidates: vi.fn(),
+}));
+
 const getParameterGroupPageMock = vi.mocked(getParameterGroupPage);
+const getParameterGroupOwnersMock = vi.mocked(getParameterGroupOwners);
+const transferParameterGroupOwnerMock = vi.mocked(transferParameterGroupOwner);
+const getGroupOwnerCandidatesMock = vi.mocked(getGroupOwnerCandidates);
 const createParameterGroupMock = vi.mocked(createParameterGroup);
 const getParameterGroupMock = vi.mocked(getParameterGroup);
 const getParameterGroupReferencesMock = vi.mocked(getParameterGroupReferences);
@@ -45,6 +57,19 @@ describe('ParameterGroupPage', () => {
             accessibleGroups: [{ id: 5, name: 'analytics', description: '', role: 'DEVELOPER' }],
             permissions: ['parameter.read', 'parameter.write'],
             contextLoaded: true,
+        });
+        getParameterGroupOwnersMock.mockResolvedValue([
+            { userId: 1, username: 'alice', displayName: 'Alice', status: 'ACTIVE', count: 1 },
+            { userId: 2, username: 'bob', displayName: 'Bob', status: 'ACTIVE', count: 1 },
+        ]);
+        getGroupOwnerCandidatesMock.mockResolvedValue([
+            { userId: 1, username: 'alice', displayName: 'Alice', role: 'DEVELOPER' },
+            { userId: 2, username: 'bob', displayName: 'Bob', role: 'GROUP_ADMIN' },
+        ]);
+        transferParameterGroupOwnerMock.mockResolvedValue({
+            updatedCount: 1,
+            targetOwnerUserId: 2,
+            targetOwnerName: 'Bob',
         });
         getParameterGroupPageMock.mockResolvedValue({
             records: [
@@ -205,6 +230,7 @@ describe('ParameterGroupPage', () => {
             code: expect.stringMatching(/^pg_[a-z0-9]+$/),
             name: '销售日批参数',
             description: '销售任务共用参数',
+            ownerUserId: 1,
             definitions: [
                 {
                     key: 'tenant_name',
@@ -528,5 +554,43 @@ describe('ParameterGroupPage', () => {
         expect(screen.getByText('132')).toBeTruthy();
         expect(screen.getByText(/_flows\/alpha、_flows\/beta、_flows\/gamma 等 132 个/)).toBeTruthy();
         expect(getParameterGroupReferencesMock).toHaveBeenCalledWith(5, 12);
+    });
+
+    it('filters by owner and allows non-admin to transfer only their own parameter groups', async () => {
+        const queryClient = new QueryClient({
+            defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+        });
+        render(
+            <TooltipProvider><QueryClientProvider client={queryClient}>
+                <MemoryRouter>
+                    <ParameterGroupPage />
+                </MemoryRouter>
+            </QueryClientProvider></TooltipProvider>,
+        );
+
+        expect(await screen.findByText('日常公共参数')).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('combobox', { name: '负责人筛选' }));
+        const bobFilter = await screen.findByRole('option', { name: /Bob/ });
+        fireEvent.mouseMove(bobFilter);
+        fireEvent.click(bobFilter);
+
+        await waitFor(() => expect(getParameterGroupPageMock).toHaveBeenLastCalledWith(expect.objectContaining({
+            groupId: 5,
+            ownerUserId: 2,
+        })));
+
+        fireEvent.click(screen.getByRole('button', { name: '批量转移' }));
+        expect(await screen.findByRole('dialog', { name: '批量移交参数组负责人' })).toBeTruthy();
+        fireEvent.click(screen.getByRole('combobox', { name: '新负责人' }));
+        const bobTarget = await screen.findByRole('option', { name: 'Bob (@bob)' });
+        fireEvent.mouseMove(bobTarget);
+        fireEvent.click(bobTarget);
+        fireEvent.click(screen.getByRole('button', { name: '确认转移' }));
+
+        await waitFor(() => expect(transferParameterGroupOwnerMock).toHaveBeenCalledWith(5, {
+            fromOwnerUserId: 1,
+            targetOwnerUserId: 2,
+        }));
     });
 });

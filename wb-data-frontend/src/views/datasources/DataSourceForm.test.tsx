@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useAuthStore } from '../../utils/auth';
 import DataSourceForm from './DataSourceForm';
 
 const {
@@ -10,6 +11,7 @@ const {
     testExistingConnection,
     testNewConnection,
     updateDataSource,
+    getGroupOwnerCandidates,
 } = vi.hoisted(() => ({
     createDataSource: vi.fn(),
     getDataSourceById: vi.fn(),
@@ -17,6 +19,7 @@ const {
     testExistingConnection: vi.fn(),
     testNewConnection: vi.fn(),
     updateDataSource: vi.fn(),
+    getGroupOwnerCandidates: vi.fn(),
 }));
 
 vi.mock('../../api/datasource', () => ({
@@ -26,6 +29,10 @@ vi.mock('../../api/datasource', () => ({
     testExistingConnection,
     testNewConnection,
     updateDataSource,
+}));
+
+vi.mock('../../api/groupSettings', () => ({
+    getGroupOwnerCandidates,
 }));
 
 vi.mock('../../components/SimpleSelect', () => ({
@@ -155,6 +162,13 @@ function renderForm(props: { dataSourceId?: number | null; readOnly?: boolean } 
 
 describe('DataSourceForm', () => {
     beforeEach(() => {
+        useAuthStore.setState({
+            userInfo: { id: 1, username: 'alice', displayName: 'Alice', systemRole: 'USER' },
+        });
+        getGroupOwnerCandidates.mockResolvedValue([
+            { userId: 1, username: 'alice', displayName: 'Alice', role: 'DEVELOPER' },
+            { userId: 2, username: 'bob', displayName: 'Bob', role: 'GROUP_ADMIN' },
+        ]);
         getDataSourcePlugins.mockResolvedValue([hivePlugin]);
         getDataSourceById.mockResolvedValue(null);
         createDataSource.mockResolvedValue(true);
@@ -282,5 +296,42 @@ describe('DataSourceForm', () => {
             );
             expect(testExistingConnection).not.toHaveBeenCalled();
         });
+    });
+
+    it('defaults owner to current user on create and submits selected ownerUserId', async () => {
+        renderForm();
+
+        const ownerSelect = await screen.findByLabelText('负责人') as HTMLSelectElement;
+        await waitFor(() => expect(ownerSelect.value).toBe('1'));
+
+        fireEvent.change(ownerSelect, { target: { value: '2' } });
+        fireEvent.change(screen.getByLabelText(/数据源名称/), { target: { value: 'ds_owner_test' } });
+        fireEvent.change(screen.getByLabelText(/HiveServer2 地址/), { target: { value: 'localhost' } });
+        fireEvent.change(screen.getByLabelText(/用户名/), { target: { value: 'hive' } });
+        fireEvent.click(screen.getByRole('button', { name: '确认保存' }));
+
+        await waitFor(() => {
+            expect(createDataSource).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    name: 'ds_owner_test',
+                    ownerUserId: 2,
+                }),
+                4,
+            );
+        });
+    });
+
+    it('shows disabled owner status badge in detail mode', async () => {
+        getDataSourceById.mockResolvedValue({
+            ...existingHive,
+            ownerUserId: 99,
+            ownerName: '小明',
+            ownerUsername: 'xiaoming',
+            ownerStatus: 'DISABLED',
+        });
+        renderForm({ dataSourceId: 42, readOnly: true });
+
+        expect(await screen.findByText('小明')).toBeTruthy();
+        expect(screen.getByText('已停用')).toBeTruthy();
     });
 });

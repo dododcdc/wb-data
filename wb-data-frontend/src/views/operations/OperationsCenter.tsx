@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Search } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getOfflineRepoStatus } from '../../api/offline';
+import { getOfflineFlowOwners, getOfflineRepoStatus } from '../../api/offline';
 import {
     listOperationsExecutions,
     markOperationsExecutionSuccess,
@@ -14,6 +14,7 @@ import {
     type OperationsExecutionStatusCounts,
 } from '../../api/operations';
 import { SimpleSelect } from '../../components/SimpleSelect';
+import { formatCandidateLabel } from '../../components/owner/ownerUtils';
 import { isActiveStatus } from '../../components/execution/executionPresentation';
 import { Button } from '../../components/ui/button';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
@@ -29,6 +30,7 @@ import { OperationsTimeFilter } from './OperationsTimeFilter';
 
 const ALL_BRANCHES = '__all_branches__';
 const ALL_STATUSES = '__all_statuses__';
+const ALL_OWNERS = '__all_owners__';
 const DEFAULT_PAGE_SIZE = 50;
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
 const PAGE_SIZE_STORAGE_KEY = 'wb-data.operations.pageSize';
@@ -107,6 +109,7 @@ export default function OperationsCenter() {
     const [searchParams] = useSearchParams();
     const { showSuccess, showError } = useOperationFeedback();
     const currentGroup = useAuthStore((state) => state.currentGroup);
+    const userInfo = useAuthStore((state) => state.userInfo);
     const permissions = useAuthStore((state) => state.permissions);
     const systemAdmin = useAuthStore((state) => state.systemAdmin);
     const groupId = currentGroup?.id ?? null;
@@ -117,6 +120,7 @@ export default function OperationsCenter() {
     );
     const [flowFilter, setFlowFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState(() => resolveInitialStatusFilter(searchParams.get('status')));
+    const [ownerFilter, setOwnerFilter] = useState(ALL_OWNERS);
     const [rollingWindowMs, setRollingWindowMs] = useState<number | null>(DEFAULT_ROLLING_WINDOW_MS);
     const [fromFilter, setFromFilter] = useState(() => (
         formatLocalDateTime(new Date(Date.now() - DEFAULT_ROLLING_WINDOW_MS))
@@ -144,6 +148,7 @@ export default function OperationsCenter() {
         setBranchFilter('');
         setFlowFilter('');
         setStatusFilter(ALL_STATUSES);
+        setOwnerFilter(ALL_OWNERS);
         setRollingWindowMs(DEFAULT_ROLLING_WINDOW_MS);
         setFromFilter(formatLocalDateTime(new Date(now - DEFAULT_ROLLING_WINDOW_MS)));
         setToFilter(formatLocalDateTime(new Date(now)));
@@ -166,6 +171,39 @@ export default function OperationsCenter() {
         setBranchInitializedGroupId(groupId);
     }, [branchInitializedGroupId, groupId, repoStatusQuery.data?.branch, repoStatusQuery.isLoading]);
 
+    const ownerSummaryQuery = useQuery({
+        queryKey: ['offline-flow-owners', groupId],
+        queryFn: () => Promise.resolve(getOfflineFlowOwners?.(groupId!)).then((res) => res ?? []),
+        enabled: groupId != null,
+        staleTime: 30_000,
+    });
+
+    const ownerOptions = useMemo(() => {
+        const owners = ownerSummaryQuery.data ?? [];
+        const myId = userInfo?.id;
+        const mySummary = myId != null ? owners.find((owner) => owner.userId === myId) : undefined;
+        const options = [{ value: ALL_OWNERS, label: '全部负责人' }];
+        if (myId != null) {
+            options.push({
+                value: String(myId),
+                label: mySummary ? `我负责的 (${mySummary.count})` : '我负责的',
+            });
+        }
+        owners.forEach((owner) => {
+            if (owner.userId === myId) return;
+            const statusHint = owner.status === 'DISABLED'
+                ? ' [已停用]'
+                : owner.status === 'LEFT_GROUP'
+                    ? ' [已离组]'
+                    : '';
+            options.push({
+                value: String(owner.userId),
+                label: `${formatCandidateLabel(owner.displayName, owner.username)}${statusHint} (${owner.count})`,
+            });
+        });
+        return options;
+    }, [ownerSummaryQuery.data, userInfo?.id]);
+
     const listQueryPayload = useMemo<OperationsExecutionListQuery | null>(() => {
         if (groupId == null) return null;
 
@@ -174,12 +212,13 @@ export default function OperationsCenter() {
             branch: branchFilter || null,
             flowId: flowFilter.trim() || null,
             status: statusFilter === ALL_STATUSES ? null : statusFilter,
+            ...(ownerFilter !== ALL_OWNERS ? { ownerUserId: Number(ownerFilter) } : {}),
             from: normalizeDateTimeInput(fromFilter),
             to: normalizeDateTimeInput(toFilter),
             page: currentPage,
             pageSize,
         };
-    }, [branchFilter, currentPage, flowFilter, fromFilter, groupId, pageSize, statusFilter, toFilter]);
+    }, [branchFilter, currentPage, flowFilter, fromFilter, groupId, ownerFilter, pageSize, statusFilter, toFilter]);
 
     const executionsQuery = useQuery({
         queryKey: ['operations-executions', groupId, listQueryPayload],
@@ -314,6 +353,7 @@ export default function OperationsCenter() {
         const now = Date.now();
         setFlowFilter('');
         setStatusFilter(ALL_STATUSES);
+        setOwnerFilter(ALL_OWNERS);
         setRollingWindowMs(DEFAULT_ROLLING_WINDOW_MS);
         setFromFilter(formatLocalDateTime(new Date(now - DEFAULT_ROLLING_WINDOW_MS)));
         setToFilter(formatLocalDateTime(new Date(now)));
@@ -370,9 +410,10 @@ export default function OperationsCenter() {
                     <label className="operations-filter__field operations-filter__field--search">
                         <span>任务</span>
                         <div className="operations-search">
-                            <Search size={15} />
+                            <Search size={14} />
                             <input
                                 aria-label="按任务名称筛选"
+                                placeholder="搜索任务名称..."
                                 value={flowFilter}
                                 onChange={(event) => {
                                     setFlowFilter(event.target.value);
@@ -396,6 +437,21 @@ export default function OperationsCenter() {
                         />
                     </label>
 
+                    <label className="operations-filter__field operations-filter__field--owner">
+                        <span>负责人</span>
+                        <SimpleSelect
+                            id="owner-select"
+                            ariaLabel="按负责人筛选"
+                            value={ownerFilter}
+                            options={ownerOptions}
+                            className="operations-filter__select"
+                            onChange={(value) => {
+                                setOwnerFilter(value);
+                                setCurrentPage(1);
+                            }}
+                        />
+                    </label>
+
                     <div className="operations-filter__field operations-filter__field--time-range">
                         <span>时间范围</span>
                         <OperationsTimeFilter
@@ -413,19 +469,19 @@ export default function OperationsCenter() {
                     </div>
 
                     <div className="operations-filter__actions">
-                        <Button type="button" variant="outline" onClick={handleResetFilters}>
+                        <Button type="button" variant="ghost" size="sm" onClick={handleResetFilters}>
                             重置
                         </Button>
                         <Button
                             type="button"
                             variant="outline"
-                            size="icon"
+                            size="icon-sm"
                             aria-label="刷新运行记录"
                             title="刷新运行记录"
                             onClick={refreshExecutions}
                             disabled={executionsQuery.isFetching}
                         >
-                            <RefreshCw size={15} className={isRefreshing ? 'operations-spin' : ''} />
+                            <RefreshCw size={14} className={isRefreshing ? 'operations-spin' : ''} />
                         </Button>
                     </div>
                 </section>
@@ -499,36 +555,38 @@ export default function OperationsCenter() {
                     </button>
                 </section>
 
-                <OperationsTable
-                    rows={rows}
-                    canRerun={canOperate}
-                    canStop={canOperate}
-                    canMarkSuccess={canOperate}
-                    errorMessage={executionsQuery.error instanceof Error ? executionsQuery.error.message : ''}
-                    hasFooter={total > 0}
-                    isLoading={isInitialLoading}
-                    isRefreshing={isRefreshing}
-                    pendingRerunId={pendingRerunId}
-                    pendingStopId={pendingStopId}
-                    pendingMarkSuccessId={pendingMarkSuccessId}
-                    onOpenDetail={openExecutionDetail}
-                    onRerun={setRerunTarget}
-                    onStop={setStopTarget}
-                    onMarkSuccess={setMarkSuccessTarget}
-                    onResetFilters={handleResetFilters}
-                    onRetry={refreshExecutions}
-                />
-                <ListPagination
-                    total={total}
-                    currentPage={displayPage}
-                    pageSize={pageSize}
-                    isFetching={executionsQuery.isFetching}
-                    onPageChange={setCurrentPage}
-                    onPageSizeChange={handlePageSizeChange}
-                    pageSizeOptions={PAGE_SIZE_OPTIONS}
-                    selectId="operations-page-size"
-                    ariaLabel="运行记录分页导航"
-                />
+                <div className="operations-table-panel">
+                    <OperationsTable
+                        rows={rows}
+                        canRerun={canOperate}
+                        canStop={canOperate}
+                        canMarkSuccess={canOperate}
+                        errorMessage={executionsQuery.error instanceof Error ? executionsQuery.error.message : ''}
+                        hasFooter={total > 0}
+                        isLoading={isInitialLoading}
+                        isRefreshing={isRefreshing}
+                        pendingRerunId={pendingRerunId}
+                        pendingStopId={pendingStopId}
+                        pendingMarkSuccessId={pendingMarkSuccessId}
+                        onOpenDetail={openExecutionDetail}
+                        onRerun={setRerunTarget}
+                        onStop={setStopTarget}
+                        onMarkSuccess={setMarkSuccessTarget}
+                        onResetFilters={handleResetFilters}
+                        onRetry={refreshExecutions}
+                    />
+                    <ListPagination
+                        total={total}
+                        currentPage={displayPage}
+                        pageSize={pageSize}
+                        isFetching={executionsQuery.isFetching}
+                        onPageChange={setCurrentPage}
+                        onPageSizeChange={handlePageSizeChange}
+                        pageSizeOptions={PAGE_SIZE_OPTIONS}
+                        selectId="operations-page-size"
+                        ariaLabel="运行记录分页导航"
+                    />
+                </div>
             </div>
             <OperationsRerunDialog
                 open={rerunTarget != null}

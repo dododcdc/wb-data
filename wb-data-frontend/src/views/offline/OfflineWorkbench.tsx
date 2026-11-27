@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import '@/components/loading/RouteSkeletons.css';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../../components/ui/resizable';
-import type { OfflineFlowDependencySettings } from '../../api/offline';
+import type { AssetOwnerSummary } from '../../api/groupSettings';
+import {
+    getOfflineFlowOwners,
+    transferOfflineFlowOwner,
+    type OfflineFlowDependencySettings,
+} from '../../api/offline';
+import { TransferOwnerDialog } from '../../components/owner/TransferOwnerDialog';
 import { preloadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { useAuthStore } from '../../utils/auth';
@@ -43,11 +49,28 @@ export default function OfflineWorkbench() {
     const canWrite = systemAdmin || permissions.includes('offline.write');
     const canConfigureParameters = canWrite && (systemAdmin || permissions.includes('parameter.read'));
     const isGroupAdmin = systemAdmin || permissions.includes('group.settings') || currentGroup?.role === 'GROUP_ADMIN';
+    const canManageOthersOwnership = systemAdmin || isGroupAdmin || permissions.includes('member.manage');
     const defaultTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', []);
     const { showFeedback, showSuccess, showError } = useOperationFeedback();
 
     const [parameterDialogOpen, setParameterDialogOpen] = useState(false);
     const [dependencyDialogOpen, setDependencyDialogOpen] = useState(false);
+    const [flowOwners, setFlowOwners] = useState<AssetOwnerSummary[]>([]);
+    const [transferState, setTransferState] = useState<{
+        open: boolean;
+        mode: 'selected' | 'by-owner';
+        flowPaths: string[];
+        flowNames: string[];
+        initialFromOwnerUserId: number | null;
+    }>({
+        open: false,
+        mode: 'selected',
+        flowPaths: [],
+        flowNames: [],
+        initialFromOwnerUserId: null,
+    });
+    const [transferPending, setTransferPending] = useState(false);
+    const [transferError, setTransferError] = useState('');
 
     useEffect(() => {
         if (!groupId) return;
@@ -196,6 +219,7 @@ export default function OfflineWorkbench() {
 
     const treeMutations = useOfflineTreeMutations({
         groupId,
+        currentUserId: currentUser?.id ?? null,
         activeFlowPath,
         draftSession,
         defaultTimezone,
@@ -207,6 +231,99 @@ export default function OfflineWorkbench() {
         showFeedback,
         resolveTreeNode,
     });
+
+    const loadFlowOwners = useCallback(async () => {
+        if (!groupId || typeof getOfflineFlowOwners !== 'function') {
+            setFlowOwners([]);
+            return;
+        }
+        try {
+            const list = await getOfflineFlowOwners(groupId);
+            setFlowOwners(Array.isArray(list) ? list : []);
+        } catch {
+            // 降级使用目录树中已缓存的负责人信息
+        }
+    }, [groupId]);
+
+    useEffect(() => {
+        void loadFlowOwners();
+    }, [loadFlowOwners, repoTree]);
+
+    const handleOpenSingleFlowTransfer = useCallback((flowPath: string, flowName: string) => {
+        setTransferError('');
+        setTransferState({
+            open: true,
+            mode: 'selected',
+            flowPaths: [flowPath],
+            flowNames: [flowName],
+            initialFromOwnerUserId: null,
+        });
+    }, []);
+
+    const handleOpenBulkFlowTransfer = useCallback((initialFromOwnerUserId: number | null) => {
+        setTransferError('');
+        setTransferState({
+            open: true,
+            mode: 'by-owner',
+            flowPaths: [],
+            flowNames: [],
+            initialFromOwnerUserId: canManageOthersOwnership ? initialFromOwnerUserId : (currentUser?.id ?? null),
+        });
+    }, [canManageOthersOwnership, currentUser?.id]);
+
+    const handleTransferFlowOwnerConfirm = useCallback(async (payload: {
+        ids?: number[];
+        fromOwnerUserId?: number;
+        targetOwnerUserId: number;
+    }) => {
+        if (!groupId || typeof transferOfflineFlowOwner !== 'function') return;
+        setTransferPending(true);
+        setTransferError('');
+        try {
+            const result = await transferOfflineFlowOwner(
+                groupId,
+                transferState.mode === 'selected'
+                    ? { paths: transferState.flowPaths, targetOwnerUserId: payload.targetOwnerUserId }
+                    : { fromOwnerUserId: payload.fromOwnerUserId, targetOwnerUserId: payload.targetOwnerUserId },
+            );
+            setTransferState((prev) => ({ ...prev, open: false }));
+            showSuccess(`已将 ${result.updatedCount} 个离线任务移交给「${result.targetOwnerName}」`);
+            await Promise.all([refreshWorkspace(), loadFlowOwners()]);
+            if (
+                activeFlowPath
+                && !isDirty
+                && (transferState.mode === 'by-owner' || transferState.flowPaths.includes(activeFlowPath))
+            ) {
+                await openFlowDocument(activeFlowPath);
+            }
+        } catch (error) {
+            const message = error instanceof Error && error.message ? error.message : '转移负责人失败，请重试';
+            setTransferError(message);
+            showError(error, '转移负责人失败');
+        } finally {
+            setTransferPending(false);
+        }
+    }, [
+        activeFlowPath,
+        groupId,
+        isDirty,
+        loadFlowOwners,
+        openFlowDocument,
+        refreshWorkspace,
+        showError,
+        showSuccess,
+        transferState.flowPaths,
+        transferState.mode,
+    ]);
+
+    const canTransferActiveFlow = Boolean(
+        activeFlowPath
+        && flowDocument
+        && (
+            canManageOthersOwnership
+            || (canWrite && currentUser?.id != null && flowDocument.ownerUserId === currentUser.id)
+        ),
+    );
 
     useOfflineWorkbenchGroupLifecycle({
         groupId,
@@ -352,6 +469,10 @@ export default function OfflineWorkbench() {
                             flowLoading: flowEditing.flowLoading,
                             activeFlowPath,
                             canWrite: canWrite && !flowEditing.nodeEditorOpen && !onlineMode.onlineNodeEditorOpen && flowEditing.draftSaveState !== 'saving' && !isDirty,
+                            currentUserId: currentUser?.id ?? null,
+                            ownerSummaries: flowOwners,
+                            canBulkTransferOwner: canManageOthersOwnership || (canWrite && currentUser?.id != null),
+                            onOpenBulkTransferOwner: handleOpenBulkFlowTransfer,
                             onOpenFlow: (path) => void openFlowDocument(path),
                             onContextMenu: treeMutations.handleContextMenu,
                             onMoveNode: treeMutations.handleMoveNode,
@@ -402,6 +523,12 @@ export default function OfflineWorkbench() {
                         onExecute={() => void flowExecutionAndSchedule.execute()}
                         onOpenExecutionDialog={flowExecutionAndSchedule.openExecutionDialog}
                         onOpenVersions={() => versionWorkflow.setVersionHistoryOpen(true)}
+                        canTransferFlowOwner={canTransferActiveFlow}
+                        onOpenTransferFlowOwner={() => {
+                            if (activeFlowPath) {
+                                handleOpenSingleFlowTransfer(activeFlowPath, flowDocument?.flowId || activeFlowPath);
+                            }
+                        }}
                         onDiscardStaleDraft={flowEditing.discardStaleDraft}
                         onRestoreStaleDraft={flowEditing.restoreStaleDraft}
                         onNodesChange={flowEditing.updateCanvasNodes}
@@ -422,6 +549,8 @@ export default function OfflineWorkbench() {
                 repoTree={repoTree}
                 currentUserId={currentUser?.id ?? null}
                 canWrite={canWrite}
+                canManageOthersOwnership={canManageOthersOwnership}
+                onOpenTransferFlowOwner={handleOpenSingleFlowTransfer}
                 defaultTimezone={defaultTimezone}
                 dependencyDialogOpen={dependencyDialogOpen}
                 parameterDialogOpen={parameterDialogOpen}
@@ -437,6 +566,29 @@ export default function OfflineWorkbench() {
                 onNodeEditorTempSave={handleNodeEditorTempSave}
                 onTransferNodeDraftChange={handleTransferNodeDraftChange}
             />
+
+            {groupId != null ? (
+                <TransferOwnerDialog
+                    open={transferState.open}
+                    onOpenChange={(nextOpen) => {
+                        if (!nextOpen && !transferPending) {
+                            setTransferError('');
+                            setTransferState((prev) => ({ ...prev, open: false }));
+                        }
+                    }}
+                    groupId={groupId}
+                    assetLabel="离线任务"
+                    mode={transferState.mode}
+                    selectedIds={transferState.mode === 'selected' ? [0] : []}
+                    selectedNames={transferState.flowNames}
+                    owners={flowOwners}
+                    initialFromOwnerUserId={transferState.initialFromOwnerUserId}
+                    restrictFromOwnerUserId={canManageOthersOwnership ? null : (currentUser?.id ?? null)}
+                    pending={transferPending}
+                    errorMessage={transferError}
+                    onConfirm={(payload) => void handleTransferFlowOwnerConfirm(payload)}
+                />
+            ) : null}
         </section>
     );
 }

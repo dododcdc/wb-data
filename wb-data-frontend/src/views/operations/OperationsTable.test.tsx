@@ -13,6 +13,10 @@ const execution: OperationsExecutionListItem = {
     namespace: 'g4-main',
     flowId: 'daily_policy',
     branch: 'main',
+    ownerUserId: 12,
+    ownerName: '小红',
+    ownerUsername: 'xiaohong',
+    ownerStatus: 'ACTIVE',
     status: 'FAILED',
     plannedAt: '2026-06-07T00:00:00Z',
     createdAt: '2026-06-07T01:00:00Z',
@@ -46,7 +50,9 @@ describe('OperationsTable', () => {
     it('supports row and keyboard navigation and displays end time', () => {
         const { props } = renderTable();
 
-        expect(screen.getAllByRole('columnheader')).toHaveLength(8);
+        expect(screen.getAllByRole('columnheader')).toHaveLength(9);
+        expect(screen.getByRole('columnheader', { name: '负责人' })).toBeTruthy();
+        expect(screen.getByText('小红')).toBeTruthy();
         expect(screen.getByRole('columnheader', { name: '结束时间' })).toBeTruthy();
         expect(screen.getByText(formatBrowserDateTime(execution.endDate))).toBeTruthy();
         const row = screen.getByRole('row', { name: '查看 daily_policy 执行详情' });

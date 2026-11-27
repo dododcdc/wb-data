@@ -6,11 +6,13 @@ export function buildDataSourcePageQueryKey(params: {
     pageSize: number;
     keyword: string;
     groupId?: number;
+    ownerUserId?: number;
 }) {
     return ['dataSources', {
         currentPage: params.currentPage,
         pageSize: params.pageSize,
         keyword: params.keyword,
         groupId: params.groupId,
+        ownerUserId: params.ownerUserId,
     }] as const;
 }

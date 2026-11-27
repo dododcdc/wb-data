@@ -1,10 +1,12 @@
-import { Cable, Database, Edit3, Power, Trash2 } from 'lucide-react';
+import { useMemo } from 'react';
+import { ArrowLeftRight, Cable, Database, Edit3, Power, Trash2 } from 'lucide-react';
 import { DataSource } from '../../api/datasource';
 import { formatConnection, formatTimestamp, getStatusLabel } from './config';
 import { Button } from '../../components/ui/button';
 import { DataList, type DataListColumn } from '../../components/ui/list/DataList';
 import { RowActions, type RowActionItem } from '../../components/ui/list/RowActions';
 import { StatusPill } from '../../components/ui/list/StatusPill';
+import { OwnerCell } from '../../components/owner/OwnerCell';
 
 interface DataSourceTableProps {
     data: DataSource[];
@@ -13,9 +15,13 @@ interface DataSourceTableProps {
     errorMessage: string;
     hasActiveFilter: boolean;
     hasFooter: boolean;
+    selectedIds?: number[];
+    onToggleRow?: (id: number) => void;
+    onToggleAll?: (checked: boolean) => void;
     onView: (id: number) => void;
     onTest: (dataSource: DataSource) => void;
     onEdit: (id: number) => void;
+    onTransferOwner?: (dataSource: DataSource) => void;
     onDelete: (dataSource: DataSource) => void;
     onToggleStatus: (dataSource: DataSource) => void;
     onCreate: () => void;
@@ -34,9 +40,13 @@ export function DataSourceTable(props: DataSourceTableProps) {
         errorMessage,
         hasActiveFilter,
         hasFooter,
+        selectedIds = [],
+        onToggleRow,
+        onToggleAll,
         onView,
         onTest,
         onEdit,
+        onTransferOwner,
         onDelete,
         onToggleStatus,
         onCreate,
@@ -65,6 +75,14 @@ export function DataSourceTable(props: DataSourceTableProps) {
                     icon: Edit3,
                     onClick: () => onEdit(item.id),
                 },
+                ...(onTransferOwner
+                    ? [{
+                        key: 'transfer-owner',
+                        label: '转移负责人',
+                        icon: ArrowLeftRight,
+                        onClick: () => onTransferOwner(item),
+                    }]
+                    : []),
                 {
                     key: 'status',
                     label: item.status === 'ENABLED' ? '停用数据源' : '启用数据源',
@@ -90,35 +108,41 @@ export function DataSourceTable(props: DataSourceTableProps) {
             key: 'name',
             header: '数据源',
             primary: true,
-            width: '34%',
+            truncate: true,
+            width: '20%',
+            cell: (item) => (
+                <button
+                    type="button"
+                    className="wb-list-primary-action"
+                    title={item.name}
+                    aria-label={`查看数据源 ${item.name}`}
+                    onClick={() => onView(item.id)}
+                >
+                    {item.name}
+                </button>
+            ),
+        },
+        {
+            key: 'connection',
+            header: '连接地址',
+            mono: true,
+            truncate: true,
+            width: '25%',
             cell: (item) => {
                 const connection = formatConnection(item.host, item.port, item.databaseName);
-                return (
-                    <div className="wb-list-cell-stack">
-                        <button
-                            type="button"
-                            className="wb-list-primary-action"
-                            title={item.name}
-                            aria-label={`查看数据源 ${item.name}`}
-                            onClick={() => onView(item.id)}
-                        >
-                            {item.name}
-                        </button>
-                        <span className="wb-list-secondary" title={connection}>{connection}</span>
-                    </div>
-                );
+                return <span title={connection}>{connection}</span>;
             },
         },
         {
             key: 'type',
             header: '类型',
-            width: 100,
+            width: 96,
             cell: (item) => <span className={`type-badge ${item.type.toLowerCase()}`}>{item.type}</span>,
         },
         {
             key: 'status',
             header: '状态',
-            width: 110,
+            width: 92,
             cell: (item) => (
                 <StatusPill tone={item.status === 'ENABLED' ? 'success' : 'neutral'}>
                     {getStatusLabel(item.status)}
@@ -128,21 +152,29 @@ export function DataSourceTable(props: DataSourceTableProps) {
         {
             key: 'owner',
             header: '负责人',
-            width: 120,
-            cell: (item) => item.owner || '--',
+            truncate: true,
+            width: 136,
+            cell: (item) => (
+                <OwnerCell
+                    name={item.ownerName}
+                    username={item.ownerUsername}
+                    status={item.ownerStatus}
+                    fallback={item.owner}
+                />
+            ),
         },
         {
             key: 'updatedAt',
             header: '更新时间',
             mono: true,
-            width: 190,
+            width: 156,
             cell: (item) => formatTimestamp(item.updatedAt),
         },
         {
             key: 'actions',
             header: '操作',
             align: 'right',
-            width: 120,
+            width: 104,
             cell: (item) => <RowActions items={getActions(item)} menuLabel={`${item.name}的更多操作`} />,
         },
     ];
@@ -153,17 +185,23 @@ export function DataSourceTable(props: DataSourceTableProps) {
             ? hasActiveFilter ? 'filtered-empty' : 'empty'
             : 'ready';
 
+    const selectedKeySet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
     return (
         <DataList
             rows={data}
             columns={columns}
             rowKey={(item) => item.id}
             ariaLabel="数据源列表"
-            minWidth="960px"
+            minWidth="920px"
             state={state}
             isRefreshing={isRefreshing}
             errorMessage={errorMessage}
             hasFooter={hasFooter}
+            selectable={canWrite && Boolean(onToggleRow && onToggleAll)}
+            selectedKeys={selectedKeySet}
+            onToggleRow={(key) => onToggleRow?.(Number(key))}
+            onToggleAll={onToggleAll}
             emptyIcon={<Database size={32} />}
             emptyTitle="还没有数据源"
             emptyDescription="新建一个数据源，作为第一条目录记录。"

@@ -1,6 +1,7 @@
 import type { TransferConfig } from '@/types/transfer';
 import request from '../../utils/request';
 import { omitGroupId } from '../groupScoped';
+import type { AssetOwnerSummary, OwnerStatus, TransferOwnerResult } from '../groupSettings';
 import type { OfflineFlowDependencySettings } from './dependencies';
 import type { OfflineFlowSchedule } from './schedules';
 import { offlinePath } from './shared';
@@ -143,6 +144,10 @@ export interface OfflineFlowDocument {
     schedule?: OfflineFlowSchedule | null;
     dependencyConfig?: OfflineFlowDependencySettings;
     parameterBinding?: FlowParameterBinding | null;
+    ownerUserId?: number | null;
+    ownerName?: string | null;
+    ownerUsername?: string | null;
+    ownerStatus?: OwnerStatus | null;
 }
 
 export interface SaveOfflineFlowRequest {
@@ -187,6 +192,7 @@ export interface SaveOfflineFlowDocumentRequest {
     parameterBinding?: FlowParameterBindingRequest | null;
     parameterBindings?: FlowParameterBindingRequest[] | null;
     runtimeTimezone: string;
+    ownerUserId?: number | null;
 }
 
 export interface RollbackOfflineFlowRequest {
@@ -277,6 +283,22 @@ export const deleteOfflineFlow = (groupId: number, path: string) => {
 
 export const moveOfflineFlow = (groupId: number, path: string, newPath: string) => {
     return request.post(offlinePath(groupId, '/flows/move'), { path, newPath }, {
+        headers: { 'Content-Type': 'application/json' },
+    });
+};
+
+export interface TransferOfflineFlowOwnerPayload {
+    paths?: string[];
+    fromOwnerUserId?: number;
+    targetOwnerUserId: number;
+}
+
+export const getOfflineFlowOwners = (groupId: number) => {
+    return request.get<unknown, AssetOwnerSummary[]>(offlinePath(groupId, '/flows/owners'));
+};
+
+export const transferOfflineFlowOwner = (groupId: number, payload: TransferOfflineFlowOwnerPayload) => {
+    return request.post<unknown, TransferOwnerResult>(offlinePath(groupId, '/flows/transfer-owner'), payload, {
         headers: { 'Content-Type': 'application/json' },
     });
 };

@@ -36,6 +36,8 @@ interface OfflineWorkbenchDialogsProps {
     repoTree: OfflineRepoTreeResponse | null;
     currentUserId: number | null;
     canWrite: boolean;
+    canManageOthersOwnership: boolean;
+    onOpenTransferFlowOwner: (flowPath: string, name: string) => void;
     defaultTimezone: string;
     dependencyDialogOpen: boolean;
     parameterDialogOpen: boolean;
@@ -62,6 +64,8 @@ export function OfflineWorkbenchDialogs({
     repoTree,
     currentUserId,
     canWrite,
+    canManageOthersOwnership,
+    onOpenTransferFlowOwner,
     defaultTimezone,
     dependencyDialogOpen,
     parameterDialogOpen,
@@ -305,10 +309,13 @@ export function OfflineWorkbenchDialogs({
                 repoTree={repoTree}
                 canWrite={canWrite}
                 createFlow={{
+                    groupId,
                     open: treeMutations.newFlowDialogOpen,
                     name: treeMutations.newFlowName,
                     parentPath: treeMutations.newFlowParentPath,
                     timezone: treeMutations.newFlowTimezone,
+                    ownerUserId: treeMutations.newFlowOwnerUserId,
+                    onOwnerUserIdChange: treeMutations.setNewFlowOwnerUserId,
                     crossGroupDependency: treeMutations.newFlowCrossGroupDependency,
                     onCrossGroupDependencyChange: treeMutations.setNewFlowCrossGroupDependency,
                     pending: treeMutations.newFlowCreating,
@@ -367,12 +374,19 @@ export function OfflineWorkbenchDialogs({
                     open: treeMutations.contextMenuOpen,
                     position: treeMutations.contextMenuPosition,
                     node: treeMutations.contextMenuNode,
+                    canTransferFlow: (node) =>
+                        node.kind === 'FLOW'
+                        && (
+                            canManageOthersOwnership
+                            || (canWrite && currentUserId != null && node.ownerUserId === currentUserId)
+                        ),
                     onOpenChange: treeMutations.setContextMenuOpen,
                     onCopyFlowName: (node) => void treeMutations.handleCopyFlowName(node),
                     onOpenNewFlow: treeMutations.openNewFlowDialogFromContext,
                     onOpenNewFolder: treeMutations.openNewFolderDialogFromContext,
                     onOpenRenameFlow: treeMutations.openRenameFlowDialogFromContext,
                     onOpenRenameFolder: treeMutations.openRenameFolderDialogFromContext,
+                    onOpenTransferFlowOwner: (node) => onOpenTransferFlowOwner(node.path, node.name),
                     onOpenDeleteFlow: treeMutations.openDeleteFlowDialogFromContext,
                     onOpenDeleteFolder: treeMutations.openDeleteFolderDialogFromContext,
                 }}

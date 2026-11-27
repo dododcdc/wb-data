@@ -1,5 +1,6 @@
 import request from '../utils/request';
 import { groupScopedPath } from './groupScoped';
+import type { OwnerStatus } from './groupSettings';
 import type { ExecutionParameterValue } from './offline';
 
 export interface OperationsExecutionListQuery {
@@ -7,6 +8,7 @@ export interface OperationsExecutionListQuery {
     branch?: string | null;
     flowId?: string | null;
     status?: string | null;
+    ownerUserId?: number | null;
     from?: string | null;
     to?: string | null;
     page?: number | null;
@@ -35,6 +37,10 @@ export interface OperationsExecutionListItem {
     partialRerun?: boolean;
     rerunSelectedTaskCount?: number | null;
     rerunTotalTaskCount?: number | null;
+    ownerUserId?: number | null;
+    ownerName?: string | null;
+    ownerUsername?: string | null;
+    ownerStatus?: OwnerStatus | null;
 }
 
 export interface OperationsExecutionStatusCounts {
@@ -95,6 +101,10 @@ export interface OperationsExecutionDetail {
     partialRerun?: boolean;
     rerunSelectedTaskCount?: number | null;
     rerunTotalTaskCount?: number | null;
+    ownerUserId?: number | null;
+    ownerName?: string | null;
+    ownerUsername?: string | null;
+    ownerStatus?: OwnerStatus | null;
 }
 
 export interface OperationsRerunGraphNode {
@@ -160,6 +170,7 @@ function buildListSearchParams(query?: OperationsExecutionListQuery) {
         if (normalized) params.set(key, normalized);
     }
 
+    if (query.ownerUserId != null) params.set('ownerUserId', String(query.ownerUserId));
     if (query.page != null) params.set('page', String(query.page));
     if (query.pageSize != null) params.set('pageSize', String(query.pageSize));
 
@@ -210,6 +221,10 @@ export interface OperationsInstanceExecutionItem {
     partialRerun?: boolean;
     rerunSelectedTaskCount?: number | null;
     rerunTotalTaskCount?: number | null;
+    ownerUserId?: number | null;
+    ownerName?: string | null;
+    ownerUsername?: string | null;
+    ownerStatus?: OwnerStatus | null;
 }
 
 export interface OperationsInstanceUpstreamItem {

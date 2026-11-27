@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
+    ArrowLeftRight,
     Copy,
     FileCode2,
     FolderOpen,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react';
 
 import type { OfflineCrossGroupDependency, OfflineRepoTreeNode, OfflineRepoTreeResponse } from '../../../api/offline';
+import { OwnerSelect } from '../../../components/owner/OwnerSelect';
 import { Button } from '../../../components/ui/button';
 import { ConfirmDialog } from '../../../components/ui/confirm-dialog';
 import { DeleteFlowDependencyDialog } from '../schedule/DeleteFlowDependencyDialog';
@@ -38,6 +40,9 @@ interface CreateAction {
     open: boolean;
     name: string;
     parentPath: string;
+    groupId?: number | null;
+    ownerUserId?: number | null;
+    onOwnerUserIdChange?: (userId: number | null) => void;
     timezone?: string;
     crossGroupDependency?: OfflineCrossGroupDependency;
     onCrossGroupDependencyChange?: (value: OfflineCrossGroupDependency) => void;
@@ -77,6 +82,8 @@ interface ContextMenuAction {
     onOpenNewFolder: (node: OfflineRepoTreeNode) => void;
     onOpenRenameFlow: (node: OfflineRepoTreeNode) => void;
     onOpenRenameFolder: (node: OfflineRepoTreeNode) => void;
+    onOpenTransferFlowOwner?: (node: OfflineRepoTreeNode) => void;
+    canTransferFlow?: (node: OfflineRepoTreeNode) => boolean;
     onOpenDeleteFlow: (node: OfflineRepoTreeNode) => void;
     onOpenDeleteFolder: (node: OfflineRepoTreeNode) => void;
 }
@@ -165,6 +172,7 @@ function CreateDialog({
     repoTree: OfflineRepoTreeResponse | null;
 }) {
     const [tzQuery, setTzQuery] = useState('');
+    const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
     const filteredTimezones = useMemo(() => {
         const q = tzQuery.toLowerCase().trim();
         const base = q
@@ -192,7 +200,7 @@ function CreateDialog({
                 action.onParentPathChange('');
             }
         }}>
-            <DialogContent style={{ maxWidth: isFlow ? '520px' : '460px' }}>
+            <DialogContent ref={setDialogEl} style={{ maxWidth: isFlow ? '520px' : '460px' }}>
                 <DialogHeader>
                     <DialogTitle>新建{kind}</DialogTitle>
                     <DialogDescription>
@@ -212,6 +220,22 @@ function CreateDialog({
                             style={{ width: '100%' }}
                         />
                     </div>
+                    {isFlow && action.onOwnerUserIdChange ? (
+                        <div style={{ marginBottom: 16 }}>
+                            <label htmlFor="new-flow-owner" style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
+                                负责人
+                            </label>
+                            <OwnerSelect
+                                id="new-flow-owner"
+                                ariaLabel="负责人"
+                                groupId={action.groupId ?? undefined}
+                                value={action.ownerUserId}
+                                onChange={action.onOwnerUserIdChange}
+                                disabled={action.pending}
+                                menuContainer={dialogEl}
+                            />
+                        </div>
+                    ) : null}
                     {isFlow && action.onTimezoneChange ? (
                         <div style={{ marginBottom: 16 }}>
                             <label style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', color: 'var(--color-text-secondary)' }}>
@@ -424,6 +448,11 @@ export function OfflineTreeActionDialogs({
                                     <button type="button" className="offline-context-menu-item" onClick={() => contextMenu.onOpenRenameFlow(node)}>
                                         <Pencil size={13} />重命名
                                     </button>
+                                    {contextMenu.onOpenTransferFlowOwner && (!contextMenu.canTransferFlow || contextMenu.canTransferFlow(node)) ? (
+                                        <button type="button" className="offline-context-menu-item" onClick={() => contextMenu.onOpenTransferFlowOwner!(node)}>
+                                            <ArrowLeftRight size={13} />转移负责人
+                                        </button>
+                                    ) : null}
                                     <button type="button" className="offline-context-menu-item danger" onClick={() => contextMenu.onOpenDeleteFlow(node)}>
                                         <Trash2 size={13} />删除
                                     </button>

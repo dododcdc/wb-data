@@ -43,6 +43,39 @@ export interface UpdateMemberRolePayload {
     role: string;
 }
 
+export type OwnerStatus = 'ACTIVE' | 'DISABLED' | 'LEFT_GROUP' | 'UNKNOWN';
+
+export interface GroupOwnerOption {
+    userId: number;
+    username: string;
+    displayName?: string | null;
+    role: string;
+}
+
+export interface AssetOwnerSummary {
+    userId: number;
+    username?: string | null;
+    displayName?: string | null;
+    status: OwnerStatus;
+    count: number;
+}
+
+export interface TransferOwnerPayload {
+    ids?: number[];
+    fromOwnerUserId?: number;
+    targetOwnerUserId: number;
+}
+
+export interface TransferOwnerResult {
+    updatedCount: number;
+    targetOwnerUserId: number;
+    targetOwnerName: string;
+}
+
+export const getGroupOwnerCandidates = (groupId: number) => {
+    return request.get<unknown, GroupOwnerOption[]>(groupScopedPath(groupId, '/settings/owners'));
+};
+
 export const getGroupSettings = (groupId: number) => {
     return request.get<unknown, GroupSettingsInfo>(groupScopedPath(groupId, '/settings'));
 };

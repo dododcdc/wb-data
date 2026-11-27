@@ -11,6 +11,9 @@ import {
     updateParameterGroup,
 } from '../../api/parameterGroups';
 import { SimpleSelect } from '../../components/SimpleSelect';
+import { OwnerSelect } from '../../components/owner/OwnerSelect';
+import type { OwnerStatus } from '../../api/groupSettings';
+import { useAuthStore } from '../../utils/auth';
 import { Button } from '../../components/ui/button';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import {
@@ -45,6 +48,10 @@ interface FormState {
     code: string;
     name: string;
     description: string;
+    ownerUserId: number | null;
+    ownerName: string;
+    ownerUsername: string;
+    ownerStatus: OwnerStatus | null;
     revision: number;
     definitions: FormDefinition[];
 }
@@ -61,10 +68,20 @@ function emptyDefinition(): FormDefinition {
     };
 }
 
-function emptyForm(): FormState {
+function emptyForm(defaultOwnerUserId: number | null = null): FormState {
     const suffix = globalThis.crypto?.randomUUID?.().replace(/-/g, '').slice(0, 20)
         ?? `${Date.now()}${Math.random().toString(36).slice(2, 10)}`;
-    return { code: `pg_${suffix}`, name: '', description: '', revision: 0, definitions: [emptyDefinition()] };
+    return {
+        code: `pg_${suffix}`,
+        name: '',
+        description: '',
+        ownerUserId: defaultOwnerUserId,
+        ownerName: '',
+        ownerUsername: '',
+        ownerStatus: null,
+        revision: 0,
+        definitions: [emptyDefinition()],
+    };
 }
 
 function formFromGroup(group: ParameterGroup): FormState {
@@ -72,6 +89,10 @@ function formFromGroup(group: ParameterGroup): FormState {
         code: group.code,
         name: group.name,
         description: group.description ?? '',
+        ownerUserId: group.ownerUserId ?? null,
+        ownerName: group.ownerName ?? '',
+        ownerUsername: group.ownerUsername ?? '',
+        ownerStatus: group.ownerStatus ?? null,
         revision: group.revision,
         definitions: group.definitions.map((definition) => ({
             key: definition.key,
@@ -178,7 +199,12 @@ export default function ParameterGroupDialog({
     onOpenChange,
     onSuccess,
 }: ParameterGroupDialogProps) {
-    const [form, setForm] = useState<FormState>(emptyForm);
+    const currentUserId = useAuthStore((state) => state.userInfo?.id ?? null);
+    const systemAdmin = useAuthStore((state) => state.systemAdmin);
+    const permissions = useAuthStore((state) => state.permissions);
+    const canManageOthersOwnership = systemAdmin || permissions.includes('member.manage');
+    const [form, setForm] = useState<FormState>(() => emptyForm(currentUserId));
+    const [loadedOwnerUserId, setLoadedOwnerUserId] = useState<number | null>(null);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -210,8 +236,9 @@ export default function ParameterGroupDialog({
         setSelectedIndex(0);
         setRemovedKeysToConfirm([]);
         setOriginalKeys([]);
+        setLoadedOwnerUserId(null);
         if (editingId == null) {
-            setForm(emptyForm());
+            setForm(emptyForm(currentUserId));
             setLoading(false);
             return;
         }
@@ -222,6 +249,7 @@ export default function ParameterGroupDialog({
             .then((group) => {
                 if (active) {
                     setForm(formFromGroup(group));
+                    setLoadedOwnerUserId(group.ownerUserId ?? null);
                     setOriginalKeys(group.definitions.map((definition) => definition.key));
                 }
             })
@@ -234,7 +262,7 @@ export default function ParameterGroupDialog({
         return () => {
             active = false;
         };
-    }, [editingId, groupId, open]);
+    }, [currentUserId, editingId, groupId, open]);
 
     useEffect(() => {
         if (!focusKeyRef.current) return;
@@ -300,6 +328,11 @@ export default function ParameterGroupDialog({
             return;
         }
 
+        const ownerDisabled = isEdit
+            && !canManageOthersOwnership
+            && loadedOwnerUserId != null
+            && loadedOwnerUserId !== currentUserId;
+
         setSaving(true);
         setError('');
         const definitions = form.definitions.map(toRequestDefinition);
@@ -309,12 +342,14 @@ export default function ParameterGroupDialog({
                     code: form.code.trim(),
                     name: form.name.trim(),
                     description: form.description.trim() || null,
+                    ownerUserId: form.ownerUserId ?? undefined,
                     definitions,
                 })
                 : await updateParameterGroup(groupId, editingId, {
                     expectedRevision: form.revision,
                     name: form.name.trim(),
                     description: form.description.trim() || null,
+                    ownerUserId: ownerDisabled ? undefined : (form.ownerUserId ?? undefined),
                     definitions,
                 });
             onSuccess(group);
@@ -367,6 +402,32 @@ export default function ParameterGroupDialog({
                                 {issue?.field === 'name' ? <span className="parameter-field-error" role="alert">{issue.message}</span> : null}
                             </label>
                             <label>
+                                <span>负责人</span>
+                                <OwnerSelect
+                                    ariaLabel="参数组负责人"
+                                    className="parameter-owner-field-select"
+                                    groupId={groupId}
+                                    value={form.ownerUserId}
+                                    disabled={
+                                        isEdit
+                                        && !canManageOthersOwnership
+                                        && loadedOwnerUserId != null
+                                        && loadedOwnerUserId !== currentUserId
+                                    }
+                                    menuContainer={dialogEl}
+                                    fallbackLabel={form.ownerName}
+                                    fallbackUsername={form.ownerUsername}
+                                    fallbackStatus={form.ownerStatus}
+                                    onChange={(nextUserId) => setForm((current) => ({
+                                        ...current,
+                                        ownerUserId: nextUserId,
+                                        ownerName: '',
+                                        ownerUsername: '',
+                                        ownerStatus: null,
+                                    }))}
+                                />
+                            </label>
+                            <label className="parameter-meta-description">
                                 <span>说明 <small>可选</small></span>
                                 <textarea
                                     aria-label="参数组说明"

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle,
+    ArrowLeftRight,
     ArrowUpRight,
     Check,
     ChevronDown,
@@ -18,11 +19,14 @@ import {
     X,
 } from 'lucide-react';
 
+import type { AssetOwnerSummary, OwnerStatus } from '../../api/groupSettings';
 import type {
     BranchItem,
     OfflineRepoTreeNode,
     OfflineRepoTreeResponse,
 } from '../../api/offline';
+import { SimpleSelect } from '../../components/SimpleSelect';
+import { formatOwnerDisplay } from '../../components/owner/ownerUtils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { OfflineRepoTree, type OfflineRepoTreeHandle } from './repo/OfflineRepoTree';
 import { SCHEDULE_BADGE_SPRITE, renderScheduleBadge } from './repo/offlineTreeBadges';
@@ -72,9 +76,122 @@ interface TreeControls {
     flowLoading: boolean;
     activeFlowPath: string | null;
     canWrite: boolean;
+    currentUserId?: number | null;
+    ownerSummaries?: AssetOwnerSummary[];
+    canBulkTransferOwner?: boolean;
+    onOpenBulkTransferOwner?: (initialFromOwnerUserId: number | null) => void;
     onOpenFlow: (path: string) => void;
     onContextMenu: (node: OfflineRepoTreeNode, position: { x: number; y: number }) => void;
     onMoveNode: (sourceTreePath: string, newTreePath: string) => Promise<void>;
+}
+
+const OWNER_FILTER_ALL = 'ALL';
+const OWNER_FILTER_MINE = 'MINE';
+const OWNER_FILTER_UNASSIGNED = 'UNASSIGNED';
+
+function parseSelectedOwnerUserId(filter: string, currentUserId: number | null | undefined): number | null {
+    if (filter === OWNER_FILTER_MINE) return currentUserId ?? null;
+    if (filter.startsWith('USER:')) {
+        const parsed = Number(filter.slice(5));
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+}
+
+function matchesOwnerFilter(
+    node: OfflineRepoTreeNode,
+    filter: string,
+    currentUserId: number | null | undefined,
+): boolean {
+    if (filter === OWNER_FILTER_ALL) return true;
+    if (filter === OWNER_FILTER_MINE) {
+        return currentUserId != null && node.ownerUserId === currentUserId;
+    }
+    if (filter === OWNER_FILTER_UNASSIGNED) {
+        return node.ownerUserId == null;
+    }
+    if (filter.startsWith('USER:')) {
+        const targetId = Number(filter.slice(5));
+        return node.ownerUserId === targetId;
+    }
+    return true;
+}
+
+function filterTreeByOwner(
+    node: OfflineRepoTreeNode,
+    filter: string,
+    currentUserId: number | null | undefined,
+    isRoot = true,
+): OfflineRepoTreeNode | null {
+    if (filter === OWNER_FILTER_ALL) return node;
+    if (node.kind === 'FLOW') {
+        return matchesOwnerFilter(node, filter, currentUserId) ? node : null;
+    }
+    const nextChildren = (node.children ?? [])
+        .map((child) => filterTreeByOwner(child, filter, currentUserId, false))
+        .filter((child): child is OfflineRepoTreeNode => child !== null);
+    if (!isRoot && nextChildren.length === 0) {
+        return null;
+    }
+    return {
+        ...node,
+        children: nextChildren,
+    };
+}
+
+function collectFlowOwners(
+    node: OfflineRepoTreeNode | null | undefined,
+    summaries: AssetOwnerSummary[] = [],
+): { owners: AssetOwnerSummary[]; hasUnassigned: boolean; totalFlows: number } {
+    const byId = new Map<number, AssetOwnerSummary>();
+    let hasUnassigned = false;
+    let totalFlows = 0;
+
+    for (const item of summaries) {
+        if (item.userId != null) {
+            byId.set(item.userId, { ...item });
+        }
+    }
+
+    const walk = (curr: OfflineRepoTreeNode) => {
+        if (curr.kind === 'FLOW') {
+            totalFlows += 1;
+            if (curr.ownerUserId == null) {
+                hasUnassigned = true;
+            } else if (!byId.has(curr.ownerUserId)) {
+                byId.set(curr.ownerUserId, {
+                    userId: curr.ownerUserId,
+                    displayName: curr.ownerName ?? null,
+                    username: curr.ownerUsername ?? null,
+                    status: (curr.ownerStatus as OwnerStatus | null | undefined) ?? 'ACTIVE',
+                    count: 1,
+                });
+            }
+            return;
+        }
+        curr.children?.forEach(walk);
+    };
+    if (node) walk(node);
+
+    const owners = Array.from(byId.values()).sort((a, b) => {
+        const nameA = a.displayName || a.username || '';
+        const nameB = b.displayName || b.username || '';
+        return nameA.localeCompare(nameB, 'zh-CN');
+    });
+    return { owners, hasUnassigned, totalFlows };
+}
+
+function collectFlowPaths(node: OfflineRepoTreeNode | null | undefined): Set<string> {
+    const paths = new Set<string>();
+    const walk = (curr: OfflineRepoTreeNode) => {
+        if (curr.kind === 'FLOW') {
+            paths.add(curr.path);
+            return;
+        }
+        curr.children?.forEach(walk);
+    };
+    if (node) walk(node);
+    return paths;
 }
 
 interface OfflineWorkbenchSidebarProps {
@@ -128,6 +245,48 @@ export function OfflineWorkbenchSidebar({
         () => branch.branches.filter((item) => !item.current && item.name !== branch.label),
         [branch.branches, branch.label],
     );
+    const [ownerFilter, setOwnerFilter] = useState<string>(OWNER_FILTER_ALL);
+
+    const ownerCollection = useMemo(
+        () => collectFlowOwners(tree.data?.root, tree.ownerSummaries),
+        [tree.data?.root, tree.ownerSummaries],
+    );
+    const ownerFilterOptions = useMemo(() => {
+        const opts: Array<{ value: string; label: string }> = [
+            { value: OWNER_FILTER_ALL, label: '全部负责人' },
+        ];
+        if (tree.currentUserId != null) {
+            opts.push({ value: OWNER_FILTER_MINE, label: '我负责的' });
+        }
+        for (const item of ownerCollection.owners) {
+            if (item.userId == null) continue;
+            const display = formatOwnerDisplay(item.displayName, item.username);
+            opts.push({
+                value: `USER:${item.userId}`,
+                label: item.count > 0 ? `${display} (${item.count})` : display,
+            });
+        }
+        if (ownerCollection.hasUnassigned) {
+            opts.push({ value: OWNER_FILTER_UNASSIGNED, label: '未指定负责人' });
+        }
+        return opts;
+    }, [ownerCollection.hasUnassigned, ownerCollection.owners, tree.currentUserId]);
+
+    const filteredRoot = useMemo(() => {
+        if (!tree.data) return null;
+        return filterTreeByOwner(tree.data.root, ownerFilter, tree.currentUserId) ?? {
+            ...tree.data.root,
+            children: [],
+        };
+    }, [ownerFilter, tree.currentUserId, tree.data]);
+
+    const filteredRecentFlowPaths = useMemo(() => {
+        const recent = tree.data?.recentFlowPaths ?? [];
+        if (ownerFilter === OWNER_FILTER_ALL) return recent;
+        const allowed = collectFlowPaths(filteredRoot);
+        return recent.filter((p) => allowed.has(p));
+    }, [filteredRoot, ownerFilter, tree.data]);
+
     const treeNodeIndex = useMemo(
         () => (tree.data ? indexNodesByTreePath(tree.data.root, tree.data.recentFlowPaths) : null),
         [tree.data],
@@ -140,6 +299,7 @@ export function OfflineWorkbenchSidebar({
     useEffect(() => {
         isSearchComposingRef.current = false;
         setTreeSearch('');
+        setOwnerFilter(OWNER_FILTER_ALL);
         treeHandleRef.current?.setSearch(null);
     }, [tree.data?.groupId, branch.label]);
 
@@ -487,6 +647,44 @@ export function OfflineWorkbenchSidebar({
                                 </button>
                             ) : null}
                         </div>
+                        <div className="offline-tree-owner-row">
+                            <SimpleSelect
+                                id="offline-tree-owner-filter"
+                                className="offline-tree-owner-select"
+                                value={ownerFilter}
+                                options={ownerFilterOptions}
+                                onChange={(nextValue) => {
+                                    setOwnerFilter(nextValue);
+                                    if (nextValue !== OWNER_FILTER_ALL && !treeVisible) {
+                                        setTreeVisible(true);
+                                    }
+                                }}
+                                ariaLabel="按负责人筛选任务"
+                                placeholder="全部负责人"
+                            />
+                            {tree.canBulkTransferOwner && tree.onOpenBulkTransferOwner ? (
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            type="button"
+                                            className="offline-tree-owner-transfer-btn"
+                                            aria-label="按负责人批量转移"
+                                            disabled={ownerCollection.owners.length === 0}
+                                            onClick={() => {
+                                                tree.onOpenBulkTransferOwner?.(
+                                                    parseSelectedOwnerUserId(ownerFilter, tree.currentUserId),
+                                                );
+                                            }}
+                                        >
+                                            <ArrowLeftRight size={13} aria-hidden="true" />
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="tooltip-content" side="bottom">
+                                        按负责人批量转移任务
+                                    </TooltipContent>
+                                </Tooltip>
+                            ) : null}
+                        </div>
                         <button
                             type="button"
                             className={`offline-tree-root-label${treeVisible ? '' : ' is-collapsed'}`}
@@ -504,27 +702,31 @@ export function OfflineWorkbenchSidebar({
                             <span className="offline-tree-row-label">{tree.data.root.name}</span>
                         </button>
                         <div hidden={!treeVisible} style={{ flex: 1, minHeight: 0 }}>
-                            <OfflineRepoTree
-                                key={`${tree.data.groupId}:${branch.label}`}
-                                ref={treeHandleRef}
-                                className="offline-repo-tree"
-                                root={tree.data.root}
-                                recentFlowPaths={tree.data.recentFlowPaths}
-                                dataKey={`${tree.data.groupId}:${branch.label}`}
-                                selectedTreePath={tree.activeFlowPath ? flowApiPathToTreePath(tree.activeFlowPath) : null}
-                                canWrite={tree.canWrite && !busy && !branch.switching}
-                                iconSpriteSheet={SCHEDULE_BADGE_SPRITE}
-                                noSearchMatchesText="没有匹配的任务"
-                                renderBadge={renderScheduleBadge}
-                                onOpenFlow={tree.onOpenFlow}
-                                onMoveNode={tree.onMoveNode}
-                                onContextMenu={(treePath, position) => {
-                                    const node = treeNodeIndex?.get(treePath);
-                                    if (node && (node.kind === 'FLOW' || creation.canWrite)) {
-                                        tree.onContextMenu(node, position);
-                                    }
-                                }}
-                            />
+                            {ownerFilter !== OWNER_FILTER_ALL && (filteredRoot?.children?.length ?? 0) === 0 ? (
+                                <div className="offline-tree-owner-empty">当前负责人筛选下暂无任务</div>
+                            ) : (
+                                <OfflineRepoTree
+                                    key={`${tree.data.groupId}:${branch.label}:${ownerFilter}`}
+                                    ref={treeHandleRef}
+                                    className="offline-repo-tree"
+                                    root={filteredRoot ?? tree.data.root}
+                                    recentFlowPaths={filteredRecentFlowPaths}
+                                    dataKey={`${tree.data.groupId}:${branch.label}:${ownerFilter}`}
+                                    selectedTreePath={tree.activeFlowPath ? flowApiPathToTreePath(tree.activeFlowPath) : null}
+                                    canWrite={tree.canWrite && !busy && !branch.switching}
+                                    iconSpriteSheet={SCHEDULE_BADGE_SPRITE}
+                                    noSearchMatchesText="没有匹配的任务"
+                                    renderBadge={renderScheduleBadge}
+                                    onOpenFlow={tree.onOpenFlow}
+                                    onMoveNode={tree.onMoveNode}
+                                    onContextMenu={(treePath, position) => {
+                                        const node = treeNodeIndex?.get(treePath);
+                                        if (node && (node.kind === 'FLOW' || creation.canWrite)) {
+                                            tree.onContextMenu(node, position);
+                                        }
+                                    }}
+                                />
+                            )}
                         </div>
                     </div>
                 )}

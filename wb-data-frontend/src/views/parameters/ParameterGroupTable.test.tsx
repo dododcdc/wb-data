@@ -16,6 +16,10 @@ const record: ParameterGroupSummary = {
     revision: 8,
     status: 'ACTIVE',
     parameterCount: 2,
+    ownerUserId: 1,
+    ownerName: 'Alice',
+    ownerUsername: 'alice',
+    ownerStatus: 'ACTIVE',
     createdBy: 1,
     updatedBy: 1,
     createdAt: '2026-08-14T08:00:00Z',
@@ -92,5 +96,39 @@ describe('ParameterGroupTable', () => {
         const { props } = renderTable({ data: [], errorMessage: '网络连接失败', hasFooter: false });
         fireEvent.click(screen.getByRole('button', { name: '重试' }));
         expect(props.onRetry).toHaveBeenCalledOnce();
+    });
+
+    it('restricts selection and owner transfer for non-admin users to their own parameter groups', () => {
+        const ownGroup = record;
+        const otherGroup: ParameterGroupSummary = {
+            ...record,
+            id: 19,
+            name: '他人的参数组',
+            ownerUserId: 2,
+            ownerName: 'Bob',
+            ownerUsername: 'bob',
+            ownerStatus: 'DISABLED',
+        };
+        const { props } = renderTable({
+            data: [ownGroup, otherGroup],
+            currentUserId: 1,
+            canManageOthersOwnership: false,
+            selectedIds: [],
+            onToggleRow: vi.fn(),
+            onToggleAll: vi.fn(),
+            onTransferOwner: vi.fn(),
+        });
+
+        expect(screen.getByText('已停用')).toBeTruthy();
+        const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
+        expect(checkboxes[1].disabled).toBe(false);
+        expect(checkboxes[2].disabled).toBe(true);
+
+        fireEvent.click(screen.getByRole('button', { name: '日常公共参数的更多操作' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: '转移负责人' }));
+        expect(props.onTransferOwner).toHaveBeenCalledWith(ownGroup);
+
+        fireEvent.click(screen.getByRole('button', { name: '他人的参数组的更多操作' }));
+        expect(screen.queryByRole('menuitem', { name: '转移负责人' })).toBeNull();
     });
 });

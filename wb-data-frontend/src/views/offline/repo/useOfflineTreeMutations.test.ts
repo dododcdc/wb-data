@@ -152,6 +152,30 @@ describe('useOfflineTreeMutations', () => {
         expect(result.current.newFlowCrossGroupDependency).toBe('ALLOW');
     });
 
+    it('defaults new flow owner to currentUserId and allows overriding before create', async () => {
+        const offlineApi = await import('../../../api/offline');
+        vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue(makeDocument('_flows/custom/owned/flow.yaml'));
+        const { result } = renderTreeMutations({ currentUserId: 9 });
+
+        expect(result.current.newFlowOwnerUserId).toBe(9);
+        act(() => {
+            result.current.setNewFlowParentPath('custom');
+            result.current.setNewFlowName('owned');
+            result.current.setNewFlowOwnerUserId(15);
+        });
+        await act(async () => {
+            await result.current.handleCreateFlow();
+        });
+
+        expect(offlineApi.saveOfflineFlowDocument).toHaveBeenCalledWith(expect.objectContaining({
+            path: '_flows/custom/owned/flow.yaml',
+            ownerUserId: 15,
+        }));
+
+        act(() => { result.current.openRootNewFlowDialog(); });
+        expect(result.current.newFlowOwnerUserId).toBe(9);
+    });
+
     it('keeps a blocked deletion open and preserves the active draft', async () => {
         const offlineApi = await import('../../../api/offline');
         vi.mocked(offlineApi.deleteOfflineFlow).mockRejectedValue(new Error('存在下游任务依赖，请先解除依赖'));

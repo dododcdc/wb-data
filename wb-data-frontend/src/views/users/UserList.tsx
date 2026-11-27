@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, UserPlus } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
-import { ConfirmDialog } from '../../components/ui/confirm-dialog';
+import { handoverUserAssets } from '../../api/ownership';
+import { DisableUserDialog } from './DisableUserDialog';
 import { ListPagination } from '../../components/ui/list/ListPagination';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import {
@@ -132,6 +133,8 @@ export default function UserList() {
             setSearchParams(next, { replace: true });
         }
     }, [currentPage, pageData, searchParams, setSearchParams]);
+
+    const [handoverDisabling, setHandoverDisabling] = useState(false);
 
     const toggleStatusMutation = useMutation({
         mutationFn: ({ id, status }: { id: number; status: string }) => changeUserStatus(id, { status }),
@@ -319,30 +322,37 @@ export default function UserList() {
                 }}
             />
 
-            <ConfirmDialog
-                open={Boolean(pendingDisableTarget)}
-                onOpenChange={(nextOpen) => {
-                    if (!nextOpen && pendingStatusId == null) {
-                        setPendingDisableTarget(null);
+            <DisableUserDialog
+                user={pendingDisableTarget}
+                submitting={pendingStatusId != null || handoverDisabling}
+                onClose={() => setPendingDisableTarget(null)}
+                onConfirmDisableOnly={(target) => {
+                    toggleStatusMutation.mutate({ id: target.id, status: 'DISABLED' });
+                }}
+                onConfirmHandoverAndDisable={async (target, transfers) => {
+                    setHandoverDisabling(true);
+                    let handoverDone = false;
+                    try {
+                        const handoverResult = await handoverUserAssets(target.id, transfers);
+                        handoverDone = true;
+                        void queryClient.invalidateQueries({ queryKey: ['userAssetSummary', target.id] });
+                        void queryClient.invalidateQueries({ queryKey: ['groupMemberAssetSummary'] });
+                        void queryClient.invalidateQueries({ queryKey: ['groupOwnerCandidates'] });
+                        void queryClient.invalidateQueries({ queryKey: ['offlineFlowOwners'] });
+                        void queryClient.invalidateQueries({ queryKey: ['datasources'] });
+                        void queryClient.invalidateQueries({ queryKey: ['parameter-groups'] });
+                        await toggleStatusMutation.mutateAsync({ id: target.id, status: 'DISABLED' });
+                        if (handoverResult?.totalTransferred > 0) {
+                            showSuccess(`已交接 ${handoverResult.totalTransferred} 项资产并禁用用户`);
+                        }
+                    } catch (error) {
+                        if (!handoverDone) {
+                            showError(error, '资产交接失败');
+                        }
+                    } finally {
+                        setHandoverDisabling(false);
                     }
                 }}
-                title="禁用用户"
-                description={
-                    pendingDisableTarget ? (
-                        <>
-                            确定要禁用用户 <strong>{pendingDisableTarget.username}</strong> 吗？
-                            <br />
-                            禁用后该用户将无法登录系统，但其已有数据不会被删除。
-                        </>
-                    ) : ''
-                }
-                onConfirm={() => {
-                    if (!pendingDisableTarget) return;
-                    toggleStatusMutation.mutate({ id: pendingDisableTarget.id, status: 'DISABLED' });
-                }}
-                confirmText={pendingStatusId != null ? '禁用中...' : '确认禁用'}
-                cancelText="取消"
-                variant="destructive"
             />
         </div>
     );

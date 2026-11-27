@@ -23,6 +23,10 @@ import { CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import '../../components/ui/form-input-group.css';
 import { SimpleSelect } from '../../components/SimpleSelect';
+import { OwnerCell } from '../../components/owner/OwnerCell';
+import { OwnerSelect } from '../../components/owner/OwnerSelect';
+import type { OwnerStatus } from '../../api/groupSettings';
+import { useAuthStore } from '../../utils/auth';
 import { getErrorMessage } from '../../utils/error';
 import './DataSourceForm.css';
 
@@ -42,6 +46,7 @@ export interface DataSourceFormSuccessDetails {
         name: string;
         type: string;
         description: string;
+        ownerUserId?: number | null;
         owner: string;
         host: string;
         port?: number;
@@ -54,6 +59,10 @@ type FormState = {
     type: string;
     description: string;
     owner: string;
+    ownerUserId: number | null;
+    ownerName: string;
+    ownerUsername: string;
+    ownerStatus: OwnerStatus | null;
     host: string;
     port: string;
     databaseName: string;
@@ -72,7 +81,11 @@ const EMPTY_FORM_STATE: FormState = {
     name: '',
     type: '',
     description: '',
-    owner: 'admin',
+    owner: '',
+    ownerUserId: null,
+    ownerName: '',
+    ownerUsername: '',
+    ownerStatus: null,
     host: '',
     port: '',
     databaseName: '',
@@ -81,9 +94,10 @@ const EMPTY_FORM_STATE: FormState = {
     connectionParams: {},
 };
 
-function createEmptyFormState(): FormState {
+function createEmptyFormState(defaultOwnerUserId: number | null = null): FormState {
     return {
         ...EMPTY_FORM_STATE,
+        ownerUserId: defaultOwnerUserId,
         connectionParams: {},
     };
 }
@@ -304,7 +318,18 @@ function DataSourceDetailSheet({
                     ) : null}
                     <div className="form-input-group">
                         <label>负责人</label>
-                        <DetailValue value={formData.owner} />
+                        {(formData.ownerName || formData.ownerUsername || formData.owner) ? (
+                            <div className="datasource-detail-value">
+                                <OwnerCell
+                                    name={formData.ownerName}
+                                    username={formData.ownerUsername}
+                                    status={formData.ownerStatus}
+                                    fallback={formData.owner}
+                                />
+                            </div>
+                        ) : (
+                            <DetailValue value="" />
+                        )}
                     </div>
                     <div className="form-input-group">
                         <label>备注描述</label>
@@ -381,10 +406,11 @@ function DataSourceDetailSheet({
 export default function DataSourceForm({ open, onOpenChange, dataSourceId, groupId, readOnly = false, onSuccess }: DataSourceFormProps) {
     const isEdit = Boolean(dataSourceId);
     const isView = readOnly && isEdit;
+    const currentUserId = useAuthStore((s) => s.userInfo?.id ?? null);
     const detailRequestIdRef = useRef(0);
     const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
 
-    const [formData, setFormData] = useState<FormState>(createEmptyFormState);
+    const [formData, setFormData] = useState<FormState>(() => createEmptyFormState(currentUserId));
     const [fieldErrors, setFieldErrors] = useState<Partial<Record<FormField, string | true>>>({});
     const [passwordDirty, setPasswordDirty] = useState(false);
     const [isLoadingDetails, setIsLoadingDetails] = useState(false);
@@ -448,7 +474,11 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                             name: res.name || '',
                             type: res.type || '',
                             description: res.description || '',
-                            owner: res.owner || 'admin',
+                            owner: res.owner || '',
+                            ownerUserId: res.ownerUserId ?? null,
+                            ownerName: res.ownerName || '',
+                            ownerUsername: res.ownerUsername || '',
+                            ownerStatus: res.ownerStatus ?? null,
                             host: res.host || '',
                             port: res.port ? String(res.port) : '',
                             databaseName: res.databaseName || '',
@@ -471,10 +501,10 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                     });
             } else {
                 setIsLoadingDetails(false);
-                setFormData(createEmptyFormState());
+                setFormData(createEmptyFormState(currentUserId));
             }
         }
-    }, [dataSourceId, groupId, isEdit, open, readOnly, refetchPlugins]);
+    }, [currentUserId, dataSourceId, groupId, isEdit, open, readOnly, refetchPlugins]);
 
     useEffect(() => {
         if (!open || pluginDescriptors.length === 0 || (isEdit && isLoadingDetails)) {
@@ -724,9 +754,15 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
         setSaveError('');
         try {
             const payload = {
-                ...formData,
+                name: formData.name,
                 type: effectiveType,
+                description: formData.description,
+                ownerUserId: formData.ownerUserId ?? undefined,
+                host: formData.host,
                 port: formData.port ? parseInt(formData.port, 10) : undefined,
+                databaseName: formData.databaseName,
+                username: formData.username,
+                password: formData.password,
                 connectionParams: normalizeConnectionParams(formData.connectionParams),
             };
             if (isEdit && dataSourceId) {
@@ -738,7 +774,8 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                         name: payload.name,
                         type: payload.type,
                         description: payload.description,
-                        owner: payload.owner,
+                        ownerUserId: payload.ownerUserId ?? null,
+                        owner: formData.owner,
                         host: payload.host ?? '',
                         port: payload.port,
                         databaseName: payload.databaseName ?? '',
@@ -753,7 +790,8 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                         name: payload.name,
                         type: payload.type,
                         description: payload.description,
-                        owner: payload.owner,
+                        ownerUserId: payload.ownerUserId ?? null,
+                        owner: formData.owner,
                         host: payload.host ?? '',
                         port: payload.port,
                         databaseName: payload.databaseName ?? '',
@@ -837,7 +875,24 @@ export default function DataSourceForm({ open, onOpenChange, dataSourceId, group
                                     ) : null}
                                     <div className="form-input-group">
                                         <label htmlFor="ds-owner">负责人</label>
-                                        <input id="ds-owner" type="text" value={formData.owner} onChange={e => handleChange('owner', e.target.value)} disabled={isView} readOnly={isView} />
+                                        <OwnerSelect
+                                            id="ds-owner"
+                                            ariaLabel="负责人"
+                                            groupId={groupId}
+                                            value={formData.ownerUserId}
+                                            onChange={(nextUserId) => setFormData((previousState) => ({
+                                                ...previousState,
+                                                ownerUserId: nextUserId,
+                                                ownerName: '',
+                                                ownerUsername: '',
+                                                ownerStatus: null,
+                                            }))}
+                                            disabled={isView}
+                                            menuContainer={dialogEl}
+                                            fallbackLabel={formData.ownerName || formData.owner}
+                                            fallbackUsername={formData.ownerUsername}
+                                            fallbackStatus={formData.ownerStatus}
+                                        />
                                     </div>
                                     <div className="form-input-group">
                                         <label htmlFor="ds-description">备注描述</label>

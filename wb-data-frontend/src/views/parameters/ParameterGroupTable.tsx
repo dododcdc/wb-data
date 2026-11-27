@@ -1,20 +1,28 @@
-import { Archive, ArchiveRestore, Braces, Eye, Pencil } from 'lucide-react';
+import { useMemo } from 'react';
+import { Archive, ArchiveRestore, ArrowLeftRight, Braces, Eye, Pencil } from 'lucide-react';
 import type { ParameterGroupSummary } from '../../api/parameterGroups';
 import { Button } from '../../components/ui/button';
 import { DataList, type DataListColumn } from '../../components/ui/list/DataList';
 import { RowActions, type RowActionItem } from '../../components/ui/list/RowActions';
 import { StatusPill } from '../../components/ui/list/StatusPill';
+import { OwnerCell } from '../../components/owner/OwnerCell';
 
 interface ParameterGroupTableProps {
     data: ParameterGroupSummary[];
     canWrite: boolean;
+    canManageOthersOwnership?: boolean;
+    currentUserId?: number | null;
     isLoading: boolean;
     isRefreshing: boolean;
     errorMessage: string;
     hasActiveFilter: boolean;
     hasFooter: boolean;
+    selectedIds?: number[];
+    onToggleRow?: (id: number) => void;
+    onToggleAll?: (checked: boolean) => void;
     onPreview: (record: ParameterGroupSummary) => void;
     onEdit: (record: ParameterGroupSummary) => void;
+    onTransferOwner?: (record: ParameterGroupSummary) => void;
     onAction: (record: ParameterGroupSummary) => void;
     onCreate: () => void;
     onClearFilters: () => void;
@@ -35,18 +43,27 @@ export function ParameterGroupTable(props: ParameterGroupTableProps) {
     const {
         data,
         canWrite,
+        canManageOthersOwnership = false,
+        currentUserId = null,
         isLoading,
         isRefreshing,
         errorMessage,
         hasActiveFilter,
         hasFooter,
+        selectedIds = [],
+        onToggleRow,
+        onToggleAll,
         onPreview,
         onEdit,
+        onTransferOwner,
         onAction,
         onCreate,
         onClearFilters,
         onRetry,
     } = props;
+
+    const canTransferRecord = (record: ParameterGroupSummary) =>
+        canWrite && (canManageOthersOwnership || (currentUserId != null && record.ownerUserId === currentUserId));
 
     const getActions = (record: ParameterGroupSummary): RowActionItem[] => {
         const actions: RowActionItem[] = [
@@ -58,20 +75,28 @@ export function ParameterGroupTable(props: ParameterGroupTableProps) {
             },
         ];
         if (canWrite && record.status === 'ACTIVE') {
-            actions.push(
-                {
-                    key: 'edit',
-                    label: `编辑${record.name}`,
-                    icon: Pencil,
-                    onClick: () => onEdit(record),
-                },
-                {
-                    key: 'archive',
-                    label: `归档${record.name}`,
-                    icon: Archive,
-                    onClick: () => onAction(record),
-                },
-            );
+            actions.push({
+                key: 'edit',
+                label: `编辑${record.name}`,
+                icon: Pencil,
+                onClick: () => onEdit(record),
+            });
+        }
+        if (onTransferOwner && canTransferRecord(record)) {
+            actions.push({
+                key: 'transfer-owner',
+                label: '转移负责人',
+                icon: ArrowLeftRight,
+                onClick: () => onTransferOwner(record),
+            });
+        }
+        if (canWrite && record.status === 'ACTIVE') {
+            actions.push({
+                key: 'archive',
+                label: `归档${record.name}`,
+                icon: Archive,
+                onClick: () => onAction(record),
+            });
         } else if (canWrite) {
             actions.push({
                 key: 'restore',
@@ -88,36 +113,39 @@ export function ParameterGroupTable(props: ParameterGroupTableProps) {
             key: 'identity',
             header: '参数组',
             primary: true,
-            width: '36%',
+            truncate: true,
+            width: '22%',
+            cell: (record) => <span title={record.name}>{record.name}</span>,
+        },
+        {
+            key: 'description',
+            header: '说明',
+            truncate: true,
+            width: '26%',
             cell: (record) => (
-                <div className="wb-list-cell-stack">
-                    <span title={record.name}>{record.name}</span>
-                    {record.description ? (
-                        <span className="wb-list-secondary wb-list-secondary-text" title={record.description}>
-                            {record.description}
-                        </span>
-                    ) : null}
-                </div>
+                <span className="wb-list-secondary wb-list-secondary-text" title={record.description || undefined}>
+                    {record.description || '--'}
+                </span>
             ),
         },
         {
             key: 'parameterCount',
             header: '参数',
             mono: true,
-            width: 120,
+            width: 96,
             cell: (record) => `${record.parameterCount} 个参数`,
         },
         {
             key: 'version',
             header: '版本',
             mono: true,
-            width: 90,
+            width: 72,
             cell: (record) => `v${record.version}`,
         },
         {
             key: 'status',
             header: '状态',
-            width: 110,
+            width: 92,
             cell: (record) => (
                 <StatusPill tone={record.status === 'ACTIVE' ? 'success' : 'warning'}>
                     {record.status === 'ACTIVE' ? '使用中' : '已归档'}
@@ -125,17 +153,30 @@ export function ParameterGroupTable(props: ParameterGroupTableProps) {
             ),
         },
         {
+            key: 'owner',
+            header: '负责人',
+            truncate: true,
+            width: 136,
+            cell: (record) => (
+                <OwnerCell
+                    name={record.ownerName}
+                    username={record.ownerUsername}
+                    status={record.ownerStatus}
+                />
+            ),
+        },
+        {
             key: 'updatedAt',
             header: '最近更新',
             mono: true,
-            width: 160,
+            width: 120,
             cell: (record) => formatUpdatedAt(record.updatedAt),
         },
         {
             key: 'actions',
             header: '操作',
             align: 'right',
-            width: 120,
+            width: 96,
             cell: (record) => (
                 <RowActions
                     items={getActions(record)}
@@ -154,17 +195,24 @@ export function ParameterGroupTable(props: ParameterGroupTableProps) {
                 ? hasActiveFilter ? 'filtered-empty' : 'empty'
                 : 'ready';
 
+    const selectedKeySet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
     return (
         <DataList
             rows={data}
             columns={columns}
             rowKey={(record) => record.id}
             ariaLabel="参数组列表"
-            minWidth="860px"
+            minWidth="900px"
             state={state}
             isRefreshing={isRefreshing}
             errorMessage={errorMessage}
             hasFooter={hasFooter}
+            selectable={canWrite && Boolean(onToggleRow && onToggleAll)}
+            selectedKeys={selectedKeySet}
+            isRowSelectable={canTransferRecord}
+            onToggleRow={(key) => onToggleRow?.(Number(key))}
+            onToggleAll={onToggleAll}
             emptyIcon={<Braces size={32} />}
             emptyTitle="还没有参数组"
             emptyDescription="创建一组可复用的参数，在多个任务中保持一致。"

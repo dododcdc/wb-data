@@ -1,5 +1,6 @@
 import request from '../utils/request';
 import { groupScopedPath } from './groupScoped';
+import type { AssetOwnerSummary, OwnerStatus, TransferOwnerPayload, TransferOwnerResult } from './groupSettings';
 
 export interface DataSource {
     id: number;
@@ -13,6 +14,10 @@ export interface DataSource {
     connectionParams: Record<string, unknown>;
     status: string;
     owner: string;
+    ownerUserId?: number | null;
+    ownerName?: string | null;
+    ownerUsername?: string | null;
+    ownerStatus?: OwnerStatus | null;
     createdAt: string;
     updatedAt: string;
 }
@@ -28,6 +33,7 @@ export interface DataSourceSavePayload {
     password?: string;
     connectionParams?: Record<string, unknown>;
     owner?: string;
+    ownerUserId?: number | null;
 }
 
 export interface PluginFieldDescriptor {
@@ -56,6 +62,7 @@ export interface DataSourceSearchQuery {
     type?: string;
     typeList?: string[];
     status?: string;
+    ownerUserId?: number;
     groupId?: number;
 }
 
@@ -121,4 +128,12 @@ export const testNewConnection = (data: DataSourceConnectionPayload, groupId: nu
 
 export const testExistingConnection = (id: number, groupId: number) => {
     return request.post<unknown, ConnectionTestResult>(groupScopedPath(groupId, `/datasources/${id}/test`));
+};
+
+export const getDataSourceOwners = (groupId: number) => {
+    return request.get<unknown, AssetOwnerSummary[]>(groupScopedPath(groupId, '/datasources/owners'));
+};
+
+export const transferDataSourceOwner = (groupId: number, payload: TransferOwnerPayload) => {
+    return request.post<unknown, TransferOwnerResult>(groupScopedPath(groupId, '/datasources/transfer-owner'), payload);
 };

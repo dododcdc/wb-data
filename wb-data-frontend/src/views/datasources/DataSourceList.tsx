@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DatabaseZap, Search } from 'lucide-react';
+import { ArrowLeftRight, DatabaseZap, Search } from 'lucide-react';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
@@ -8,17 +8,30 @@ import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import {
     DataSource,
     deleteDataSource,
+    getDataSourceOwners,
     getDataSourcePage,
     PageResult,
     testExistingConnection,
+    transferDataSourceOwner,
     updateDataSourceStatus,
 } from '../../api/datasource';
+import type { TransferOwnerPayload } from '../../api/groupSettings';
 import { useAuthStore } from '../../utils/auth';
 import DataSourceForm from './DataSourceForm';
 import DataSourceListSkeleton from './DataSourceListSkeleton';
-import { buildDataSourcePageQueryKey, DEFAULT_PAGE_SIZE, parsePageParam, parsePageSizeParam } from './config';
+import {
+    buildDataSourcePageQueryKey,
+    DEFAULT_PAGE_SIZE,
+    parseOwnerParam,
+    parsePageParam,
+    parsePageSizeParam,
+} from './config';
 import { ListPagination } from '../../components/ui/list/ListPagination';
 import { DataSourceTable } from './DataSourceTable';
+import { SimpleSelect } from '../../components/SimpleSelect';
+import { formatCandidateLabel } from '../../components/owner/ownerUtils';
+import { TransferOwnerDialog } from '../../components/owner/TransferOwnerDialog';
+import { getErrorMessage } from '../../utils/error';
 import './DataSourceList.css';
 import { Button } from '../../components/ui/button';
 
@@ -32,6 +45,7 @@ function buildNextSearchParams(
     if (next.get('page') === '1') next.delete('page');
     if (next.get('size') === String(DEFAULT_PAGE_SIZE)) next.delete('size');
     if (!next.get('keyword')) next.delete('keyword');
+    if (!next.get('owner')) next.delete('owner');
 
     return next;
 }
@@ -54,6 +68,7 @@ export default function DataSourceList() {
     const { showFeedback, showSuccess, showError } = useOperationFeedback();
     const [searchParams, setSearchParams] = useSearchParams();
     const currentGroup = useAuthStore((s) => s.currentGroup);
+    const userInfo = useAuthStore((s) => s.userInfo);
     const permissions = useAuthStore((s) => s.permissions);
     const systemAdmin = useAuthStore((s) => s.systemAdmin);
     const canWrite = systemAdmin || permissions.includes('datasource.write');
@@ -68,10 +83,30 @@ export default function DataSourceList() {
     const [pendingStatusId, setPendingStatusId] = useState<number | null>(null);
     const [pendingTestId, setPendingTestId] = useState<number | null>(null);
     const [pendingDeleteTarget, setPendingDeleteTarget] = useState<DataSource | null>(null);
+    const [selectedIds, setSelectedIds] = useState<number[]>([]);
+    const [transferState, setTransferState] = useState<{
+        open: boolean;
+        mode: 'selected' | 'by-owner';
+        targetIds: number[];
+        targetNames: string[];
+        initialFromOwnerUserId: number | null;
+    }>({
+        open: false,
+        mode: 'selected',
+        targetIds: [],
+        targetNames: [],
+        initialFromOwnerUserId: null,
+    });
+    const [transferError, setTransferError] = useState('');
 
     const currentPage = parsePageParam(searchParams.get('page'));
     const pageSize = parsePageSizeParam(searchParams.get('size'));
     const keyword = (searchParams.get('keyword') ?? '').trim();
+    const ownerUserId = parseOwnerParam(searchParams.get('owner'));
+
+    useEffect(() => {
+        setSelectedIds([]);
+    }, [groupId]);
 
     useEffect(() => {
         setKeywordInput(keyword);
@@ -121,18 +156,55 @@ export default function DataSourceList() {
     }, [suppressPaginationHover]);
 
     const pageQuery = useQuery({
-        queryKey: buildDataSourcePageQueryKey({ currentPage, pageSize, keyword, groupId }),
+        queryKey: buildDataSourcePageQueryKey({ currentPage, pageSize, keyword, groupId, ownerUserId }),
         queryFn: () =>
             getDataSourcePage({
                 page: currentPage,
                 size: pageSize,
                 keyword: keyword || undefined,
                 groupId,
+                ownerUserId,
             }),
         placeholderData: (previousData, previousQuery) =>
             groupId != null && previousQuery?.queryKey[1].groupId === groupId ? previousData : undefined,
         enabled: groupId != null,
     });
+
+    const ownerSummaryQuery = useQuery({
+        queryKey: ['datasource-owners', groupId],
+        queryFn: () => getDataSourceOwners(groupId!).then((res) => res ?? []),
+        enabled: groupId != null,
+        staleTime: 30_000,
+    });
+
+    const ownerSummaries = useMemo(() => ownerSummaryQuery.data ?? [], [ownerSummaryQuery.data]);
+    const ownerFilterOptions = useMemo(() => {
+        const myId = userInfo?.id;
+        const mySummary = myId != null ? ownerSummaries.find((owner) => owner.userId === myId) : undefined;
+        const options = [{ value: 'all', label: '全部负责人' }];
+        if (myId != null) {
+            options.push({
+                value: String(myId),
+                label: mySummary ? `我负责的 (${mySummary.count})` : '我负责的',
+            });
+        }
+        ownerSummaries.forEach((owner) => {
+            if (owner.userId === myId) return;
+            const statusHint = owner.status === 'DISABLED'
+                ? ' [已停用]'
+                : owner.status === 'LEFT_GROUP'
+                    ? ' [已离组]'
+                    : '';
+            options.push({
+                value: String(owner.userId),
+                label: `${formatCandidateLabel(owner.displayName, owner.username)}${statusHint} (${owner.count})`,
+            });
+        });
+        if (ownerUserId != null && !options.some((opt) => opt.value === String(ownerUserId))) {
+            options.push({ value: String(ownerUserId), label: `用户 #${ownerUserId}` });
+        }
+        return options;
+    }, [ownerSummaries, ownerUserId, userInfo?.id]);
 
     const pageData = pageQuery.data;
     const records = pageData?.records ?? [];
@@ -176,10 +248,12 @@ export default function DataSourceList() {
                 previousPages: queryClient.getQueriesData<PageResult<DataSource>>({ queryKey: ['dataSources'] }),
             };
         },
-        onSuccess: () => {
+        onSuccess: (_data, id) => {
             setPendingDeleteTarget(null);
+            setSelectedIds((prev) => prev.filter((item) => item !== id));
             showSuccess('数据源已删除');
             void queryClient.invalidateQueries({ queryKey: ['dataSources'] });
+            void queryClient.invalidateQueries({ queryKey: ['datasource-owners', groupId] });
         },
         onError: (error, _id, context) => {
             context?.previousPages.forEach(([queryKey, page]) => {
@@ -301,6 +375,75 @@ export default function DataSourceList() {
         }
     };
 
+    const transferMutation = useMutation({
+        mutationFn: (payload: TransferOwnerPayload) => transferDataSourceOwner(groupId!, payload),
+        onSuccess: (result) => {
+            setTransferError('');
+            setTransferState((prev) => ({ ...prev, open: false }));
+            if (transferState.mode === 'selected') {
+                const transferredSet = new Set(transferState.targetIds);
+                setSelectedIds((prev) => prev.filter((id) => !transferredSet.has(id)));
+            } else {
+                setSelectedIds([]);
+            }
+            showSuccess(`已转移 ${result.updatedCount} 个数据源的负责人至 ${result.targetOwnerName}`);
+            void queryClient.invalidateQueries({ queryKey: ['dataSources'] });
+            void queryClient.invalidateQueries({ queryKey: ['datasource-owners', groupId] });
+        },
+        onError: (error) => {
+            setTransferError(getErrorMessage(error, '转移负责人失败'));
+        },
+    });
+
+    const handleToggleRow = (id: number) => {
+        setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+    };
+
+    const handleToggleAll = (checked: boolean) => {
+        const pageIds = records.map((item) => item.id);
+        if (checked) {
+            setSelectedIds((prev) => Array.from(new Set([...prev, ...pageIds])));
+        } else {
+            const pageIdSet = new Set(pageIds);
+            setSelectedIds((prev) => prev.filter((id) => !pageIdSet.has(id)));
+        }
+    };
+
+    const openSingleTransferDialog = (item: DataSource) => {
+        setTransferError('');
+        setTransferState({
+            open: true,
+            mode: 'selected',
+            targetIds: [item.id],
+            targetNames: [item.name],
+            initialFromOwnerUserId: null,
+        });
+    };
+
+    const openSelectedTransferDialog = () => {
+        if (selectedIds.length === 0) return;
+        setTransferError('');
+        const nameMap = new Map(records.map((item) => [item.id, item.name]));
+        setTransferState({
+            open: true,
+            mode: 'selected',
+            targetIds: selectedIds,
+            targetNames: selectedIds.map((id) => nameMap.get(id) ?? `#${id}`),
+            initialFromOwnerUserId: null,
+        });
+    };
+
+    const openBulkByOwnerDialog = () => {
+        setTransferError('');
+        setTransferState({
+            open: true,
+            mode: 'by-owner',
+            targetIds: [],
+            targetNames: [],
+            initialFromOwnerUserId: ownerUserId ?? null,
+        });
+    };
+
     const queryError = pageQuery.error as { message?: string } | null;
     const errorMessage = queryError?.message ?? '';
 
@@ -327,27 +470,74 @@ export default function DataSourceList() {
                         }}
                     />
                 </div>
+                <SimpleSelect
+                    className="datasource-owner-filter"
+                    ariaLabel="按负责人筛选数据源"
+                    value={ownerUserId != null ? String(ownerUserId) : 'all'}
+                    options={ownerFilterOptions}
+                    onChange={(nextValue) => {
+                        patchSearchParams((params) => {
+                            if (nextValue === 'all') {
+                                params.delete('owner');
+                            } else {
+                                params.set('owner', nextValue);
+                            }
+                            params.set('page', '1');
+                        });
+                    }}
+                />
                 <div className="datasource-toolbar-actions">
                     {canWrite && (
-                        <Button variant="default" onClick={handleCreate} type="button">
-                            <DatabaseZap size={16} />
-                            新建数据源
-                        </Button>
+                        <>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                type="button"
+                                disabled={ownerSummaries.length === 0}
+                                onClick={openBulkByOwnerDialog}
+                            >
+                                <ArrowLeftRight size={14} />
+                                批量转移
+                            </Button>
+                            <Button variant="default" onClick={handleCreate} type="button">
+                                <DatabaseZap size={16} />
+                                新建数据源
+                            </Button>
+                        </>
                     )}
                 </div>
             </section>
 
             <section className="datasource-table-panel animate-enter animate-enter-delay-1">
+                {canWrite && selectedIds.length > 0 ? (
+                    <div className="wb-list-selection-bar">
+                        <span className="wb-list-selection-count">已选 {selectedIds.length} 个数据源</span>
+                        <div className="wb-list-selection-actions">
+                            <Button type="button" size="sm" variant="default" onClick={openSelectedTransferDialog}>
+                                <ArrowLeftRight size={13} />
+                                转移负责人
+                            </Button>
+                            <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedIds([])}>
+                                清空选择
+                            </Button>
+                        </div>
+                    </div>
+                ) : null}
                 <DataSourceTable
                     data={records}
                     canWrite={canWrite}
                     deletePendingId={pendingDeleteId}
                     errorMessage={errorMessage}
-                    hasActiveFilter={Boolean(keyword)}
+                    hasActiveFilter={Boolean(keyword || ownerUserId != null)}
                     hasFooter={total > 0}
                     isRefreshing={isRefreshing}
+                    selectedIds={selectedIds}
+                    onToggleRow={handleToggleRow}
+                    onToggleAll={handleToggleAll}
+                    onTransferOwner={openSingleTransferDialog}
                     onClearFilters={() => patchSearchParams((params) => {
                         params.delete('keyword');
+                        params.delete('owner');
                         params.delete('page');
                     })}
                     onCreate={handleCreate}
@@ -404,6 +594,7 @@ export default function DataSourceList() {
                     showSuccess(details.action === 'create' ? '数据源已创建' : '数据源已更新');
 
                     void queryClient.invalidateQueries({ queryKey: ['dataSources'] });
+                    void queryClient.invalidateQueries({ queryKey: ['datasource-owners', groupId] });
                     if (details.action === 'create') {
                         patchSearchParams((params) => {
                             params.delete('page');
@@ -411,6 +602,28 @@ export default function DataSourceList() {
                     }
                 }}
             />
+
+            {groupId != null ? (
+                <TransferOwnerDialog
+                    open={transferState.open}
+                    onOpenChange={(nextOpen) => {
+                        if (!nextOpen && !transferMutation.isPending) {
+                            setTransferError('');
+                            setTransferState((prev) => ({ ...prev, open: false }));
+                        }
+                    }}
+                    groupId={groupId}
+                    assetLabel="数据源"
+                    mode={transferState.mode}
+                    selectedIds={transferState.targetIds}
+                    selectedNames={transferState.targetNames}
+                    owners={ownerSummaries}
+                    initialFromOwnerUserId={transferState.initialFromOwnerUserId}
+                    pending={transferMutation.isPending}
+                    errorMessage={transferError}
+                    onConfirm={(payload) => transferMutation.mutate(payload)}
+                />
+            ) : null}
 
             <ConfirmDialog
                 open={Boolean(pendingDeleteTarget)}

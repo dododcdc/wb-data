@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, UserPlus } from 'lucide-react';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
-import { ConfirmDialog } from '../../components/ui/confirm-dialog';
+import { handoverGroupMemberAssets } from '../../api/ownership';
+import { RemoveMemberDialog } from './RemoveMemberDialog';
 import { ListPagination } from '../../components/ui/list/ListPagination';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import { useAuthStore } from '../../utils/auth';
@@ -125,6 +126,8 @@ export default function GroupSettingsPage() {
             showError(error, '角色变更失败');
         },
     });
+
+    const [handoverRemoving, setHandoverRemoving] = useState(false);
 
     const removeMemberMutation = useMutation({
         mutationFn: (memberId: number) => removeMember(groupId!, memberId),
@@ -308,30 +311,39 @@ export default function GroupSettingsPage() {
                 submitting={updateRoleMutation.isPending}
             />
 
-            <ConfirmDialog
-                open={Boolean(pendingRemoveTarget)}
-                onOpenChange={(nextOpen) => {
-                    if (!nextOpen && pendingRemoveId == null) {
+            <RemoveMemberDialog
+                groupId={groupId ?? 0}
+                member={pendingRemoveTarget}
+                removing={pendingRemoveId != null || handoverRemoving}
+                onClose={() => setPendingRemoveTarget(null)}
+                onConfirmRemoveOnly={(member) => {
+                    removeMemberMutation.mutate(member.id);
+                }}
+                onConfirmHandoverAndRemove={async (member, targetOwnerUserId) => {
+                    if (groupId == null) return;
+                    setHandoverRemoving(true);
+                    let handoverDone = false;
+                    try {
+                        const handoverResult = await handoverGroupMemberAssets(groupId, member.userId, targetOwnerUserId);
+                        handoverDone = true;
+                        void queryClient.invalidateQueries({ queryKey: ['groupMemberAssetSummary'] });
+                        void queryClient.invalidateQueries({ queryKey: ['groupOwnerCandidates', groupId] });
+                        void queryClient.invalidateQueries({ queryKey: ['offlineFlowOwners', groupId] });
+                        void queryClient.invalidateQueries({ queryKey: ['datasources'] });
+                        void queryClient.invalidateQueries({ queryKey: ['parameter-groups'] });
+                        await removeMember(groupId, member.id);
+                        const transferredText = handoverResult?.totalTransferred != null
+                            ? `，已交接 ${handoverResult.totalTransferred} 项资产给「${handoverResult.targetOwnerName}」`
+                            : '，并完成资产交接';
+                        showSuccess(`${member.displayName} 已移出项目组${transferredText}`);
+                        void queryClient.invalidateQueries({ queryKey: ['group-settings-members'] });
                         setPendingRemoveTarget(null);
+                    } catch (error) {
+                        showError(error, handoverDone ? '移除成员失败' : '资产交接失败');
+                    } finally {
+                        setHandoverRemoving(false);
                     }
                 }}
-                title="移除成员"
-                description={pendingRemoveTarget ? (
-                    <>
-                        确定要将 <strong>{pendingRemoveTarget.displayName}</strong> 从项目组中移除吗？
-                        <br />
-                        移除后该成员将无法访问此项目组的资源。
-                    </>
-                ) : ''}
-                variant="destructive"
-                confirmText={pendingRemoveId != null ? '移除中...' : '确认移除'}
-                onConfirm={() => {
-                    if (pendingRemoveTarget) {
-                        removeMemberMutation.mutate(pendingRemoveTarget.id);
-                    }
-                }}
-                isLoading={pendingRemoveId != null}
-                icon="warning"
             />
         </div>
     );

@@ -1,5 +1,6 @@
 import request from '../../utils/request';
 import { groupScopedPath } from '../groupScoped';
+import type { OwnerStatus } from '../groupSettings';
 import { offlinePath, REMOTE_GIT_REQUEST_TIMEOUT_MS } from './shared';
 
 export interface RemoteStatus {
@@ -53,6 +54,10 @@ export interface OfflineRepoTreeNode {
     scheduleState: OfflineScheduleState;
     schedulePeriod: 'HOURLY' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'CUSTOM' | null;
     dependencyCount: number;
+    ownerUserId?: number | null;
+    ownerName?: string | null;
+    ownerUsername?: string | null;
+    ownerStatus?: OwnerStatus | null;
 }
 
 export interface OfflineRepoTreeResponse {

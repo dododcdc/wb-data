@@ -8,10 +8,11 @@ const listStyles = readFileSync(resolve(process.cwd(), 'src/components/ui/list/l
 describe('OperationsCenter table layout', () => {
     it('uses the compact shared list and includes the end time column', () => {
         expect(table).toContain('className="wb-list-compact"');
-        expect(table).toContain('minWidth="1240px"');
+        expect(table).toContain('minWidth="1180px"');
+        expect(table).toContain('负责人');
         expect(table).toContain('结束时间');
         expect(table).toContain('row.endDate');
         expect(listStyles).toContain('.wb-list-compact .wb-list-table td');
-        expect(listStyles).toMatch(/\.wb-list-compact \.wb-list-table td\s*\{[^}]*height:\s*40px/s);
+        expect(listStyles).toMatch(/\.wb-list-compact \.wb-list-table td\s*\{[^}]*height:\s*34px/s);
     });
 });

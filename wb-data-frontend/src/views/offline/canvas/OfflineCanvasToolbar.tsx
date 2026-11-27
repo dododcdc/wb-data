@@ -15,12 +15,14 @@ import {
 import type { ReactNode } from 'react';
 
 import type { GitSyncConfig } from '../../../api/gitSettings';
+import type { OwnerStatus } from '../../../api/groupSettings';
 import type { FlowParameterBinding } from '../../../api/offline';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../components/ui/tooltip';
 import { isExecuteButtonDisabled } from '../execution/executionToolbarState';
 import { OfflineDeploymentBadge } from '../version/OfflineDeploymentBadge';
 import { getTimezoneOffset } from '../schedule/ScheduleUtils';
 import type { CanvasMode } from '../version/useOnlineFlowSnapshot';
+import { OwnerCell } from '../../../components/owner/OwnerCell';
 
 interface OfflineCanvasToolbarProps {
     activeFlowPath: string | null;
@@ -53,6 +55,12 @@ interface OfflineCanvasToolbarProps {
     onExecute: () => void;
     onOpenExecutions: () => void;
     onOpenVersions: () => void;
+    ownerUserId?: number | null;
+    ownerName?: string | null;
+    ownerUsername?: string | null;
+    ownerStatus?: OwnerStatus | null;
+    canTransferOwner?: boolean;
+    onTransferOwner?: () => void;
 }
 
 interface ToolbarButtonProps {
@@ -112,6 +120,12 @@ export function OfflineCanvasToolbar({
     onExecute,
     onOpenExecutions,
     onOpenVersions,
+    ownerUserId,
+    ownerName,
+    ownerUsername,
+    ownerStatus,
+    canTransferOwner = false,
+    onTransferOwner,
 }: OfflineCanvasToolbarProps) {
     const active = activeFlowPath !== null;
     const isOnlineMode = canvasMode === 'online';
@@ -126,6 +140,8 @@ export function OfflineCanvasToolbar({
     const timezoneTooltip = timezone
         ? `任务运行时区：${timezone}${timezoneOffset && timezoneOffset !== timezone ? ` (${timezoneOffset})` : ''}`
         : '';
+
+    const hasOwner = ownerUserId != null || Boolean(ownerName) || Boolean(ownerUsername);
 
     return (
         <header className="offline-canvas-toolbar">
@@ -244,7 +260,7 @@ export function OfflineCanvasToolbar({
                 <History size={16} />
             </ToolbarButton>
 
-            {(hasDraftStatus || timezone || branch || isOnlineMode) ? (
+            {(hasDraftStatus || timezone || branch || isOnlineMode || hasOwner) ? (
                 <div className="offline-canvas-toolbar-meta">
                     <OfflineDeploymentBadge groupId={groupId} branch={branch} config={deploymentConfig} />
                     {isOnlineMode ? (
@@ -272,6 +288,36 @@ export function OfflineCanvasToolbar({
                                 {timezoneTooltip}
                             </TooltipContent>
                         </Tooltip>
+                    ) : null}
+                    {hasOwner ? (
+                        <>
+                            {(isOnlineMode || hasDraftStatus || timezone) ? (
+                                <span className="offline-canvas-meta-sep" aria-hidden="true" />
+                            ) : null}
+                            {!isOnlineMode && canTransferOwner && onTransferOwner ? (
+                                <button
+                                    type="button"
+                                    className="offline-canvas-owner-button"
+                                    onClick={onTransferOwner}
+                                    title="点击转移当前离线任务负责人"
+                                    aria-label="转移任务负责人"
+                                >
+                                    <OwnerCell
+                                        name={ownerName}
+                                        username={ownerUsername}
+                                        status={ownerStatus}
+                                    />
+                                </button>
+                            ) : (
+                                <span className="offline-canvas-owner-readonly">
+                                    <OwnerCell
+                                        name={ownerName}
+                                        username={ownerUsername}
+                                        status={ownerStatus}
+                                    />
+                                </span>
+                            )}
+                        </>
                     ) : null}
                 </div>
             ) : null}

@@ -84,4 +84,32 @@ describe('DataSourceTable', () => {
         fireEvent.click(screen.getByRole('button', { name: '重试' }));
         expect(props.onRetry).toHaveBeenCalledOnce();
     });
+
+    it('renders owner status tag and supports selection and owner transfer action', () => {
+        const departedSource = {
+            ...dataSource,
+            ownerUserId: 2,
+            ownerName: '小明',
+            ownerUsername: 'xiaoming',
+            ownerStatus: 'LEFT_GROUP' as const,
+        };
+        const props = renderTable({
+            data: [departedSource],
+            selectedIds: [],
+            onToggleRow: vi.fn(),
+            onToggleAll: vi.fn(),
+            onTransferOwner: vi.fn(),
+        });
+
+        expect(screen.getByText('小明')).toBeTruthy();
+        expect(screen.getByText('已离组')).toBeTruthy();
+
+        const checkboxes = screen.getAllByRole('checkbox');
+        fireEvent.click(checkboxes[1]);
+        expect(props.onToggleRow).toHaveBeenCalledWith(1);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Alpha的更多操作' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: '转移负责人' }));
+        expect(props.onTransferOwner).toHaveBeenCalledWith(departedSource);
+    });
 });
