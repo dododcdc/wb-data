@@ -42,6 +42,8 @@ public class DataSource {
 
     private String owner;
 
+    private Long ownerUserId;
+
     private Long createdBy;
 
     private Long updatedBy;

@@ -22,6 +22,7 @@ class OperationsExecutionControllerPermissionTest {
                 String.class,
                 String.class,
                 String.class,
+                Long.class,
                 Instant.class,
                 Instant.class,
                 Integer.class,

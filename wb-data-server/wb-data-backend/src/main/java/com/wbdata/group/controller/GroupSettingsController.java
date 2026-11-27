@@ -15,6 +15,7 @@ import com.wbdata.common.Result;
 import com.wbdata.common.dto.PageQuery;
 import com.wbdata.common.dto.PageResult;
 import com.wbdata.group.dto.*;
+import com.wbdata.group.service.GroupOwnerService;
 import com.wbdata.group.service.GroupSettingsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -33,6 +34,7 @@ import java.util.List;
 public class GroupSettingsController {
 
     private final GroupSettingsService groupSettingsService;
+    private final GroupOwnerService groupOwnerService;
 
     @Operation(summary = "获取项目组信息")
     @GetMapping
@@ -57,6 +59,13 @@ public class GroupSettingsController {
             @Validated PageQuery query) {
         return Result.success(groupSettingsService.listMembers(
                 context.groupId(), query));
+    }
+
+    @Operation(summary = "可指派负责人列表")
+    @GetMapping("/owners")
+    public Result<List<GroupOwnerOptionResponse>> listOwnerCandidates(
+            @RequireGroupAuth(Permission.MEMBER_READ) GroupAuthContext context) {
+        return Result.success(groupOwnerService.listOwnerCandidates(context.groupId()));
     }
 
     @Operation(summary = "可添加用户列表")

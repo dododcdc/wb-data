@@ -4,6 +4,7 @@ import com.wbdata.auth.context.RequireGroupAuth;
 import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.common.dto.PageQuery;
+import com.wbdata.group.dto.TransferOwnerRequest;
 import com.wbdata.parameter.dto.CreateParameterGroupRequest;
 import com.wbdata.parameter.dto.ParameterPreviewRequest;
 import com.wbdata.parameter.dto.UpdateParameterGroupRequest;
@@ -18,7 +19,11 @@ class ParameterGroupControllerPermissionTest {
     @Test
     void readsRequireParameterReadAndMutationsRequireParameterWrite() throws Exception {
         Method list = ParameterGroupController.class.getMethod(
-                "list", GroupAuthContext.class, PageQuery.class, String.class);
+                "list", GroupAuthContext.class, PageQuery.class, String.class, Long.class);
+        Method listOwners = ParameterGroupController.class.getMethod(
+                "listOwners", GroupAuthContext.class);
+        Method transferOwner = ParameterGroupController.class.getMethod(
+                "transferOwner", GroupAuthContext.class, TransferOwnerRequest.class);
         Method create = ParameterGroupController.class.getMethod(
                 "create", GroupAuthContext.class, CreateParameterGroupRequest.class);
         Method get = ParameterGroupController.class.getMethod(
@@ -33,9 +38,11 @@ class ParameterGroupControllerPermissionTest {
                 "preview", GroupAuthContext.class, Long.class, ParameterPreviewRequest.class);
 
         assertThat(auth(list).value()).isEqualTo(Permission.PARAMETER_READ);
+        assertThat(auth(listOwners).value()).isEqualTo(Permission.PARAMETER_READ);
         assertThat(auth(get).value()).isEqualTo(Permission.PARAMETER_READ);
         assertThat(auth(preview).value()).isEqualTo(Permission.PARAMETER_READ);
         assertThat(auth(create).value()).isEqualTo(Permission.PARAMETER_WRITE);
+        assertThat(auth(transferOwner).value()).isEqualTo(Permission.PARAMETER_WRITE);
         assertThat(auth(update).value()).isEqualTo(Permission.PARAMETER_WRITE);
         assertThat(auth(archive).value()).isEqualTo(Permission.PARAMETER_WRITE);
         assertThat(auth(restore).value()).isEqualTo(Permission.PARAMETER_WRITE);

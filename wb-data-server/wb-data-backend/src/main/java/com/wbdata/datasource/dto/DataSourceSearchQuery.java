@@ -11,6 +11,7 @@ public class DataSourceSearchQuery {
     private String type;
     private List<String> typeList;
     private String status;
+    private Long ownerUserId;
     private String sortField;
     private String sortOrder = "desc";
     private Integer page = 1;

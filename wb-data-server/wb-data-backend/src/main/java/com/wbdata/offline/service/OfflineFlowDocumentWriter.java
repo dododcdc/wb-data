@@ -1,5 +1,6 @@
 package com.wbdata.offline.service;
 
+import com.wbdata.group.service.GroupOwnerService;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.dto.OfflineFlowDocumentResponse;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
@@ -75,6 +76,13 @@ final class OfflineFlowDocumentWriter {
     }
 
     OfflineFlowDocumentResponse saveUnlocked(SaveOfflineFlowDocumentRequest request) {
+        return saveUnlocked(request, null, true, null);
+    }
+
+    OfflineFlowDocumentResponse saveUnlocked(SaveOfflineFlowDocumentRequest request,
+                                             @Nullable Long operatorUserId,
+                                             boolean canManageOthersOwnership,
+                                             @Nullable GroupOwnerService groupOwnerService) {
         try {
             Path repoPath = offlineProperties.resolveRepoPath(request.groupId());
             Path flowFile = store.resolveRepoFile(repoPath, request.path());
@@ -83,6 +91,9 @@ final class OfflineFlowDocumentWriter {
             String flowSource = isNewFile
                     ? yamlSupport.buildEmptyFlowYaml(extractFlowId(request.path()), "pg-" + request.groupId())
                     : offlineFlowContentService.getFlowContent(request.groupId(), request.path()).content();
+            Long existingOwnerUserId = isNewFile ? null : yamlSupport.readOwnerUserId(flowSource);
+            Long effectiveOwnerUserId = resolveEffectiveOwnerUserId(
+                    request, isNewFile, existingOwnerUserId, operatorUserId, canManageOthersOwnership, groupOwnerService);
             // Reject malformed draft schedules before writing scripts, sidecars or a new stub.
             yamlSupport.applySchedule(flowSource, request.schedule());
             ParameterSnapshotUpdate parameterUpdate = parameterBindingAssembler.prepareParameterSnapshotUpdate(
@@ -122,6 +133,9 @@ final class OfflineFlowDocumentWriter {
             }
 
             applyRuntimeTimezoneToFlowFile(repoPath, request.path(), runtimeTimezone);
+            if (effectiveOwnerUserId != null) {
+                applyOwnerUserIdToFlowFile(repoPath, request.path(), effectiveOwnerUserId);
+            }
             if (request.schedule() != null) {
                 boolean retryEnabled = request.schedule().retryEnabled();
                 applyScheduleToFlowFile(repoPath, request.path(), new OfflineFlowSchedule(
@@ -256,6 +270,46 @@ final class OfflineFlowDocumentWriter {
         Files.writeString(flowFile,
                 yamlSupport.applyRuntimeTimezoneLabel(current, runtimeTimezone),
                 StandardCharsets.UTF_8);
+    }
+
+    private void applyOwnerUserIdToFlowFile(Path repoPath,
+                                            String flowPath,
+                                            Long ownerUserId) throws IOException {
+        Path flowFile = store.resolveRepoFile(repoPath, flowPath);
+        String current = Files.readString(flowFile, StandardCharsets.UTF_8);
+        Files.writeString(flowFile,
+                yamlSupport.applyOwnerUserIdLabel(current, ownerUserId),
+                StandardCharsets.UTF_8);
+    }
+
+    @Nullable
+    private Long resolveEffectiveOwnerUserId(SaveOfflineFlowDocumentRequest request,
+                                             boolean isNewFile,
+                                             @Nullable Long existingOwnerUserId,
+                                             @Nullable Long operatorUserId,
+                                             boolean canManageOthersOwnership,
+                                             @Nullable GroupOwnerService groupOwnerService) {
+        if (isNewFile) {
+            Long candidate = request.ownerUserId() != null ? request.ownerUserId() : operatorUserId;
+            if (candidate != null && groupOwnerService != null) {
+                groupOwnerService.requireAssignableOwner(request.groupId(), candidate);
+            }
+            return candidate;
+        }
+        Long requested = request.ownerUserId();
+        if (requested == null) {
+            return existingOwnerUserId;
+        }
+        if (requested.equals(existingOwnerUserId)) {
+            return existingOwnerUserId;
+        }
+        if (existingOwnerUserId != null && !canManageOthersOwnership && !existingOwnerUserId.equals(operatorUserId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "仅负责人本人或项目组管理员可修改任务负责人");
+        }
+        if (groupOwnerService != null) {
+            groupOwnerService.requireAssignableOwner(request.groupId(), requested);
+        }
+        return requested;
     }
 
     private void saveWithStages(SaveOfflineFlowDocumentRequest request, DocumentSnapshot current) throws IOException {

@@ -14,6 +14,14 @@ public record CreateParameterGroupRequest(
         String code,
         @NotBlank @Size(max = 100) String name,
         @Size(max = 500) String description,
-        @NotEmpty @Size(max = 200) List<@Valid ParameterDefinitionRequest> definitions
+        @NotEmpty @Size(max = 200) List<@Valid ParameterDefinitionRequest> definitions,
+        Long ownerUserId
 ) {
+    public CreateParameterGroupRequest(
+            String code,
+            String name,
+            String description,
+            List<ParameterDefinitionRequest> definitions) {
+        this(code, name, description, definitions, null);
+    }
 }

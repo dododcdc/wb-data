@@ -5,6 +5,11 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.wbdata.common.dto.PageQuery;
 import com.wbdata.common.dto.PageResult;
+import com.wbdata.group.dto.AssetOwnerSummaryResponse;
+import com.wbdata.group.dto.GroupOwnerInfo;
+import com.wbdata.group.dto.TransferOwnerRequest;
+import com.wbdata.group.dto.TransferOwnerResponse;
+import com.wbdata.group.service.GroupOwnerService;
 import com.wbdata.parameter.dto.CreateParameterGroupRequest;
 import com.wbdata.parameter.dto.ParameterDefinitionRequest;
 import com.wbdata.parameter.dto.ParameterDefinitionResponse;
@@ -35,6 +40,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -53,14 +59,22 @@ public class ParameterGroupService {
 
     private final WbParameterGroupMapper groupMapper;
     private final WbParameterDefinitionMapper definitionMapper;
+    private final GroupOwnerService groupOwnerService;
 
     public PageResult<ParameterGroupSummaryResponse> list(Long groupId, PageQuery query, String status) {
+        return list(groupId, query, status, null);
+    }
+
+    public PageResult<ParameterGroupSummaryResponse> list(Long groupId, PageQuery query, String status, Long ownerUserId) {
         LambdaQueryWrapper<WbParameterGroup> wrapper = new LambdaQueryWrapper<WbParameterGroup>()
                 .eq(WbParameterGroup::getGroupId, groupId)
                 .orderByDesc(WbParameterGroup::getUpdatedAt)
                 .orderByDesc(WbParameterGroup::getId);
         if (status != null && !status.isBlank()) {
             wrapper.eq(WbParameterGroup::getStatus, parseStatus(status));
+        }
+        if (ownerUserId != null) {
+            wrapper.eq(WbParameterGroup::getOwnerUserId, ownerUserId);
         }
         if (query.getKeyword() != null && !query.getKeyword().isBlank()) {
             String keyword = query.getKeyword().trim();
@@ -77,8 +91,121 @@ public class ParameterGroupService {
                         .in(WbParameterDefinition::getParameterGroupId, ids)).stream()
                 .collect(Collectors.groupingBy(WbParameterDefinition::getParameterGroupId, Collectors.counting()));
 
+        List<Long> ownerIds = page.getRecords().stream()
+                .map(WbParameterGroup::getOwnerUserId)
+                .filter(Objects::nonNull)
+                .toList();
+        Map<Long, GroupOwnerInfo> ownerMap = groupOwnerService.resolveOwners(groupId, ownerIds);
+
         PageResult<WbParameterGroup> raw = PageResult.of(page);
-        return raw.convert(group -> toSummary(group, counts.getOrDefault(group.getId(), 0L)));
+        return raw.convert(group -> toSummary(
+                group,
+                counts.getOrDefault(group.getId(), 0L),
+                ownerMap.get(group.getOwnerUserId())
+        ));
+    }
+
+    public List<AssetOwnerSummaryResponse> listOwners(Long groupId) {
+        List<WbParameterGroup> groups = groupMapper.selectList(new LambdaQueryWrapper<WbParameterGroup>()
+                .select(WbParameterGroup::getOwnerUserId)
+                .eq(WbParameterGroup::getGroupId, groupId));
+        Map<Long, Long> counts = groups.stream()
+                .map(WbParameterGroup::getOwnerUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.groupingBy(id -> id, Collectors.counting()));
+        return groupOwnerService.summarizeOwners(groupId, counts);
+    }
+
+    public long countByGroupAndOwner(Long groupId, Long ownerUserId) {
+        if (groupId == null || ownerUserId == null) {
+            return 0L;
+        }
+        return groupMapper.countByGroupAndOwnerUserId(groupId, ownerUserId);
+    }
+
+    public Map<Long, Long> countByOwnerAcrossGroups(Long ownerUserId) {
+        if (ownerUserId == null) {
+            return Map.of();
+        }
+        List<WbParameterGroupMapper.GroupCountRow> rows = groupMapper.countByOwnerAcrossGroups(ownerUserId);
+        Map<Long, Long> counts = new LinkedHashMap<>();
+        if (rows != null) {
+            for (WbParameterGroupMapper.GroupCountRow row : rows) {
+                if (row.groupId() != null && row.cnt() != null && row.cnt() > 0) {
+                    counts.put(row.groupId(), row.cnt());
+                }
+            }
+        }
+        return counts;
+    }
+
+    @Transactional
+    public TransferOwnerResponse transferAllFromOwnerInternal(Long groupId,
+                                                              Long operatorUserId,
+                                                              Long fromOwnerUserId,
+                                                              Long targetOwnerUserId) {
+        if (fromOwnerUserId == null) {
+            throw badRequest("原负责人不能为空");
+        }
+        if (Objects.equals(fromOwnerUserId, targetOwnerUserId)) {
+            throw badRequest("目标负责人不能与原负责人相同");
+        }
+        GroupOwnerInfo targetOwner = groupOwnerService.requireAssignableOwner(groupId, targetOwnerUserId);
+        UpdateWrapper<WbParameterGroup> update = new UpdateWrapper<WbParameterGroup>()
+                .eq("group_id", groupId)
+                .eq("owner_user_id", fromOwnerUserId)
+                .set("owner_user_id", targetOwner.userId())
+                .set("updated_by", operatorUserId)
+                .setSql("revision = revision + 1");
+        int updated = groupMapper.update(null, update);
+        return new TransferOwnerResponse(updated, targetOwner.userId(), targetOwner.effectiveName());
+    }
+
+    @Transactional
+    public TransferOwnerResponse transferOwner(Long groupId, Long operatorUserId, TransferOwnerRequest request) {
+        List<Long> distinctIds = request.ids() == null
+                ? List.of()
+                : request.ids().stream().filter(Objects::nonNull).distinct().toList();
+        if (distinctIds.isEmpty() && request.fromOwnerUserId() == null) {
+            throw badRequest("请选择要转移的参数组或指定原负责人");
+        }
+
+        GroupOwnerInfo targetOwner = groupOwnerService.requireAssignableOwner(groupId, request.targetOwnerUserId());
+        boolean canManageOthers = groupOwnerService.canManageOthersOwnership(groupId, operatorUserId);
+
+        int updated;
+        if (!distinctIds.isEmpty()) {
+            List<WbParameterGroup> matched = groupMapper.selectList(new LambdaQueryWrapper<WbParameterGroup>()
+                    .eq(WbParameterGroup::getGroupId, groupId)
+                    .in(WbParameterGroup::getId, distinctIds));
+            if (matched.size() != distinctIds.size()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "包含不存在或不属于当前项目组的参数组");
+            }
+            if (!canManageOthers && matched.stream().anyMatch(item -> !Objects.equals(item.getOwnerUserId(), operatorUserId))) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "仅项目组管理员或当前负责人可转移参数组");
+            }
+            UpdateWrapper<WbParameterGroup> update = new UpdateWrapper<WbParameterGroup>()
+                    .eq("group_id", groupId)
+                    .in("id", distinctIds)
+                    .set("owner_user_id", targetOwner.userId())
+                    .set("updated_by", operatorUserId)
+                    .setSql("revision = revision + 1");
+            updated = groupMapper.update(null, update);
+        } else {
+            Long fromOwnerUserId = request.fromOwnerUserId();
+            if (!canManageOthers && !Objects.equals(fromOwnerUserId, operatorUserId)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "仅项目组管理员可批量转移其他负责人的参数组");
+            }
+            UpdateWrapper<WbParameterGroup> update = new UpdateWrapper<WbParameterGroup>()
+                    .eq("group_id", groupId)
+                    .eq("owner_user_id", fromOwnerUserId)
+                    .set("owner_user_id", targetOwner.userId())
+                    .set("updated_by", operatorUserId)
+                    .setSql("revision = revision + 1");
+            updated = groupMapper.update(null, update);
+        }
+
+        return new TransferOwnerResponse(updated, targetOwner.userId(), targetOwner.effectiveName());
     }
 
     @Transactional
@@ -86,6 +213,8 @@ public class ParameterGroupService {
         String code = normalizeCode(request.code());
         ensureCodeAvailable(groupId, code);
         List<CanonicalDefinition> definitions = normalizeDefinitions(request.definitions());
+        Long targetOwnerId = request.ownerUserId() != null ? request.ownerUserId() : userId;
+        GroupOwnerInfo ownerInfo = groupOwnerService.requireAssignableOwner(groupId, targetOwnerId);
 
         WbParameterGroup group = new WbParameterGroup();
         group.setGroupId(groupId);
@@ -95,6 +224,7 @@ public class ParameterGroupService {
         group.setVersion(1);
         group.setRevision(1);
         group.setStatus(ACTIVE);
+        group.setOwnerUserId(ownerInfo.userId());
         group.setCreatedBy(userId);
         group.setUpdatedBy(userId);
         try {
@@ -104,12 +234,12 @@ public class ParameterGroupService {
         }
 
         List<WbParameterDefinition> saved = insertDefinitions(group.getId(), definitions);
-        return toResponse(group, saved);
+        return toResponse(group, saved, ownerInfo);
     }
 
     public ParameterGroupResponse get(Long groupId, Long id) {
         WbParameterGroup group = requireGroup(groupId, id);
-        return toResponse(group, selectDefinitions(id));
+        return toResponse(group, selectDefinitions(id), resolveSingleOwner(groupId, group.getOwnerUserId()));
     }
 
     public Optional<ParameterGroupResponse> findByCode(Long groupId, String code) {
@@ -119,7 +249,8 @@ public class ParameterGroupService {
         if (group == null) {
             return Optional.empty();
         }
-        return Optional.of(toResponse(group, selectDefinitions(group.getId())));
+        return Optional.of(toResponse(group, selectDefinitions(group.getId()),
+                resolveSingleOwner(groupId, group.getOwnerUserId())));
     }
 
     @Transactional
@@ -138,10 +269,23 @@ public class ParameterGroupService {
         boolean definitionsChanged = !currentDefinitions.equals(requestedDefinitions);
         String name = normalizeRequired(request.name(), "参数组名称不能为空");
         String description = blankToNull(request.description());
+
+        boolean ownerChanged = request.ownerUserId() != null
+                && !Objects.equals(group.getOwnerUserId(), request.ownerUserId());
+        GroupOwnerInfo nextOwnerInfo = null;
+        if (ownerChanged) {
+            if (!Objects.equals(group.getOwnerUserId(), userId)
+                    && !groupOwnerService.canManageOthersOwnership(groupId, userId)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "仅项目组管理员或当前负责人可变更参数组负责人");
+            }
+            nextOwnerInfo = groupOwnerService.requireAssignableOwner(groupId, request.ownerUserId());
+        }
+
         boolean metadataChanged = !Objects.equals(group.getName(), name)
-                || !Objects.equals(group.getDescription(), description);
+                || !Objects.equals(group.getDescription(), description)
+                || ownerChanged;
         if (!definitionsChanged && !metadataChanged) {
-            return toResponse(group, existing);
+            return toResponse(group, existing, resolveSingleOwner(groupId, group.getOwnerUserId()));
         }
         int nextVersion = definitionsChanged ? group.getVersion() + 1 : group.getVersion();
         int nextRevision = group.getRevision() + 1;
@@ -155,6 +299,9 @@ public class ParameterGroupService {
                 .set("updated_by", userId)
                 .set("version", nextVersion)
                 .set("revision", nextRevision);
+        if (ownerChanged) {
+            update.set("owner_user_id", nextOwnerInfo.userId());
+        }
         if (groupMapper.update(null, update) != 1) {
             throw concurrentModification();
         }
@@ -165,10 +312,16 @@ public class ParameterGroupService {
         }
         group.setName(name);
         group.setDescription(description);
+        if (ownerChanged) {
+            group.setOwnerUserId(nextOwnerInfo.userId());
+        }
         group.setUpdatedBy(userId);
         group.setVersion(nextVersion);
         group.setRevision(nextRevision);
-        return toResponse(group, saved);
+        GroupOwnerInfo responseOwner = ownerChanged
+                ? nextOwnerInfo
+                : resolveSingleOwner(groupId, group.getOwnerUserId());
+        return toResponse(group, saved, responseOwner);
     }
 
     @Transactional
@@ -270,7 +423,7 @@ public class ParameterGroupService {
             group.setUpdatedBy(userId);
             group.setRevision(nextRevision);
         }
-        return toResponse(group, selectDefinitions(id));
+        return toResponse(group, selectDefinitions(id), resolveSingleOwner(groupId, group.getOwnerUserId()));
     }
 
     private WbParameterGroup requireGroup(Long groupId, Long id) {
@@ -422,11 +575,33 @@ public class ParameterGroupService {
         return entity;
     }
 
-    private ParameterGroupResponse toResponse(WbParameterGroup group, List<WbParameterDefinition> definitions) {
+    private GroupOwnerInfo resolveSingleOwner(Long groupId, Long ownerUserId) {
+        if (ownerUserId == null) {
+            return null;
+        }
+        return groupOwnerService.resolveOwners(groupId, List.of(ownerUserId)).get(ownerUserId);
+    }
+
+    private ParameterGroupResponse toResponse(
+            WbParameterGroup group,
+            List<WbParameterDefinition> definitions,
+            GroupOwnerInfo ownerInfo) {
         return new ParameterGroupResponse(
-                group.getId(), group.getCode(), group.getName(), group.getDescription(),
-                group.getVersion(), group.getRevision(), group.getStatus(), group.getCreatedBy(), group.getUpdatedBy(),
-                group.getCreatedAt(), group.getUpdatedAt(),
+                group.getId(),
+                group.getCode(),
+                group.getName(),
+                group.getDescription(),
+                group.getVersion(),
+                group.getRevision(),
+                group.getStatus(),
+                group.getOwnerUserId(),
+                ownerInfo != null ? ownerInfo.effectiveName() : null,
+                ownerInfo != null ? ownerInfo.username() : null,
+                ownerInfo != null ? ownerInfo.status() : (group.getOwnerUserId() != null ? "UNKNOWN" : null),
+                group.getCreatedBy(),
+                group.getUpdatedBy(),
+                group.getCreatedAt(),
+                group.getUpdatedAt(),
                 definitions.stream().map(this::toDefinitionResponse).toList()
         );
     }
@@ -440,11 +615,27 @@ public class ParameterGroupService {
         );
     }
 
-    private ParameterGroupSummaryResponse toSummary(WbParameterGroup group, long parameterCount) {
+    private ParameterGroupSummaryResponse toSummary(
+            WbParameterGroup group,
+            long parameterCount,
+            GroupOwnerInfo ownerInfo) {
         return new ParameterGroupSummaryResponse(
-                group.getId(), group.getCode(), group.getName(), group.getDescription(), group.getVersion(),
-                group.getRevision(), group.getStatus(), parameterCount, group.getCreatedBy(), group.getUpdatedBy(),
-                group.getCreatedAt(), group.getUpdatedAt()
+                group.getId(),
+                group.getCode(),
+                group.getName(),
+                group.getDescription(),
+                group.getVersion(),
+                group.getRevision(),
+                group.getStatus(),
+                parameterCount,
+                group.getOwnerUserId(),
+                ownerInfo != null ? ownerInfo.effectiveName() : null,
+                ownerInfo != null ? ownerInfo.username() : null,
+                ownerInfo != null ? ownerInfo.status() : (group.getOwnerUserId() != null ? "UNKNOWN" : null),
+                group.getCreatedBy(),
+                group.getUpdatedBy(),
+                group.getCreatedAt(),
+                group.getUpdatedAt()
         );
     }
 

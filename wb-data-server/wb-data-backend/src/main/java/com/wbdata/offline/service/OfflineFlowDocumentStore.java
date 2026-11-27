@@ -225,6 +225,8 @@ final class OfflineFlowDocumentStore {
                 ? null
                 : runtimeTimezone.trim();
 
+        Long ownerUserId = yamlSupport.readOwnerUserId(flowContent);
+
         return new DocumentSnapshot(
                 new OfflineFlowDocumentResponse(
                         groupId,
@@ -239,7 +241,11 @@ final class OfflineFlowDocumentStore {
                         schedule,
                         parameterBinding,
                         runtimeTimezone,
-                        yamlSupport.readDependencyConfig(flowContent)
+                        yamlSupport.readDependencyConfig(flowContent),
+                        ownerUserId,
+                        null,
+                        null,
+                        null
                 ),
                 taskFiles,
                 managedNodeFiles,

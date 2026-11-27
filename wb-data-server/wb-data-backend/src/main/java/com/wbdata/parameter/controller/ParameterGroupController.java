@@ -6,6 +6,9 @@ import com.wbdata.auth.enums.Permission;
 import com.wbdata.common.Result;
 import com.wbdata.common.dto.PageQuery;
 import com.wbdata.common.dto.PageResult;
+import com.wbdata.group.dto.AssetOwnerSummaryResponse;
+import com.wbdata.group.dto.TransferOwnerRequest;
+import com.wbdata.group.dto.TransferOwnerResponse;
 import com.wbdata.parameter.dto.CreateParameterGroupRequest;
 import com.wbdata.parameter.dto.ParameterGroupReferencesResponse;
 import com.wbdata.parameter.dto.ParameterGroupResponse;
@@ -29,6 +32,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @Tag(name = "参数组", description = "项目组参数的管理、版本控制和预览")
 @RestController
 @RequestMapping("/api/v1/groups/{groupId}/parameter-groups")
@@ -42,8 +47,25 @@ public class ParameterGroupController {
     public Result<PageResult<ParameterGroupSummaryResponse>> list(
             @RequireGroupAuth(Permission.PARAMETER_READ) GroupAuthContext context,
             @Validated PageQuery query,
-            @RequestParam(required = false) String status) {
-        return Result.success(parameterGroupService.list(context.groupId(), query, status));
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Long ownerUserId) {
+        return Result.success(parameterGroupService.list(context.groupId(), query, status, ownerUserId));
+    }
+
+    @Operation(summary = "参数组负责人分布汇总")
+    @GetMapping("/owners")
+    public Result<List<AssetOwnerSummaryResponse>> listOwners(
+            @RequireGroupAuth(Permission.PARAMETER_READ) GroupAuthContext context) {
+        return Result.success(parameterGroupService.listOwners(context.groupId()));
+    }
+
+    @Operation(summary = "批量转移参数组负责人")
+    @PostMapping("/transfer-owner")
+    public Result<TransferOwnerResponse> transferOwner(
+            @RequireGroupAuth(Permission.PARAMETER_WRITE) GroupAuthContext context,
+            @Valid @RequestBody TransferOwnerRequest request) {
+        return Result.success(parameterGroupService.transferOwner(
+                context.groupId(), context.user().id(), request));
     }
 
     @Operation(summary = "创建参数组")

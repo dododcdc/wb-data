@@ -1,20 +1,25 @@
 package com.wbdata.datasource.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.wbdata.auth.context.RequireGroupAuth;
 import com.wbdata.auth.context.GroupAuthContext;
+import com.wbdata.auth.context.RequireGroupAuth;
 import com.wbdata.auth.enums.Permission;
-import com.wbdata.datasource.service.AuthorizedDataSourceService;
 import com.wbdata.common.Result;
-import com.wbdata.datasource.dto.DataSourceSaveDTO;
 import com.wbdata.datasource.dto.DataSourceResponse;
+import com.wbdata.datasource.dto.DataSourceSaveDTO;
 import com.wbdata.datasource.dto.DataSourceSearchQuery;
 import com.wbdata.datasource.dto.DataSourceStatusRequest;
 import com.wbdata.datasource.dto.TestConnectionRequest;
 import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.datasource.plugin.DataSourceConnectionPoolManager;
 import com.wbdata.datasource.plugin.DataSourcePluginRegistry;
+import com.wbdata.datasource.service.AuthorizedDataSourceService;
 import com.wbdata.datasource.service.DataSourceService;
+import com.wbdata.group.dto.AssetOwnerSummaryResponse;
+import com.wbdata.group.dto.GroupOwnerInfo;
+import com.wbdata.group.dto.TransferOwnerRequest;
+import com.wbdata.group.dto.TransferOwnerResponse;
+import com.wbdata.group.service.GroupOwnerService;
 import com.wbdata.plugin.api.ConnectionTestResult;
 import com.wbdata.plugin.api.DataSourceConnectionInfo;
 import com.wbdata.plugin.api.DataSourceException;
@@ -29,6 +34,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 @Tag(name = "数据源管理", description = "数据源的增删改查及测试连接")
 @RestController
@@ -40,6 +47,7 @@ public class DataSourceController {
     private final DataSourcePluginRegistry pluginRegistry;
     private final DataSourceConnectionPoolManager poolManager;
     private final AuthorizedDataSourceService authorizedDataSourceService;
+    private final GroupOwnerService groupOwnerService;
 
     @Operation(summary = "数据源插件列表")
     @GetMapping("/plugins")
@@ -56,7 +64,43 @@ public class DataSourceController {
         }
         query.setGroupId(context.groupId());
         query.validateSort();
-        return Result.success(dataSourceService.getDataSourcePage(query).convert(DataSourceResponse::from));
+        IPage<DataSource> page = dataSourceService.getDataSourcePage(query);
+        List<Long> ownerIds = page.getRecords().stream()
+                .map(DataSource::getOwnerUserId)
+                .filter(Objects::nonNull)
+                .toList();
+        Map<Long, GroupOwnerInfo> ownerMap = groupOwnerService.resolveOwners(context.groupId(), ownerIds);
+        return Result.success(page.convert(ds -> DataSourceResponse.from(ds, ownerMap.get(ds.getOwnerUserId()))));
+    }
+
+    @Operation(summary = "数据源负责人分布汇总")
+    @GetMapping("/owners")
+    public Result<List<AssetOwnerSummaryResponse>> listOwners(
+            @RequireGroupAuth(Permission.DATASOURCE_READ) GroupAuthContext context) {
+        Map<Long, Long> counts = dataSourceService.countByOwner(context.groupId());
+        return Result.success(groupOwnerService.summarizeOwners(context.groupId(), counts));
+    }
+
+    @Operation(summary = "批量转移数据源负责人")
+    @PostMapping("/transfer-owner")
+    public Result<TransferOwnerResponse> transferOwner(
+            @RequireGroupAuth(Permission.DATASOURCE_WRITE) GroupAuthContext context,
+            @Validated @RequestBody TransferOwnerRequest request) {
+        GroupOwnerInfo targetOwner = groupOwnerService.requireAssignableOwner(
+                context.groupId(), request.targetOwnerUserId());
+        int updated = dataSourceService.transferOwner(
+                context.groupId(),
+                request.ids(),
+                request.fromOwnerUserId(),
+                targetOwner.userId(),
+                targetOwner.effectiveName(),
+                context.user().id()
+        );
+        return Result.success(new TransferOwnerResponse(
+                updated,
+                targetOwner.userId(),
+                targetOwner.effectiveName()
+        ));
     }
 
     @Operation(summary = "获取数据源详情")
@@ -65,7 +109,11 @@ public class DataSourceController {
                                               @PathVariable(name = "groupId", required = false) Long groupId) {
         DataSource dataSource = requireDataSourceContext(id, Permission.DATASOURCE_READ);
         ensureDataSourceBelongsToPathGroup(dataSource, groupId);
-        return Result.success(DataSourceResponse.from(dataSource));
+        GroupOwnerInfo ownerInfo = dataSource.getOwnerUserId() == null
+                ? null
+                : groupOwnerService.resolveOwners(dataSource.getGroupId(), List.of(dataSource.getOwnerUserId()))
+                        .get(dataSource.getOwnerUserId());
+        return Result.success(DataSourceResponse.from(dataSource, ownerInfo));
     }
 
     @Operation(summary = "创建数据源")
@@ -73,6 +121,9 @@ public class DataSourceController {
     public Result<Boolean> save(@RequireGroupAuth(Permission.DATASOURCE_WRITE) GroupAuthContext context,
                                 @Validated @RequestBody DataSourceSaveDTO dto) {
         DataSourcePlugin plugin = requireSupportedPlugin(dto.getType());
+        Long targetOwnerId = dto.getOwnerUserId() != null ? dto.getOwnerUserId() : context.user().id();
+        GroupOwnerInfo ownerInfo = groupOwnerService.requireAssignableOwner(context.groupId(), targetOwnerId);
+
         DataSource dataSource = new DataSource();
         dataSource.setGroupId(context.groupId());
         dataSource.setName(dto.getName());
@@ -84,7 +135,8 @@ public class DataSourceController {
         dataSource.setUsername(dto.getUsername());
         dataSource.setPassword(dto.getPassword());
         dataSource.setConnectionParams(dto.getConnectionParams());
-        dataSource.setOwner(context.user().username());
+        dataSource.setOwnerUserId(ownerInfo.userId());
+        dataSource.setOwner(ownerInfo.effectiveName());
         dataSource.setCreatedBy(context.user().id());
         dataSource.setUpdatedBy(context.user().id());
         validateConnectionConfig(plugin, dataSource);
@@ -112,7 +164,14 @@ public class DataSourceController {
             dataSource.setPassword(dto.getPassword());
         }
         dataSource.setConnectionParams(dto.getConnectionParams());
-        dataSource.setOwner(existing.getOwner());
+        if (dto.getOwnerUserId() != null && !Objects.equals(dto.getOwnerUserId(), existing.getOwnerUserId())) {
+            GroupOwnerInfo ownerInfo = groupOwnerService.requireAssignableOwner(existing.getGroupId(), dto.getOwnerUserId());
+            dataSource.setOwnerUserId(ownerInfo.userId());
+            dataSource.setOwner(ownerInfo.effectiveName());
+        } else {
+            dataSource.setOwnerUserId(existing.getOwnerUserId());
+            dataSource.setOwner(existing.getOwner());
+        }
         dataSource.setUpdatedBy(context.user().id());
         validateConnectionConfig(plugin, dataSource);
         boolean updated = dataSourceService.updateById(dataSource);

@@ -2,6 +2,10 @@ package com.wbdata.operations.service;
 
 import com.wbdata.git.dto.GitSyncConfigResponse;
 import com.wbdata.git.service.GitSyncConfigService;
+import com.wbdata.group.dto.GroupOwnerInfo;
+import com.wbdata.group.service.GroupOwnerService;
+import com.wbdata.offline.entity.WbOfflineFlowIndex;
+import com.wbdata.offline.service.OfflineFlowIndexService;
 import com.wbdata.offline.kestra.KestraClient;
 import com.wbdata.offline.kestra.KestraExecutionPage;
 import com.wbdata.offline.kestra.KestraExecutionSnapshot;
@@ -52,7 +56,7 @@ class OperationsExecutionServiceTest {
                         "plannedAt", "createdAt", "startDate", "endDate", "durationMs",
                         "rerunnable", "stoppable", "rerun", "rerunType", "retryAttempt",
                         "partialRerun", "rerunSelectedTaskCount", "rerunTotalTaskCount",
-                        "markableSuccess"
+                        "markableSuccess", "ownerUserId", "ownerName", "ownerUsername", "ownerStatus"
                 );
         assertThat(Arrays.stream(OperationsExecutionDetailResponse.class.getRecordComponents())
                 .map(component -> component.getName()))
@@ -1480,6 +1484,12 @@ class OperationsExecutionServiceTest {
                     java.util.regex.Pattern flowPattern = flowRegex == null
                             ? null
                             : java.util.regex.Pattern.compile(flowRegex);
+                    java.util.Set<String> allowedFlowIds = null;
+                    if (filters.containsKey("filters[flowId][EQUALS]")) {
+                        allowedFlowIds = java.util.Set.of(filters.get("filters[flowId][EQUALS]"));
+                    } else if (filters.containsKey("filters[flowId][IN]")) {
+                        allowedFlowIds = new java.util.HashSet<>(List.of(filters.get("filters[flowId][IN]").split(",")));
+                    }
                     java.util.Set<String> allowedStates = null;
                     if (filters.containsKey("filters[state][EQUALS]")) {
                         allowedStates = java.util.Set.of(filters.get("filters[state][EQUALS]"));
@@ -1499,6 +1509,7 @@ class OperationsExecutionServiceTest {
                             }
                             : (left, right) -> 0;
 
+                    java.util.Set<String> finalAllowedFlowIds = allowedFlowIds;
                     java.util.Set<String> finalAllowedStates = allowedStates;
                     List<KestraExecutionSnapshot> matched = snapshots.stream()
                             .filter(item -> item.namespace() != null && allowedNamespaces.contains(item.namespace()))
@@ -1508,6 +1519,8 @@ class OperationsExecutionServiceTest {
                             })
                             .filter(item -> flowPattern == null
                                     || (item.flowId() != null && flowPattern.matcher(item.flowId()).matches()))
+                            .filter(item -> finalAllowedFlowIds == null
+                                    || (item.flowId() != null && finalAllowedFlowIds.contains(item.flowId())))
                             .filter(item -> finalAllowedStates == null || finalAllowedStates.contains(item.status()))
                             .filter(item -> expectedForceSuccess == null
                                     || expectedForceSuccess.equals(item.labels() == null
@@ -1593,5 +1606,61 @@ class OperationsExecutionServiceTest {
 
     private static KestraTaskRunSnapshot taskRun(String taskId, String status, String startDate, String endDate) {
         return new KestraTaskRunSnapshot(taskId, status, Instant.parse(startDate), Instant.parse(endDate));
+    }
+
+    @Test
+    void listExecutions_enrichesAndFiltersByFlowOwner() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OfflineFlowIndexService indexService = Mockito.mock(OfflineFlowIndexService.class);
+        GroupOwnerService ownerService = Mockito.mock(GroupOwnerService.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
+        service.setOfflineFlowIndexService(indexService);
+        service.setGroupOwnerService(ownerService);
+
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(syncConfigs());
+        when(indexService.isEnabled()).thenReturn(true);
+
+        WbOfflineFlowIndex flowAlice = new WbOfflineFlowIndex();
+        flowAlice.setFlowPath("_flows/daily_policy/flow.yaml");
+        flowAlice.setFlowId("daily_policy");
+        flowAlice.setOwnerUserId(10L);
+
+        WbOfflineFlowIndex flowBob = new WbOfflineFlowIndex();
+        flowBob.setFlowPath("_flows/weekly_etl/flow.yaml");
+        flowBob.setFlowId("weekly_etl");
+        flowBob.setOwnerUserId(20L);
+
+        when(indexService.listGroupFlowMap(4L)).thenReturn(Map.of(
+                "_flows/daily_policy/flow.yaml", flowAlice,
+                "_flows/weekly_etl/flow.yaml", flowBob
+        ));
+        when(indexService.listFlowsByGroupAndOwner(4L, 10L)).thenReturn(List.of(flowAlice));
+        when(indexService.listFlowsByGroupAndOwner(4L, 99L)).thenReturn(List.of());
+        when(ownerService.resolveOwners(Mockito.eq(4L), Mockito.anyCollection())).thenReturn(Map.of(
+                10L, new GroupOwnerInfo(10L, "alice", "Alice", "ACTIVE"),
+                20L, new GroupOwnerInfo(20L, "bob", "Bob", "LEFT_GROUP")
+        ));
+
+        stubPagedSearch(kestraClient, List.of(
+                execution("e1", "g4-main", "daily_policy", "SUCCESS", "2026-06-07T02:00:00Z"),
+                execution("e2", "g4-main", "weekly_etl", "FAILED", "2026-06-07T01:00:00Z")
+        ));
+
+        OperationsExecutionListResponse allRes = service.listExecutions(
+                4L, listQuery("main", null, null, FROM, TO));
+        assertThat(allRes.executions()).hasSize(2);
+        assertThat(allRes.executions().get(0).ownerName()).isEqualTo("Alice");
+        assertThat(allRes.executions().get(1).ownerStatus()).isEqualTo("LEFT_GROUP");
+
+        OperationsExecutionListResponse aliceRes = service.listExecutions(
+                4L, new OperationsExecutionQuery("main", null, null, FROM, TO, null, null, 10L));
+        assertThat(aliceRes.executions()).extracting(OperationsExecutionListItem::flowId)
+                .containsExactly("daily_policy");
+
+        OperationsExecutionListResponse emptyRes = service.listExecutions(
+                4L, new OperationsExecutionQuery("main", null, null, FROM, TO, null, null, 99L));
+        assertThat(emptyRes.executions()).isEmpty();
+        assertThat(emptyRes.total()).isZero();
     }
 }

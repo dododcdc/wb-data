@@ -20,6 +20,8 @@ public class WbOfflineFlowIndex {
 
     private String flowId;
 
+    private Long ownerUserId;
+
     private String parseStatus;
 
     private Boolean hasSchedule;

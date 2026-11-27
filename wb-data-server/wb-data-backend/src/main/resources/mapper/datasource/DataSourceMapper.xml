@@ -22,6 +22,9 @@
             <if test="query.status != null and query.status != ''">
                 AND status = #{query.status}
             </if>
+            <if test="query.ownerUserId != null">
+                AND owner_user_id = #{query.ownerUserId}
+            </if>
         </where>
         <choose>
             <when test="query.sortField != null and query.sortField != ''">

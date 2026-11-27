@@ -1,5 +1,7 @@
 package com.wbdata.offline.service;
 
+import com.wbdata.group.dto.GroupOwnerInfo;
+import com.wbdata.group.service.GroupOwnerService;
 import com.wbdata.offline.repo.service.RepoLockManager;
 
 import com.wbdata.offline.config.OfflineProperties;
@@ -31,6 +33,8 @@ public class OfflineRepoTreeService {
     private final OfflineRecentFlowService recentFlowService;
     @Nullable
     private final OfflineFlowIndexService offlineFlowIndexService;
+    @Nullable
+    private GroupOwnerService groupOwnerService;
     private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
 
     public OfflineRepoTreeService(OfflineProperties offlineProperties,
@@ -59,6 +63,11 @@ public class OfflineRepoTreeService {
         this.offlineFlowIndexService = offlineFlowIndexService;
     }
 
+    @Autowired(required = false)
+    public void setGroupOwnerService(@Nullable GroupOwnerService groupOwnerService) {
+        this.groupOwnerService = groupOwnerService;
+    }
+
     public OfflineRepoTreeResponse getRepoTree(Long groupId, String rootName) {
         return getRepoTree(groupId, rootName, null);
     }
@@ -73,12 +82,13 @@ public class OfflineRepoTreeService {
                 (offlineFlowIndexService != null && offlineFlowIndexService.isEnabled())
                         ? offlineFlowIndexService.listGroupFlowMap(groupId)
                         : null;
+        Map<Long, GroupOwnerInfo> ownerMap = resolveIndexedOwners(groupId, indexByPath);
         OfflineRepoTreeNodeResponse root = OfflineRepoTreeNodeResponse.directory(
                 "group-" + groupId,
                 "ROOT",
                 rootName,
                 "",
-                Files.isDirectory(repoPath) ? buildRootChildren(groupId, repoPath, indexByPath) : List.of()
+                Files.isDirectory(repoPath) ? buildRootChildren(groupId, repoPath, indexByPath, ownerMap) : List.of()
         );
         Set<String> existingFlowPaths = new HashSet<>();
         collectFlowPaths(root, existingFlowPaths);
@@ -101,23 +111,25 @@ public class OfflineRepoTreeService {
 
     private List<OfflineRepoTreeNodeResponse> buildRootChildren(Long groupId,
                                                                 Path repoPath,
-                                                                @Nullable Map<String, WbOfflineFlowIndex> indexByPath) {
+                                                                @Nullable Map<String, WbOfflineFlowIndex> indexByPath,
+                                                                Map<Long, GroupOwnerInfo> ownerMap) {
         Path flowsDirectory = repoPath.resolve("_flows");
         if (!Files.isDirectory(flowsDirectory)) {
             return List.of();
         }
-        return buildChildren(groupId, repoPath, flowsDirectory, true, indexByPath);
+        return buildChildren(groupId, repoPath, flowsDirectory, true, indexByPath, ownerMap);
     }
 
     private List<OfflineRepoTreeNodeResponse> buildChildren(Long groupId,
                                                             Path repoRoot,
                                                             Path directory,
                                                             boolean insideFlows,
-                                                            @Nullable Map<String, WbOfflineFlowIndex> indexByPath) {
+                                                            @Nullable Map<String, WbOfflineFlowIndex> indexByPath,
+                                                            Map<Long, GroupOwnerInfo> ownerMap) {
         try (var stream = Files.list(directory)) {
             List<OfflineRepoTreeNodeResponse> nodes = new ArrayList<>();
             for (Path child : stream.toList()) {
-                OfflineRepoTreeNodeResponse node = buildNode(groupId, repoRoot, child, insideFlows, indexByPath);
+                OfflineRepoTreeNodeResponse node = buildNode(groupId, repoRoot, child, insideFlows, indexByPath, ownerMap);
                 if (node != null) {
                     nodes.add(node);
                 }
@@ -132,7 +144,8 @@ public class OfflineRepoTreeService {
                                                   Path repoRoot,
                                                   Path path,
                                                   boolean insideFlows,
-                                                  @Nullable Map<String, WbOfflineFlowIndex> indexByPath) {
+                                                  @Nullable Map<String, WbOfflineFlowIndex> indexByPath,
+                                                  Map<Long, GroupOwnerInfo> ownerMap) {
         String fileName = path.getFileName().toString();
         if (isHidden(fileName)) {
             return null;
@@ -143,21 +156,21 @@ public class OfflineRepoTreeService {
             if (insideFlows && isLeafFlowDirectory(path)) {
                 Path flowPath = path.resolve("flow.yaml");
                 String flowRelativePath = toRelativePath(repoRoot, flowPath);
-                return flowNode(groupId, flowRelativePath, path.getFileName().toString(), flowPath, indexByPath);
+                return flowNode(groupId, flowRelativePath, path.getFileName().toString(), flowPath, indexByPath, ownerMap);
             }
             return OfflineRepoTreeNodeResponse.directory(
                     relativePath,
                     "DIRECTORY",
                     fileName,
                     relativePath,
-                    buildChildren(groupId, repoRoot, path, insideFlows, indexByPath)
+                    buildChildren(groupId, repoRoot, path, insideFlows, indexByPath, ownerMap)
             );
         }
         if (insideFlows) {
             if (!"flow.yaml".equals(fileName)) {
                 return null;
             }
-            return flowNode(groupId, relativePath, resolveFlowDisplayName(path), path, indexByPath);
+            return flowNode(groupId, relativePath, resolveFlowDisplayName(path), path, indexByPath, ownerMap);
         }
         return null;
     }
@@ -166,20 +179,35 @@ public class OfflineRepoTreeService {
                                                  String path,
                                                  String name,
                                                  Path flowFile,
-                                                 @Nullable Map<String, WbOfflineFlowIndex> indexByPath) {
+                                                 @Nullable Map<String, WbOfflineFlowIndex> indexByPath,
+                                                 Map<Long, GroupOwnerInfo> ownerMap) {
         if (indexByPath != null) {
             String normalizedPath = OfflineFlowIndexService.normalizeFlowPath(path);
             WbOfflineFlowIndex indexed = indexByPath.get(normalizedPath);
             if (indexed != null) {
+                Long ownerUserId = indexed.getOwnerUserId();
+                GroupOwnerInfo ownerInfo = ownerUserId == null ? null : ownerMap.get(ownerUserId);
                 if (!OfflineFlowIndexService.PARSE_STATUS_OK.equals(indexed.getParseStatus())) {
-                    return new OfflineRepoTreeNodeResponse(path, "FLOW", name, path, List.of(), "NONE", null, 0);
+                    return new OfflineRepoTreeNodeResponse(
+                            path, "FLOW", name, path, List.of(), "NONE", null, 0,
+                            ownerUserId,
+                            ownerInfo != null ? ownerInfo.effectiveName() : null,
+                            ownerInfo != null ? ownerInfo.username() : null,
+                            ownerInfo != null ? ownerInfo.status() : null
+                    );
                 }
                 String scheduleState = !Boolean.TRUE.equals(indexed.getHasSchedule())
                         ? "NONE"
                         : Boolean.TRUE.equals(indexed.getScheduleEnabled()) ? "ENABLED" : "DISABLED";
                 int dependencyCount = indexed.getDependencyCount() == null ? 0 : indexed.getDependencyCount();
-                return new OfflineRepoTreeNodeResponse(path, "FLOW", name, path, List.of(),
-                        scheduleState, indexed.getSchedulePeriod(), dependencyCount);
+                return new OfflineRepoTreeNodeResponse(
+                        path, "FLOW", name, path, List.of(),
+                        scheduleState, indexed.getSchedulePeriod(), dependencyCount,
+                        ownerUserId,
+                        ownerInfo != null ? ownerInfo.effectiveName() : null,
+                        ownerInfo != null ? ownerInfo.username() : null,
+                        ownerInfo != null ? ownerInfo.status() : null
+                );
             }
         }
         try {
@@ -188,14 +216,50 @@ public class OfflineRepoTreeService {
                 offlineFlowIndexService.onFlowSaved(groupId, path, content, flowFile);
             }
             OfflineFlowYamlSupport.FlowIndexMetadata meta = yamlSupport.parseIndexMetadata(content);
+            Long ownerUserId = meta.ownerUserId();
+            GroupOwnerInfo ownerInfo = resolveSingleOwner(groupId, ownerUserId, ownerMap);
             var schedule = meta.schedule();
             String scheduleState = schedule == null ? "NONE" : schedule.enabled() ? "ENABLED" : "DISABLED";
             String schedulePeriod = schedule == null || schedule.period() == null ? null : schedule.period().name();
-            return new OfflineRepoTreeNodeResponse(path, "FLOW", name, path, List.of(),
-                    scheduleState, schedulePeriod, meta.dependencies().size());
+            return new OfflineRepoTreeNodeResponse(
+                    path, "FLOW", name, path, List.of(),
+                    scheduleState, schedulePeriod, meta.dependencies().size(),
+                    ownerUserId,
+                    ownerInfo != null ? ownerInfo.effectiveName() : null,
+                    ownerInfo != null ? ownerInfo.username() : null,
+                    ownerInfo != null ? ownerInfo.status() : null
+            );
         } catch (RuntimeException | IOException ex) {
             return new OfflineRepoTreeNodeResponse(path, "FLOW", name, path, List.of(), "NONE", null, 0);
         }
+    }
+
+    private Map<Long, GroupOwnerInfo> resolveIndexedOwners(Long groupId,
+                                                           @Nullable Map<String, WbOfflineFlowIndex> indexByPath) {
+        if (groupOwnerService == null || indexByPath == null || indexByPath.isEmpty()) {
+            return Map.of();
+        }
+        Set<Long> ownerIds = new HashSet<>();
+        for (WbOfflineFlowIndex row : indexByPath.values()) {
+            if (row != null && row.getOwnerUserId() != null) {
+                ownerIds.add(row.getOwnerUserId());
+            }
+        }
+        return ownerIds.isEmpty() ? Map.of() : groupOwnerService.resolveOwners(groupId, ownerIds);
+    }
+
+    @Nullable
+    private GroupOwnerInfo resolveSingleOwner(Long groupId,
+                                              @Nullable Long ownerUserId,
+                                              Map<Long, GroupOwnerInfo> ownerMap) {
+        if (ownerUserId == null) {
+            return null;
+        }
+        GroupOwnerInfo cached = ownerMap.get(ownerUserId);
+        if (cached != null || groupOwnerService == null) {
+            return cached;
+        }
+        return groupOwnerService.resolveOwners(groupId, List.of(ownerUserId)).get(ownerUserId);
     }
 
     private boolean isLeafFlowDirectory(Path directory) {

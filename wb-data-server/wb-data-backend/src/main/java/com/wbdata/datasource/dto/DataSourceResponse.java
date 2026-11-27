@@ -1,6 +1,7 @@
 package com.wbdata.datasource.dto;
 
 import com.wbdata.datasource.entity.DataSource;
+import com.wbdata.group.dto.GroupOwnerInfo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -41,8 +42,20 @@ public class DataSourceResponse {
     @Schema(description = "状态：ENABLED/DISABLED")
     private String status;
 
-    @Schema(description = "负责人")
+    @Schema(description = "负责人展示名（兼容字段）")
     private String owner;
+
+    @Schema(description = "负责人用户 ID")
+    private Long ownerUserId;
+
+    @Schema(description = "负责人展示名")
+    private String ownerName;
+
+    @Schema(description = "负责人用户名")
+    private String ownerUsername;
+
+    @Schema(description = "负责人状态：ACTIVE/DISABLED/LEFT_GROUP/UNKNOWN")
+    private String ownerStatus;
 
     @Schema(description = "创建时间")
     private LocalDateTime createdAt;
@@ -51,6 +64,10 @@ public class DataSourceResponse {
     private LocalDateTime updatedAt;
 
     public static DataSourceResponse from(DataSource entity) {
+        return from(entity, null);
+    }
+
+    public static DataSourceResponse from(DataSource entity, GroupOwnerInfo ownerInfo) {
         DataSourceResponse response = new DataSourceResponse();
         response.setId(entity.getId());
         response.setName(entity.getName());
@@ -62,7 +79,18 @@ public class DataSourceResponse {
         response.setUsername(entity.getUsername());
         response.setConnectionParams(entity.getConnectionParams());
         response.setStatus(entity.getStatus());
-        response.setOwner(entity.getOwner());
+        response.setOwnerUserId(entity.getOwnerUserId());
+        if (ownerInfo != null) {
+            String effectiveName = ownerInfo.effectiveName();
+            response.setOwnerName(effectiveName);
+            response.setOwnerUsername(ownerInfo.username());
+            response.setOwnerStatus(ownerInfo.status());
+            response.setOwner(effectiveName);
+        } else {
+            response.setOwnerName(entity.getOwner());
+            response.setOwner(entity.getOwner());
+            response.setOwnerStatus(entity.getOwnerUserId() != null ? "UNKNOWN" : null);
+        }
         response.setCreatedAt(entity.getCreatedAt());
         response.setUpdatedAt(entity.getUpdatedAt());
         return response;

@@ -19,6 +19,7 @@ public class WbParameterGroup {
     private Integer version;
     private Integer revision;
     private String status;
+    private Long ownerUserId;
     private Long createdBy;
     private Long updatedBy;
     private LocalDateTime createdAt;

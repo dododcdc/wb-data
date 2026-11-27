@@ -28,6 +28,8 @@ import java.util.Set;
  */
 final class OfflineFlowYamlSupport {
 
+    static final String OWNER_LABEL_KEY = "wbdataOwnerUserId";
+
     private final FlowYamlCodec yaml;
     private final OfflineFlowScheduleYaml scheduleYaml;
     private final OfflineFlowDependencyYaml dependencyYaml;
@@ -66,11 +68,48 @@ final class OfflineFlowYamlSupport {
     FlowIndexMetadata parseIndexMetadata(String source) {
         Map<String, Object> root = yaml.loadRoot(source);
         String flowId = yaml.requiredString(root, "id");
+        Long ownerUserId = parsePositiveLong(yaml.readLabelValue(root, OWNER_LABEL_KEY));
         ScheduleData schedule = scheduleYaml.readSchedule(root);
         List<OfflineFlowDependencyRef> dependencies = dependencyYaml.readDependencies(root);
         OfflineFailurePolicy failurePolicy = dependencyYaml.readFailurePolicy(root);
         OfflineCrossGroupDependency crossGroupDependency = dependencyYaml.readCrossGroupDependency(root);
-        return new FlowIndexMetadata(flowId, schedule, dependencies, failurePolicy, crossGroupDependency);
+        return new FlowIndexMetadata(flowId, ownerUserId, schedule, dependencies, failurePolicy, crossGroupDependency);
+    }
+
+    Long readOwnerUserId(String source) {
+        if (source == null || source.isBlank()) {
+            return null;
+        }
+        return parsePositiveLong(readLabel(source, OWNER_LABEL_KEY));
+    }
+
+    String applyOwnerUserIdLabel(String source, Long ownerUserId) {
+        Map<String, Object> root = yaml.loadRoot(source);
+        Map<String, Object> labels = new LinkedHashMap<>();
+        labels.putAll(yaml.asStringObjectMap(root.get("labels")));
+        if (ownerUserId == null || ownerUserId <= 0) {
+            labels.remove(OWNER_LABEL_KEY);
+        } else {
+            labels.put(OWNER_LABEL_KEY, String.valueOf(ownerUserId));
+        }
+        if (labels.isEmpty()) {
+            root.remove("labels");
+        } else {
+            root.put("labels", labels);
+        }
+        return yaml.dump(root);
+    }
+
+    private static Long parsePositiveLong(String rawValue) {
+        if (rawValue == null || rawValue.isBlank()) {
+            return null;
+        }
+        try {
+            long parsed = Long.parseLong(rawValue.trim());
+            return parsed > 0 ? parsed : null;
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     String readLabel(String source, String key) {
@@ -240,11 +279,21 @@ final class OfflineFlowYamlSupport {
 
     record FlowIndexMetadata(
             String flowId,
+            Long ownerUserId,
             ScheduleData schedule,
             List<OfflineFlowDependencyRef> dependencies,
             OfflineFailurePolicy failurePolicy,
             OfflineCrossGroupDependency crossGroupDependency
     ) {
+        FlowIndexMetadata(
+                String flowId,
+                ScheduleData schedule,
+                List<OfflineFlowDependencyRef> dependencies,
+                OfflineFailurePolicy failurePolicy,
+                OfflineCrossGroupDependency crossGroupDependency
+        ) {
+            this(flowId, null, schedule, dependencies, failurePolicy, crossGroupDependency);
+        }
     }
 
     record FlowDocument(

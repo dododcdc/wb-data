@@ -7,11 +7,12 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
+import java.util.Map;
 
 public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex> {
 
     @Select("""
-            SELECT id, group_id, flow_path, flow_id, parse_status,
+            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
                    has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
                    cross_group_dependency, failure_policy, dependency_count,
                    file_mtime_ms, file_size, updated_at
@@ -21,7 +22,7 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
     List<WbOfflineFlowIndex> findByGroup(@Param("groupId") Long groupId);
 
     @Select("""
-            SELECT id, group_id, flow_path, flow_id, parse_status,
+            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
                    has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
                    cross_group_dependency, failure_policy, dependency_count,
                    file_mtime_ms, file_size, updated_at
@@ -32,7 +33,7 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
                                           @Param("flowPath") String flowPath);
 
     @Select("""
-            SELECT id, group_id, flow_path, flow_id, parse_status,
+            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
                    has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
                    cross_group_dependency, failure_policy, dependency_count,
                    file_mtime_ms, file_size, updated_at
@@ -44,7 +45,7 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
 
     @Select("""
             <script>
-            SELECT id, group_id, flow_path, flow_id, parse_status,
+            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
                    has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
                    cross_group_dependency, failure_policy, dependency_count,
                    file_mtime_ms, file_size, updated_at
@@ -59,7 +60,7 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
 
     @Select("""
             <script>
-            SELECT id, group_id, flow_path, flow_id, parse_status,
+            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
                    has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
                    cross_group_dependency, failure_policy, dependency_count,
                    file_mtime_ms, file_size, updated_at
@@ -75,7 +76,7 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
 
     @Select("""
             <script>
-            SELECT id, group_id, flow_path, flow_id, parse_status,
+            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
                    has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
                    cross_group_dependency, failure_policy, dependency_count,
                    file_mtime_ms, file_size, updated_at
@@ -89,7 +90,7 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
     List<WbOfflineFlowIndex> findByIds(@Param("ids") List<Long> ids);
 
     @Select("""
-            SELECT id, group_id, flow_path, flow_id, parse_status,
+            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
                    has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
                    cross_group_dependency, failure_policy, dependency_count,
                    file_mtime_ms, file_size, updated_at
@@ -98,6 +99,33 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
             """)
     List<WbOfflineFlowIndex> findByGroupAndPathPrefix(@Param("groupId") Long groupId,
                                                       @Param("prefix") String prefix);
+
+    @Select("""
+            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
+                   has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
+                   cross_group_dependency, failure_policy, dependency_count,
+                   file_mtime_ms, file_size, updated_at
+            FROM wb_offline_flow_index
+            WHERE group_id = #{groupId} AND owner_user_id = #{ownerUserId}
+            """)
+    List<WbOfflineFlowIndex> findByGroupAndOwnerUserId(@Param("groupId") Long groupId,
+                                                       @Param("ownerUserId") Long ownerUserId);
+
+    @Select("""
+            SELECT COUNT(*)
+            FROM wb_offline_flow_index
+            WHERE group_id = #{groupId} AND owner_user_id = #{ownerUserId}
+            """)
+    long countByGroupAndOwnerUserId(@Param("groupId") Long groupId,
+                                    @Param("ownerUserId") Long ownerUserId);
+
+    @Select("""
+            SELECT group_id AS groupId, COUNT(*) AS cnt
+            FROM wb_offline_flow_index
+            WHERE owner_user_id = #{ownerUserId}
+            GROUP BY group_id
+            """)
+    List<Map<String, Object>> countByOwnerUserIdGroupByGroup(@Param("ownerUserId") Long ownerUserId);
 
     @Select("""
             SELECT COUNT(*)

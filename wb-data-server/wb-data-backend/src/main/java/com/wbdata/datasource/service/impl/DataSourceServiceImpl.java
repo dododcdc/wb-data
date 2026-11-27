@@ -1,6 +1,8 @@
 package com.wbdata.datasource.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -15,12 +17,17 @@ import com.wbdata.datasource.plugin.DataSourcePluginRegistry;
 import com.wbdata.datasource.service.DataSourceService;
 import com.wbdata.plugin.api.ConnectionTestResult;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.Serializable;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 @RequiredArgsConstructor
 @Service
@@ -129,6 +136,86 @@ public class DataSourceServiceImpl extends ServiceImpl<DataSourceMapper, DataSou
                 .orElseGet(() -> ConnectionTestResult.failure("暂不支持的数据源类型: " + ds.getType()));
     }
 
+    @Override
+    public Map<Long, Long> countByOwner(Long groupId) {
+        List<DataSourceMapper.OwnerCountRow> rows = this.baseMapper.countByOwnerUserId(groupId);
+        Map<Long, Long> counts = new LinkedHashMap<>();
+        if (rows != null) {
+            for (DataSourceMapper.OwnerCountRow row : rows) {
+                if (row.ownerUserId() != null && row.cnt() != null) {
+                    counts.put(row.ownerUserId(), row.cnt());
+                }
+            }
+        }
+        return counts;
+    }
+
+    @Override
+    public long countByGroupAndOwner(Long groupId, Long ownerUserId) {
+        if (groupId == null || ownerUserId == null) {
+            return 0L;
+        }
+        return this.baseMapper.countByGroupAndOwnerUserId(groupId, ownerUserId);
+    }
+
+    @Override
+    public Map<Long, Long> countByOwnerAcrossGroups(Long ownerUserId) {
+        if (ownerUserId == null) {
+            return Map.of();
+        }
+        List<DataSourceMapper.GroupCountRow> rows = this.baseMapper.countByOwnerAcrossGroups(ownerUserId);
+        Map<Long, Long> counts = new LinkedHashMap<>();
+        if (rows != null) {
+            for (DataSourceMapper.GroupCountRow row : rows) {
+                if (row.groupId() != null && row.cnt() != null && row.cnt() > 0) {
+                    counts.put(row.groupId(), row.cnt());
+                }
+            }
+        }
+        return counts;
+    }
+
+    @Override
+    @Transactional
+    public int transferOwner(
+            Long groupId,
+            List<Long> ids,
+            Long fromOwnerUserId,
+            Long targetOwnerUserId,
+            String targetOwnerName,
+            Long operatorUserId) {
+        List<Long> distinctIds = ids == null
+                ? List.of()
+                : ids.stream().filter(Objects::nonNull).distinct().toList();
+        if (distinctIds.isEmpty() && fromOwnerUserId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择要转移的数据源或指定原负责人");
+        }
+
+        if (!distinctIds.isEmpty()) {
+            List<DataSource> matched = super.list(new LambdaQueryWrapper<DataSource>()
+                    .eq(DataSource::getGroupId, groupId)
+                    .in(DataSource::getId, distinctIds));
+            if (matched.size() != distinctIds.size()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "包含不存在或不属于当前项目组的数据源");
+            }
+            UpdateWrapper<DataSource> update = new UpdateWrapper<DataSource>()
+                    .eq("group_id", groupId)
+                    .in("id", distinctIds)
+                    .set("owner_user_id", targetOwnerUserId)
+                    .set("owner", targetOwnerName)
+                    .set("updated_by", operatorUserId);
+            return this.baseMapper.update(null, update);
+        }
+
+        UpdateWrapper<DataSource> update = new UpdateWrapper<DataSource>()
+                .eq("group_id", groupId)
+                .eq("owner_user_id", fromOwnerUserId)
+                .set("owner_user_id", targetOwnerUserId)
+                .set("owner", targetOwnerName)
+                .set("updated_by", operatorUserId);
+        return this.baseMapper.update(null, update);
+    }
+
     private DataSource copyForPersistenceWithEncryptedPassword(DataSource source) {
         DataSource copy = copyForPersistence(source);
         String password = source.getPassword();
@@ -153,6 +240,7 @@ public class DataSourceServiceImpl extends ServiceImpl<DataSourceMapper, DataSou
         copy.setConnectionParams(source.getConnectionParams());
         copy.setStatus(source.getStatus());
         copy.setOwner(source.getOwner());
+        copy.setOwnerUserId(source.getOwnerUserId());
         copy.setCreatedBy(source.getCreatedBy());
         copy.setUpdatedBy(source.getUpdatedBy());
         copy.setCreatedAt(source.getCreatedAt());

@@ -5,6 +5,9 @@ import com.wbdata.offline.parameter.dto.FlowParameterSnapshot;
 
 import com.wbdata.git.dto.GitSyncConfigResponse;
 import com.wbdata.git.service.GitSyncConfigService;
+import com.wbdata.group.dto.GroupOwnerInfo;
+import com.wbdata.group.service.GroupOwnerService;
+import com.wbdata.offline.entity.WbOfflineFlowIndex;
 import com.wbdata.offline.kestra.KestraClient;
 import com.wbdata.offline.kestra.KestraExecutionPage;
 import com.wbdata.offline.kestra.KestraExecutionSnapshot;
@@ -16,6 +19,7 @@ import com.wbdata.offline.parameter.service.ExecutionTimeContext;
 import com.wbdata.offline.parameter.service.FlowParameterMetadata;
 import com.wbdata.offline.execution.dto.ExecutionLogEntry;
 import com.wbdata.offline.execution.dto.ExecutionTaskRun;
+import com.wbdata.offline.service.OfflineFlowIndexService;
 import com.wbdata.offline.service.OfflineFlowInspector;
 import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
 import com.wbdata.operations.dto.OperationsExecutionListItem;
@@ -28,7 +32,9 @@ import com.wbdata.operations.entity.WbOperationExecutionAction;
 import com.wbdata.operations.mapper.WbOperationExecutionActionMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -81,10 +87,24 @@ public class OperationsExecutionService {
     private final ExecutionParameterSnapshotRegistry parameterSnapshotRegistry;
     private final ExecutionParameterResolver parameterResolver = new ExecutionParameterResolver();
     private final OfflineFlowInspector flowInspector = new OfflineFlowInspector();
+    @Nullable
+    private OfflineFlowIndexService offlineFlowIndexService;
+    @Nullable
+    private GroupOwnerService groupOwnerService;
+
+    @Autowired(required = false)
+    public void setOfflineFlowIndexService(@Nullable OfflineFlowIndexService offlineFlowIndexService) {
+        this.offlineFlowIndexService = offlineFlowIndexService;
+    }
+
+    @Autowired(required = false)
+    public void setGroupOwnerService(@Nullable GroupOwnerService groupOwnerService) {
+        this.groupOwnerService = groupOwnerService;
+    }
 
     public OperationsExecutionListResponse listExecutions(Long groupId, OperationsExecutionQuery query) {
         OperationsExecutionQuery effectiveQuery = query == null
-                ? new OperationsExecutionQuery(null, null, null, null, null, null, null)
+                ? new OperationsExecutionQuery(null, null, null, null, null, null, null, null)
                 : query;
         if (effectiveQuery.from() != null && effectiveQuery.to() != null && effectiveQuery.from().isAfter(effectiveQuery.to())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "时间范围不合法");
@@ -116,9 +136,24 @@ public class OperationsExecutionService {
                 ? DEFAULT_PAGE
                 : effectiveQuery.page();
         String flowFilter = blankToNull(effectiveQuery.flowId());
+        List<String> ownedFlowIds = resolveOwnedFlowIdsForFilter(groupId, effectiveQuery.ownerUserId(), flowFilter);
+        if (ownedFlowIds != null && ownedFlowIds.isEmpty()) {
+            return new OperationsExecutionListResponse(
+                    namespaceToBranch.values().stream().toList(),
+                    blankToNull(effectiveQuery.branch()),
+                    from,
+                    to,
+                    DEFAULT_PAGE,
+                    pageSize,
+                    0,
+                    0,
+                    List.of(),
+                    new OperationsExecutionStatusCounts(0, 0, 0, 0, 0)
+            );
+        }
         String statusRaw = blankToNull(effectiveQuery.status());
         String normalizedStatus = statusRaw == null ? null : statusRaw.toUpperCase(Locale.ROOT);
-        Map<String, String> baseFilters = buildBaseSearchFilters(targetNamespaces, from, to, flowFilter);
+        Map<String, String> baseFilters = buildBaseSearchFilters(targetNamespaces, from, to, flowFilter, ownedFlowIds);
         Optional<Map<String, String>> pageFiltersOpt = buildStatusFilters(baseFilters, normalizedStatus);
 
         KestraExecutionPage mainPage;
@@ -202,17 +237,25 @@ public class OperationsExecutionService {
         }
 
         Set<String> manualRerunIds = findRerunIds(rawPageItems.stream().map(OperationsExecutionListItem::id).toList());
+        Map<String, Long> flowOwnerIdMap = loadFlowOwnerIdMap(groupId, rawPageItems);
+        Map<Long, GroupOwnerInfo> ownerInfoMap = resolvePageOwners(groupId, flowOwnerIdMap);
         List<OperationsExecutionListItem> pageExecutions = rawPageItems.stream()
                 .map(item -> {
                     OperationsRerunClassifier.Classification classification = OperationsRerunClassifier.classify(
                             snapshotsById.get(item.id()), manualRerunIds);
+                    Long ownerUserId = flowOwnerIdMap.get(item.flowId());
+                    GroupOwnerInfo ownerInfo = ownerUserId == null ? null : ownerInfoMap.get(ownerUserId);
                     return new OperationsExecutionListItem(
                             item.id(), item.namespace(), item.flowId(), item.branch(), item.status(),
                             item.plannedAt(), item.createdAt(), item.startDate(), item.endDate(),
                             item.durationMs(), item.rerunnable(), item.stoppable(),
                             classification.rerun(), classification.rerunType(), classification.retryAttempt(),
                             classification.partialRerun(), classification.rerunSelectedTaskCount(),
-                            classification.rerunTotalTaskCount(), item.markableSuccess());
+                            classification.rerunTotalTaskCount(), item.markableSuccess(),
+                            ownerUserId,
+                            ownerInfo != null ? ownerInfo.effectiveName() : null,
+                            ownerInfo != null ? ownerInfo.username() : null,
+                            ownerInfo != null ? ownerInfo.status() : null);
                 })
                 .toList();
 
@@ -513,10 +556,64 @@ public class OperationsExecutionService {
         return namespace != null && !"system".equals(namespace) && !namespace.startsWith("wb-debug-");
     }
 
+    @Nullable
+    private List<String> resolveOwnedFlowIdsForFilter(Long groupId,
+                                                      @Nullable Long ownerUserId,
+                                                      @Nullable String flowFilter) {
+        if (ownerUserId == null) {
+            return null;
+        }
+        if (offlineFlowIndexService == null || !offlineFlowIndexService.isEnabled()) {
+            return List.of();
+        }
+        List<WbOfflineFlowIndex> rows = offlineFlowIndexService.listFlowsByGroupAndOwner(groupId, ownerUserId);
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        String normalizedFlowFilter = flowFilter == null ? null : flowFilter.toLowerCase(Locale.ROOT);
+        LinkedHashSet<String> matchedIds = new LinkedHashSet<>();
+        for (WbOfflineFlowIndex row : rows) {
+            String flowId = row.getFlowId();
+            if (flowId == null || flowId.isBlank()) {
+                continue;
+            }
+            if (normalizedFlowFilter == null || flowId.toLowerCase(Locale.ROOT).contains(normalizedFlowFilter)) {
+                matchedIds.add(flowId);
+            }
+        }
+        return List.copyOf(matchedIds);
+    }
+
+    private Map<String, Long> loadFlowOwnerIdMap(Long groupId, List<OperationsExecutionListItem> items) {
+        if (items.isEmpty() || offlineFlowIndexService == null || !offlineFlowIndexService.isEnabled()) {
+            return Map.of();
+        }
+        Map<String, WbOfflineFlowIndex> flows = offlineFlowIndexService.listGroupFlowMap(groupId);
+        if (flows.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Long> result = new LinkedHashMap<>();
+        for (WbOfflineFlowIndex row : flows.values()) {
+            if (row != null && row.getFlowId() != null && row.getOwnerUserId() != null) {
+                result.putIfAbsent(row.getFlowId(), row.getOwnerUserId());
+            }
+        }
+        return result;
+    }
+
+    private Map<Long, GroupOwnerInfo> resolvePageOwners(Long groupId, Map<String, Long> flowOwnerIdMap) {
+        if (groupOwnerService == null || flowOwnerIdMap.isEmpty()) {
+            return Map.of();
+        }
+        Set<Long> ownerIds = new LinkedHashSet<>(flowOwnerIdMap.values());
+        return ownerIds.isEmpty() ? Map.of() : groupOwnerService.resolveOwners(groupId, ownerIds);
+    }
+
     private Map<String, String> buildBaseSearchFilters(List<String> namespaces,
                                                        Instant from,
                                                        Instant to,
-                                                       String flowFilter) {
+                                                       String flowFilter,
+                                                       @Nullable List<String> ownedFlowIds) {
         Map<String, String> filters = new LinkedHashMap<>();
         if (namespaces.size() == 1) {
             filters.put("filters[namespace][EQUALS]", namespaces.getFirst());
@@ -525,7 +622,13 @@ public class OperationsExecutionService {
         }
         filters.put("startDate", toKestraSearchInstant(from));
         filters.put("endDate", toKestraSearchInstant(to));
-        if (flowFilter != null) {
+        if (ownedFlowIds != null && !ownedFlowIds.isEmpty()) {
+            if (ownedFlowIds.size() == 1) {
+                filters.put("filters[flowId][EQUALS]", ownedFlowIds.getFirst());
+            } else {
+                filters.put("filters[flowId][IN]", String.join(",", ownedFlowIds));
+            }
+        } else if (flowFilter != null) {
             filters.put("filters[flowId][REGEX]", toCaseInsensitiveContainsRegex(flowFilter));
         }
         return filters;

@@ -21,8 +21,39 @@ public record OperationsExecutionListItem(
         boolean partialRerun,
         Integer rerunSelectedTaskCount,
         Integer rerunTotalTaskCount,
-        boolean markableSuccess
+        boolean markableSuccess,
+        Long ownerUserId,
+        String ownerName,
+        String ownerUsername,
+        String ownerStatus
 ) {
+    public OperationsExecutionListItem(
+            String id,
+            String namespace,
+            String flowId,
+            String branch,
+            String status,
+            Instant plannedAt,
+            Instant createdAt,
+            Instant startDate,
+            Instant endDate,
+            Long durationMs,
+            boolean rerunnable,
+            boolean stoppable,
+            boolean rerun,
+            String rerunType,
+            Integer retryAttempt,
+            boolean partialRerun,
+            Integer rerunSelectedTaskCount,
+            Integer rerunTotalTaskCount,
+            boolean markableSuccess
+    ) {
+        this(id, namespace, flowId, branch, status, plannedAt, createdAt, startDate, endDate,
+                durationMs, rerunnable, stoppable, rerun, rerunType, retryAttempt,
+                partialRerun, rerunSelectedTaskCount, rerunTotalTaskCount, markableSuccess,
+                null, null, null, null);
+    }
+
     public OperationsExecutionListItem(
             String id,
             String namespace,
@@ -45,7 +76,8 @@ public record OperationsExecutionListItem(
     ) {
         this(id, namespace, flowId, branch, status, plannedAt, createdAt, startDate, endDate,
                 durationMs, rerunnable, stoppable, rerun, rerunType, retryAttempt,
-                partialRerun, rerunSelectedTaskCount, rerunTotalTaskCount, false);
+                partialRerun, rerunSelectedTaskCount, rerunTotalTaskCount, false,
+                null, null, null, null);
     }
 
     public OperationsExecutionListItem(

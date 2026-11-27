@@ -1,6 +1,8 @@
 package com.wbdata.offline.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wbdata.group.dto.GroupOwnerInfo;
+import com.wbdata.group.service.GroupOwnerService;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.config.OfflineTransferProperties;
 import com.wbdata.offline.dto.OfflineFlowDocumentResponse;
@@ -63,6 +65,8 @@ public class OfflineFlowDocumentService {
     private final OfflineFlowDocumentStore store;
     private final OfflineFlowDocumentWriter writer;
     private final OfflineFlowDocumentRollback rollback;
+    @Nullable
+    private GroupOwnerService groupOwnerService;
 
     public OfflineFlowDocumentService(OfflineProperties offlineProperties,
                                       OfflineFlowContentService offlineFlowContentService,
@@ -172,10 +176,15 @@ public class OfflineFlowDocumentService {
         );
     }
 
+    @Autowired(required = false)
+    public void setGroupOwnerService(@Nullable GroupOwnerService groupOwnerService) {
+        this.groupOwnerService = groupOwnerService;
+    }
+
     public OfflineFlowDocumentResponse getFlowDocument(Long groupId, String path) {
         return repoLockManager.withLock(groupId, () -> {
             try {
-                return store.readSnapshot(groupId, path).response();
+                return enrichOwner(groupId, store.readSnapshot(groupId, path).response());
             } catch (IOException ex) {
                 throw new IllegalStateException("读取任务文档失败", ex);
             }
@@ -187,7 +196,7 @@ public class OfflineFlowDocumentService {
             try {
                 DocumentSnapshot snapshot = store.readSnapshot(groupId, path, fileAccess);
                 return new VersionSnapshotData(
-                        snapshot.response(),
+                        enrichOwner(groupId, snapshot.response()),
                         store.collectManagedFiles(groupId, path, fileAccess, snapshot)
                 );
             } catch (IOException ex) {
@@ -199,7 +208,7 @@ public class OfflineFlowDocumentService {
     public OfflineFlowDocumentResponse getFlowDocumentSnapshot(Long groupId, String path, SnapshotFileAccess fileAccess) {
         return repoLockManager.withLock(groupId, () -> {
             try {
-                return store.readSnapshot(groupId, path, fileAccess).response();
+                return enrichOwner(groupId, store.readSnapshot(groupId, path, fileAccess).response());
             } catch (IOException ex) {
                 throw new IllegalStateException("读取任务快照失败", ex);
             }
@@ -236,7 +245,34 @@ public class OfflineFlowDocumentService {
 
     /** Persistence callback; API callers must enter OfflineFlowDependencyService.saveDocument first. */
     public OfflineFlowDocumentResponse saveFlowDocument(SaveOfflineFlowDocumentRequest request) {
-        return repoLockManager.withLock(request.groupId(), () -> writer.saveUnlocked(request));
+        return saveFlowDocument(request, null, true);
+    }
+
+    public OfflineFlowDocumentResponse saveFlowDocument(SaveOfflineFlowDocumentRequest request,
+                                                        @Nullable Long operatorUserId,
+                                                        boolean canManageOthersOwnership) {
+        OfflineFlowDocumentResponse saved = repoLockManager.withLock(
+                request.groupId(),
+                () -> writer.saveUnlocked(request, operatorUserId, canManageOthersOwnership, groupOwnerService)
+        );
+        return enrichOwner(request.groupId(), saved);
+    }
+
+    private OfflineFlowDocumentResponse enrichOwner(Long groupId, @Nullable OfflineFlowDocumentResponse response) {
+        if (response == null || response.ownerUserId() == null || groupOwnerService == null) {
+            return response;
+        }
+        Map<Long, GroupOwnerInfo> resolved = groupOwnerService.resolveOwners(groupId, List.of(response.ownerUserId()));
+        GroupOwnerInfo info = resolved.get(response.ownerUserId());
+        if (info == null) {
+            return response;
+        }
+        return response.withOwner(
+                response.ownerUserId(),
+                info.effectiveName(),
+                info.username(),
+                info.status()
+        );
     }
 
     /**

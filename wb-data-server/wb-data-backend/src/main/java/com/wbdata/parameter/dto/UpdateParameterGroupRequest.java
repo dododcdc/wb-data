@@ -13,6 +13,14 @@ public record UpdateParameterGroupRequest(
         @NotNull @Positive Integer expectedRevision,
         @NotBlank @Size(max = 100) String name,
         @Size(max = 500) String description,
-        @NotEmpty @Size(max = 200) List<@Valid ParameterDefinitionRequest> definitions
+        @NotEmpty @Size(max = 200) List<@Valid ParameterDefinitionRequest> definitions,
+        Long ownerUserId
 ) {
+    public UpdateParameterGroupRequest(
+            Integer expectedRevision,
+            String name,
+            String description,
+            List<ParameterDefinitionRequest> definitions) {
+        this(expectedRevision, name, description, definitions, null);
+    }
 }

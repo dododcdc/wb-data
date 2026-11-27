@@ -7,6 +7,9 @@ import com.wbdata.auth.enums.Permission;
 import com.wbdata.auth.service.AuthContextService;
 import com.wbdata.auth.service.AuthSession;
 import com.wbdata.common.Result;
+import com.wbdata.group.dto.AssetOwnerSummaryResponse;
+import com.wbdata.group.dto.TransferOwnerResponse;
+import com.wbdata.group.service.GroupOwnerService;
 import com.wbdata.offline.dto.DeleteOfflineFlowRequest;
 import com.wbdata.offline.dto.OfflineFlowDocumentResponse;
 import com.wbdata.offline.dto.OfflineFlowContentResponse;
@@ -18,9 +21,11 @@ import com.wbdata.offline.dto.RollbackOfflineFlowRequest;
 import com.wbdata.offline.dto.RollbackOfflineFlowResponse;
 import com.wbdata.offline.dto.SaveOfflineFlowDocumentRequest;
 import com.wbdata.offline.dto.SaveOfflineFlowRequest;
+import com.wbdata.offline.dto.TransferOfflineFlowOwnerRequest;
 import com.wbdata.offline.service.OfflineFlowContentService;
 import com.wbdata.offline.service.OfflineFlowDependencyService;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
+import com.wbdata.offline.service.OfflineFlowOwnerService;
 import com.wbdata.offline.service.OfflineRecentFlowService;
 import com.wbdata.offline.repo.service.OfflineFlowVersionService;
 import com.wbdata.offline.repo.service.OfflineFlowSnapshotService;
@@ -39,6 +44,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
+
 @Tag(name = "离线开发", description = "任务内容读写")
 @RestController
 @RequestMapping({"/api/v1/offline/flows", "/api/v1/groups/{groupId}/offline/flows"})
@@ -51,6 +58,8 @@ public class OfflineFlowController {
     private final OfflineRecentFlowService offlineRecentFlowService;
     private OfflineFlowVersionService offlineFlowVersionService;
     private OfflineFlowSnapshotService offlineFlowSnapshotService;
+    private OfflineFlowOwnerService offlineFlowOwnerService;
+    private GroupOwnerService groupOwnerService;
 
     public OfflineFlowController(OfflineFlowContentService offlineFlowContentService,
                                  OfflineFlowDocumentService offlineFlowDocumentService,
@@ -78,9 +87,19 @@ public class OfflineFlowController {
         this.offlineFlowVersionService = offlineFlowVersionService;
     }
 
-    @Autowired
+    @Autowired(required = false)
     public void setOfflineFlowSnapshotService(OfflineFlowSnapshotService offlineFlowSnapshotService) {
         this.offlineFlowSnapshotService = offlineFlowSnapshotService;
+    }
+
+    @Autowired(required = false)
+    public void setOfflineFlowOwnerService(OfflineFlowOwnerService offlineFlowOwnerService) {
+        this.offlineFlowOwnerService = offlineFlowOwnerService;
+    }
+
+    @Autowired(required = false)
+    public void setGroupOwnerService(GroupOwnerService groupOwnerService) {
+        this.groupOwnerService = groupOwnerService;
     }
 
     @Operation(summary = "读取任务版本历史")
@@ -165,12 +184,20 @@ public class OfflineFlowController {
                 request.parameterBinding(),
                 request.parameterBindings(),
                 request.runtimeTimezone(),
-                request.dependencyConfig()
+                request.dependencyConfig(),
+                request.ownerUserId()
         );
+        Long operatorUserId = context.user() != null ? context.user().id() : null;
+        boolean canManageOthersOwnership = operatorUserId != null
+                && groupOwnerService != null
+                && groupOwnerService.canManageOthersOwnership(context.groupId(), operatorUserId);
         OfflineFlowDocumentResponse response = offlineFlowDependencyService.saveDocument(
                 normalizedRequest,
                 authContextService.listAccessibleGroups(context.user()),
-                () -> offlineFlowDocumentService.saveFlowDocument(normalizedRequest)
+                () -> groupOwnerService == null
+                        ? offlineFlowDocumentService.saveFlowDocument(normalizedRequest)
+                        : offlineFlowDocumentService.saveFlowDocument(
+                                normalizedRequest, operatorUserId, canManageOthersOwnership)
         );
         if (context.user() != null) {
             offlineRecentFlowService.recordRecentFlow(
@@ -230,6 +257,27 @@ public class OfflineFlowController {
                                  @Valid @RequestBody MoveOfflineFlowRequest request) {
         offlineFlowContentService.moveFlow(context.groupId(), request.path(), request.newPath());
         return Result.success(null);
+    }
+
+    @Operation(summary = "统计项目组内各负责人名下任务数量")
+    @GetMapping("/owners")
+    public Result<List<AssetOwnerSummaryResponse>> listOwners(
+            @RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context) {
+        if (offlineFlowOwnerService == null) {
+            return Result.success(List.of());
+        }
+        return Result.success(offlineFlowOwnerService.listFlowOwners(context.groupId()));
+    }
+
+    @Operation(summary = "转移离线任务负责人（支持单任务与按原负责人批量移交）")
+    @PostMapping("/transfer-owner")
+    public Result<TransferOwnerResponse> transferOwner(
+            @RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
+            @Valid @RequestBody TransferOfflineFlowOwnerRequest request) {
+        if (offlineFlowOwnerService == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "负责人转移服务未启用");
+        }
+        return Result.success(offlineFlowOwnerService.transferFlowOwners(context.groupId(), request, context));
     }
 
 }

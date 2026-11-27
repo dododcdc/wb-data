@@ -50,4 +50,7 @@ public class DataSourceSaveDTO {
 
     @Schema(description = "负责人")
     private String owner;
+
+    @Schema(description = "负责人用户 ID")
+    private Long ownerUserId;
 }

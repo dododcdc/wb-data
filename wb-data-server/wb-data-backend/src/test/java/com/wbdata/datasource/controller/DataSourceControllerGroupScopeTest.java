@@ -10,9 +10,14 @@ import com.wbdata.datasource.entity.DataSource;
 import com.wbdata.datasource.plugin.DataSourceConnectionPoolManager;
 import com.wbdata.datasource.plugin.DataSourcePluginRegistry;
 import com.wbdata.datasource.service.DataSourceService;
+import com.wbdata.group.dto.GroupOwnerInfo;
+import com.wbdata.group.dto.TransferOwnerRequest;
+import com.wbdata.group.dto.TransferOwnerResponse;
+import com.wbdata.group.service.GroupOwnerService;
 import com.wbdata.plugin.api.DataSourceException;
 import com.wbdata.plugin.api.DataSourcePlugin;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -38,7 +43,8 @@ class DataSourceControllerGroupScopeTest {
                 mock(DataSourceService.class),
                 mock(DataSourcePluginRegistry.class),
                 mock(DataSourceConnectionPoolManager.class),
-                authorizedDataSourceService
+                authorizedDataSourceService,
+                mock(GroupOwnerService.class)
         );
         DataSource dataSource = new DataSource();
         dataSource.setId(11676L);
@@ -57,7 +63,8 @@ class DataSourceControllerGroupScopeTest {
                 mock(DataSourceService.class),
                 mock(DataSourcePluginRegistry.class),
                 mock(DataSourceConnectionPoolManager.class),
-                authorizedDataSourceService
+                authorizedDataSourceService,
+                mock(GroupOwnerService.class)
         );
         DataSource dataSource = new DataSource();
         dataSource.setId(11676L);
@@ -77,8 +84,11 @@ class DataSourceControllerGroupScopeTest {
     void saveRejectsInvalidConnectionInfoBeforePersisting() {
         DataSourceService dataSourceService = mock(DataSourceService.class);
         DataSourcePluginRegistry pluginRegistry = mock(DataSourcePluginRegistry.class);
+        GroupOwnerService groupOwnerService = mock(GroupOwnerService.class);
         DataSourcePlugin plugin = mock(DataSourcePlugin.class);
         when(pluginRegistry.getPlugin("MYSQL")).thenReturn(Optional.of(plugin));
+        when(groupOwnerService.requireAssignableOwner(4L, 1L))
+                .thenReturn(new GroupOwnerInfo(1L, "admin", "管理员", "ACTIVE"));
         doThrow(new DataSourceException("不允许的 JDBC 连接参数: allowLoadLocalInfile"))
                 .when(plugin).validateConnectionInfo(any());
 
@@ -86,7 +96,8 @@ class DataSourceControllerGroupScopeTest {
                 dataSourceService,
                 pluginRegistry,
                 mock(DataSourceConnectionPoolManager.class),
-                mock(AuthorizedDataSourceService.class)
+                mock(AuthorizedDataSourceService.class),
+                groupOwnerService
         );
         DataSourceSaveDTO dto = new DataSourceSaveDTO();
         dto.setName("bad-ds");
@@ -102,6 +113,50 @@ class DataSourceControllerGroupScopeTest {
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(ex.getReason()).contains("allowLoadLocalInfile");
         verify(dataSourceService, never()).save(any());
+    }
+
+    @Test
+    void saveAssignsSelectedGroupOwnerAndTransferOwnerDelegates() {
+        DataSourceService dataSourceService = mock(DataSourceService.class);
+        DataSourcePluginRegistry pluginRegistry = mock(DataSourcePluginRegistry.class);
+        GroupOwnerService groupOwnerService = mock(GroupOwnerService.class);
+        DataSourcePlugin plugin = mock(DataSourcePlugin.class);
+        when(pluginRegistry.getPlugin("MYSQL")).thenReturn(Optional.of(plugin));
+        when(groupOwnerService.requireAssignableOwner(4L, 8L))
+                .thenReturn(new GroupOwnerInfo(8L, "xiaohong", "小红", "ACTIVE"));
+        when(dataSourceService.save(any())).thenReturn(true);
+        when(dataSourceService.transferOwner(4L, null, 7L, 8L, "小红", 1L)).thenReturn(10);
+
+        DataSourceController controller = new DataSourceController(
+                dataSourceService,
+                pluginRegistry,
+                mock(DataSourceConnectionPoolManager.class),
+                mock(AuthorizedDataSourceService.class),
+                groupOwnerService
+        );
+        DataSourceSaveDTO dto = new DataSourceSaveDTO();
+        dto.setName("prod-ds");
+        dto.setType("MYSQL");
+        dto.setHost("omarchy.local");
+        dto.setPort(3306);
+        dto.setDatabaseName("demo");
+        dto.setUsername("root");
+        dto.setOwnerUserId(8L);
+
+        controller.save(context(4L), dto);
+
+        ArgumentCaptor<DataSource> captor = ArgumentCaptor.forClass(DataSource.class);
+        verify(dataSourceService).save(captor.capture());
+        assertThat(captor.getValue().getOwnerUserId()).isEqualTo(8L);
+        assertThat(captor.getValue().getOwner()).isEqualTo("小红");
+
+        TransferOwnerResponse response = controller.transferOwner(
+                context(4L),
+                new TransferOwnerRequest(null, 7L, 8L)
+        ).getData();
+        assertThat(response.updatedCount()).isEqualTo(10);
+        assertThat(response.targetOwnerUserId()).isEqualTo(8L);
+        assertThat(response.targetOwnerName()).isEqualTo("小红");
     }
 
     private GroupAuthContext context(Long groupId) {

@@ -38,13 +38,14 @@ public class OperationsExecutionController {
             @RequestParam(required = false) String branch,
             @RequestParam(required = false) String flowId,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) Long ownerUserId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer pageSize) {
         return Result.success(operationsExecutionService.listExecutions(
                 context.groupId(),
-                new OperationsExecutionQuery(branch, flowId, status, from, to, page, pageSize)
+                new OperationsExecutionQuery(branch, flowId, status, from, to, page, pageSize, ownerUserId)
         ));
     }
 

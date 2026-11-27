@@ -5,6 +5,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wbdata.common.dto.PageQuery;
 import com.wbdata.common.dto.PageResult;
+import com.wbdata.group.dto.GroupOwnerInfo;
+import com.wbdata.group.dto.TransferOwnerRequest;
+import com.wbdata.group.dto.TransferOwnerResponse;
+import com.wbdata.group.service.GroupOwnerService;
 import com.wbdata.parameter.dto.CreateParameterGroupRequest;
 import com.wbdata.parameter.dto.ParameterDefinitionRequest;
 import com.wbdata.parameter.dto.ParameterGroupResponse;
@@ -37,13 +41,30 @@ import static org.mockito.Mockito.when;
 class ParameterGroupServiceTest {
     private WbParameterGroupMapper groupMapper;
     private WbParameterDefinitionMapper definitionMapper;
+    private GroupOwnerService groupOwnerService;
     private ParameterGroupService service;
 
     @BeforeEach
     void setUp() {
         groupMapper = Mockito.mock(WbParameterGroupMapper.class);
         definitionMapper = Mockito.mock(WbParameterDefinitionMapper.class);
-        service = new ParameterGroupService(groupMapper, definitionMapper);
+        groupOwnerService = Mockito.mock(GroupOwnerService.class);
+        when(groupOwnerService.requireAssignableOwner(any(), any())).thenAnswer(invocation -> {
+            Long userId = invocation.getArgument(1);
+            return new GroupOwnerInfo(userId, "user" + userId, "用户" + userId, "ACTIVE");
+        });
+        when(groupOwnerService.resolveOwners(any(), any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            var ids = (java.util.Collection<Long>) invocation.getArgument(1);
+            if (ids == null) {
+                return Map.of();
+            }
+            return ids.stream().distinct().collect(java.util.stream.Collectors.toMap(
+                    id -> id,
+                    id -> new GroupOwnerInfo(id, "user" + id, "用户" + id, "ACTIVE")
+            ));
+        });
+        service = new ParameterGroupService(groupMapper, definitionMapper, groupOwnerService);
     }
 
     @Test
@@ -341,6 +362,27 @@ class ParameterGroupServiceTest {
         assertThat(result.orElseThrow().definitions()).extracting(it -> it.key()).containsExactly("name");
     }
 
+    @Test
+    void transferOwnerEnforcesAdminOrSelfOwnershipAndAllowsBatchHandover() {
+        WbParameterGroup ownedBy8 = group(4L, 12L, 3, 7);
+        when(groupMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(ownedBy8));
+        when(groupOwnerService.canManageOthersOwnership(4L, 9L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.transferOwner(4L, 9L, new TransferOwnerRequest(List.of(12L), null, 10L)))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("仅项目组管理员或当前负责人");
+
+        when(groupOwnerService.canManageOthersOwnership(4L, 1L)).thenReturn(true);
+        when(groupMapper.update(isNull(), any(Wrapper.class))).thenReturn(5);
+
+        TransferOwnerResponse response = service.transferOwner(
+                4L, 1L, new TransferOwnerRequest(null, 8L, 10L));
+
+        assertThat(response.updatedCount()).isEqualTo(5);
+        assertThat(response.targetOwnerUserId()).isEqualTo(10L);
+        assertThat(response.targetOwnerName()).isEqualTo("用户10");
+    }
+
     private WbParameterGroup group(Long groupId, Long id, int version) {
         return group(groupId, id, version, 1);
     }
@@ -354,6 +396,7 @@ class ParameterGroupServiceTest {
         group.setVersion(version);
         group.setRevision(revision);
         group.setStatus("ACTIVE");
+        group.setOwnerUserId(8L);
         group.setCreatedBy(8L);
         group.setUpdatedBy(8L);
         return group;

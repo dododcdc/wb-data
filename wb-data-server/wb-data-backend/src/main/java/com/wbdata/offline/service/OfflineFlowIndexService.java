@@ -373,6 +373,46 @@ public class OfflineFlowIndexService {
         return result;
     }
 
+    public List<WbOfflineFlowIndex> listFlowsByGroupAndOwner(Long groupId, Long ownerUserId) {
+        if (!isEnabled() || groupId == null || ownerUserId == null) {
+            return List.of();
+        }
+        ensureGroupIndexed(groupId);
+        List<WbOfflineFlowIndex> rows = indexMapper.findByGroupAndOwnerUserId(groupId, ownerUserId);
+        return rows == null ? List.of() : rows;
+    }
+
+    public long countFlowsByGroupAndOwner(Long groupId, Long ownerUserId) {
+        if (!isEnabled() || groupId == null || ownerUserId == null) {
+            return 0L;
+        }
+        ensureGroupIndexed(groupId);
+        return indexMapper.countByGroupAndOwnerUserId(groupId, ownerUserId);
+    }
+
+    public Map<Long, Long> countFlowsByOwnerAcrossGroups(Long ownerUserId) {
+        if (!isEnabled() || ownerUserId == null) {
+            return Map.of();
+        }
+        ensureGlobalIndexReady();
+        List<Map<String, Object>> rows = indexMapper.countByOwnerUserIdGroupByGroup(ownerUserId);
+        if (rows == null || rows.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Long> counts = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object rawGroupId = row.get("groupId");
+            Object rawCnt = row.get("cnt");
+            if (rawGroupId instanceof Number gid && rawCnt instanceof Number cnt) {
+                long value = cnt.longValue();
+                if (value > 0) {
+                    counts.put(gid.longValue(), value);
+                }
+            }
+        }
+        return counts;
+    }
+
     public List<IndexedFlowSnapshot> findFlowsByGroupIds(Collection<Long> groupIds) {
         if (!isEnabled() || groupIds == null || groupIds.isEmpty()) {
             return List.of();
@@ -675,6 +715,7 @@ public class OfflineFlowIndexService {
             return new ParsedFlowProjection(
                     PARSE_STATUS_OK,
                     meta.flowId(),
+                    meta.ownerUserId(),
                     meta.schedule(),
                     meta.crossGroupDependency(),
                     meta.failurePolicy(),
@@ -911,6 +952,7 @@ public class OfflineFlowIndexService {
     private record ParsedFlowProjection(
             String parseStatus,
             @Nullable String flowId,
+            @Nullable Long ownerUserId,
             @Nullable OfflineFlowYamlSupport.ScheduleData schedule,
             OfflineCrossGroupDependency crossGroupDependency,
             OfflineFailurePolicy failurePolicy,
@@ -919,6 +961,7 @@ public class OfflineFlowIndexService {
         private static ParsedFlowProjection invalid() {
             return new ParsedFlowProjection(
                     PARSE_STATUS_INVALID,
+                    null,
                     null,
                     null,
                     OfflineCrossGroupDependency.ALLOW,
@@ -932,6 +975,7 @@ public class OfflineFlowIndexService {
             entity.setGroupId(groupId);
             entity.setFlowPath(flowPath);
             entity.setFlowId(flowId);
+            entity.setOwnerUserId(ownerUserId);
             entity.setParseStatus(parseStatus);
             entity.setHasSchedule(schedule != null);
             entity.setScheduleEnabled(schedule != null && schedule.enabled());
