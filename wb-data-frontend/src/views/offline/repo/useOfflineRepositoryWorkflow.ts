@@ -25,6 +25,7 @@ interface UseOfflineRepositoryWorkflowParams {
 }
 
 export interface BranchDirtyState {
+    targetBranch?: string;
     changedFlows: string[];
     changedFlowDetails: DirtyFlowChange[];
     otherFileCount: number;
@@ -102,6 +103,7 @@ export function useOfflineRepositoryWorkflow({
     const [branches, setBranches] = useState<BranchItem[]>([]);
     const [branchSwitching, setBranchSwitching] = useState(false);
     const [branchDirtyState, setBranchDirtyState] = useState<BranchDirtyState | null>(null);
+    const [branchDirtyDialogOpen, setBranchDirtyDialogOpen] = useState(false);
     const [pendingBranchSwitch, setPendingBranchSwitch] = useState<string | null>(null);
     const [discardBranchSwitchOpen, setDiscardBranchSwitchOpen] = useState(false);
     const groupIdRef = useRef(groupId);
@@ -119,6 +121,7 @@ export function useOfflineRepositoryWorkflow({
             setBranchMenuOpen(false);
             setBranches([]);
             setBranchDirtyState(null);
+            setBranchDirtyDialogOpen(false);
             setPendingBranchSwitch(null);
             setDiscardBranchSwitchOpen(false);
             pendingBranchSwitchCallbacksRef.current = null;
@@ -210,6 +213,7 @@ export function useOfflineRepositoryWorkflow({
 
     const resetBranchSwitchState = useCallback(() => {
         setBranchDirtyState(null);
+        setBranchDirtyDialogOpen(false);
         setPendingBranchSwitch(null);
         setDiscardBranchSwitchOpen(false);
         pendingBranchSwitchCallbacksRef.current = null;
@@ -232,6 +236,7 @@ export function useOfflineRepositoryWorkflow({
             if (!isCurrentGroupAction()) return;
 
             setBranchDirtyState(null);
+            setBranchDirtyDialogOpen(false);
             setBranchMenuOpen(false);
             setPendingBranchSwitch(null);
             setDiscardBranchSwitchOpen(false);
@@ -247,18 +252,13 @@ export function useOfflineRepositoryWorkflow({
             const dirtyDetails = readDirtyWorkingTreeDetails(error);
             if (dirtyDetails) {
                 setBranchDirtyState({
+                    targetBranch: branchName,
                     changedFlows: dirtyDetails.changedFlows,
                     changedFlowDetails: dirtyDetails.changedFlowDetails ?? dirtyDetails.changedFlows.map((path) => ({ path, status: 'MODIFIED' })),
                     otherFileCount: dirtyDetails.otherFileCount,
                 });
-                setBranchMenuOpen(true);
-                showFeedback({
-                    tone: 'error',
-                    title: '工作区有未提交改动',
-                    detail: dirtyDetails.changedFlows.length > 0
-                        ? `${dirtyDetails.changedFlows.length} 个任务待提交，请先提交再切换分支`
-                        : '请先提交改动再切换分支',
-                });
+                setBranchMenuOpen(false);
+                setBranchDirtyDialogOpen(true);
                 return;
             }
             setBranchDirtyState(null);
@@ -312,6 +312,7 @@ export function useOfflineRepositoryWorkflow({
     useEffect(() => {
         if (!repoStatus?.dirty) {
             setBranchDirtyState(null);
+            setBranchDirtyDialogOpen(false);
         }
     }, [repoStatus?.dirty]);
 
@@ -403,6 +404,8 @@ export function useOfflineRepositoryWorkflow({
         resetBranchList,
         branchSwitching,
         branchDirtyState,
+        branchDirtyDialogOpen,
+        setBranchDirtyDialogOpen,
         pendingBranchSwitch,
         discardBranchSwitchOpen,
         setDiscardBranchSwitchOpen: setDiscardBranchSwitchDialogOpen,

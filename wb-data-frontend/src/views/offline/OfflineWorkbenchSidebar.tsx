@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    AlertTriangle,
     ArrowLeftRight,
     ArrowUpRight,
     Check,
@@ -202,16 +201,6 @@ interface OfflineWorkbenchSidebarProps {
     tree: TreeControls;
 }
 
-function formatFlowPathDisplayName(flowPath: string) {
-    const normalized = flowPath.replace(/\\/g, '/');
-    const segments = normalized.split('/').filter(Boolean);
-    const flowYamlIndex = segments.lastIndexOf('flow.yaml');
-    if (flowYamlIndex > 0) {
-        return segments[flowYamlIndex - 1];
-    }
-    return segments[segments.length - 1] ?? flowPath;
-}
-
 function GitPushIcon({ dirty }: { dirty: boolean }) {
     return (
         <span style={{ position: 'relative', display: 'inline-flex' }}>
@@ -406,40 +395,6 @@ export function OfflineWorkbenchSidebar({
                         <div className={`offline-branch-menu ${branch.menuOpen ? 'open' : ''}`} role="dialog" aria-label="切换分支" aria-hidden={!branch.menuOpen}>
                             <div className="offline-branch-menu-inner">
                                 <div className="offline-branch-menu-surface">
-                                    {branch.dirtyState ? (
-                                        <div className="offline-branch-dirty-warning">
-                                            <AlertTriangle size={14} />
-                                            <div>
-                                                <strong>还有已保存但未提交的任务</strong>
-                                                {branch.dirtyState.changedFlowDetails.length > 0 ? (
-                                                    <ul>
-                                                        {branch.dirtyState.changedFlowDetails.slice(0, 5).map((flow) => (
-                                                            <li key={flow.path}>
-                                                                {formatFlowPathDisplayName(flow.path)}
-                                                                {flow.status === 'DELETED' ? <span>已删除</span> : null}
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                ) : (
-                                                    <p>当前仓库有已保存但未提交的改动。</p>
-                                                )}
-                                                {branch.dirtyState.otherFileCount > 0 ? (
-                                                    <p>还有 {branch.dirtyState.otherFileCount} 个仓库文件未提交。</p>
-                                                ) : null}
-                                                <button
-                                                    type="button"
-                                                    className="offline-branch-dirty-action"
-                                                    aria-label="打开提交仓库改动"
-                                                    onClick={() => {
-                                                        branch.onMenuOpenChange(false);
-                                                        repository.onOpenCommit();
-                                                    }}
-                                                >
-                                                    提交仓库改动
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ) : null}
 
                                     {branch.loading ? (
                                         <div className="offline-branch-menu-empty" role="status">

@@ -1,5 +1,6 @@
-import { LoaderCircle } from 'lucide-react';
+import { AlertTriangle, FileCode2, LoaderCircle } from 'lucide-react';
 
+import type { DirtyFlowChange } from '../../../api/offline';
 import { Button } from '../../../components/ui/button';
 import { ConfirmDialog } from '../../../components/ui/confirm-dialog';
 import {
@@ -10,6 +11,23 @@ import {
     DialogHeader,
     DialogTitle,
 } from '../../../components/ui/dialog';
+import type { BranchDirtyState } from './useOfflineRepositoryWorkflow';
+
+function formatFlowPathDisplayName(flowPath: string) {
+    const normalized = flowPath.replace(/\\/g, '/');
+    const segments = normalized.split('/').filter(Boolean);
+    const flowYamlIndex = segments.lastIndexOf('flow.yaml');
+    if (flowYamlIndex > 0) {
+        return segments[flowYamlIndex - 1];
+    }
+    return segments[segments.length - 1] ?? flowPath;
+}
+
+function getDirtyFlowStatusMeta(status: DirtyFlowChange['status']): { label: string; className: string } {
+    if (status === 'ADDED') return { label: '新增', className: 'is-added' };
+    if (status === 'DELETED') return { label: '已删除', className: 'is-deleted' };
+    return { label: '已修改', className: 'is-modified' };
+}
 
 interface OfflineRepositoryDialogsProps {
     pushDialogOpen: boolean;
@@ -21,6 +39,11 @@ interface OfflineRepositoryDialogsProps {
     pendingBranchSwitch: string | null;
     onDiscardBranchSwitchOpenChange: (open: boolean) => void;
     onConfirmDiscardDraftAndSwitchBranch: () => void;
+    currentBranchLabel: string;
+    branchDirtyDialogOpen: boolean;
+    branchDirtyState: BranchDirtyState | null;
+    onBranchDirtyDialogOpenChange: (open: boolean) => void;
+    onOpenRepoCommitFromDirtyDialog: () => void;
     rebuildDialogOpen: boolean;
     rebuildLoading: boolean;
     onRebuildDialogOpenChange: (open: boolean) => void;
@@ -37,6 +60,11 @@ export function OfflineRepositoryDialogs({
     pendingBranchSwitch,
     onDiscardBranchSwitchOpenChange,
     onConfirmDiscardDraftAndSwitchBranch,
+    currentBranchLabel,
+    branchDirtyDialogOpen,
+    branchDirtyState,
+    onBranchDirtyDialogOpenChange,
+    onOpenRepoCommitFromDirtyDialog,
     rebuildDialogOpen,
     rebuildLoading,
     onRebuildDialogOpenChange,
@@ -87,6 +115,77 @@ export function OfflineRepositoryDialogs({
                 onConfirm={onConfirmDiscardDraftAndSwitchBranch}
                 isLoading={branchSwitching}
             />
+
+            <Dialog
+                open={branchDirtyDialogOpen && branchDirtyState !== null}
+                onOpenChange={onBranchDirtyDialogOpenChange}
+            >
+                <DialogContent className="offline-branch-dirty-dialog" style={{ maxWidth: '460px' }}>
+                    <DialogHeader>
+                        <div className="offline-branch-dirty-dialog-head">
+                            <span className="offline-branch-dirty-dialog-icon" aria-hidden="true">
+                                <AlertTriangle size={16} />
+                            </span>
+                            <DialogTitle>切换分支前请先提交改动</DialogTitle>
+                        </div>
+                        <DialogDescription>
+                            {branchDirtyState?.targetBranch
+                                ? `当前分支（${currentBranchLabel}）仍有未提交改动，暂无法切换到「${branchDirtyState.targetBranch}」。请先提交仓库改动后再切换。`
+                                : `当前分支（${currentBranchLabel}）仍有未提交改动，请先提交仓库改动后再切换分支。`}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {branchDirtyState ? (
+                        <div className="offline-branch-dirty-dialog-body">
+                            {branchDirtyState.changedFlowDetails.length > 0 ? (
+                                <>
+                                    <ul className="offline-branch-dirty-dialog-list" aria-label="待提交的任务清单">
+                                        {branchDirtyState.changedFlowDetails.map((flow) => {
+                                            const statusMeta = getDirtyFlowStatusMeta(flow.status);
+                                            return (
+                                                <li key={flow.path} className="offline-branch-dirty-dialog-row" title={flow.path}>
+                                                    <span className="offline-branch-dirty-dialog-name">
+                                                        <FileCode2 size={14} aria-hidden="true" />
+                                                        <span>{formatFlowPathDisplayName(flow.path)}</span>
+                                                    </span>
+                                                    <span className={`offline-branch-dirty-dialog-tag ${statusMeta.className}`}>
+                                                        {statusMeta.label}
+                                                    </span>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                    {branchDirtyState.otherFileCount > 0 ? (
+                                        <p className="offline-branch-dirty-dialog-note">
+                                            另外还有 {branchDirtyState.otherFileCount} 个仓库文件未提交。
+                                        </p>
+                                    ) : null}
+                                </>
+                            ) : (
+                                <p className="offline-branch-dirty-dialog-note">
+                                    {branchDirtyState.otherFileCount > 0
+                                        ? `当前工作区还有 ${branchDirtyState.otherFileCount} 个仓库文件未提交。`
+                                        : '当前仓库有已保存但未提交的改动。'}
+                                </p>
+                            )}
+                        </div>
+                    ) : null}
+
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => onBranchDirtyDialogOpenChange(false)}>
+                            知道了
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="default"
+                            aria-label="打开提交仓库改动"
+                            onClick={onOpenRepoCommitFromDirtyDialog}
+                        >
+                            提交仓库改动
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={rebuildDialogOpen} onOpenChange={onRebuildDialogOpenChange}>
                 <DialogContent style={{ maxWidth: '420px' }}>

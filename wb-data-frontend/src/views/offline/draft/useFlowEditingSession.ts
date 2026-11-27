@@ -309,8 +309,7 @@ export function useFlowEditingSession(params: UseFlowEditingSessionParams) {
             if (isSwitchingFlow) {
                 resetExecutionAndSchedule?.();
             }
-            await loadScheduleSnapshot(normalizedPath);
-            if (!isCurrentGroupAction()) return false;
+            void Promise.resolve(loadScheduleSnapshot(normalizedPath)).catch(() => undefined);
             return true;
         } catch (error) {
             if (!isCurrentGroupAction()) return false;

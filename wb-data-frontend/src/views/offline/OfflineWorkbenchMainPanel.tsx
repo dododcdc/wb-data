@@ -4,6 +4,7 @@ import { AlertCircle, AlertTriangle, GitCommitHorizontal, LoaderCircle, RotateCc
 import type { GitSyncConfig } from '../../api/gitSettings';
 import type { OfflineFlowDocument } from '../../api/offline';
 import { Button } from '../../components/ui/button';
+import { useDelayedBusy } from '../../hooks/useDelayedBusy';
 import { resolveDeploymentStatus } from './version/deploymentStatus';
 import FlowCanvas from './canvas/FlowCanvas';
 import { OfflineCanvasToolbar } from './canvas/OfflineCanvasToolbar';
@@ -28,6 +29,7 @@ interface OfflineWorkbenchMainPanelProps {
     onSelectOnlineNode?: (nodeId: string | null) => void;
     onOpenOnlineNodeEditor?: (nodeId: string) => void;
     flowDocument: OfflineFlowDocument | null;
+    flowLoading?: boolean;
     canWrite: boolean;
     canConfigureParameters: boolean;
     timezone?: string | null;
@@ -112,6 +114,7 @@ export function OfflineWorkbenchMainPanel({
     onSelectOnlineNode,
     onOpenOnlineNodeEditor,
     flowDocument,
+    flowLoading = false,
     canWrite,
     canConfigureParameters,
     timezone,
@@ -152,9 +155,17 @@ export function OfflineWorkbenchMainPanel({
     onAddNode,
     onRenameNode,
 }: OfflineWorkbenchMainPanelProps) {
+    const showCanvasLoading = useDelayedBusy(flowLoading, { delayMs: 140, minVisibleMs: 220 });
+
     if (!activeFlowPath || !flowDocument) {
         return (
             <main className="offline-main-panel h-full animate-enter animate-enter-delay-1">
+                {showCanvasLoading ? (
+                    <div className="offline-canvas-loading-pill" role="status" aria-live="polite">
+                        <LoaderCircle size={13} className="offline-spin" aria-hidden="true" />
+                        <span>正在加载任务…</span>
+                    </div>
+                ) : null}
                 <div className="offline-empty-state">
                     <p>从左侧项目树选择一个任务</p>
                 </div>
@@ -349,6 +360,12 @@ export function OfflineWorkbenchMainPanel({
                                     onRenameNode={onRenameNode}
                                 />
                             </ReactFlowProvider>
+                            {showCanvasLoading ? (
+                                <div className="offline-canvas-loading-pill" role="status" aria-live="polite">
+                                    <LoaderCircle size={13} className="offline-spin" aria-hidden="true" />
+                                    <span>正在加载任务…</span>
+                                </div>
+                            ) : null}
                         </>
                     )}
                 </section>

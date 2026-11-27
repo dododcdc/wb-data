@@ -374,4 +374,67 @@ describe('OfflineWorkbenchSidebar', () => {
         expect(search.value).toBe('');
         expect(screen.getByRole('button', { name: 'beta_task' })).toBeTruthy();
     });
+
+    it('keeps branch menu focused on branches even when repository is dirty', () => {
+        const data = createTree(['alpha_task']);
+
+        render(
+            <OfflineWorkbenchSidebar
+                isGroupAdmin
+                branch={{
+                    label: 'feature/policy-review',
+                    canSwitch: true,
+                    menuOpen: true,
+                    tooltipOpen: false,
+                    loading: false,
+                    switching: false,
+                    branches: [
+                        { name: 'feature/policy-review', current: true, local: true, remote: false, remoteName: null, trackingBranch: null },
+                        { name: 'main', current: false, local: true, remote: false, remoteName: null, trackingBranch: null },
+                    ],
+                    dirtyState: null,
+                    onToggleMenu: vi.fn(),
+                    onMenuOpenChange: vi.fn(),
+                    onTooltipOpenChange: vi.fn(),
+                    onSwitch: vi.fn(),
+                }}
+                repository={{
+                    available: true,
+                    loading: false,
+                    committing: false,
+                    pushLoading: false,
+                    canCommit: true,
+                    canPush: false,
+                    dirty: true,
+                    ahead: false,
+                    onRefresh: vi.fn(),
+                    onOpenCommit: vi.fn(),
+                    onOpenPush: vi.fn(),
+                }}
+                creation={{
+                    canWrite: true,
+                    menuOpen: false,
+                    onMenuOpenChange: vi.fn(),
+                    onOpenNewFlow: vi.fn(),
+                    onOpenNewFolder: vi.fn(),
+                }}
+                tree={{
+                    data,
+                    loading: false,
+                    flowLoading: false,
+                    activeFlowPath: null,
+                    canWrite: true,
+                    onOpenFlow: vi.fn(),
+                    onContextMenu: vi.fn(),
+                    onMoveNode: vi.fn(),
+                }}
+            />,
+            { wrapper: TooltipProvider },
+        );
+
+        expect(screen.queryByText('有未提交改动')).toBeNull();
+        expect(screen.queryByText('还有已保存但未提交的任务')).toBeNull();
+        expect(screen.getAllByText('feature/policy-review').length).toBeGreaterThan(0);
+        expect(screen.getByRole('button', { name: '切换到 main' })).toBeTruthy();
+    });
 });

@@ -1102,9 +1102,15 @@ describe('OfflineWorkbench commit UI', () => {
         fireEvent.click(await screen.findByRole('button', { name: /切换分支，当前 main/ }));
         fireEvent.click(await screen.findByRole('button', { name: /切换到 dev/ }));
 
-        expect(await screen.findByText('还有已保存但未提交的任务')).toBeTruthy();
+        expect(await screen.findByRole('dialog', { name: '切换分支前请先提交改动' })).toBeTruthy();
         expect(screen.getByText('example')).toBeTruthy();
-        expect(screen.getByRole('button', { name: '打开提交仓库改动' })).toBeTruthy();
+        expect(screen.getByText('已修改')).toBeTruthy();
+        const commitBtn = screen.getByRole('button', { name: '打开提交仓库改动' });
+        expect(commitBtn).toBeTruthy();
+
+        fireEvent.click(commitBtn);
+        expect(screen.queryByRole('dialog', { name: '切换分支前请先提交改动' })).toBeNull();
+        expect(await screen.findByRole('dialog', { name: '提交仓库' })).toBeTruthy();
     });
 
     it('flushes the dirty draft before switching branch without a discard dialog', async () => {

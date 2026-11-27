@@ -258,11 +258,10 @@ describe('useOfflineRepositoryWorkflow', () => {
 
         expect(offlineApi.switchBranch).toHaveBeenCalledWith(1, 'dev');
         expect(result.current.branchDirtyState?.changedFlows).toEqual(['_flows/example/flow.yaml']);
-        expect(result.current.branchMenuOpen).toBe(true);
-        expect(showFeedback).toHaveBeenCalledWith(expect.objectContaining({
-            tone: 'error',
-            title: '工作区有未提交改动',
-        }));
+        expect(result.current.branchDirtyState?.targetBranch).toBe('dev');
+        expect(result.current.branchDirtyDialogOpen).toBe(true);
+        expect(result.current.branchMenuOpen).toBe(false);
+        expect(showFeedback).not.toHaveBeenCalled();
     });
 
     it('confirms draft discard before switching branches', async () => {

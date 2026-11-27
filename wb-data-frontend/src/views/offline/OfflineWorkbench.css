@@ -937,6 +937,42 @@ button.offline-tree-row {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(246, 242, 235, 0.94));
 }
 
+.flow-canvas-container .react-flow__viewport {
+    opacity: 0;
+    transition: opacity 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.flow-canvas-container.is-viewport-ready .react-flow__viewport {
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .flow-canvas-container .react-flow__viewport {
+        opacity: 1;
+        transition: none;
+    }
+}
+
+.offline-canvas-loading-pill {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: rgba(255, 253, 248, 0.94);
+    box-shadow: var(--shadow-sm);
+    color: var(--color-text-secondary);
+    font-size: 0.76rem;
+    font-weight: 500;
+    pointer-events: none;
+}
+
 /* ReactFlow node styles */
 .flow-canvas-node {
     display: flex;
@@ -1378,69 +1414,102 @@ button.offline-branch-row:hover:not(:disabled) .offline-branch-row-icon {
     font-size: 0.78rem;
 }
 
-.offline-branch-dirty-warning {
+.offline-branch-dirty-dialog-head {
     display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    margin-bottom: 4px;
-    border: 1px solid rgba(217, 119, 87, 0.26);
-    border-radius: 7px;
-    background: rgba(217, 119, 87, 0.08);
-    padding: 9px 10px;
-    color: var(--color-text-primary);
+    align-items: center;
+    gap: 10px;
 }
 
-.offline-branch-dirty-warning > svg {
+.offline-branch-dirty-dialog-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: rgba(217, 155, 38, 0.14);
+    color: #b45309;
     flex-shrink: 0;
-    margin-top: 2px;
-    color: var(--color-link);
 }
 
-.offline-branch-dirty-warning > div {
+.offline-branch-dirty-dialog-body {
     display: flex;
-    min-width: 0;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
 }
 
-.offline-branch-dirty-warning strong {
-    font-size: 0.78rem;
-}
-
-.offline-branch-dirty-warning ul {
+.offline-branch-dirty-dialog-list {
     margin: 0;
-    padding-left: 16px;
-    color: var(--color-text-secondary);
-    font-size: 0.76rem;
-}
-
-.offline-branch-dirty-warning p {
-    margin: 0;
-    color: var(--color-text-secondary);
-    font-size: 0.76rem;
-}
-
-.offline-branch-dirty-warning li span {
-    margin-left: 6px;
-    color: var(--color-error);
-    font-size: 0.72rem;
-}
-
-.offline-branch-dirty-action {
-    width: fit-content;
+    padding: 4px;
+    list-style: none;
+    max-height: 210px;
+    overflow-y: auto;
     border: 1px solid var(--color-border);
-    border-radius: 7px;
-    background: var(--color-bg-primary);
-    padding: 4px 8px;
-    color: var(--color-text-primary);
-    font-size: 0.75rem;
-    font-weight: 700;
-    cursor: pointer;
+    border-radius: 8px;
+    background: var(--color-bg-secondary);
 }
 
-.offline-branch-dirty-action:hover {
-    border-color: rgba(217, 119, 87, 0.28);
-    background: rgba(217, 119, 87, 0.08);
+.offline-branch-dirty-dialog-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 6px;
+}
+
+.offline-branch-dirty-dialog-row + .offline-branch-dirty-dialog-row {
+    border-top: 1px solid var(--color-border-subtle);
+}
+
+.offline-branch-dirty-dialog-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    color: var(--color-text-primary);
+    font-size: 0.8125rem;
+}
+
+.offline-branch-dirty-dialog-name svg {
+    flex-shrink: 0;
+    color: var(--color-text-muted);
+}
+
+.offline-branch-dirty-dialog-name > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.offline-branch-dirty-dialog-tag {
+    flex-shrink: 0;
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    line-height: 1.5;
+}
+
+.offline-branch-dirty-dialog-tag.is-added {
+    background: rgba(22, 163, 74, 0.12);
+    color: #15803d;
+}
+
+.offline-branch-dirty-dialog-tag.is-modified {
+    background: rgba(217, 155, 38, 0.14);
+    color: #b45309;
+}
+
+.offline-branch-dirty-dialog-tag.is-deleted {
+    background: rgba(220, 38, 38, 0.12);
+    color: var(--color-error);
+}
+
+.offline-branch-dirty-dialog-note {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: 0.8rem;
 }
 
 /* --- commit message textarea --- */

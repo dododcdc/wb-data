@@ -70,6 +70,8 @@ function buildInitialNodes(
     doc: OfflineFlowDocument,
     selectedTaskIds: string[],
     onToggleTaskSelection: (taskId: string) => void,
+    onRename: (oldId: string, newId: string) => void,
+    onCancelRename: () => void,
     nodeIssues?: Record<string, string | null>,
     nodeStatuses?: Record<string, string | null>,
     readOnly = false,
@@ -92,6 +94,9 @@ function buildInitialNodes(
                 selected: selectedTaskIds.includes(node.taskId),
                 onToggleSelection: onToggleTaskSelection,
                 readOnly,
+                isEditing: false,
+                onRename: (newId: string) => onRename(node.taskId, newId),
+                onCancelRename,
                 validationError: nodeIssues?.[node.taskId] ?? null,
                 status: nodeStatuses?.[node.taskId] ?? null,
             } satisfies FlowCanvasNodeData,
@@ -159,7 +164,16 @@ export default function FlowCanvas(props: FlowCanvasProps) {
 
     // Build initial data
     const initialNodes = useMemo(() => {
-        let nodesToLayout = buildInitialNodes(flowDocument, selectedTaskIds, onToggleTaskSelection, nodeIssues, nodeStatuses, readOnly);
+        let nodesToLayout = buildInitialNodes(
+            flowDocument,
+            selectedTaskIds,
+            onToggleTaskSelection,
+            handleInlineRenameCommit,
+            handleInlineRenameCancel,
+            nodeIssues,
+            nodeStatuses,
+            readOnly,
+        );
         const edges = buildInitialEdges(flowDocument);
         const hasLayout = flowDocument.layout && Object.keys(flowDocument.layout).length > 0;
         if (!hasLayout && nodesToLayout.length > 0) {
@@ -167,7 +181,16 @@ export default function FlowCanvas(props: FlowCanvasProps) {
         }
 
         return nodesToLayout;
-    }, [flowDocument, onToggleTaskSelection, selectedTaskIds, nodeIssues, nodeStatuses, readOnly]);
+    }, [
+        flowDocument,
+        onToggleTaskSelection,
+        handleInlineRenameCommit,
+        handleInlineRenameCancel,
+        selectedTaskIds,
+        nodeIssues,
+        nodeStatuses,
+        readOnly,
+    ]);
 
     const initialEdges = useMemo(
         () => buildInitialEdges(flowDocument),
@@ -176,12 +199,35 @@ export default function FlowCanvas(props: FlowCanvasProps) {
 
     const [nodes, setNodes, handleNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, handleEdgesChange] = useEdgesState(initialEdges);
+    const prevInitialRef = useRef({ nodes: initialNodes, edges: initialEdges });
+    const [viewportReady, setViewportReady] = useState(() => initialNodes.length === 0);
 
     useEffect(() => {
+        if (
+            prevInitialRef.current.nodes === initialNodes
+            && prevInitialRef.current.edges === initialEdges
+        ) {
+            return;
+        }
+        prevInitialRef.current = { nodes: initialNodes, edges: initialEdges };
         setNodes(initialNodes);
         setEdges(initialEdges);
         setContextMenu(null); // Clear context menu when switching flows
     }, [initialEdges, initialNodes, setEdges, setNodes]);
+
+    useEffect(() => {
+        if (nodes.length === 0) {
+            setViewportReady(true);
+            return;
+        }
+        if (viewportReady) {
+            return;
+        }
+        const timer = window.setTimeout(() => {
+            setViewportReady(true);
+        }, 160);
+        return () => window.clearTimeout(timer);
+    }, [nodes.length, viewportReady]);
 
     // Clear editing state ONLY when the actual file or readonly mode changes
     useEffect(() => {
@@ -284,6 +330,9 @@ export default function FlowCanvas(props: FlowCanvasProps) {
 
     const wrappedNodesChange: OnNodesChange = useCallback(
         (changes) => {
+            if (!viewportReady && changes.some((change) => change.type === 'dimensions')) {
+                setViewportReady(true);
+            }
             if (readOnly) {
                 const safeChanges = changes.filter((change) => change.type === 'select' || change.type === 'dimensions');
                 if (safeChanges.length > 0) {
@@ -293,7 +342,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
             }
             handleNodesChange(changes);
         },
-        [handleNodesChange, readOnly],
+        [handleNodesChange, readOnly, viewportReady],
     );
 
     const wrappedEdgesChange: OnEdgesChange = useCallback(
@@ -517,10 +566,20 @@ export default function FlowCanvas(props: FlowCanvasProps) {
         [],
     );
 
-    const fitViewOptions = useMemo(
+    const initialFitViewOptions = useMemo(
         () => ({
             padding: calculateFitPadding(nodes.length),
-            duration: 400,
+            duration: 0,
+            maxZoom: 1.0,
+            minZoom: 0.3,
+        }),
+        [nodes.length],
+    );
+
+    const controlsFitViewOptions = useMemo(
+        () => ({
+            padding: calculateFitPadding(nodes.length),
+            duration: 280,
             maxZoom: 1.0,
             minZoom: 0.3,
         }),
@@ -606,7 +665,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
     return (
         <div
             ref={containerRef}
-            className={`flow-canvas-container${readOnly ? ' is-readonly' : ''}`}
+            className={`flow-canvas-container${readOnly ? ' is-readonly' : ''}${viewportReady ? ' is-viewport-ready' : ''}`}
             tabIndex={0}
             onDragOver={readOnly ? undefined : onDragOver}
             onDrop={readOnly ? undefined : onDrop}
@@ -635,7 +694,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                 nodeTypes={nodeTypes}
                 defaultEdgeOptions={defaultEdgeOptions}
                 fitView
-                fitViewOptions={fitViewOptions}
+                fitViewOptions={initialFitViewOptions}
                 snapGrid={[20, 20]}
                 deleteKeyCode={null}
                 elementsSelectable
@@ -657,7 +716,7 @@ export default function FlowCanvas(props: FlowCanvasProps) {
                 <Controls
                     showInteractive={false}
 
-                    fitViewOptions={fitViewOptions}
+                    fitViewOptions={controlsFitViewOptions}
                     className="flow-canvas-controls"
                 >
                     {!readOnly ? (

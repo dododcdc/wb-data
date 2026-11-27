@@ -6,6 +6,7 @@ import type { OfflineFlowDocument } from '../../../api/offline';
 import FlowCanvas from './FlowCanvas';
 
 const reactFlowPropsSpy = vi.fn();
+const controlsPropsSpy = vi.fn();
 
 vi.mock('../../../components/ui/tooltip', () => ({
     Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -40,12 +41,21 @@ vi.mock('@xyflow/react', async () => {
                     >
                         trigger-remove
                     </button>
+                    <button
+                        type="button"
+                        onClick={() => onNodesChange?.([{ type: 'dimensions', id: 'sql_1' }])}
+                    >
+                        trigger-dimensions
+                    </button>
                     {props.children as ReactNode}
                 </div>
             );
         },
         Background: () => null,
-        Controls: ({ children }: { children?: ReactNode }) => <div data-testid="controls">{children}</div>,
+        Controls: ({ children, ...rest }: { children?: ReactNode; [key: string]: unknown }) => {
+            controlsPropsSpy(rest);
+            return <div data-testid="controls">{children}</div>;
+        },
         BackgroundVariant: { Dots: 'dots' },
         useNodesState: <T,>(initial: T[]) => {
             const [nodes, setNodes] = React.useState(initial);
@@ -70,6 +80,7 @@ vi.mock('@xyflow/react', async () => {
 afterEach(() => {
     cleanup();
     reactFlowPropsSpy.mockClear();
+    controlsPropsSpy.mockClear();
 });
 
 const sampleDocument: OfflineFlowDocument = {
@@ -161,5 +172,56 @@ describe('FlowCanvas readOnly mode', () => {
         const copyBtn = screen.getByRole('button', { name: /复制节点名称/ });
         fireEvent.click(copyBtn);
         expect(writeText).toHaveBeenCalledWith('sql_1');
+    });
+
+    it('uses instant initial fitView, keeps smooth manual controls fitView, and reveals viewport on dimensions measure', () => {
+        const { container, rerender } = render(
+            <FlowCanvas
+                flowDocument={sampleDocument}
+                selectedTaskIds={[]}
+                activeNodeId={null}
+                onNodesChange={vi.fn()}
+                onEdgesChange={vi.fn()}
+                onNodeLayoutCommit={vi.fn()}
+                onSelectNode={vi.fn()}
+                onToggleTaskSelection={vi.fn()}
+                onReplaceTaskSelection={vi.fn()}
+                onDoubleClickNode={vi.fn()}
+                onAddNode={vi.fn()}
+                onRenameNode={vi.fn()}
+            />,
+        );
+
+        const rfCalls = reactFlowPropsSpy.mock.calls;
+        const latestRfProps = rfCalls[rfCalls.length - 1]?.[0] as { fitViewOptions?: { duration?: number } };
+        expect(latestRfProps.fitViewOptions?.duration).toBe(0);
+
+        const ctrlCalls = controlsPropsSpy.mock.calls;
+        const latestCtrlProps = ctrlCalls[ctrlCalls.length - 1]?.[0] as { fitViewOptions?: { duration?: number } };
+        expect(latestCtrlProps.fitViewOptions?.duration).toBe(280);
+
+        const canvasEl = container.querySelector('.flow-canvas-container');
+        expect(canvasEl?.classList.contains('is-viewport-ready')).toBe(false);
+
+        fireEvent.click(screen.getByRole('button', { name: 'trigger-dimensions' }));
+        expect(container.querySelector('.flow-canvas-container.is-viewport-ready')).toBeTruthy();
+
+        rerender(
+            <FlowCanvas
+                flowDocument={{ ...sampleDocument, path: '_flows/empty/flow.yaml', stages: [], edges: [], layout: {} }}
+                selectedTaskIds={[]}
+                activeNodeId={null}
+                onNodesChange={vi.fn()}
+                onEdgesChange={vi.fn()}
+                onNodeLayoutCommit={vi.fn()}
+                onSelectNode={vi.fn()}
+                onToggleTaskSelection={vi.fn()}
+                onReplaceTaskSelection={vi.fn()}
+                onDoubleClickNode={vi.fn()}
+                onAddNode={vi.fn()}
+                onRenameNode={vi.fn()}
+            />,
+        );
+        expect(container.querySelector('.flow-canvas-container.is-viewport-ready')).toBeTruthy();
     });
 });

@@ -261,6 +261,14 @@ export function OfflineWorkbenchDialogs({
                 pendingBranchSwitch={repositoryWorkflow.pendingBranchSwitch}
                 onDiscardBranchSwitchOpenChange={repositoryWorkflow.setDiscardBranchSwitchOpen}
                 onConfirmDiscardDraftAndSwitchBranch={repositoryWorkflow.confirmDiscardDraftAndSwitchBranch}
+                currentBranchLabel={branchLabel}
+                branchDirtyDialogOpen={repositoryWorkflow.branchDirtyDialogOpen}
+                branchDirtyState={repositoryWorkflow.branchDirtyState}
+                onBranchDirtyDialogOpenChange={repositoryWorkflow.setBranchDirtyDialogOpen}
+                onOpenRepoCommitFromDirtyDialog={() => {
+                    repositoryWorkflow.setBranchDirtyDialogOpen(false);
+                    publishWorkflow.handleOpenRepoCommitDialog();
+                }}
                 rebuildDialogOpen={repositoryWorkflow.rebuildDialogOpen}
                 rebuildLoading={repositoryWorkflow.rebuildLoading}
                 onRebuildDialogOpenChange={repositoryWorkflow.setRebuildDialogOpen}

@@ -497,6 +497,7 @@ export default function OfflineWorkbench() {
                         onSelectOnlineNode={onlineMode.setOnlineActiveNodeId}
                         onOpenOnlineNodeEditor={onlineMode.handleOpenOnlineNodeEditor}
                         flowDocument={flowDocument}
+                        flowLoading={flowEditing.flowLoading}
                         canWrite={canWrite}
                         canConfigureParameters={canConfigureParameters}
                         timezone={flowDocument?.runtimeTimezone || flowDocument?.schedule?.timezone || defaultTimezone}
