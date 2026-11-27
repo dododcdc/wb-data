@@ -10,11 +10,14 @@ import com.wbdata.git.dto.GitSyncConfigListResponse;
 import com.wbdata.git.dto.GitSyncConfigResponse;
 import com.wbdata.git.service.GitSyncConfigService;
 import com.wbdata.group.mapper.WbProjectGroupMemberMapper;
+import com.wbdata.offline.entity.WbOfflineFlowIndex;
 import com.wbdata.offline.repo.dto.OfflineRepoStatusResponse;
 import com.wbdata.offline.repo.dto.OfflineRepoTreeNodeResponse;
 import com.wbdata.offline.repo.dto.OfflineRepoTreeResponse;
 import com.wbdata.offline.repo.service.OfflineRepoStatusService;
 import com.wbdata.offline.service.OfflineBranchSummaryService;
+import com.wbdata.offline.service.OfflineFlowIndexService;
+import com.wbdata.offline.service.OfflineRecentFlowService;
 import com.wbdata.offline.service.OfflineRepoTreeService;
 import com.wbdata.operations.dto.OperationsExecutionListItem;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
@@ -32,7 +35,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -63,6 +68,10 @@ class WorkspaceSummaryServiceTest {
     private GitSyncConfigService gitSyncConfigService;
     @Mock
     private WbProjectGroupMemberMapper projectGroupMemberMapper;
+    @Mock
+    private OfflineFlowIndexService offlineFlowIndexService;
+    @Mock
+    private OfflineRecentFlowService offlineRecentFlowService;
 
     private WorkspaceSummaryService service;
 
@@ -405,6 +414,181 @@ class WorkspaceSummaryServiceTest {
         ArgumentCaptor<OperationsExecutionQuery> queryCaptor = ArgumentCaptor.forClass(OperationsExecutionQuery.class);
         verify(operationsExecutionService, times(1)).listExecutions(eq(1L), queryCaptor.capture());
         assertThat(queryCaptor.getValue().branch()).isEqualTo("master");
+    }
+
+    @Test
+    void usesFlowIndexInsteadOfRepoTreeWhenIndexIsEnabled() {
+        WorkspaceSummaryService indexedService = new WorkspaceSummaryService(
+                dataSourceMapper,
+                offlineRepoStatusService,
+                offlineRepoTreeService,
+                offlineBranchSummaryService,
+                operationsExecutionService,
+                parameterGroupMapper,
+                gitSyncConfigService,
+                projectGroupMemberMapper,
+                offlineFlowIndexService,
+                offlineRecentFlowService
+        );
+        AuthSession user = new AuthSession(10L, "linchen", "林晨", SystemRole.USER.name(), Instant.now().plusSeconds(3600));
+        GroupAccessContext access = new GroupAccessContext(
+                user,
+                1L,
+                "电商核心数仓",
+                "GROUP_ADMIN",
+                false,
+                Set.of(Permission.OFFLINE_READ.code())
+        );
+
+        when(offlineRepoStatusService.getRepoStatus(1L)).thenReturn(new OfflineRepoStatusResponse(
+                1L, "/data/repos/wb-data-1", true, true, true, false, true, true,
+                "main", "abc1234", "feat: index ready", Instant.parse("2026-11-26T10:00:00Z")
+        ));
+        when(offlineBranchSummaryService.listAvailableBranches(1L)).thenReturn(List.of("main"));
+        when(offlineRepoStatusService.listDirtyFlowPaths(1L))
+                .thenReturn(Set.of("_flows/flow.yaml", "_flows/dwd/alpha_job/flow.yaml"));
+
+        Map<String, WbOfflineFlowIndex> indexedFlows = new LinkedHashMap<>();
+        indexedFlows.put("_flows/dwd/zeta_job/flow.yaml", flowIndexRow(
+                "_flows/dwd/zeta_job/flow.yaml", OfflineFlowIndexService.PARSE_STATUS_OK, true, true, "DAILY"
+        ));
+        indexedFlows.put("_flows/flow.yaml", flowIndexRow(
+                "_flows/flow.yaml", OfflineFlowIndexService.PARSE_STATUS_OK, true, false, "HOURLY"
+        ));
+        indexedFlows.put("_flows/dwd/alpha_job/flow.yaml", flowIndexRow(
+                "_flows/dwd/alpha_job/flow.yaml", OfflineFlowIndexService.PARSE_STATUS_OK, true, true, "DAILY"
+        ));
+        indexedFlows.put("_flows/ads/broken_job/flow.yaml", flowIndexRow(
+                "_flows/ads/broken_job/flow.yaml", OfflineFlowIndexService.PARSE_STATUS_INVALID, true, true, "DAILY"
+        ));
+        indexedFlows.put("_flows/ads/beta_job/flow.yaml", flowIndexRow(
+                "_flows/ads/beta_job/flow.yaml", OfflineFlowIndexService.PARSE_STATUS_OK, false, false, null
+        ));
+
+        when(offlineFlowIndexService.isEnabled()).thenReturn(true);
+        when(offlineFlowIndexService.listGroupFlowMap(1L)).thenReturn(indexedFlows);
+        when(offlineRecentFlowService.listRecentFlowPaths(10L, 1L)).thenReturn(List.of(
+                "_flows/deleted_job/flow.yaml",
+                "/_flows/flow.yaml",
+                "_flows/dwd/zeta_job/flow.yaml"
+        ));
+        when(operationsExecutionService.listExecutions(eq(1L), any())).thenReturn(new OperationsExecutionListResponse(
+                List.of("main"), "main", Instant.now().minusSeconds(3600), Instant.now(),
+                1, 50, 0, 0, List.of(), new OperationsExecutionStatusCounts(0, 0, 0, 0, 0)
+        ));
+
+        WorkspaceSummaryResponse summary = indexedService.getSummary(access);
+
+        assertThat(summary.onboarding()).isFalse();
+        assertThat(summary.offline().flowCount()).isEqualTo(5);
+        assertThat(summary.offline().scheduledFlowCount()).isEqualTo(2);
+        assertThat(summary.offline().dirtyFlowCount()).isEqualTo(2);
+        assertThat(summary.offline().recentFlows()).hasSize(4);
+
+        WorkspaceSummaryResponse.RecentFlowItem first = summary.offline().recentFlows().get(0);
+        assertThat(first.path()).isEqualTo("_flows/flow.yaml");
+        assertThat(first.name()).isEqualTo("flow");
+        assertThat(first.directory()).isEqualTo("_flows/");
+        assertThat(first.scheduleState()).isEqualTo("DISABLED");
+        assertThat(first.schedulePeriod()).isEqualTo("HOURLY");
+        assertThat(first.dirty()).isTrue();
+
+        WorkspaceSummaryResponse.RecentFlowItem second = summary.offline().recentFlows().get(1);
+        assertThat(second.path()).isEqualTo("_flows/dwd/zeta_job/flow.yaml");
+        assertThat(second.name()).isEqualTo("zeta_job");
+        assertThat(second.directory()).isEqualTo("_flows/dwd/");
+        assertThat(second.scheduleState()).isEqualTo("ENABLED");
+        assertThat(second.dirty()).isFalse();
+
+        // 字母序补齐剩余 2 项：alpha_job、beta_job（broken_job 排在其后）
+        WorkspaceSummaryResponse.RecentFlowItem third = summary.offline().recentFlows().get(2);
+        assertThat(third.path()).isEqualTo("_flows/dwd/alpha_job/flow.yaml");
+        assertThat(third.name()).isEqualTo("alpha_job");
+        assertThat(third.dirty()).isTrue();
+
+        WorkspaceSummaryResponse.RecentFlowItem fourth = summary.offline().recentFlows().get(3);
+        assertThat(fourth.path()).isEqualTo("_flows/ads/beta_job/flow.yaml");
+        assertThat(fourth.name()).isEqualTo("beta_job");
+        assertThat(fourth.scheduleState()).isEqualTo("NONE");
+
+        verifyNoInteractions(offlineRepoTreeService);
+    }
+
+    @Test
+    void usesFlowIndexForWorkingTreeRecentFlowsWhileViewingOtherBranch() {
+        WorkspaceSummaryService indexedService = new WorkspaceSummaryService(
+                dataSourceMapper,
+                offlineRepoStatusService,
+                offlineRepoTreeService,
+                offlineBranchSummaryService,
+                operationsExecutionService,
+                parameterGroupMapper,
+                gitSyncConfigService,
+                projectGroupMemberMapper,
+                offlineFlowIndexService,
+                offlineRecentFlowService
+        );
+        AuthSession user = new AuthSession(10L, "linchen", "林晨", SystemRole.USER.name(), Instant.now().plusSeconds(3600));
+        GroupAccessContext access = new GroupAccessContext(
+                user,
+                1L,
+                "电商核心数仓",
+                "GROUP_ADMIN",
+                false,
+                Set.of(Permission.OFFLINE_READ.code())
+        );
+
+        when(offlineRepoStatusService.getRepoStatus(1L)).thenReturn(new OfflineRepoStatusResponse(
+                1L, "/data/repos/wb-data-1", true, true, false, false, false, false,
+                "feature/dev", "def5678", "wip", Instant.parse("2026-11-26T10:00:00Z")
+        ));
+        when(offlineBranchSummaryService.listAvailableBranches(1L)).thenReturn(List.of("main", "feature/dev"));
+        when(offlineBranchSummaryService.summarizeBranch(1L, "main")).thenReturn(
+                new OfflineBranchSummaryService.BranchSnapshotSummary(
+                        "main", true, "abc1234", "init empty main",
+                        Instant.parse("2026-11-26T09:00:00Z"), false, false, 0, 0
+                )
+        );
+        when(offlineRepoStatusService.listDirtyFlowPaths(1L)).thenReturn(Set.of());
+        when(offlineFlowIndexService.isEnabled()).thenReturn(true);
+        when(offlineFlowIndexService.listGroupFlowMap(1L)).thenReturn(Map.of(
+                "_flows/ads/broken_draft/flow.yaml",
+                flowIndexRow("_flows/ads/broken_draft/flow.yaml", OfflineFlowIndexService.PARSE_STATUS_INVALID, true, true, "DAILY")
+        ));
+        when(offlineRecentFlowService.listRecentFlowPaths(10L, 1L)).thenReturn(List.of());
+        when(operationsExecutionService.listExecutions(eq(1L), any())).thenReturn(new OperationsExecutionListResponse(
+                List.of("main"), "main", Instant.now().minusSeconds(3600), Instant.now(),
+                1, 50, 0, 0, List.of(), new OperationsExecutionStatusCounts(0, 0, 0, 0, 0)
+        ));
+
+        WorkspaceSummaryResponse summary = indexedService.getSummary(access);
+
+        assertThat(summary.onboarding()).isFalse();
+        assertThat(summary.offline().branch()).isEqualTo("main");
+        assertThat(summary.offline().flowCount()).isZero();
+        assertThat(summary.offline().scheduledFlowCount()).isZero();
+        assertThat(summary.offline().recentFlows()).hasSize(1);
+        assertThat(summary.offline().recentFlows().get(0).name()).isEqualTo("broken_draft");
+        assertThat(summary.offline().recentFlows().get(0).scheduleState()).isEqualTo("NONE");
+        assertThat(summary.offline().recentFlows().get(0).schedulePeriod()).isNull();
+
+        verify(offlineBranchSummaryService).summarizeBranch(1L, "main");
+        verifyNoInteractions(offlineRepoTreeService);
+    }
+
+    private static WbOfflineFlowIndex flowIndexRow(String path,
+                                                   String parseStatus,
+                                                   boolean hasSchedule,
+                                                   boolean scheduleEnabled,
+                                                   String schedulePeriod) {
+        WbOfflineFlowIndex row = new WbOfflineFlowIndex();
+        row.setGroupId(1L);
+        row.setFlowPath(path);
+        row.setParseStatus(parseStatus);
+        row.setHasSchedule(hasSchedule);
+        row.setScheduleEnabled(scheduleEnabled);
+        row.setSchedulePeriod(schedulePeriod);
+        return row;
     }
 
     private static DataSource dataSource(Long id, String name, String type, String db, String status) {

@@ -10,11 +10,14 @@ import com.wbdata.git.dto.GitSyncConfigResponse;
 import com.wbdata.git.service.GitSyncConfigService;
 import com.wbdata.group.entity.WbProjectGroupMember;
 import com.wbdata.group.mapper.WbProjectGroupMemberMapper;
+import com.wbdata.offline.entity.WbOfflineFlowIndex;
 import com.wbdata.offline.repo.dto.OfflineRepoStatusResponse;
 import com.wbdata.offline.repo.dto.OfflineRepoTreeNodeResponse;
 import com.wbdata.offline.repo.dto.OfflineRepoTreeResponse;
 import com.wbdata.offline.repo.service.OfflineRepoStatusService;
 import com.wbdata.offline.service.OfflineBranchSummaryService;
+import com.wbdata.offline.service.OfflineFlowIndexService;
+import com.wbdata.offline.service.OfflineRecentFlowService;
 import com.wbdata.offline.service.OfflineRepoTreeService;
 import com.wbdata.operations.dto.OperationsExecutionListItem;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
@@ -33,8 +36,9 @@ import com.wbdata.workspace.dto.WorkspaceSummaryResponse.OfflineSummary;
 import com.wbdata.workspace.dto.WorkspaceSummaryResponse.OperationsSummary;
 import com.wbdata.workspace.dto.WorkspaceSummaryResponse.ParameterSummary;
 import com.wbdata.workspace.dto.WorkspaceSummaryResponse.RecentFlowItem;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -50,7 +54,6 @@ import java.util.Set;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class WorkspaceSummaryService {
 
     public static final String DEFAULT_BRANCH = "main";
@@ -71,6 +74,55 @@ public class WorkspaceSummaryService {
     private final WbParameterGroupMapper parameterGroupMapper;
     private final GitSyncConfigService gitSyncConfigService;
     private final WbProjectGroupMemberMapper projectGroupMemberMapper;
+    @Nullable
+    private final OfflineFlowIndexService offlineFlowIndexService;
+    @Nullable
+    private final OfflineRecentFlowService offlineRecentFlowService;
+
+    public WorkspaceSummaryService(DataSourceMapper dataSourceMapper,
+                                   OfflineRepoStatusService offlineRepoStatusService,
+                                   OfflineRepoTreeService offlineRepoTreeService,
+                                   OfflineBranchSummaryService offlineBranchSummaryService,
+                                   OperationsExecutionService operationsExecutionService,
+                                   WbParameterGroupMapper parameterGroupMapper,
+                                   GitSyncConfigService gitSyncConfigService,
+                                   WbProjectGroupMemberMapper projectGroupMemberMapper) {
+        this(
+                dataSourceMapper,
+                offlineRepoStatusService,
+                offlineRepoTreeService,
+                offlineBranchSummaryService,
+                operationsExecutionService,
+                parameterGroupMapper,
+                gitSyncConfigService,
+                projectGroupMemberMapper,
+                null,
+                null
+        );
+    }
+
+    @Autowired
+    public WorkspaceSummaryService(DataSourceMapper dataSourceMapper,
+                                   OfflineRepoStatusService offlineRepoStatusService,
+                                   OfflineRepoTreeService offlineRepoTreeService,
+                                   OfflineBranchSummaryService offlineBranchSummaryService,
+                                   OperationsExecutionService operationsExecutionService,
+                                   WbParameterGroupMapper parameterGroupMapper,
+                                   GitSyncConfigService gitSyncConfigService,
+                                   WbProjectGroupMemberMapper projectGroupMemberMapper,
+                                   @Nullable OfflineFlowIndexService offlineFlowIndexService,
+                                   @Nullable OfflineRecentFlowService offlineRecentFlowService) {
+        this.dataSourceMapper = dataSourceMapper;
+        this.offlineRepoStatusService = offlineRepoStatusService;
+        this.offlineRepoTreeService = offlineRepoTreeService;
+        this.offlineBranchSummaryService = offlineBranchSummaryService;
+        this.operationsExecutionService = operationsExecutionService;
+        this.parameterGroupMapper = parameterGroupMapper;
+        this.gitSyncConfigService = gitSyncConfigService;
+        this.projectGroupMemberMapper = projectGroupMemberMapper;
+        this.offlineFlowIndexService = offlineFlowIndexService;
+        this.offlineRecentFlowService = offlineRecentFlowService;
+    }
 
     public WorkspaceSummaryResponse getSummary(GroupAccessContext access) {
         return getSummary(access, null);
@@ -245,17 +297,17 @@ public class WorkspaceSummaryService {
                                                    List<String> availableBranches) {
         Long groupId = access.groupId();
         Long userId = access.user() != null ? access.user().id() : null;
-        OfflineRepoTreeResponse tree = offlineRepoTreeService.getRepoTree(groupId, access.groupName(), userId);
         Set<String> dirtyFlowPaths = offlineRepoStatusService.listDirtyFlowPaths(groupId);
+        WorkingTreeFlowStats workingTreeStats = loadWorkingTreeFlowStats(
+                groupId,
+                access.groupName(),
+                userId,
+                dirtyFlowPaths
+        );
 
-        Map<String, OfflineRepoTreeNodeResponse> flowsByPath = new LinkedHashMap<>();
-        collectFlowNodes(tree != null ? tree.root() : null, flowsByPath);
-
-        int workingTreeFlowCount = flowsByPath.size();
-        int workingTreeScheduledCount = (int) flowsByPath.values().stream()
-                .filter(node -> "ENABLED".equalsIgnoreCase(node.scheduleState()))
-                .count();
-        List<RecentFlowItem> recentFlows = buildRecentFlows(tree, flowsByPath, dirtyFlowPaths);
+        int workingTreeFlowCount = workingTreeStats.flowCount();
+        int workingTreeScheduledCount = workingTreeStats.scheduledFlowCount();
+        List<RecentFlowItem> recentFlows = workingTreeStats.recentFlows();
         boolean repoInitialized = status != null && status.exists() && status.gitInitialized();
 
         boolean viewingWorkingTree = selectedBranch != null && selectedBranch.equals(workingTreeBranch);
@@ -309,6 +361,106 @@ public class WorkspaceSummaryService {
     }
 
     private record OfflineBuildResult(OfflineSummary summary, int workingTreeFlowCount) {
+    }
+
+    private record WorkingTreeFlowStats(int flowCount, int scheduledFlowCount, List<RecentFlowItem> recentFlows) {
+    }
+
+    private WorkingTreeFlowStats loadWorkingTreeFlowStats(Long groupId,
+                                                          String groupName,
+                                                          Long userId,
+                                                          Set<String> dirtyFlowPaths) {
+        if (offlineFlowIndexService != null && offlineFlowIndexService.isEnabled()) {
+            return loadWorkingTreeFlowStatsFromIndex(groupId, userId, dirtyFlowPaths);
+        }
+        OfflineRepoTreeResponse tree = offlineRepoTreeService.getRepoTree(groupId, groupName, userId);
+        Map<String, OfflineRepoTreeNodeResponse> flowsByPath = new LinkedHashMap<>();
+        collectFlowNodes(tree != null ? tree.root() : null, flowsByPath);
+
+        int workingTreeFlowCount = flowsByPath.size();
+        int workingTreeScheduledCount = (int) flowsByPath.values().stream()
+                .filter(node -> "ENABLED".equalsIgnoreCase(node.scheduleState()))
+                .count();
+        List<RecentFlowItem> recentFlows = buildRecentFlows(tree, flowsByPath, dirtyFlowPaths);
+        return new WorkingTreeFlowStats(workingTreeFlowCount, workingTreeScheduledCount, recentFlows);
+    }
+
+    private WorkingTreeFlowStats loadWorkingTreeFlowStatsFromIndex(Long groupId,
+                                                                   Long userId,
+                                                                   Set<String> dirtyFlowPaths) {
+        Map<String, WbOfflineFlowIndex> indexedFlows = offlineFlowIndexService.listGroupFlowMap(groupId);
+        if (indexedFlows == null || indexedFlows.isEmpty()) {
+            return new WorkingTreeFlowStats(0, 0, List.of());
+        }
+
+        int flowCount = indexedFlows.size();
+        int scheduledFlowCount = 0;
+        for (WbOfflineFlowIndex row : indexedFlows.values()) {
+            if (OfflineFlowIndexService.PARSE_STATUS_OK.equals(row.getParseStatus())
+                    && Boolean.TRUE.equals(row.getHasSchedule())
+                    && Boolean.TRUE.equals(row.getScheduleEnabled())) {
+                scheduledFlowCount++;
+            }
+        }
+
+        List<String> recentFlowPaths = offlineRecentFlowService != null
+                ? offlineRecentFlowService.listRecentFlowPaths(userId, groupId)
+                : List.of();
+        List<RecentFlowItem> recentFlows = buildRecentFlowsFromIndex(indexedFlows, recentFlowPaths, dirtyFlowPaths);
+        return new WorkingTreeFlowStats(flowCount, scheduledFlowCount, recentFlows);
+    }
+
+    private List<RecentFlowItem> buildRecentFlowsFromIndex(Map<String, WbOfflineFlowIndex> indexedFlows,
+                                                            List<String> recentFlowPaths,
+                                                            Set<String> dirtyFlowPaths) {
+        if (indexedFlows.isEmpty()) {
+            return List.of();
+        }
+        Set<String> selectedPaths = new LinkedHashSet<>();
+        if (recentFlowPaths != null) {
+            for (String rawPath : recentFlowPaths) {
+                String normalizedPath = normalizeFlowPath(rawPath);
+                if (!normalizedPath.isEmpty() && indexedFlows.containsKey(normalizedPath)) {
+                    selectedPaths.add(normalizedPath);
+                }
+                if (selectedPaths.size() >= MAX_RECENT_FLOWS) {
+                    break;
+                }
+            }
+        }
+        if (selectedPaths.size() < MAX_RECENT_FLOWS) {
+            indexedFlows.keySet().stream()
+                    .sorted(Comparator
+                            .comparing(this::resolveFlowDisplayName, String.CASE_INSENSITIVE_ORDER)
+                            .thenComparing(String.CASE_INSENSITIVE_ORDER))
+                    .forEach(path -> {
+                        if (selectedPaths.size() < MAX_RECENT_FLOWS) {
+                            selectedPaths.add(path);
+                        }
+                    });
+        }
+
+        List<RecentFlowItem> result = new ArrayList<>(selectedPaths.size());
+        for (String path : selectedPaths) {
+            WbOfflineFlowIndex row = indexedFlows.get(path);
+            if (row == null) {
+                continue;
+            }
+            boolean parseOk = OfflineFlowIndexService.PARSE_STATUS_OK.equals(row.getParseStatus());
+            String scheduleState = !parseOk || !Boolean.TRUE.equals(row.getHasSchedule())
+                    ? "NONE"
+                    : Boolean.TRUE.equals(row.getScheduleEnabled()) ? "ENABLED" : "DISABLED";
+            String schedulePeriod = parseOk ? row.getSchedulePeriod() : null;
+            result.add(new RecentFlowItem(
+                    path,
+                    resolveFlowDisplayName(path),
+                    extractFlowDirectory(path),
+                    scheduleState,
+                    schedulePeriod,
+                    dirtyFlowPaths.contains(path)
+            ));
+        }
+        return List.copyOf(result);
     }
 
     private List<RecentFlowItem> buildRecentFlows(OfflineRepoTreeResponse tree,
@@ -526,6 +678,31 @@ public class WorkspaceSummaryService {
         }
         int lastSlash = normalized.lastIndexOf('/');
         return lastSlash >= 0 ? normalized.substring(0, lastSlash + 1) : "_flows/";
+    }
+
+    private String normalizeFlowPath(String path) {
+        if (path == null) {
+            return "";
+        }
+        return path.trim().replace('\\', '/').replaceAll("^/+", "");
+    }
+
+    private String resolveFlowDisplayName(String flowPath) {
+        String normalized = normalizeFlowPath(flowPath);
+        if (normalized.isEmpty()) {
+            return "";
+        }
+        String[] segments = normalized.split("/");
+        if (segments.length >= 2 && "flow.yaml".equals(segments[segments.length - 1])) {
+            String parentName = segments[segments.length - 2];
+            if (!parentName.isBlank() && !"_flows".equals(parentName)) {
+                return parentName;
+            }
+            return "flow";
+        }
+        String fileName = segments[segments.length - 1];
+        int dotIndex = fileName.lastIndexOf('.');
+        return dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
     }
 
     private boolean isEnabledStatus(String status) {
