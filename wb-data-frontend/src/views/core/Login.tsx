@@ -20,10 +20,12 @@ const loginSchema = z.object({
     username: z
         .string({ error: '请输入用户名' })
         .min(1, '请输入用户名')
-        .max(64, '用户名不能超过 64 个字符'),
+        .max(64, '用户名不能超过 64 个字符')
+        .refine((value) => value.trim().length > 0, '请输入用户名'),
     password: z
         .string({ error: '请输入密码' })
-        .min(1, '请输入密码'),
+        .min(1, '请输入密码')
+        .refine((value) => value.trim().length > 0, '请输入密码'),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -109,7 +111,7 @@ export default function Login() {
                                         autoComplete="username"
                                         disabled={isSubmitting}
                                         className="login-input"
-                                        {...register('username')}
+                                        {...register('username', { onChange: () => setServerError('') })}
                                     />
                                 </div>
                                 {errors.username?.message && (
@@ -133,7 +135,7 @@ export default function Login() {
                                         autoComplete="current-password"
                                         disabled={isSubmitting}
                                         className="login-input login-input--password"
-                                        {...register('password')}
+                                        {...register('password', { onChange: () => setServerError('') })}
                                     />
                                     <button
                                         type="button"

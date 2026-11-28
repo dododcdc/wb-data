@@ -33,4 +33,30 @@ describe('getErrorMessage', () => {
 
         expect(getErrorMessage(error, '操作失败')).toBe('远端分支已更新，请先拉取');
     });
+
+    it('uses the written fallback for 5xx even when the server sends a message', () => {
+        const response = {
+            data: { code: 500, message: '服务器内部错误' },
+            status: 500,
+            statusText: 'Internal Server Error',
+            headers: new AxiosHeaders(),
+            config: { headers: new AxiosHeaders() },
+        } as AxiosResponse;
+        const error = new AxiosError('Internal Server Error', 'ERR_BAD_RESPONSE', undefined, undefined, response);
+
+        expect(getErrorMessage(error, '登录失败，请稍后重试')).toBe('登录失败，请稍后重试');
+    });
+
+    it('keeps the server message for 5xx when the caller passed no fallback', () => {
+        const response = {
+            data: { code: 500, message: '数据源连接失败: Connection refused' },
+            status: 500,
+            statusText: 'Internal Server Error',
+            headers: new AxiosHeaders(),
+            config: { headers: new AxiosHeaders() },
+        } as AxiosResponse;
+        const error = new AxiosError('Internal Server Error', 'ERR_BAD_RESPONSE', undefined, undefined, response);
+
+        expect(getErrorMessage(error, '')).toBe('数据源连接失败: Connection refused');
+    });
 });
