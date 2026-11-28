@@ -42,10 +42,24 @@ public final class OfflineFlowInspector {
         return new FlowIdentity(identity.namespace(), identity.flowId());
     }
 
+    public static boolean isJdbcSqlKind(String kind) {
+        return OfflineFlowNodeKinds.isJdbcSql(kind);
+    }
+
     public record FlowIdentity(String namespace, String flowId) {
     }
 
-    public record InspectedNode(String taskId, String kind, String dataSourceType) {
+    public record InspectedNode(
+            String taskId,
+            String kind,
+            String dataSourceType,
+            String scriptPath,
+            Long dataSourceId,
+            String transferConfigPath
+    ) {
+        public InspectedNode(String taskId, String kind, String dataSourceType) {
+            this(taskId, kind, dataSourceType, null, null, null);
+        }
     }
 
     public record InspectedEdge(String source, String target) {

@@ -3,6 +3,8 @@ package com.wbdata.operations.service;
 import com.wbdata.offline.parameter.dto.ExecutionParameterValueResponse;
 import com.wbdata.offline.parameter.dto.FlowParameterSnapshot;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wbdata.datasource.mapper.DataSourceMapper;
 import com.wbdata.git.dto.GitSyncConfigResponse;
 import com.wbdata.git.service.GitSyncConfigService;
 import com.wbdata.group.dto.GroupOwnerInfo;
@@ -19,11 +21,13 @@ import com.wbdata.offline.parameter.service.ExecutionTimeContext;
 import com.wbdata.offline.parameter.service.FlowParameterMetadata;
 import com.wbdata.offline.execution.dto.ExecutionLogEntry;
 import com.wbdata.offline.execution.dto.ExecutionTaskRun;
+import com.wbdata.offline.repo.service.GitCommandService;
 import com.wbdata.offline.service.OfflineFlowIndexService;
 import com.wbdata.offline.service.OfflineFlowInspector;
 import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
 import com.wbdata.operations.dto.OperationsExecutionListItem;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
+import com.wbdata.operations.dto.OperationsExecutionNodeSnapshotResponse;
 import com.wbdata.operations.dto.OperationsExecutionQuery;
 import com.wbdata.operations.dto.OperationsExecutionRerunContextResponse;
 import com.wbdata.operations.dto.OperationsExecutionRerunResponse;
@@ -91,6 +95,12 @@ public class OperationsExecutionService {
     private OfflineFlowIndexService offlineFlowIndexService;
     @Nullable
     private GroupOwnerService groupOwnerService;
+    @Nullable
+    private GitCommandService gitCommandService;
+    @Nullable
+    private DataSourceMapper dataSourceMapper;
+    @Nullable
+    private ObjectMapper objectMapper;
 
     @Autowired(required = false)
     public void setOfflineFlowIndexService(@Nullable OfflineFlowIndexService offlineFlowIndexService) {
@@ -100,6 +110,21 @@ public class OperationsExecutionService {
     @Autowired(required = false)
     public void setGroupOwnerService(@Nullable GroupOwnerService groupOwnerService) {
         this.groupOwnerService = groupOwnerService;
+    }
+
+    @Autowired(required = false)
+    public void setGitCommandService(@Nullable GitCommandService gitCommandService) {
+        this.gitCommandService = gitCommandService;
+    }
+
+    @Autowired(required = false)
+    public void setDataSourceMapper(@Nullable DataSourceMapper dataSourceMapper) {
+        this.dataSourceMapper = dataSourceMapper;
+    }
+
+    @Autowired(required = false)
+    public void setObjectMapper(@Nullable ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
     }
 
     public OperationsExecutionListResponse listExecutions(Long groupId, OperationsExecutionQuery query) {
@@ -304,6 +329,25 @@ public class OperationsExecutionService {
         String flowSource = requireCurrentFlowSourceForRerun(original.namespace(), original.flowId());
         OfflineFlowInspector.InspectedGraph graph = flowInspector.inspectGraph(flowSource);
         return OperationsRerunGraphPlanner.buildContext(original, graph);
+    }
+
+    public OperationsExecutionNodeSnapshotResponse getNodeSnapshot(Long groupId, String executionId, String taskId) {
+        if (isBlank(taskId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "节点 ID 不能为空");
+        }
+        Scope scope = loadScope(groupId);
+        KestraExecutionSnapshot execution = requireAccessibleExecution(scope, executionId);
+        String branch = scope.branchFor(execution.namespace());
+        ParameterDetail parameterDetail = resolveParameterDetail(groupId, execution);
+        Map<String, String> nonSystemInputs = extractNonSystemInputs(execution.inputs());
+        return nodeSnapshotService().loadNodeSnapshot(
+                groupId,
+                execution,
+                branch,
+                taskId.trim(),
+                parameterDetail.parameters(),
+                nonSystemInputs
+        );
     }
 
     public OperationsExecutionRerunResponse rerunExecution(Long groupId,
@@ -785,6 +829,9 @@ public class OperationsExecutionService {
                 .toList();
         ParameterDetail parameterDetail = resolveParameterDetail(groupId, execution);
         String effectiveStatus = OperationsForceSuccess.effectiveStatus(execution);
+        OperationsNodeSnapshotService.ExecutionGraphResult graphResult =
+                nodeSnapshotService().buildExecutionGraph(execution, taskRuns);
+        String flowPath = resolveFlowPath(groupId, branch, execution);
         return new OperationsExecutionDetailResponse(
                 execution.id(),
                 execution.namespace(),
@@ -813,8 +860,50 @@ public class OperationsExecutionService {
                 OperationsForceSuccess.canMarkSuccess(effectiveStatus),
                 OperationsForceSuccess.isForceSuccess(execution),
                 OperationsForceSuccess.forceSuccessBy(execution),
-                OperationsForceSuccess.forceSuccessAt(execution)
+                OperationsForceSuccess.forceSuccessAt(execution),
+                flowPath,
+                graphResult.nodes(),
+                graphResult.edges()
         );
+    }
+
+    private OperationsNodeSnapshotService nodeSnapshotService() {
+        return new OperationsNodeSnapshotService(
+                kestraClient,
+                flowInspector,
+                gitCommandService,
+                dataSourceMapper,
+                objectMapper
+        );
+    }
+
+    @Nullable
+    private String resolveFlowPath(Long groupId, @Nullable String branch, KestraExecutionSnapshot execution) {
+        String labelFlowPath = labels(execution).get("wbdataFlowPath");
+        if (!isBlank(labelFlowPath)) {
+            return labelFlowPath.trim();
+        }
+        if (offlineFlowIndexService == null || isBlank(execution.flowId())) {
+            return null;
+        }
+        try {
+            return offlineFlowIndexService.findFlowPath(groupId, branch, execution.flowId());
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private Map<String, String> extractNonSystemInputs(@Nullable Map<String, String> inputs) {
+        if (inputs == null || inputs.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> result = new LinkedHashMap<>();
+        inputs.forEach((key, value) -> {
+            if (!isBlank(key) && !SYSTEM_INPUT_KEYS.contains(key) && value != null) {
+                result.put(key, value);
+            }
+        });
+        return result;
     }
 
     private Boolean resolveParameterSnapshotChanged(KestraExecutionSnapshot execution) {

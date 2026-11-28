@@ -68,7 +68,8 @@ final class KestraPayloadParser {
                 readLabels(root.path("labels")),
                 readStringMap(root.path("outputs")),
                 readText(root.path("originalId")),
-                readInteger(root.path("metadata").path("attemptNumber"))
+                readInteger(root.path("metadata").path("attemptNumber")),
+                readInteger(root.path("flowRevision"))
         );
     }
 

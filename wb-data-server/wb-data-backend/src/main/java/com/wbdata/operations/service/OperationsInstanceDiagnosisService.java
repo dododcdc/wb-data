@@ -16,6 +16,7 @@ import com.wbdata.offline.kestra.KestraClient;
 import com.wbdata.offline.kestra.KestraExecutionSnapshot;
 import com.wbdata.offline.kestra.KestraTaskRunSnapshot;
 import com.wbdata.offline.parameter.service.ExecutionTimeContext;
+import com.wbdata.offline.service.OfflineFlowIndexService;
 import com.wbdata.offline.service.OfflineFlowInspector;
 import com.wbdata.operations.dto.OperationsInstanceDiagnosisResponse;
 import com.wbdata.operations.dto.OperationsInstanceExecutionItem;
@@ -23,7 +24,9 @@ import com.wbdata.operations.dto.OperationsInstanceUpstreamItem;
 import com.wbdata.operations.entity.WbOperationExecutionAction;
 import com.wbdata.operations.mapper.WbOperationExecutionActionMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -84,7 +87,14 @@ public class OperationsInstanceDiagnosisService {
     private final WbOperationExecutionActionMapper actionMapper;
     private final PermissionService permissionService;
     private final OfflineFlowInspector flowInspector = new OfflineFlowInspector();
+    @Nullable
+    private OfflineFlowIndexService offlineFlowIndexService;
     private java.time.Clock clock = java.time.Clock.systemUTC();
+
+    @Autowired(required = false)
+    public void setOfflineFlowIndexService(@Nullable OfflineFlowIndexService offlineFlowIndexService) {
+        this.offlineFlowIndexService = offlineFlowIndexService;
+    }
 
     void useClock(java.time.Clock testClock) {
         this.clock = testClock;
@@ -102,11 +112,12 @@ public class OperationsInstanceDiagnosisService {
         String flowSource = requireFlowSource(namespace, flowId.trim(), branch.trim());
         OfflineFlowInspector.InspectedFlow flow = flowInspector.inspect(flowSource);
         OfflineFlowInspector.InspectedSchedule schedule = flow.schedule();
+        String flowPath = resolveFlowPath(groupId, branch.trim(), flow.flowId());
         if (schedule == null) {
             return new OperationsInstanceDiagnosisResponse(flow.flowId(), branch.trim(), namespace,
                     null, null, null, null, false, null,
                     STATE_NO_SCHEDULE, "任务未配置调度，不会产生调度实例",
-                    List.of(), List.of(), null, null);
+                    List.of(), List.of(), null, null, flowPath);
         }
         if (schedule.period() == null || schedule.period() == OfflineSchedulePeriod.CUSTOM) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "自定义 Cron 调度暂不支持实例诊断");
@@ -200,7 +211,19 @@ public class OperationsInstanceDiagnosisService {
 
         return new OperationsInstanceDiagnosisResponse(flow.flowId(), branch.trim(), namespace,
                 resolvedKey, schedule.period().name(), schedule.cron(), zone.getId(), schedule.enabled(),
-                plannedFire.toInstant(), state, reason, executionItems, upstreams, prevKey, nextKey);
+                plannedFire.toInstant(), state, reason, executionItems, upstreams, prevKey, nextKey, flowPath);
+    }
+
+    @Nullable
+    private String resolveFlowPath(Long groupId, String branch, String flowId) {
+        if (offlineFlowIndexService == null) {
+            return null;
+        }
+        try {
+            return offlineFlowIndexService.findFlowPath(groupId, branch, flowId);
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 
     /** 从执行记录定位实例：执行 → (branch, flowId, scheduleKey)，再走标准诊断。 */

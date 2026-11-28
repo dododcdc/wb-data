@@ -34,8 +34,48 @@ public record OperationsExecutionDetailResponse(
         boolean markableSuccess,
         boolean forceSuccess,
         String forceSuccessBy,
-        Instant forceSuccessAt
+        Instant forceSuccessAt,
+        String flowPath,
+        List<OperationsExecutionGraphNode> graphNodes,
+        List<OperationsRerunGraphEdge> graphEdges
 ) {
+    public OperationsExecutionDetailResponse(
+            String id,
+            String namespace,
+            String flowId,
+            String branch,
+            String status,
+            Instant plannedAt,
+            Instant createdAt,
+            Instant startDate,
+            Instant endDate,
+            Long durationMs,
+            boolean rerunnable,
+            boolean stoppable,
+            List<ExecutionTaskRun> taskRuns,
+            Map<String, String> inputs,
+            Map<String, String> labels,
+            String parameterResolutionStatus,
+            List<ExecutionParameterValueResponse> parameters,
+            Boolean parameterSnapshotChanged,
+            boolean rerun,
+            String rerunType,
+            Integer retryAttempt,
+            boolean partialRerun,
+            Integer rerunSelectedTaskCount,
+            Integer rerunTotalTaskCount,
+            boolean markableSuccess,
+            boolean forceSuccess,
+            String forceSuccessBy,
+            Instant forceSuccessAt
+    ) {
+        this(id, namespace, flowId, branch, status, plannedAt, createdAt, startDate, endDate,
+                durationMs, rerunnable, stoppable, taskRuns, inputs, labels,
+                parameterResolutionStatus, parameters, parameterSnapshotChanged,
+                rerun, rerunType, retryAttempt, partialRerun, rerunSelectedTaskCount, rerunTotalTaskCount,
+                markableSuccess, forceSuccess, forceSuccessBy, forceSuccessAt, null, List.of(), List.of());
+    }
+
     public OperationsExecutionDetailResponse(
             String id,
             String namespace,
@@ -66,7 +106,7 @@ public record OperationsExecutionDetailResponse(
                 durationMs, rerunnable, stoppable, taskRuns, inputs, labels,
                 parameterResolutionStatus, parameters, parameterSnapshotChanged,
                 rerun, rerunType, retryAttempt, partialRerun, rerunSelectedTaskCount, rerunTotalTaskCount,
-                false, false, null, null);
+                false, false, null, null, null, List.of(), List.of());
     }
 
     public OperationsExecutionDetailResponse(

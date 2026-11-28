@@ -18,6 +18,27 @@ public record OperationsInstanceDiagnosisResponse(
         List<OperationsInstanceExecutionItem> executions,
         List<OperationsInstanceUpstreamItem> upstreams,
         String prevScheduleKey,
-        String nextScheduleKey
+        String nextScheduleKey,
+        String flowPath
 ) {
+    public OperationsInstanceDiagnosisResponse(
+            String flowId,
+            String branch,
+            String namespace,
+            String scheduleKey,
+            String period,
+            String cron,
+            String timezone,
+            boolean scheduleEnabled,
+            Instant plannedFireAt,
+            String state,
+            String reason,
+            List<OperationsInstanceExecutionItem> executions,
+            List<OperationsInstanceUpstreamItem> upstreams,
+            String prevScheduleKey,
+            String nextScheduleKey
+    ) {
+        this(flowId, branch, namespace, scheduleKey, period, cron, timezone, scheduleEnabled,
+                plannedFireAt, state, reason, executions, upstreams, prevScheduleKey, nextScheduleKey, null);
+    }
 }

@@ -245,10 +245,20 @@ public class KestraHttpClient implements KestraClient {
 
     @Override
     public String getFlowSource(String namespace, String flowId) {
+        return getFlowSource(namespace, flowId, null);
+    }
+
+    @Override
+    public String getFlowSource(String namespace, String flowId, Integer revision) {
         ensureCredentialsConfigured();
+        String path = "/api/v1/" + properties.getTenant()
+                + "/flows/" + encode(namespace) + "/" + encode(flowId) + "?source=true";
+        if (revision != null && revision > 0) {
+            path += "&revision=" + revision;
+        }
         HttpResponse<byte[]> response = send(
                 "GET",
-                "/api/v1/" + properties.getTenant() + "/flows/" + encode(namespace) + "/" + encode(flowId) + "?source=true",
+                path,
                 null,
                 null,
                 "application/json"
@@ -257,6 +267,34 @@ public class KestraHttpClient implements KestraClient {
             throw toKestraException(response, "查询执行脚本失败");
         }
         return payloadParser.readFlowSource(response.body());
+    }
+
+    @Override
+    public String getNamespaceFile(String namespace, String path) {
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+        ensureCredentialsConfigured();
+        String normalizedPath = path.trim();
+        if (!normalizedPath.startsWith("/")) {
+            normalizedPath = "/" + normalizedPath;
+        }
+        HttpResponse<byte[]> response = send(
+                "GET",
+                "/api/v1/" + properties.getTenant()
+                        + "/namespaces/" + encode(namespace)
+                        + "/files?path=" + encodeQueryParam(normalizedPath),
+                null,
+                null,
+                "*/*"
+        );
+        if (response.statusCode() == 404) {
+            return null;
+        }
+        if (!isSuccessful(response.statusCode())) {
+            throw toKestraException(response, "查询命名空间文件失败");
+        }
+        return new String(response.body(), StandardCharsets.UTF_8);
     }
 
     @Override

@@ -507,4 +507,50 @@ class KestraHttpClientTest {
         });
         return completed.join();
     }
+
+    @Test
+    void getExecutionParsesFlowRevisionAndGetFlowSourceSupportsRevision() throws Exception {
+        HttpClient httpClient = Mockito.mock(HttpClient.class);
+        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+        when(httpClient.send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response(200, """
+                        {
+                          "id": "exec-rev",
+                          "namespace": "g4-main",
+                          "flowId": "daily_etl",
+                          "flowRevision": 3,
+                          "state": {"current": "FAILED"}
+                        }
+                        """))
+                .thenReturn(response(200, """
+                        {"source": "id: daily_etl\\nnamespace: g4-main\\n"}
+                        """));
+        KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
+
+        KestraExecutionSnapshot execution = client.getExecution("exec-rev");
+        String source = client.getFlowSource("g4-main", "daily_etl", execution.flowRevision());
+
+        assertThat(execution.flowRevision()).isEqualTo(3);
+        assertThat(source).contains("id: daily_etl");
+        assertThat(requestCaptor.getAllValues().get(1).uri().toString())
+                .isEqualTo("http://localhost:8090/api/v1/main/flows/g4-main/daily_etl?source=true&revision=3");
+    }
+
+    @Test
+    void getNamespaceFileReturnsUtf8ContentAndNullOn404() throws Exception {
+        HttpClient httpClient = Mockito.mock(HttpClient.class);
+        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+        when(httpClient.send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response(200, "SELECT 1;\n"))
+                .thenReturn(response(404, "not found"));
+        KestraHttpClient client = new KestraHttpClient(properties(), new ObjectMapper(), httpClient);
+
+        String found = client.getNamespaceFile("g4-main", "scripts/demo/node_1.sql");
+        String missing = client.getNamespaceFile("g4-main", "/scripts/demo/missing.sql");
+
+        assertThat(found).isEqualTo("SELECT 1;\n");
+        assertThat(missing).isNull();
+        assertThat(requestCaptor.getAllValues().get(0).uri().toString())
+                .isEqualTo("http://localhost:8090/api/v1/main/namespaces/g4-main/files?path=%2Fscripts%2Fdemo%2Fnode_1.sql");
+    }
 }

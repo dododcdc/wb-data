@@ -36,6 +36,14 @@ public interface KestraClient {
 
     String getFlowSource(String namespace, String flowId);
 
+    default String getFlowSource(String namespace, String flowId, Integer revision) {
+        return getFlowSource(namespace, flowId);
+    }
+
+    default String getNamespaceFile(String namespace, String path) {
+        return null;
+    }
+
     default java.util.Map<String, String> exportNamespaceFlowSources(String namespace) {
         throw new UnsupportedOperationException("exportNamespaceFlowSources not implemented");
     }

@@ -30,6 +30,7 @@ class OperationsExecutionControllerPermissionTest {
         );
         Method detail = OperationsExecutionController.class.getMethod("getExecution", GroupAuthContext.class, String.class);
         Method logs = OperationsExecutionController.class.getMethod("getLogs", GroupAuthContext.class, String.class, String.class);
+        Method snapshot = OperationsExecutionController.class.getMethod("getNodeSnapshot", GroupAuthContext.class, String.class, String.class);
         Method rerun = OperationsExecutionController.class.getMethod(
                 "rerun", GroupAuthContext.class, String.class, OperationsExecutionRerunRequest.class);
         Method stop = OperationsExecutionController.class.getMethod("stop", GroupAuthContext.class, String.class);
@@ -37,6 +38,7 @@ class OperationsExecutionControllerPermissionTest {
         assertThat(auth(list).value()).isEqualTo(Permission.OFFLINE_READ);
         assertThat(auth(detail).value()).isEqualTo(Permission.OFFLINE_READ);
         assertThat(auth(logs).value()).isEqualTo(Permission.OFFLINE_READ);
+        assertThat(auth(snapshot).value()).isEqualTo(Permission.OFFLINE_READ);
         assertThat(auth(rerun).value()).isEqualTo(Permission.OFFLINE_WRITE);
         assertThat(auth(stop).value()).isEqualTo(Permission.OFFLINE_WRITE);
     }

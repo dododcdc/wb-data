@@ -7,6 +7,7 @@ import com.wbdata.common.Result;
 import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
 import com.wbdata.offline.execution.dto.ExecutionLogEntry;
+import com.wbdata.operations.dto.OperationsExecutionNodeSnapshotResponse;
 import com.wbdata.operations.dto.OperationsExecutionQuery;
 import com.wbdata.operations.dto.OperationsExecutionRerunContextResponse;
 import com.wbdata.operations.dto.OperationsExecutionRerunRequest;
@@ -69,6 +70,14 @@ public class OperationsExecutionController {
             @RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
             @PathVariable String executionId) {
         return Result.success(operationsExecutionService.getRerunContext(context.groupId(), executionId));
+    }
+
+    @GetMapping("/{executionId}/nodes/{taskId}/snapshot")
+    public Result<OperationsExecutionNodeSnapshotResponse> getNodeSnapshot(
+            @RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
+            @PathVariable String executionId,
+            @PathVariable String taskId) {
+        return Result.success(operationsExecutionService.getNodeSnapshot(context.groupId(), executionId, taskId));
     }
 
     @PostMapping("/{executionId}/rerun")

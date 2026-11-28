@@ -416,7 +416,10 @@ final class OfflineFlowGraphYaml {
         return new OfflineFlowInspector.InspectedNode(
                 descriptor.taskId(),
                 descriptor.kind(),
-                descriptor.dataSourceType()
+                descriptor.dataSourceType(),
+                descriptor.scriptPath(),
+                descriptor.dataSourceId(),
+                descriptor.transferConfigPath()
         );
     }
 

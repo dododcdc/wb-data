@@ -22,7 +22,7 @@ public final class GitSyncFlowSourceBuilder {
         return boundedIdentifier("g" + groupId + "-", branch);
     }
 
-    static String buildSyncFlowId(Long groupId, String branch) {
+    public static String buildSyncFlowId(Long groupId, String branch) {
         return boundedIdentifier("sync-flows-g" + groupId + "-", branch);
     }
 

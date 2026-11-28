@@ -610,6 +610,36 @@ public class OfflineFlowIndexService {
                 .orElse(null);
     }
 
+    @Nullable
+    public String findFlowPath(Long groupId, @Nullable String branch, String flowId) {
+        if (!isEnabled() || groupId == null || flowId == null || flowId.isBlank()) {
+            return null;
+        }
+        String normalizedFlowId = flowId.trim();
+        if (branch != null && !branch.isBlank()) {
+            List<WbOfflineFlowIndex> branchRows = indexMapper.findByGroupAndBranchAndFlowId(
+                    groupId, branch.trim(), normalizedFlowId);
+            String branchMatch = pickFlowPath(branchRows);
+            if (branchMatch != null) {
+                return branchMatch;
+            }
+        }
+        return pickFlowPath(indexMapper.findByGroupAndFlowId(groupId, normalizedFlowId));
+    }
+
+    @Nullable
+    private String pickFlowPath(@Nullable List<WbOfflineFlowIndex> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return null;
+        }
+        return rows.stream()
+                .filter(row -> row != null && row.getFlowPath() != null && !row.getFlowPath().isBlank())
+                .sorted((left, right) -> Boolean.compare(isParseOk(right), isParseOk(left)))
+                .map(WbOfflineFlowIndex::getFlowPath)
+                .findFirst()
+                .orElse(null);
+    }
+
     public List<IndexedFlowSnapshot> findDirectDependents(OfflineFlowDependencyRef upstream) {
         if (!isEnabled() || upstream == null || upstream.groupId() == null
                 || upstream.flowId() == null || upstream.flowId().isBlank()) {

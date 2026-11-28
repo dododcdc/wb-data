@@ -1,10 +1,15 @@
 package com.wbdata.operations.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wbdata.datasource.entity.DataSource;
+import com.wbdata.datasource.mapper.DataSourceMapper;
 import com.wbdata.git.dto.GitSyncConfigResponse;
 import com.wbdata.git.service.GitSyncConfigService;
+import com.wbdata.git.service.GitSyncFlowSourceBuilder;
 import com.wbdata.group.dto.GroupOwnerInfo;
 import com.wbdata.group.service.GroupOwnerService;
 import com.wbdata.offline.entity.WbOfflineFlowIndex;
+import com.wbdata.offline.repo.service.GitCommandService;
 import com.wbdata.offline.service.OfflineFlowIndexService;
 import com.wbdata.offline.kestra.KestraClient;
 import com.wbdata.offline.kestra.KestraExecutionPage;
@@ -16,8 +21,10 @@ import com.wbdata.offline.parameter.service.ExecutionTimeContext;
 import com.wbdata.offline.parameter.dto.FlowParameterDefinitionSnapshot;
 import com.wbdata.offline.parameter.dto.FlowParameterSnapshot;
 import com.wbdata.operations.dto.OperationsExecutionDetailResponse;
+import com.wbdata.operations.dto.OperationsExecutionGraphNode;
 import com.wbdata.operations.dto.OperationsExecutionListItem;
 import com.wbdata.operations.dto.OperationsExecutionListResponse;
+import com.wbdata.operations.dto.OperationsExecutionNodeSnapshotResponse;
 import com.wbdata.operations.dto.OperationsExecutionQuery;
 import com.wbdata.operations.dto.OperationsExecutionRerunContextResponse;
 import com.wbdata.operations.dto.OperationsExecutionRerunResponse;
@@ -36,6 +43,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -67,7 +75,8 @@ class OperationsExecutionServiceTest {
                         "parameterResolutionStatus", "parameters", "parameterSnapshotChanged",
                         "rerun", "rerunType", "retryAttempt",
                         "partialRerun", "rerunSelectedTaskCount", "rerunTotalTaskCount",
-                        "markableSuccess", "forceSuccess", "forceSuccessBy", "forceSuccessAt"
+                        "markableSuccess", "forceSuccess", "forceSuccessBy", "forceSuccessAt",
+                        "flowPath", "graphNodes", "graphEdges"
                 );
         assertThat(Arrays.stream(OperationsExecutionListResponse.class.getRecordComponents())
                 .map(component -> component.getName()))
@@ -1662,5 +1671,287 @@ class OperationsExecutionServiceTest {
                 4L, new OperationsExecutionQuery("main", null, null, FROM, TO, null, null, 99L));
         assertThat(emptyRes.executions()).isEmpty();
         assertThat(emptyRes.total()).isZero();
+    }
+
+    @Test
+    void getExecution_includesAllExecutionDagNodesWithNotRunAndFlowPath() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OfflineFlowIndexService indexService = Mockito.mock(OfflineFlowIndexService.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
+        service.setOfflineFlowIndexService(indexService);
+
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(syncConfigs());
+        when(indexService.findFlowPath(4L, "main", "crm_ods_daily_extract"))
+                .thenReturn("_flows/crm_ods_daily_extract/flow.yaml");
+
+        KestraExecutionSnapshot snapshot = new KestraExecutionSnapshot(
+                "exec-dag-1",
+                "g4-main",
+                "crm_ods_daily_extract",
+                "FAILED",
+                Instant.parse("2026-06-07T00:00:00Z"),
+                Instant.parse("2026-06-07T00:01:00Z"),
+                Instant.parse("2026-06-07T00:01:05Z"),
+                Instant.parse("2026-06-07T00:01:35Z"),
+                List.of(
+                        taskRun("flow_dag", "FAILED", "2026-06-07T00:01:05Z", "2026-06-07T00:01:35Z"),
+                        taskRun("transfer_node_1", "FAILED", "2026-06-07T00:01:05Z", "2026-06-07T00:01:35Z")
+                ),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                null,
+                null,
+                2
+        );
+        String flowRev2 = """
+                id: crm_ods_daily_extract
+                namespace: g4-main
+                tasks:
+                  - id: flow_dag
+                    type: io.kestra.plugin.core.flow.Dag
+                    tasks:
+                      - task:
+                          id: transfer_node_1
+                          type: io.kestra.plugin.scripts.shell.Commands
+                          description: "[wbdata-meta] nodeKind=TRANSFER;transferConfigPath=transfers/crm/t1.transfer.json"
+                      - task:
+                          id: sql_node_2
+                          type: io.wbdata.kestra.jdbc.mysql.Query
+                          description: "[wbdata-meta] dataSourceId=11;dataSourceType=MYSQL;nodeKind=MYSQL"
+                          sql: "{{ read('scripts/crm/sql_node_2.sql') }}"
+                        dependsOn:
+                          - transfer_node_1
+                """;
+        when(kestraClient.getExecution("exec-dag-1")).thenReturn(snapshot);
+        when(kestraClient.getFlowSource("g4-main", "crm_ods_daily_extract", 2)).thenReturn(flowRev2);
+
+        OperationsExecutionDetailResponse detail = service.getExecution(4L, "exec-dag-1");
+
+        assertThat(detail.flowPath()).isEqualTo("_flows/crm_ods_daily_extract/flow.yaml");
+        assertThat(detail.graphNodes()).hasSize(2);
+        assertThat(detail.graphNodes()).extracting(
+                OperationsExecutionGraphNode::taskId,
+                OperationsExecutionGraphNode::status,
+                OperationsExecutionGraphNode::kind,
+                OperationsExecutionGraphNode::hasCodeSnapshot
+        ).containsExactly(
+                org.assertj.core.groups.Tuple.tuple("transfer_node_1", "FAILED", "TRANSFER", true),
+                org.assertj.core.groups.Tuple.tuple("sql_node_2", "NOT_RUN", "MYSQL", true)
+        );
+        assertThat(detail.graphEdges()).hasSize(1);
+        assertThat(detail.graphEdges().getFirst().source()).isEqualTo("transfer_node_1");
+        assertThat(detail.graphEdges().getFirst().target()).isEqualTo("sql_node_2");
+    }
+
+    @Test
+    void getNodeSnapshot_resolvesHistoricalGitCommitAndRendersSqlAndTransfer_whileRerunUsesLatestFlow() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        ExecutionParameterSnapshotRegistry registry = Mockito.mock(ExecutionParameterSnapshotRegistry.class);
+        GitCommandService gitCommandService = Mockito.mock(GitCommandService.class);
+        DataSourceMapper dataSourceMapper = Mockito.mock(DataSourceMapper.class);
+
+        OperationsExecutionService service = service(
+                gitSyncConfigService, kestraClient, Mockito.mock(WbOperationExecutionActionMapper.class), registry);
+        service.setGitCommandService(gitCommandService);
+        service.setDataSourceMapper(dataSourceMapper);
+        service.setObjectMapper(new ObjectMapper());
+
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(syncConfigs());
+
+        String shaExec = "0123456789abcdef0123456789abcdef01234567";
+        FlowParameterSnapshot paramSnapshot = new FlowParameterSnapshot(
+                2,
+                "Asia/Shanghai",
+                "sales_etl",
+                1,
+                List.of(new FlowParameterDefinitionSnapshot("biz_date", "CONSTANT", "2026-06-06", null, 0, null, 0, null))
+        );
+        when(registry.find(4L, "snap-1")).thenReturn(Optional.of(paramSnapshot));
+
+        KestraExecutionSnapshot execution = new KestraExecutionSnapshot(
+                "exec-hist-1",
+                "g4-main",
+                "sales_etl",
+                "FAILED",
+                Instant.parse("2026-06-07T00:00:00Z"),
+                Instant.parse("2026-06-07T00:01:00Z"),
+                Instant.parse("2026-06-07T00:01:05Z"),
+                Instant.parse("2026-06-07T00:01:20Z"),
+                List.of(taskRun("mysql_node", "FAILED", "2026-06-07T00:01:05Z", "2026-06-07T00:01:20Z")),
+                Map.of("biz_date", "2026-06-07"),
+                Map.of("wbdataParameterSnapshotId", "snap-1", "wbdataParameterOverrideKeys", "biz_date"),
+                Map.of(),
+                null,
+                null,
+                1
+        );
+        String flowRev1 = """
+                id: sales_etl
+                namespace: g4-main
+                tasks:
+                  - id: flow_dag
+                    type: io.kestra.plugin.core.flow.Dag
+                    tasks:
+                      - task:
+                          id: mysql_node
+                          type: io.wbdata.kestra.jdbc.mysql.Query
+                          description: "[wbdata-meta] dataSourceId=101;dataSourceType=MYSQL;nodeKind=MYSQL"
+                          sql: "{{ read('scripts/sales/mysql_node.sql') }}"
+                          runIf: "{{ not(inputs.wbdata_rerun_tasks) or contains(inputs.wbdata_rerun_tasks, 'mysql_node') }}"
+                      - task:
+                          id: transfer_node
+                          type: io.kestra.plugin.scripts.shell.Commands
+                          description: "[wbdata-meta] nodeKind=TRANSFER;transferConfigPath=transfers/sales/transfer_node.transfer.json"
+                          runIf: "{{ not(inputs.wbdata_rerun_tasks) or contains(inputs.wbdata_rerun_tasks, 'transfer_node') }}"
+                        dependsOn:
+                          - mysql_node
+                inputs:
+                  - id: wbdata_rerun_tasks
+                    type: STRING
+                    required: false
+                """;
+        String flowLatest = """
+                id: sales_etl
+                namespace: g4-main
+                tasks:
+                  - id: flow_dag
+                    type: io.kestra.plugin.core.flow.Dag
+                    tasks:
+                      - task:
+                          id: mysql_node
+                          type: io.wbdata.kestra.jdbc.mysql.Query
+                          description: "[wbdata-meta] dataSourceId=101;dataSourceType=MYSQL;nodeKind=MYSQL"
+                          sql: "{{ read('scripts/sales/mysql_node.sql') }}"
+                          runIf: "{{ not(inputs.wbdata_rerun_tasks) or contains(inputs.wbdata_rerun_tasks, 'mysql_node') }}"
+                      - task:
+                          id: new_node_v2
+                          type: io.wbdata.kestra.jdbc.mysql.Query
+                          description: "[wbdata-meta] dataSourceId=101;dataSourceType=MYSQL;nodeKind=MYSQL"
+                          sql: "{{ read('scripts/sales/new_node_v2.sql') }}"
+                          runIf: "{{ not(inputs.wbdata_rerun_tasks) or contains(inputs.wbdata_rerun_tasks, 'new_node_v2') }}"
+                        dependsOn:
+                          - mysql_node
+                inputs:
+                  - id: wbdata_rerun_tasks
+                    type: STRING
+                    required: false
+                """;
+
+        when(kestraClient.getExecution("exec-hist-1")).thenReturn(execution);
+        when(kestraClient.getFlowSource("g4-main", "sales_etl", 1)).thenReturn(flowRev1);
+        when(kestraClient.getFlowSource("g4-main", "sales_etl")).thenReturn(flowLatest);
+
+        KestraExecutionSnapshot syncExec = new KestraExecutionSnapshot(
+                "sync-1", "system", GitSyncFlowSourceBuilder.buildSyncFlowId(4L, "main"),
+                "SUCCESS", null,
+                Instant.parse("2026-06-06T23:55:00Z"),
+                Instant.parse("2026-06-06T23:55:01Z"),
+                Instant.parse("2026-06-06T23:55:15Z"),
+                List.of(), Map.of(), Map.of(),
+                Map.of("start_sha", shaExec, "end_sha", shaExec)
+        );
+        when(kestraClient.searchExecutionsPage(Mockito.anyMap(), Mockito.eq(1), Mockito.eq(5), Mockito.eq("state.startDate:desc")))
+                .thenReturn(new KestraExecutionPage(List.of(syncExec), 1));
+
+        when(gitCommandService.readFileAtRevision(4L, shaExec, "scripts/sales/mysql_node.sql"))
+                .thenReturn("SELECT * FROM orders WHERE dt = ^[biz_date];");
+        when(gitCommandService.readFileAtRevision(4L, shaExec, "transfers/sales/transfer_node.transfer.json"))
+                .thenReturn("""
+                        {
+                          "schemaVersion": 1,
+                          "groupId": 4,
+                          "taskId": "transfer_node",
+                          "source": {
+                            "dataSourceId": 101,
+                            "dataSourceType": "MYSQL",
+                            "database": "crm",
+                            "table": "orders",
+                            "where": "dt = ^[biz_date]"
+                          },
+                          "target": {
+                            "dataSourceId": 102,
+                            "dataSourceType": "HIVE",
+                            "database": "ods",
+                            "table": "ods_orders",
+                            "writeMode": "overwrite_partition"
+                          },
+                          "fieldMappings": [
+                            {"target": "order_id", "kind": "source_field", "source": "id"}
+                          ],
+                          "partitions": [
+                            {"target": "dt", "kind": "static_value", "value": "^[biz_date]"}
+                          ]
+                        }
+                        """);
+
+        DataSource mysqlDs = new DataSource();
+        mysqlDs.setId(101L);
+        mysqlDs.setName("CRM MySQL");
+        DataSource hiveDs = new DataSource();
+        hiveDs.setId(102L);
+        hiveDs.setName("Warehouse Hive");
+        when(dataSourceMapper.selectById(101L)).thenReturn(mysqlDs);
+        when(dataSourceMapper.selectById(102L)).thenReturn(hiveDs);
+
+        OperationsExecutionNodeSnapshotResponse sqlSnapshot =
+                service.getNodeSnapshot(4L, "exec-hist-1", "mysql_node");
+        assertThat(sqlSnapshot.exactSnapshot()).isTrue();
+        assertThat(sqlSnapshot.snapshotSource()).isEqualTo("EXECUTION_COMMIT");
+        assertThat(sqlSnapshot.snapshotCommitSha()).isEqualTo(shaExec);
+        assertThat(sqlSnapshot.dataSourceName()).isEqualTo("CRM MySQL");
+        assertThat(sqlSnapshot.rawContent()).isEqualTo("SELECT * FROM orders WHERE dt = ^[biz_date];");
+        assertThat(sqlSnapshot.renderedContent()).isEqualTo("SELECT * FROM orders WHERE dt = '2026-06-07';");
+        assertThat(sqlSnapshot.referencedParameters()).hasSize(1);
+        assertThat(sqlSnapshot.referencedParameters().getFirst().value()).isEqualTo("2026-06-07");
+
+        OperationsExecutionNodeSnapshotResponse transferSnapshot =
+                service.getNodeSnapshot(4L, "exec-hist-1", "transfer_node");
+        assertThat(transferSnapshot.exactSnapshot()).isTrue();
+        assertThat(transferSnapshot.transfer()).isNotNull();
+        assertThat(transferSnapshot.transfer().source().dataSourceName()).isEqualTo("CRM MySQL");
+        assertThat(transferSnapshot.transfer().source().whereRendered()).isEqualTo("dt = '2026-06-07'");
+        assertThat(transferSnapshot.transfer().target().dataSourceName()).isEqualTo("Warehouse Hive");
+        assertThat(transferSnapshot.transfer().writeMode()).isEqualTo("overwrite_partition");
+        assertThat(transferSnapshot.transfer().partitions().getFirst().valueRendered()).isEqualTo("2026-06-07");
+
+        // Rerun context must still use the latest online flow definition, not revision 1.
+        OperationsExecutionRerunContextResponse rerunContext = service.getRerunContext(4L, "exec-hist-1");
+        assertThat(rerunContext.nodes()).extracting(node -> node.taskId())
+                .containsExactly("mysql_node", "new_node_v2");
+    }
+
+    @Test
+    void getNodeSnapshot_fallsBackToCurrentOnlineNamespaceFileWhenCommitUnavailable() {
+        GitSyncConfigService gitSyncConfigService = Mockito.mock(GitSyncConfigService.class);
+        KestraClient kestraClient = Mockito.mock(KestraClient.class);
+        OperationsExecutionService service = service(gitSyncConfigService, kestraClient);
+
+        when(gitSyncConfigService.listEnabledSyncConfigs(4L)).thenReturn(syncConfigs());
+        KestraExecutionSnapshot execution = execution("exec-fb-1", "g4-main", "hive_etl", "FAILED", "2026-06-07T01:00:00Z");
+        when(kestraClient.getExecution("exec-fb-1")).thenReturn(execution);
+        when(kestraClient.getFlowSource("g4-main", "hive_etl")).thenReturn("""
+                id: hive_etl
+                namespace: g4-main
+                tasks:
+                  - id: hive_node
+                    type: io.wbdata.kestra.hive.Query
+                    description: "[wbdata-meta] dataSourceId=55;dataSourceType=HIVE;nodeKind=HIVE_SQL"
+                    scriptPath: scripts/hive/hive_node.sql
+                """);
+        when(kestraClient.searchExecutionsPage(Mockito.anyMap(), Mockito.eq(1), Mockito.eq(5), Mockito.eq("state.startDate:desc")))
+                .thenReturn(KestraExecutionPage.empty());
+        when(kestraClient.getNamespaceFile("g4-main", "scripts/hive/hive_node.sql"))
+                .thenReturn("SELECT COUNT(*) FROM ods.users;");
+
+        OperationsExecutionNodeSnapshotResponse snapshot = service.getNodeSnapshot(4L, "exec-fb-1", "hive_node");
+
+        assertThat(snapshot.exactSnapshot()).isFalse();
+        assertThat(snapshot.snapshotSource()).isEqualTo("CURRENT_ONLINE");
+        assertThat(snapshot.snapshotNotice()).contains("线上最新内容");
+        assertThat(snapshot.rawContent()).isEqualTo("SELECT COUNT(*) FROM ods.users;");
+        assertThat(snapshot.renderedContent()).isEqualTo("SELECT COUNT(*) FROM ods.users;");
     }
 }
