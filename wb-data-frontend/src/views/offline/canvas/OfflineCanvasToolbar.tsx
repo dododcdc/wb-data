@@ -1,4 +1,5 @@
 import {
+    Activity,
     ArrowUpRight,
     Braces,
     Check,
@@ -54,6 +55,7 @@ interface OfflineCanvasToolbarProps {
     onOpenParameters: () => void;
     onExecute: () => void;
     onOpenExecutions: () => void;
+    onOpenOperations?: () => void;
     onOpenVersions: () => void;
     ownerUserId?: number | null;
     ownerName?: string | null;
@@ -119,6 +121,7 @@ export function OfflineCanvasToolbar({
     onOpenParameters,
     onExecute,
     onOpenExecutions,
+    onOpenOperations,
     onOpenVersions,
     ownerUserId,
     ownerName,
@@ -259,6 +262,12 @@ export function OfflineCanvasToolbar({
             <ToolbarButton label="执行结果" disabled={!active} onClick={onOpenExecutions}>
                 <History size={16} />
             </ToolbarButton>
+
+            {onOpenOperations ? (
+                <ToolbarButton label="运维记录" disabled={!active} onClick={onOpenOperations}>
+                    <Activity size={16} />
+                </ToolbarButton>
+            ) : null}
 
             {(hasDraftStatus || timezone || branch || isOnlineMode || hasOwner) ? (
                 <div className="offline-canvas-toolbar-meta">

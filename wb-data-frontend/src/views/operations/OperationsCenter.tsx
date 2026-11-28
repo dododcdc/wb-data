@@ -118,7 +118,7 @@ export default function OperationsCenter() {
     const [branchFilter, setBranchFilter] = useState(
         () => resolveInitialBranchFilter(searchParams.get('branch')).value,
     );
-    const [flowFilter, setFlowFilter] = useState('');
+    const [flowFilter, setFlowFilter] = useState(() => searchParams.get('flowId')?.trim() ?? '');
     const [statusFilter, setStatusFilter] = useState(() => resolveInitialStatusFilter(searchParams.get('status')));
     const [ownerFilter, setOwnerFilter] = useState(ALL_OWNERS);
     const [rollingWindowMs, setRollingWindowMs] = useState<number | null>(DEFAULT_ROLLING_WINDOW_MS);

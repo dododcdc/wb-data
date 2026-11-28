@@ -341,4 +341,76 @@ describe('OfflineCanvasToolbar status and timezone metadata', () => {
         fireEvent.click(screen.getByRole('button', { name: '推送当前任务' }));
         expect(onPushFlow).toHaveBeenCalledOnce();
     });
+
+    it('renders 运维记录 button in both dev and online modes and triggers onOpenOperations', () => {
+        const onOpenOperations = vi.fn();
+        const { rerender } = render(
+            <TooltipProvider delayDuration={0}>
+                <OfflineCanvasToolbar
+                    activeFlowPath="_flows/example/flow.yaml"
+                    groupId={1}
+                    branch="feature/demo"
+                    canvasMode="dev"
+                    canWrite
+                    canConfigureParameters
+                    nodeCount={2}
+                    selectedNodeCount={0}
+                    dirty={false}
+                    commitDirty={false}
+                    committing={false}
+                    draftSaveState="idle"
+                    draftSavedAt={null}
+                    draftSaveError={null}
+                    onSelectAll={vi.fn()}
+                    onCommit={vi.fn()}
+                    onOpenSchedule={vi.fn()}
+                    onOpenDependencies={vi.fn()}
+                    onOpenParameters={vi.fn()}
+                    onExecute={vi.fn()}
+                    onOpenExecutions={vi.fn()}
+                    onOpenOperations={onOpenOperations}
+                    onOpenVersions={vi.fn()}
+                />
+            </TooltipProvider>,
+        );
+
+        const opsBtn = screen.getByRole('button', { name: '运维记录' }) as HTMLButtonElement;
+        expect(opsBtn.disabled).toBe(false);
+        fireEvent.click(opsBtn);
+        expect(onOpenOperations).toHaveBeenCalledTimes(1);
+
+        rerender(
+            <TooltipProvider delayDuration={0}>
+                <OfflineCanvasToolbar
+                    activeFlowPath="_flows/example/flow.yaml"
+                    groupId={1}
+                    branch="feature/demo"
+                    canvasMode="online"
+                    hasOnlineDocument
+                    canWrite
+                    canConfigureParameters
+                    nodeCount={0}
+                    selectedNodeCount={0}
+                    dirty={false}
+                    commitDirty={false}
+                    committing={false}
+                    draftSaveState="idle"
+                    draftSavedAt={null}
+                    draftSaveError={null}
+                    onSelectAll={vi.fn()}
+                    onCommit={vi.fn()}
+                    onOpenSchedule={vi.fn()}
+                    onOpenDependencies={vi.fn()}
+                    onOpenParameters={vi.fn()}
+                    onExecute={vi.fn()}
+                    onOpenExecutions={vi.fn()}
+                    onOpenOperations={onOpenOperations}
+                    onOpenVersions={vi.fn()}
+                />
+            </TooltipProvider>,
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: '运维记录' }));
+        expect(onOpenOperations).toHaveBeenCalledTimes(2);
+    });
 });

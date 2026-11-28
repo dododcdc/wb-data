@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import {
     getOperationsExecution,
     getOperationsExecutionLogs,
+    getOperationsExecutionNodeSnapshot,
     getOperationsExecutionRerunContext,
     getOperationsInstanceDiagnosis,
     markOperationsExecutionSuccess,
@@ -31,6 +32,7 @@ const { showSuccess, showError } = vi.hoisted(() => ({
 vi.mock('../../api/operations', () => ({
     getOperationsExecution: vi.fn(),
     getOperationsExecutionLogs: vi.fn(),
+    getOperationsExecutionNodeSnapshot: vi.fn(),
     getOperationsExecutionRerunContext: vi.fn(),
     getOperationsInstanceDiagnosis: vi.fn(),
     markOperationsExecutionSuccess: vi.fn(),
@@ -79,6 +81,7 @@ vi.mock('react-virtuoso', () => ({
 
 const getOperationsExecutionMock = vi.mocked(getOperationsExecution);
 const getOperationsExecutionLogsMock = vi.mocked(getOperationsExecutionLogs);
+const getOperationsExecutionNodeSnapshotMock = vi.mocked(getOperationsExecutionNodeSnapshot);
 const getOperationsExecutionRerunContextMock = vi.mocked(getOperationsExecutionRerunContext);
 const getOperationsInstanceDiagnosisMock = vi.mocked(getOperationsInstanceDiagnosis);
 const markOperationsExecutionSuccessMock = vi.mocked(markOperationsExecutionSuccess);
@@ -895,5 +898,200 @@ describe('OperationsInstancePage', () => {
         expect(within(overviewPanel).getByText('失败')).toBeTruthy();
         fireEvent.click(within(overviewPanel).getByRole('button', { name: '查看 load_policy 日志' }));
         expect(await screen.findByText('load failed on row 42')).toBeTruthy();
+    });
+
+    it('shows full DAG nodes including NOT_RUN downstream, supports list/DAG toggle, opens SQL & Transfer snapshots, and navigates to offline workbench', async () => {
+        getOperationsInstanceDiagnosisMock.mockResolvedValue(buildDiagnosis({
+            flowId: 'crm_ods_daily_extract',
+            branch: 'feature/policy-review',
+            flowPath: '_flows/crm_ods_daily_extract/flow.yaml',
+        }));
+        getOperationsExecutionMock.mockResolvedValue({
+            id: 'exec-1',
+            namespace: 'g4-feature-policy-review',
+            flowId: 'crm_ods_daily_extract',
+            branch: 'feature/policy-review',
+            status: 'FAILED',
+            plannedAt: '2026-06-07T00:00:00Z',
+            createdAt: '2026-06-07T01:00:00Z',
+            startDate: '2026-06-07T01:00:02Z',
+            endDate: '2026-06-07T01:03:12Z',
+            durationMs: 190000,
+            rerunnable: true,
+            stoppable: false,
+            flowPath: '_flows/crm_ods_daily_extract/flow.yaml',
+            taskRuns: [
+                {
+                    taskId: 'transfer_node_1',
+                    status: 'FAILED',
+                    startDate: '2026-06-07T01:00:03Z',
+                    endDate: '2026-06-07T01:01:00Z',
+                    durationMs: 57000,
+                },
+            ],
+            graphNodes: [
+                {
+                    taskId: 'transfer_node_1',
+                    kind: 'TRANSFER',
+                    dataSourceType: null,
+                    status: 'FAILED',
+                    startDate: '2026-06-07T01:00:03Z',
+                    endDate: '2026-06-07T01:01:00Z',
+                    durationMs: 57000,
+                    hasCodeSnapshot: true,
+                },
+                {
+                    taskId: 'mysql_node_2',
+                    kind: 'MYSQL',
+                    dataSourceType: 'MYSQL',
+                    status: 'NOT_RUN',
+                    startDate: null,
+                    endDate: null,
+                    durationMs: null,
+                    hasCodeSnapshot: true,
+                },
+                {
+                    taskId: 'mysql_node_3',
+                    kind: 'MYSQL',
+                    dataSourceType: 'MYSQL',
+                    status: 'NOT_RUN',
+                    startDate: null,
+                    endDate: null,
+                    durationMs: null,
+                    hasCodeSnapshot: true,
+                },
+            ],
+            graphEdges: [
+                { source: 'transfer_node_1', target: 'mysql_node_2' },
+                { source: 'mysql_node_2', target: 'mysql_node_3' },
+            ],
+            inputs: {},
+            labels: {},
+            parameterResolutionStatus: 'NONE',
+            parameters: [],
+        });
+
+        getOperationsExecutionNodeSnapshotMock.mockImplementation(async (_groupId, _execId, taskId) => {
+            if (taskId === 'mysql_node_2') {
+                return {
+                    executionId: 'exec-1',
+                    taskId: 'mysql_node_2',
+                    kind: 'MYSQL',
+                    dataSourceType: 'MYSQL',
+                    dataSourceId: 11,
+                    dataSourceName: 'CRM MySQL',
+                    scriptPath: 'scripts/crm/mysql_node_2.sql',
+                    snapshotSource: 'EXECUTION_COMMIT',
+                    snapshotCommitSha: '0123456789abcdef0123456789abcdef01234567',
+                    exactSnapshot: true,
+                    snapshotNotice: null,
+                    contentAvailable: true,
+                    rawContent: 'SELECT * FROM orders WHERE dt = ^[biz_date];',
+                    renderedContent: "SELECT * FROM orders WHERE dt = '2026-06-07';",
+                    renderNote: '参数已按本次执行实际值代入预览。',
+                    renderError: null,
+                    referencedParameters: [
+                        { key: 'biz_date', dataType: 'STRING', value: '2026-06-07', source: 'SYSTEM_TIME' },
+                    ],
+                    transfer: null,
+                };
+            }
+            return {
+                executionId: 'exec-1',
+                taskId: 'transfer_node_1',
+                kind: 'TRANSFER',
+                dataSourceType: null,
+                dataSourceId: null,
+                dataSourceName: null,
+                scriptPath: 'transfers/crm/transfer_node_1.transfer.json',
+                snapshotSource: 'CURRENT_ONLINE',
+                snapshotCommitSha: null,
+                exactSnapshot: false,
+                snapshotNotice: '未能定位本次执行对应的历史代码提交，当前展示线上最新内容。',
+                contentAvailable: true,
+                rawContent: '{}',
+                renderedContent: null,
+                renderNote: null,
+                renderError: null,
+                referencedParameters: [],
+                transfer: {
+                    source: {
+                        dataSourceId: 11,
+                        dataSourceName: 'CRM MySQL',
+                        dataSourceType: 'MYSQL',
+                        database: 'crm_demo',
+                        table: 'user',
+                        whereRaw: null,
+                        whereRendered: null,
+                    },
+                    target: {
+                        dataSourceId: 12,
+                        dataSourceName: 'Hive ODS',
+                        dataSourceType: 'HIVE',
+                        database: 'ods_crm',
+                        table: 'ods_user_all_d',
+                        whereRaw: null,
+                        whereRendered: null,
+                    },
+                    writeMode: 'overwrite_partition',
+                    fieldMappings: [
+                        {
+                            target: 'user_id',
+                            kind: 'source_field',
+                            source: 'user_id',
+                            expressionRaw: null,
+                            expressionRendered: null,
+                            valueRaw: null,
+                            valueRendered: null,
+                        },
+                    ],
+                    partitions: [],
+                    preSqlRaw: [],
+                    preSqlRendered: [],
+                    postSqlRaw: [],
+                    postSqlRendered: [],
+                },
+            };
+        });
+
+        renderPage('/operations/instances?branch=feature%2Fpolicy-review&flowId=crm_ods_daily_extract&period=2026-06-07&execution=exec-1');
+
+        const overviewPanel = await screen.findByRole('tabpanel', { name: '运行概览' });
+        const summary = screen.getByLabelText('执行摘要');
+        expect(within(summary).getByText('节点数').nextElementSibling?.textContent).toBe('1 / 3（2 未执行）');
+        expect(within(overviewPanel).getByText('transfer_node_1')).toBeTruthy();
+        expect(within(overviewPanel).getByText('mysql_node_2')).toBeTruthy();
+        expect(within(overviewPanel).getByText('mysql_node_3')).toBeTruthy();
+        expect(within(overviewPanel).getAllByText('未执行（上游失败）')).toHaveLength(2);
+        expect((within(overviewPanel).getByRole('button', { name: '查看 mysql_node_2 日志' }) as HTMLButtonElement).disabled).toBe(true);
+
+        // Open SQL snapshot drawer and switch between rendered SQL and template SQL
+        const sqlButtons = within(overviewPanel).getAllByRole('button', { name: '查看 SQL' });
+        fireEvent.click(sqlButtons[0]);
+
+        const sqlDrawer = await screen.findByRole('dialog', { name: 'mysql_node_2 节点执行快照' });
+        expect(await within(sqlDrawer).findByText("SELECT * FROM orders WHERE dt = '2026-06-07';")).toBeTruthy();
+        expect(within(sqlDrawer).getByText(/^执行时快照/)).toBeTruthy();
+        fireEvent.click(within(sqlDrawer).getByRole('tab', { name: 'SQL 模板' }));
+        expect(within(sqlDrawer).getByText('SELECT * FROM orders WHERE dt = ^[biz_date];')).toBeTruthy();
+        fireEvent.click(within(sqlDrawer).getByRole('button', { name: '关闭节点快照' }));
+
+        // Switch to DAG view and open Transfer config snapshot from DAG inspector
+        fireEvent.click(screen.getByRole('button', { name: 'DAG 图' }));
+        expect(screen.getByText('共 3 个节点 · 1 失败 · 2 未执行')).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: '查看配置' }));
+
+        const transferDrawer = await screen.findByRole('dialog', { name: 'transfer_node_1 节点执行快照' });
+        expect(await within(transferDrawer).findByText('crm_demo.user')).toBeTruthy();
+        expect(within(transferDrawer).getByText('当前线上版本')).toBeTruthy();
+        expect(within(transferDrawer).getByText('ods_crm.ods_user_all_d')).toBeTruthy();
+        fireEvent.click(within(transferDrawer).getByRole('button', { name: '关闭节点快照' }));
+
+        // Navigate to Offline Workbench
+        fireEvent.click(screen.getByRole('button', { name: '在离线开发中打开' }));
+        expect(await screen.findByTestId('location-echo')).toBeTruthy();
+        expect(screen.getByTestId('location-echo').textContent).toBe(
+            '/offline?flowPath=_flows%2Fcrm_ods_daily_extract%2Fflow.yaml&branch=feature%2Fpolicy-review',
+        );
     });
 });

@@ -55,6 +55,7 @@ interface OfflineWorkbenchMainPanelProps {
     onOpenParameterDialog: () => void;
     onExecute: () => void;
     onOpenExecutionDialog: () => void;
+    onOpenOperations?: () => void;
     onOpenVersions: () => void;
     canTransferFlowOwner?: boolean;
     onOpenTransferFlowOwner?: () => void;
@@ -140,6 +141,7 @@ export function OfflineWorkbenchMainPanel({
     onOpenParameterDialog,
     onExecute,
     onOpenExecutionDialog,
+    onOpenOperations,
     onOpenVersions,
     canTransferFlowOwner = false,
     onOpenTransferFlowOwner,
@@ -218,6 +220,7 @@ export function OfflineWorkbenchMainPanel({
                 onOpenParameters={onOpenParameterDialog}
                 onExecute={onExecute}
                 onOpenExecutions={onOpenExecutionDialog}
+                onOpenOperations={onOpenOperations}
                 onOpenVersions={onOpenVersions}
                 ownerUserId={displayedOwnerDoc?.ownerUserId}
                 ownerName={displayedOwnerDoc?.ownerName}

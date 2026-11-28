@@ -123,3 +123,10 @@ export function getInstanceStateTone(state: string | null | undefined): Instance
 export function isActiveInstanceState(state: string | null | undefined) {
     return state === 'WAITING_UPSTREAM' || state === 'PENDING_FIRE' || state === 'RETRIED' || isActiveStatus(state);
 }
+
+export function getNodeInspectButtonLabel(kind: string | null | undefined) {
+    const normalized = kind?.trim().toUpperCase();
+    if (normalized === 'TRANSFER') return '查看配置';
+    if (normalized === 'SHELL') return '查看脚本';
+    return '查看 SQL';
+}

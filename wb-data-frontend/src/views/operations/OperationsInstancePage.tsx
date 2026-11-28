@@ -4,10 +4,13 @@ import {
     ArrowLeft,
     CheckCheck,
     ChevronRight,
+    Code2,
+    ExternalLink,
     GitBranch,
     Info,
     LayoutList,
     Lock,
+    Network,
     RefreshCw,
     RotateCcw,
     Search,
@@ -26,11 +29,13 @@ import {
     markOperationsExecutionSuccess,
     rerunOperationsExecution,
     stopOperationsExecution,
+    type OperationsExecutionGraphNode,
     type OperationsExecutionLogEntry,
     type OperationsExecutionRerunRequest,
     type OperationsExecutionTaskRun,
     type OperationsInstanceDiagnosis,
     type OperationsInstanceUpstreamItem,
+    type OperationsRerunGraphEdge,
 } from '../../api/operations';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { useDelayedBusy } from '../../hooks/useDelayedBusy';
@@ -49,16 +54,21 @@ import {
     isUserTaskId,
 } from '../../components/execution/executionPresentation';
 import LogViewer, { type LogViewerItem } from '../../components/execution/LogViewer';
+import { NodeKindIcon } from '../../components/execution/NodeKindIcon';
+import { isOfflineFlowNodeKind } from '../../components/execution/offlineNodeKinds';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
 import { ListShell } from '../../components/ui/list/ListShell';
 import {
     computeNodeTimelineSpans,
     getInstanceStateLabel,
     getInstanceStateTone,
+    getNodeInspectButtonLabel,
     isActiveInstanceState,
 } from './instancePresentation';
 import './OperationsExecutionDetailPage.css';
 import './OperationsInstancePage.css';
+import { OperationsNodeSnapshotDialog } from './OperationsNodeSnapshotDialog';
+import { OperationsOverviewDag } from './OperationsOverviewDag';
 import { OperationsRerunDialog } from './OperationsRerunDialog';
 
 const LEVELS = ['ERROR', 'WARN', 'INFO'] as const;
@@ -158,6 +168,9 @@ export default function OperationsInstancePage() {
     const [searchText, setSearchText] = useState('');
     const [autoRefresh, setAutoRefresh] = useState(true);
     const [activeTab, setActiveTab] = useState<'overview' | 'logs' | 'parameters'>('overview');
+    const [overviewMode, setOverviewMode] = useState<'list' | 'dag'>('list');
+    const [snapshotTaskId, setSnapshotTaskId] = useState<string | null>(null);
+    const [dagSelectedTaskId, setDagSelectedTaskId] = useState<string | null>(null);
     const [rerunDialogOpen, setRerunDialogOpen] = useState(false);
     const [stopDialogOpen, setStopDialogOpen] = useState(false);
     const [markSuccessDialogOpen, setMarkSuccessDialogOpen] = useState(false);
@@ -222,9 +235,66 @@ export default function OperationsInstancePage() {
         () => detail?.taskRuns.filter((task) => isUserTaskId(task.taskId)) ?? [],
         [detail],
     );
+    const hasOverviewDag = Boolean(detail?.graphNodes && detail.graphNodes.length > 0);
+    const overviewNodes = useMemo<OperationsExecutionGraphNode[]>(() => {
+        if (detail?.graphNodes && detail.graphNodes.length > 0) {
+            return detail.graphNodes;
+        }
+        return visibleTaskRuns.map((task) => ({
+            taskId: task.taskId,
+            kind: 'SHELL',
+            dataSourceType: null,
+            status: task.status,
+            startDate: task.startDate,
+            endDate: task.endDate,
+            durationMs: task.durationMs,
+            hasCodeSnapshot: false,
+        }));
+    }, [detail?.graphNodes, visibleTaskRuns]);
+    const overviewEdges = useMemo<OperationsRerunGraphEdge[]>(
+        () => detail?.graphEdges ?? [],
+        [detail?.graphEdges],
+    );
+    const blockedUpstreamIds = useMemo(() => {
+        if (overviewEdges.length === 0 || overviewNodes.length === 0) {
+            return new Set<string>();
+        }
+        const adj = new Map<string, string[]>();
+        for (const edge of overviewEdges) {
+            const list = adj.get(edge.source);
+            if (list) list.push(edge.target);
+            else adj.set(edge.source, [edge.target]);
+        }
+        const blocked = new Set<string>();
+        const queue: string[] = [];
+        for (const node of overviewNodes) {
+            if (getExecutionPresentation(node.status).dotTone === 'failed') {
+                for (const next of adj.get(node.taskId) ?? []) {
+                    if (!blocked.has(next)) {
+                        blocked.add(next);
+                        queue.push(next);
+                    }
+                }
+            }
+        }
+        while (queue.length > 0) {
+            const current = queue.shift()!;
+            for (const next of adj.get(current) ?? []) {
+                if (!blocked.has(next)) {
+                    blocked.add(next);
+                    queue.push(next);
+                }
+            }
+        }
+        return blocked;
+    }, [overviewEdges, overviewNodes]);
     const skippedTaskCount = useMemo(
-        () => visibleTaskRuns.filter((task) => task.status === 'SKIPPED').length,
-        [visibleTaskRuns],
+        () => overviewNodes.filter((task) => task.status === 'SKIPPED').length,
+        [overviewNodes],
+    );
+    const notRunTaskCount = useMemo(
+        () => overviewNodes.filter((task) => task.status === 'NOT_RUN').length,
+        [overviewNodes],
     );
     const defaultTaskId = useMemo(
         () => (detail ? pickDefaultTaskId(visibleTaskRuns) : undefined),
@@ -240,6 +310,8 @@ export default function OperationsInstancePage() {
 
     useEffect(() => {
         setSelectedTaskId(undefined);
+        setSnapshotTaskId(null);
+        setDagSelectedTaskId(null);
         setActiveLevels(new Set());
         setSearchText('');
     }, [selectedExecutionId, groupId]);
@@ -442,6 +514,16 @@ export default function OperationsInstancePage() {
     );
     const diagnosisReasonTone = getInstanceStateTone(diagnosis.state);
 
+    const resolvedFlowPath = detail?.flowPath ?? diagnosis?.flowPath ?? null;
+    const isCrossGroup = currentGroupId != null && groupId != null && currentGroupId !== groupId;
+    const executedNodeCount = Math.max(0, overviewNodes.length - skippedTaskCount - notRunTaskCount);
+    const nodeCountBreakdown: string[] = [];
+    if (skippedTaskCount > 0) nodeCountBreakdown.push(`${skippedTaskCount} 已跳过`);
+    if (notRunTaskCount > 0) nodeCountBreakdown.push(`${notRunTaskCount} 未执行`);
+    const nodeCountDisplay = nodeCountBreakdown.length > 0
+        ? `${executedNodeCount} / ${overviewNodes.length}（${nodeCountBreakdown.join('，')}）`
+        : overviewNodes.length;
+
     return (
         <div className="operations-execution-detail-page operations-instance-page">
             <header className="operations-execution-detail-header">
@@ -504,6 +586,25 @@ export default function OperationsInstancePage() {
                 </div>
 
                 <div className="operations-execution-detail-actions">
+                    {resolvedFlowPath ? (
+                        <button
+                            type="button"
+                            className="operations-instance-upstream-button"
+                            disabled={isCrossGroup}
+                            title={isCrossGroup ? '跨项目组任务，请先切换至对应项目组' : '在离线开发中打开该任务'}
+                            onClick={() => {
+                                const params = new URLSearchParams();
+                                params.set('flowPath', resolvedFlowPath);
+                                if (diagnosis.branch) {
+                                    params.set('branch', diagnosis.branch);
+                                }
+                                navigate(`/offline?${params.toString()}`);
+                            }}
+                        >
+                            <ExternalLink size={15} />
+                            在离线开发中打开
+                        </button>
+                    ) : null}
                     <button
                         type="button"
                         className="operations-instance-upstream-button"
@@ -687,9 +788,7 @@ export default function OperationsInstancePage() {
                             <DetailMetric label="耗时" value={formatDuration(detail.durationMs)} emphasized />
                             <DetailMetric
                                 label="节点数"
-                                value={skippedTaskCount > 0
-                                    ? `${visibleTaskRuns.length - skippedTaskCount} / ${visibleTaskRuns.length}（${skippedTaskCount} 已跳过）`
-                                    : visibleTaskRuns.length}
+                                value={nodeCountDisplay}
                             />
                         </section>
 
@@ -705,8 +804,8 @@ export default function OperationsInstancePage() {
                                     >
                                         <LayoutList size={14} />
                                         运行概览
-                                        {visibleTaskRuns.length > 0 ? (
-                                            <span className="operations-execution-panel-tab__badge">{visibleTaskRuns.length}</span>
+                                        {overviewNodes.length > 0 ? (
+                                            <span className="operations-execution-panel-tab__badge">{overviewNodes.length}</span>
                                         ) : null}
                                     </button>
                                     <button
@@ -733,6 +832,29 @@ export default function OperationsInstancePage() {
                                         ) : null}
                                     </button>
                                 </div>
+
+                                {activeTab === 'overview' && hasOverviewDag && (
+                                    <div className="operations-overview-view-switch" role="group" aria-label="概览视图切换">
+                                        <button
+                                            type="button"
+                                            aria-pressed={overviewMode === 'list'}
+                                            className={`operations-overview-view-btn${overviewMode === 'list' ? ' is-active' : ''}`}
+                                            onClick={() => setOverviewMode('list')}
+                                        >
+                                            <LayoutList size={13} aria-hidden="true" />
+                                            列表
+                                        </button>
+                                        <button
+                                            type="button"
+                                            aria-pressed={overviewMode === 'dag'}
+                                            className={`operations-overview-view-btn${overviewMode === 'dag' ? ' is-active' : ''}`}
+                                            onClick={() => setOverviewMode('dag')}
+                                        >
+                                            <Network size={13} aria-hidden="true" />
+                                            DAG 图
+                                        </button>
+                                    </div>
+                                )}
 
                                 {activeTab === 'logs' && (
                                     <div className="operations-execution-log-tools">
@@ -781,9 +903,27 @@ export default function OperationsInstancePage() {
                             </div>
 
                             {activeTab === 'overview' ? (
-                                <section className="operations-overview-panel" role="tabpanel" aria-label="运行概览">
-                                    {visibleTaskRuns.length === 0 ? (
+                                <section
+                                    className={`operations-overview-panel${overviewMode === 'dag' && hasOverviewDag ? ' is-dag' : ''}`}
+                                    role="tabpanel"
+                                    aria-label="运行概览"
+                                >
+                                    {overviewNodes.length === 0 ? (
                                         <div className="operations-execution-params__empty">暂无节点执行记录。</div>
+                                    ) : overviewMode === 'dag' && hasOverviewDag ? (
+                                        <OperationsOverviewDag
+                                            nodes={overviewNodes}
+                                            edges={overviewEdges}
+                                            blockedUpstreamIds={blockedUpstreamIds}
+                                            isExecutionActive={isExecutionActive}
+                                            selectedTaskId={dagSelectedTaskId}
+                                            onSelectTask={setDagSelectedTaskId}
+                                            onInspectNode={setSnapshotTaskId}
+                                            onViewLogs={(taskId) => {
+                                                setSelectedTaskId(taskId);
+                                                setActiveTab('logs');
+                                            }}
+                                        />
                                     ) : (
                                         <div className="operations-overview-table-wrap">
                                             <table className="operations-overview-table" aria-label="节点运行情况">
@@ -799,25 +939,42 @@ export default function OperationsInstancePage() {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {visibleTaskRuns.map((task) => {
+                                                    {overviewNodes.map((task) => {
                                                         const tone = getExecutionPresentation(task.status).dotTone;
                                                         const Icon = getTaskStatusIcon(task.status);
                                                         const isSkipped = task.status === 'SKIPPED';
+                                                        const isNotRun = task.status === 'NOT_RUN';
                                                         const span = timelineSpans.get(task.taskId);
+                                                        const statusLabel = isNotRun
+                                                            ? (blockedUpstreamIds.has(task.taskId)
+                                                                ? '未执行（上游失败）'
+                                                                : isExecutionActive
+                                                                    ? '等待执行'
+                                                                    : '未执行')
+                                                            : getExecutionStatusLabel(task.status);
                                                         return (
                                                             <tr
                                                                 key={task.taskId}
-                                                                className={`${isSkipped ? 'is-skipped ' : ''}${tone === 'failed' ? 'is-failed' : ''}`.trim() || undefined}
+                                                                className={`${isSkipped ? 'is-skipped ' : ''}${isNotRun ? 'is-not-run ' : ''}${tone === 'failed' ? 'is-failed' : ''}`.trim() || undefined}
                                                             >
                                                                 <td>
-                                                                    <span className="operations-overview-node-id" title={task.taskId}>
-                                                                        {task.taskId}
+                                                                    <span className="operations-overview-node-cell">
+                                                                        {hasOverviewDag ? (
+                                                                            <NodeKindIcon
+                                                                                kind={isOfflineFlowNodeKind(task.kind) ? task.kind : 'SHELL'}
+                                                                                size={14}
+                                                                                decorative
+                                                                            />
+                                                                        ) : null}
+                                                                        <span className="operations-overview-node-id" title={task.taskId}>
+                                                                            {task.taskId}
+                                                                        </span>
                                                                     </span>
                                                                 </td>
                                                                 <td>
                                                                     <span className={`operations-execution-status operations-execution-status--${tone}`}>
                                                                         <Icon size={13} className={isRunningStatus(task.status) ? 'operations-execution-spin' : undefined} />
-                                                                        {getExecutionStatusLabel(task.status)}
+                                                                        {statusLabel}
                                                                     </span>
                                                                 </td>
                                                                 <td className="is-mono">{formatBrowserDateTime(task.startDate)}</td>
@@ -842,18 +999,32 @@ export default function OperationsInstancePage() {
                                                                     )}
                                                                 </td>
                                                                 <td className="is-right">
-                                                                    <button
-                                                                        type="button"
-                                                                        className="operations-overview-log-btn"
-                                                                        aria-label={`查看 ${task.taskId} 日志`}
-                                                                        onClick={() => {
-                                                                            setSelectedTaskId(task.taskId);
-                                                                            setActiveTab('logs');
-                                                                        }}
-                                                                    >
-                                                                        <Terminal size={13} aria-hidden="true" />
-                                                                        查看日志
-                                                                    </button>
+                                                                    <div className="operations-overview-actions">
+                                                                        {task.hasCodeSnapshot ? (
+                                                                            <button
+                                                                                type="button"
+                                                                                className="operations-overview-log-btn"
+                                                                                onClick={() => setSnapshotTaskId(task.taskId)}
+                                                                            >
+                                                                                <Code2 size={13} aria-hidden="true" />
+                                                                                {getNodeInspectButtonLabel(task.kind)}
+                                                                            </button>
+                                                                        ) : null}
+                                                                        <button
+                                                                            type="button"
+                                                                            className="operations-overview-log-btn"
+                                                                            disabled={isNotRun}
+                                                                            title={isNotRun ? '该节点未执行，暂无日志' : undefined}
+                                                                            aria-label={`查看 ${task.taskId} 日志`}
+                                                                            onClick={() => {
+                                                                                setSelectedTaskId(task.taskId);
+                                                                                setActiveTab('logs');
+                                                                            }}
+                                                                        >
+                                                                            <Terminal size={13} aria-hidden="true" />
+                                                                            查看日志
+                                                                        </button>
+                                                                    </div>
                                                                 </td>
                                                             </tr>
                                                         );
@@ -1115,6 +1286,13 @@ export default function OperationsInstancePage() {
                 </div>
             )}
 
+            <OperationsNodeSnapshotDialog
+                open={snapshotTaskId != null}
+                groupId={groupId}
+                executionId={selectedExecutionId}
+                taskId={snapshotTaskId}
+                onClose={() => setSnapshotTaskId(null)}
+            />
             <OperationsRerunDialog
                 open={rerunDialogOpen}
                 groupId={groupId}

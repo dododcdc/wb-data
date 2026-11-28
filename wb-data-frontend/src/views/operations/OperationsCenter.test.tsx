@@ -734,4 +734,20 @@ describe('OperationsCenter', () => {
         const branchSelect = await screen.findByTestId('branch-select') as HTMLSelectElement;
         expect(branchSelect.value).toBe('__all_branches__');
     });
+
+    it('initializes flowId filter alongside branch from URL query parameters', async () => {
+        renderPage('/operations?branch=feature%2Fpolicy-review&flowId=crm_ods_daily_extract');
+
+        await waitFor(() => {
+            expect(listOperationsExecutionsMock).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    groupId: 4,
+                    branch: 'feature/policy-review',
+                    flowId: 'crm_ods_daily_extract',
+                }),
+            );
+        });
+        const flowInput = await screen.findByLabelText('按任务名称筛选') as HTMLInputElement;
+        expect(flowInput.value).toBe('crm_ods_daily_extract');
+    });
 });

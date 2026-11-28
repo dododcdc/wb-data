@@ -72,6 +72,70 @@ export interface OperationsExecutionTaskRun {
     durationMs: number | null;
 }
 
+export interface OperationsExecutionGraphNode {
+    taskId: string;
+    kind: string;
+    dataSourceType: string | null;
+    status: string;
+    startDate: string | null;
+    endDate: string | null;
+    durationMs: number | null;
+    hasCodeSnapshot: boolean;
+}
+
+export interface OperationsTransferEndpointSnapshot {
+    dataSourceId: number | null;
+    dataSourceName: string | null;
+    dataSourceType: string | null;
+    database: string | null;
+    table: string | null;
+    whereRaw: string | null;
+    whereRendered: string | null;
+}
+
+export interface OperationsTransferMappingSnapshot {
+    target: string;
+    kind: string | null;
+    source: string | null;
+    expressionRaw: string | null;
+    expressionRendered: string | null;
+    valueRaw: string | null;
+    valueRendered: string | null;
+}
+
+export interface OperationsTransferSnapshot {
+    source: OperationsTransferEndpointSnapshot | null;
+    target: OperationsTransferEndpointSnapshot | null;
+    writeMode: string | null;
+    fieldMappings: OperationsTransferMappingSnapshot[];
+    partitions: OperationsTransferMappingSnapshot[];
+    preSqlRaw: string[];
+    preSqlRendered: string[];
+    postSqlRaw: string[];
+    postSqlRendered: string[];
+}
+
+export interface OperationsExecutionNodeSnapshot {
+    executionId: string;
+    taskId: string;
+    kind: string;
+    dataSourceType: string | null;
+    dataSourceId: number | null;
+    dataSourceName: string | null;
+    scriptPath: string | null;
+    snapshotSource: 'EXECUTION_COMMIT' | 'CURRENT_ONLINE' | 'UNAVAILABLE' | string;
+    snapshotCommitSha: string | null;
+    exactSnapshot: boolean;
+    snapshotNotice: string | null;
+    contentAvailable: boolean;
+    rawContent: string | null;
+    renderedContent: string | null;
+    renderNote: string | null;
+    renderError: string | null;
+    referencedParameters: ExecutionParameterValue[];
+    transfer: OperationsTransferSnapshot | null;
+}
+
 export interface OperationsExecutionDetail {
     id: string;
     namespace: string;
@@ -89,7 +153,10 @@ export interface OperationsExecutionDetail {
     forceSuccess?: boolean;
     forceSuccessBy?: string | null;
     forceSuccessAt?: string | null;
+    flowPath?: string | null;
     taskRuns: OperationsExecutionTaskRun[];
+    graphNodes?: OperationsExecutionGraphNode[];
+    graphEdges?: OperationsRerunGraphEdge[];
     inputs: Record<string, string>;
     labels: Record<string, string>;
     parameterResolutionStatus: 'NONE' | 'AVAILABLE' | 'PENDING' | 'UNAVAILABLE';
@@ -207,6 +274,15 @@ export const getOperationsExecutionLogs = (groupId: number, executionId: string,
     );
 };
 
+export const getOperationsExecutionNodeSnapshot = (groupId: number, executionId: string, taskId: string) => {
+    return request.get<unknown, OperationsExecutionNodeSnapshot>(
+        groupScopedPath(
+            groupId,
+            `/operations/executions/${encodeURIComponent(executionId)}/nodes/${encodeURIComponent(taskId)}/snapshot`,
+        )
+    );
+};
+
 export interface OperationsInstanceExecutionItem {
     id: string;
     status: string;
@@ -259,6 +335,7 @@ export interface OperationsInstanceDiagnosis {
     upstreams: OperationsInstanceUpstreamItem[];
     prevScheduleKey: string | null;
     nextScheduleKey: string | null;
+    flowPath?: string | null;
 }
 
 export interface OperationsInstanceDiagnosisQuery {

@@ -103,13 +103,16 @@ export function useOfflineWorkbenchUrlRestore(params: UrlRestoreParams) {
         searchParams,
         openFlowDocument,
     } = params;
-    const restoreFlowRef = useRef(false);
+    const restoredKeyRef = useRef<string | null>(null);
 
     useEffect(() => {
-        if (!groupId || !repoTree || restoreFlowRef.current) return;
-        const flowPath = searchParams.get('flowPath');
+        if (!groupId || !repoTree) return;
+        const flowPath = searchParams.get('flowPath')?.trim();
         if (!flowPath) return;
-        restoreFlowRef.current = true;
+        const branch = searchParams.get('branch')?.trim() ?? '';
+        const restoreKey = `${groupId}:${branch}:${flowPath}`;
+        if (restoredKeyRef.current === restoreKey) return;
+        restoredKeyRef.current = restoreKey;
         void openFlowDocument(flowPath, { force: true });
     }, [groupId, repoTree, searchParams, openFlowDocument]);
 }

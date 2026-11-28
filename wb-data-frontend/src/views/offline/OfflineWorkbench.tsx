@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import '@/components/loading/RouteSkeletons.css';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '../../components/ui/resizable';
 import type { AssetOwnerSummary } from '../../api/groupSettings';
@@ -12,6 +12,7 @@ import { TransferOwnerDialog } from '../../components/owner/TransferOwnerDialog'
 import { preloadSqlEditorModule } from '../../components/sql-editor/sqlEditorModule';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
 import { useAuthStore } from '../../utils/auth';
+import { setSelectedOfflineBranch } from '../../utils/offlineBranchStore';
 import { flattenFlowDocumentNodes } from './draft/flowDocumentMutations';
 import { computeExecutionNodeStatuses, computeFlowNodeIssues } from './draft/flowNodeIssues';
 import { validateSqlNodeDataSourceRequirement } from './editor/nodeEditorDataSourceRules';
@@ -40,12 +41,23 @@ import { useOfflineWorkbenchSession } from './useOfflineWorkbenchSession';
 import './OfflineWorkbench.css';
 
 export default function OfflineWorkbench() {
+    const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const currentGroup = useAuthStore((state) => state.currentGroup);
     const currentUser = useAuthStore((state) => state.userInfo);
     const permissions = useAuthStore((state) => state.permissions);
     const systemAdmin = useAuthStore((state) => state.systemAdmin);
     const groupId = currentGroup?.id ?? null;
+
+    const urlBranch = searchParams.get('branch')?.trim() || null;
+    const syncedUrlBranchKeyRef = useRef<string | null>(null);
+    if (groupId && urlBranch) {
+        const branchSyncKey = `${groupId}:${urlBranch}`;
+        if (syncedUrlBranchKeyRef.current !== branchSyncKey) {
+            syncedUrlBranchKeyRef.current = branchSyncKey;
+            setSelectedOfflineBranch(groupId, urlBranch);
+        }
+    }
     const canWrite = systemAdmin || permissions.includes('offline.write');
     const canReadParameters = systemAdmin || permissions.includes('parameter.read');
     const isGroupAdmin = systemAdmin || permissions.includes('group.settings') || currentGroup?.role === 'GROUP_ADMIN';
@@ -561,6 +573,15 @@ export default function OfflineWorkbench() {
                         onOpenParameterDialog={handleOpenParameterDialog}
                         onExecute={() => void flowExecutionAndSchedule.execute()}
                         onOpenExecutionDialog={flowExecutionAndSchedule.openExecutionDialog}
+                        onOpenOperations={() => {
+                            const params = new URLSearchParams();
+                            const currentBranch = repoWorkflow.repoStatus?.branch?.trim();
+                            if (currentBranch) params.set('branch', currentBranch);
+                            const flowId = flowDocument?.flowId?.trim();
+                            if (flowId) params.set('flowId', flowId);
+                            const suffix = params.toString();
+                            navigate(suffix ? `/operations?${suffix}` : '/operations');
+                        }}
                         onOpenVersions={() => versionWorkflow.setVersionHistoryOpen(true)}
                         canTransferFlowOwner={canTransferActiveFlow}
                         onOpenTransferFlowOwner={() => {

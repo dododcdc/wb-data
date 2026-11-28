@@ -98,24 +98,42 @@ describe('OfflineWorkbenchLifecycle', () => {
         expect(refreshWorkspace).toHaveBeenCalledTimes(1);
     });
 
-    it('restores the URL flowPath only once per mount', () => {
+    it('restores the URL flowPath once per key and re-restores when flowPath or branch changes', () => {
         const openFlowDocument = vi.fn().mockResolvedValue(true);
-        const searchParams = new URLSearchParams('flowPath=_flows/example/flow.yaml');
         const { rerender } = renderHook(
-            ({ repoTree }) => useOfflineWorkbenchUrlRestore({
+            ({ repoTree, searchParams }) => useOfflineWorkbenchUrlRestore({
                 groupId: 1,
                 repoTree,
                 searchParams,
                 openFlowDocument,
             }),
-            { initialProps: { repoTree: null as object | null } },
+            {
+                initialProps: {
+                    repoTree: null as object | null,
+                    searchParams: new URLSearchParams('flowPath=_flows/example/flow.yaml&branch=main'),
+                },
+            },
         );
 
-        rerender({ repoTree: { root: { id: 'root' } } });
-        rerender({ repoTree: { root: { id: 'root' } } });
+        rerender({
+            repoTree: { root: { id: 'root' } },
+            searchParams: new URLSearchParams('flowPath=_flows/example/flow.yaml&branch=main'),
+        });
+        rerender({
+            repoTree: { root: { id: 'root' } },
+            searchParams: new URLSearchParams('flowPath=_flows/example/flow.yaml&branch=main'),
+        });
 
         expect(openFlowDocument).toHaveBeenCalledTimes(1);
         expect(openFlowDocument).toHaveBeenCalledWith('_flows/example/flow.yaml', { force: true });
+
+        rerender({
+            repoTree: { root: { id: 'root' } },
+            searchParams: new URLSearchParams('flowPath=_flows/other/flow.yaml&branch=feature/dev'),
+        });
+
+        expect(openFlowDocument).toHaveBeenCalledTimes(2);
+        expect(openFlowDocument).toHaveBeenLastCalledWith('_flows/other/flow.yaml', { force: true });
     });
 
     it('leaves the current flow on beforeunload when a draft is open', () => {

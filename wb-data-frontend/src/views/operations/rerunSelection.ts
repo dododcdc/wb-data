@@ -1,5 +1,5 @@
 import type { Edge, Node } from '@xyflow/react';
-import type { OperationsRerunGraphEdge, OperationsRerunGraphNode } from '../../api/operations';
+import type { OperationsRerunGraphEdge } from '../../api/operations';
 import { autoLayout } from '../../lib/dagLayout';
 
 export const RERUN_NODE_WIDTH = 244;
@@ -153,7 +153,7 @@ export function toggleRerunNodeSelection(
 }
 
 export function computeRerunCanvasLayout(
-    nodes: readonly OperationsRerunGraphNode[],
+    nodes: readonly { taskId: string }[],
     edges: readonly OperationsRerunGraphEdge[],
 ): Record<string, { x: number; y: number }> {
     if (nodes.length === 0) {
