@@ -263,7 +263,9 @@ vi.mock('../../api/offline', async () => {
         pushOfflineCurrentFlow: vi.fn(),
         pushOfflineRepo: vi.fn(),
         listBranches: vi.fn(),
+        createBranch: vi.fn(),
         switchBranch: vi.fn(),
+        syncBranchFromMain: vi.fn(),
     };
 });
 
@@ -540,8 +542,13 @@ describe('OfflineWorkbench commit UI', () => {
 
     beforeEach(async () => {
         vi.clearAllMocks();
+        const { clearSelectedOfflineBranch } = await import('../../utils/offlineBranchStore');
+        clearSelectedOfflineBranch(1);
+        clearSelectedOfflineBranch(1, 1);
         setCurrentGroup({ id: 1, name: 'Team' });
-        removeRecoverySnapshot(1, '_flows/example/flow.yaml');
+        removeRecoverySnapshot(1, '_flows/example/flow.yaml', 'main');
+        removeRecoverySnapshot(1, '_flows/example/flow.yaml', 'dev');
+        removeRecoverySnapshot(1, '_flows/example/flow.yaml', 'feature/dev');
         const offlineApi = await import('../../api/offline');
         vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue(makeRepoStatus());
         vi.mocked(offlineApi.getOfflineRepoTree).mockResolvedValue(makeRepoTree());
@@ -614,6 +621,7 @@ describe('OfflineWorkbench commit UI', () => {
         const writeText = vi.fn().mockResolvedValue(undefined);
         vi.stubGlobal('navigator', Object.create(navigator, { clipboard: { value: { writeText } } }));
         const api = await import('../../api/offline');
+        vi.mocked(api.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
         vi.mocked(api.getOfflineRepoTree).mockResolvedValue(makeRepoTree({ includeFolder: true }));
         renderOfflineWorkbench();
         fireEvent.contextMenu(await screen.findByRole('button', { name: 'Example Flow' }), { clientX: 120, clientY: 80 });
@@ -651,6 +659,7 @@ describe('OfflineWorkbench commit UI', () => {
     it('searches and selects a directory in the create dialog without flow callbacks', async () => {
         authState.permissions = ['offline.write'];
         const api = await import('../../api/offline');
+        vi.mocked(api.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
         vi.mocked(api.getOfflineRepoTree).mockResolvedValue(makeRepoTree({ includeFolder: true }));
         renderOfflineWorkbench();
         await screen.findByRole('button', { name: 'Sub Folder' });
@@ -797,11 +806,14 @@ describe('OfflineWorkbench commit UI', () => {
     it('stages dependency settings with canvas edits and keeps business errors out of overwrite recovery', { timeout: 20000 }, async () => {
         const offlineApi = await import('../../api/offline');
         authState.permissions = ['offline.write'];
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
         const error = new AxiosError('blocked', undefined, undefined, undefined, {
             status: 422, statusText: 'Unprocessable Entity', headers: {}, config: { headers: new AxiosHeaders() },
             data: { message: '存在跨项目组下游依赖，请先解除依赖' },
         });
         vi.mocked(offlineApi.saveOfflineFlowDocument).mockRejectedValue(error);
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
+
         renderOfflineWorkbench();
         fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
@@ -829,7 +841,11 @@ describe('OfflineWorkbench commit UI', () => {
     });
 
     it('cancels dependency edits without making the Flow dirty', async () => {
+        const offlineApi = await import('../../api/offline');
         authState.permissions = ['offline.write'];
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
+
         renderOfflineWorkbench();
         fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
@@ -846,6 +862,7 @@ describe('OfflineWorkbench commit UI', () => {
     it('stages and saves a parameter group binding from the Flow toolbar', async () => {
         const offlineApi = await import('../../api/offline');
         authState.permissions = ['offline.write', 'parameter.read'];
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
         vi.mocked(offlineApi.getOfflineFlowDocument).mockResolvedValue({
             ...makeFlowDocument(),
             schedule: {
@@ -869,6 +886,8 @@ describe('OfflineWorkbench commit UI', () => {
                 definitions: [],
             },
         });
+
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
 
         renderOfflineWorkbench();
         fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
@@ -912,8 +931,12 @@ describe('OfflineWorkbench commit UI', () => {
     });
 
     it('adds a transfer node by dragging from the node palette', async () => {
+        const offlineApi = await import('../../api/offline');
         authState.currentGroup = { id: 1, name: 'Team' };
         authState.permissions = ['offline.write'];
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
+
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
 
         renderOfflineWorkbench();
         fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
@@ -943,6 +966,8 @@ describe('OfflineWorkbench commit UI', () => {
         authState.currentGroup = { id: 1, name: 'Team' };
         authState.permissions = ['offline.write'];
         vi.mocked(offlineApi.getOfflineFlowDocument).mockResolvedValue(makeFlowDocumentWithTransferNode());
+
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
 
         renderOfflineWorkbench();
         fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
@@ -992,16 +1017,39 @@ describe('OfflineWorkbench commit UI', () => {
         });
     });
 
-    it('shows current branch as read-only status for developers', async () => {
+    it('allows developers to switch branches, keeps main read-only, and unlocks writes on dev branch', async () => {
         const offlineApi = await import('../../api/offline');
         authState.currentGroup = { id: 1, name: 'Team' };
         authState.permissions = ['offline.write'];
 
+        const { unmount } = renderOfflineWorkbench();
+
+        expect(await screen.findByText('main 分支仅只读查看')).toBeTruthy();
+        expect(screen.queryByRole('button', { name: '提交仓库改动' })).toBeNull();
+        expect(screen.queryByRole('button', { name: '推送' })).toBeNull();
+
+        const branchSelector = await screen.findByRole('button', { name: /切换分支，当前 main/ });
+        fireEvent.click(branchSelector);
+        const branchDialog = await screen.findByRole('dialog', { name: '切换分支' });
+        expect(within(branchDialog).getByRole('button', { name: '新建分支' })).toBeTruthy();
+
+        unmount();
+
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({
+            ...makeRepoStatus(),
+            branch: 'feature/dev',
+            dirty: true,
+        });
         renderOfflineWorkbench();
 
-        expect(await screen.findByText('main')).toBeTruthy();
-        expect(screen.queryByRole('button', { name: /切换分支/ })).toBeNull();
-        expect(offlineApi.listBranches).not.toHaveBeenCalled();
+        await screen.findByRole('button', { name: /切换分支，当前 feature\/dev/ });
+        expect(screen.queryByText('main 分支仅只读查看')).toBeNull();
+        expect(screen.getByRole('button', { name: '提交仓库改动' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: '推送' })).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('button', { name: /切换分支，当前 feature\/dev/ }));
+        await screen.findByRole('dialog', { name: '切换分支' });
+        expect(screen.getByRole('button', { name: '从 main 同步最新改动' })).toBeTruthy();
     });
 
     it('lets group admins switch branch from the left rail branch selector', async () => {
@@ -1146,8 +1194,11 @@ describe('OfflineWorkbench commit UI', () => {
         const offlineApi = await import('../../api/offline');
         authState.currentGroup = { id: 1, name: 'Team' };
         authState.permissions = ['offline.write'];
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
         vi.mocked(offlineApi.getOfflineFlowCommitStatus).mockResolvedValue({ groupId: 1, flowPath: '_flows/example/flow.yaml', dirty: true });
         vi.mocked(offlineApi.commitOfflineCurrentFlow).mockResolvedValue({ success: true, message: 'ok' });
+
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
 
         renderOfflineWorkbench();
         fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
@@ -1262,6 +1313,8 @@ describe('OfflineWorkbench commit UI', () => {
         authState.permissions = ['offline.write'];
         vi.mocked(offlineApi.getOfflineFlowDocument).mockResolvedValue(makeFlowDocumentWithNodeCount(19));
 
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
+
         renderOfflineWorkbench();
         fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
@@ -1297,7 +1350,10 @@ describe('OfflineWorkbench commit UI', () => {
                 ],
             }],
         });
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
         vi.mocked(offlineApi.getOfflineFlowCommitStatus).mockResolvedValue({ groupId: 1, flowPath: '_flows/example/flow.yaml', dirty: true });
+
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
 
         renderOfflineWorkbench();
         fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
@@ -1358,6 +1414,8 @@ describe('OfflineWorkbench commit UI', () => {
             remoteCreated: false,
             remoteDeleted: false,
         });
+
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
 
         renderOfflineWorkbench();
         fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
@@ -1428,6 +1486,8 @@ describe('OfflineWorkbench commit UI', () => {
             documentHash: 'saved-hash',
             documentUpdatedAt: 101,
         });
+
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
 
         renderOfflineWorkbench();
         fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
@@ -1523,9 +1583,11 @@ describe('OfflineWorkbench branch menu motion', () => {
 describe('OfflineWorkbench destructive confirmations', () => {
     beforeEach(async () => {
         vi.clearAllMocks();
+        const { clearSelectedOfflineBranch } = await import('../../utils/offlineBranchStore');
+        clearSelectedOfflineBranch(1);
         setCurrentGroup({ id: 1, name: 'Team' });
         const offlineApi = await import('../../api/offline');
-        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue(makeRepoStatus());
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
         vi.mocked(offlineApi.getOfflineRepoTree).mockResolvedValue(makeRepoTree({ includeFolder: true }));
         vi.mocked(offlineApi.getOfflineRepoRemote).mockResolvedValue({ hasRemote: false, remoteUrl: null });
         vi.mocked(offlineApi.getOfflineFlowDocument).mockResolvedValue(makeFlowDocument());
@@ -1633,7 +1695,7 @@ describe('OfflineWorkbench online mode', () => {
         vi.clearAllMocks();
         removeRecoverySnapshot(1, '_flows/example/flow.yaml');
         authState.currentGroup = { id: 1, name: 'Team' };
-        authState.permissions = ['offline.write', 'parameter.read'];
+        authState.permissions = ['offline.write', 'parameter.read', 'group.settings'];
         setCurrentGroup({ id: 1, name: 'Team' });
 
         const offlineApi = await import('../../api/offline');
@@ -1990,6 +2052,8 @@ describe('OfflineWorkbench online mode', () => {
             nodeMetadata: {},
         }));
 
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
+
         renderOfflineWorkbench();
         fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
@@ -2049,6 +2113,7 @@ describe('OfflineWorkbench online mode', () => {
         const offlineApi = await import('../../api/offline');
         authState.currentGroup = { id: 1, name: 'Team' };
         authState.permissions = ['offline.write'];
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
         vi.mocked(offlineApi.getOfflineFlowDocument).mockResolvedValue(makeFlowDocument());
         vi.mocked(offlineApi.saveOfflineFlowDocument).mockResolvedValue({
             ...makeFlowDocument(),
@@ -2070,12 +2135,13 @@ describe('OfflineWorkbench online mode', () => {
             remoteDeleted: false,
         });
 
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({ ...makeRepoStatus(), branch: 'feature/dev' });
+
         renderOfflineWorkbench();
         fireEvent.doubleClick(await screen.findByRole('button', { name: 'Example Flow' }));
         await screen.findByTestId('flow-canvas');
 
-        // Repo-level push remains hidden for developers, while single-flow push is enabled
-        expect(screen.queryByRole('button', { name: '推送' })).toBeNull();
+        // On a feature branch, single-flow push calls pushOfflineCurrentFlow without calling repo-wide push
         const flowPushBtn = await screen.findByRole('button', { name: '推送当前任务' });
         await waitFor(() => expect((flowPushBtn as HTMLButtonElement).disabled).toBe(false));
 

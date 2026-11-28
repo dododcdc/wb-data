@@ -1,7 +1,26 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from './auth';
+import { getActiveOfflineBranchForRequest } from './offlineBranchStore';
 
 export const AUTH_CONTEXT_REFRESH_EVENT = 'wbdata:auth-context-refresh';
+
+const GROUP_OFFLINE_PATH_RE = /\/api\/v1\/groups\/(\d+)\/offline(?:\/|$)/;
+const LEGACY_OFFLINE_PATH_RE = /\/api\/v1\/offline(?:\/|$)/;
+
+function resolveOfflineRequestGroupId(url: string | undefined, currentGroupId: number | undefined): number | null {
+    if (!url) {
+        return null;
+    }
+    const groupMatch = GROUP_OFFLINE_PATH_RE.exec(url);
+    if (groupMatch) {
+        const parsed = Number(groupMatch[1]);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    }
+    if (LEGACY_OFFLINE_PATH_RE.test(url) && typeof currentGroupId === 'number' && currentGroupId > 0) {
+        return currentGroupId;
+    }
+    return null;
+}
 
 const request = axios.create({
     baseURL: import.meta.env.VITE_API_BASE_URL || '',
@@ -21,6 +40,13 @@ request.interceptors.request.use(
         requestScopes.set(config, { token, contextVersion, groupId: currentGroup?.id });
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
+        }
+        const offlineGroupId = resolveOfflineRequestGroupId(config.url, currentGroup?.id);
+        if (offlineGroupId !== null && !config.headers['X-Offline-Branch']) {
+            const activeBranch = getActiveOfflineBranchForRequest(offlineGroupId);
+            if (activeBranch) {
+                config.headers['X-Offline-Branch'] = activeBranch;
+            }
         }
         return config;
     },

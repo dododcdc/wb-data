@@ -2,29 +2,36 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AxiosError } from 'axios';
 import {
     commitOfflineRepo,
+    createBranch,
     getOfflineRepoRemote,
     getOfflineRepoStatus,
     listBranches,
     pushOfflineRepo,
     rebuildOfflineRepo,
     switchBranch,
+    syncBranchFromMain,
     type BranchItem,
     type DirtyFlowChange,
     type DirtyWorkingTreeResponse,
     type OfflineRepoStatus,
     type RemoteStatus,
 } from '../../../api/offline';
+import { setSelectedOfflineBranch } from '../../../utils/offlineBranchStore';
 import { getErrorMessage } from '../../../utils/error';
 import type { FeedbackPayload } from '../../../hooks/useOperationFeedback';
 
 interface UseOfflineRepositoryWorkflowParams {
     groupId: number | null;
     canManageBranches: boolean;
+    canSwitchBranches?: boolean;
+    canCreateBranch?: boolean;
+    canSyncFromMain?: boolean;
     hasUnsavedFlowDraft?: boolean;
     showFeedback: (payload: FeedbackPayload) => void;
 }
 
 export interface BranchDirtyState {
+    action?: 'switch' | 'sync-main';
     targetBranch?: string;
     changedFlows: string[];
     changedFlowDetails: DirtyFlowChange[];
@@ -87,6 +94,9 @@ function readDirtyWorkingTreeDetails(error: unknown): DirtyWorkingTreeResponse |
 export function useOfflineRepositoryWorkflow({
     groupId,
     canManageBranches,
+    canSwitchBranches,
+    canCreateBranch,
+    canSyncFromMain,
     hasUnsavedFlowDraft = false,
     showFeedback,
 }: UseOfflineRepositoryWorkflowParams) {
@@ -102,6 +112,9 @@ export function useOfflineRepositoryWorkflow({
     const [branchLoading, setBranchLoading] = useState(false);
     const [branches, setBranches] = useState<BranchItem[]>([]);
     const [branchSwitching, setBranchSwitching] = useState(false);
+    const [createBranchDialogOpen, setCreateBranchDialogOpen] = useState(false);
+    const [branchCreating, setBranchCreating] = useState(false);
+    const [branchSyncing, setBranchSyncing] = useState(false);
     const [branchDirtyState, setBranchDirtyState] = useState<BranchDirtyState | null>(null);
     const [branchDirtyDialogOpen, setBranchDirtyDialogOpen] = useState(false);
     const [pendingBranchSwitch, setPendingBranchSwitch] = useState<string | null>(null);
@@ -119,6 +132,7 @@ export function useOfflineRepositoryWorkflow({
             setPushDialogOpen(false);
             setRebuildDialogOpen(false);
             setBranchMenuOpen(false);
+            setCreateBranchDialogOpen(false);
             setBranches([]);
             setBranchDirtyState(null);
             setBranchDirtyDialogOpen(false);
@@ -140,6 +154,9 @@ export function useOfflineRepositoryWorkflow({
         try {
             const nextStatus = await getOfflineRepoStatus(groupId);
             if (!isCurrentGroupAction()) return;
+            if (nextStatus.gitInitialized && nextStatus.branch) {
+                setSelectedOfflineBranch(groupId, nextStatus.branch);
+            }
             setRepoStatus(nextStatus);
         } catch (error) {
             if (!isCurrentGroupAction()) return;
@@ -171,7 +188,12 @@ export function useOfflineRepositoryWorkflow({
     }, [captureGroupActionGuard, groupId]);
 
     const branchLabel = repoStatus?.gitInitialized ? repoStatus.branch ?? 'main' : '未初始化';
-    const canSwitchBranch = canManageBranches && !!groupId && !!repoStatus?.gitInitialized;
+    const canSwitchBranch = (canSwitchBranches ?? canManageBranches) && !!groupId && !!repoStatus?.gitInitialized;
+    const canCreateBranchFlag = (canCreateBranch ?? canManageBranches) && !!groupId && !!repoStatus?.gitInitialized;
+    const canSyncFromMainFlag = (canSyncFromMain ?? canManageBranches)
+        && !!groupId
+        && !!repoStatus?.gitInitialized
+        && (repoStatus?.branch ?? 'main') !== 'main';
     const canCommitRepo = !!groupId && !!repoStatus?.gitInitialized && (hasUnsavedFlowDraft || !!repoStatus?.dirty);
     const canPush = !!groupId
         && !!repoStatus?.gitInitialized
@@ -235,6 +257,7 @@ export function useOfflineRepositoryWorkflow({
             await switchBranch(groupId, branchName);
             if (!isCurrentGroupAction()) return;
 
+            setSelectedOfflineBranch(groupId, branchName);
             setBranchDirtyState(null);
             setBranchDirtyDialogOpen(false);
             setBranchMenuOpen(false);
@@ -252,6 +275,7 @@ export function useOfflineRepositoryWorkflow({
             const dirtyDetails = readDirtyWorkingTreeDetails(error);
             if (dirtyDetails) {
                 setBranchDirtyState({
+                    action: 'switch',
                     targetBranch: branchName,
                     changedFlows: dirtyDetails.changedFlows,
                     changedFlowDetails: dirtyDetails.changedFlowDetails ?? dirtyDetails.changedFlows.map((path) => ({ path, status: 'MODIFIED' })),
@@ -273,6 +297,99 @@ export function useOfflineRepositoryWorkflow({
             }
         }
     }, [branchLabel, canSwitchBranch, captureGroupActionGuard, groupId, showFeedback]);
+
+    const openCreateBranchDialog = useCallback(() => {
+        setBranchMenuOpen(false);
+        setCreateBranchDialogOpen(true);
+        if (branches.length === 0) {
+            void loadBranchList();
+        }
+    }, [branches.length, loadBranchList]);
+
+    const createBranchAndSwitch = useCallback(async (
+        name: string,
+        baseBranch: string,
+        callbacks: { afterSwitch?: (branchName: string) => void | Promise<void> } = {},
+    ) => {
+        const trimmedName = name.trim();
+        if (!groupId || !canCreateBranchFlag) return false;
+        if (!trimmedName) {
+            showFeedback({ tone: 'error', title: '请输入分支名称', detail: '' });
+            return false;
+        }
+        const isCurrentGroupAction = captureGroupActionGuard(groupId);
+        setBranchCreating(true);
+        try {
+            await createBranch(groupId, trimmedName, baseBranch || 'main');
+            if (!isCurrentGroupAction()) return false;
+            setSelectedOfflineBranch(groupId, trimmedName);
+            setBranchDirtyState(null);
+            setBranchDirtyDialogOpen(false);
+            setBranchMenuOpen(false);
+            setCreateBranchDialogOpen(false);
+            window.dispatchEvent(new CustomEvent('wbdata:offline-branch-changed', {
+                detail: { groupId, branch: trimmedName, source: 'workbench' },
+            }));
+            await callbacks.afterSwitch?.(trimmedName);
+            if (!isCurrentGroupAction()) return false;
+            showFeedback({ tone: 'success', title: '分支已创建并切换', detail: trimmedName });
+            return true;
+        } catch (error) {
+            if (!isCurrentGroupAction()) return false;
+            showFeedback({
+                tone: 'error',
+                title: '创建分支失败',
+                detail: getErrorMessage(error, ''),
+            });
+            return false;
+        } finally {
+            if (isCurrentGroupAction()) {
+                setBranchCreating(false);
+            }
+        }
+    }, [canCreateBranchFlag, captureGroupActionGuard, groupId, showFeedback]);
+
+    const syncFromMain = useCallback(async (callbacks: { afterSync?: () => void | Promise<void> } = {}) => {
+        if (!groupId || !canSyncFromMainFlag || branchLabel === 'main') return;
+        const isCurrentGroupAction = captureGroupActionGuard(groupId);
+        setBranchSyncing(true);
+        try {
+            const res = await syncBranchFromMain(groupId, branchLabel);
+            if (!isCurrentGroupAction()) return;
+            setBranchMenuOpen(false);
+            if (res.upToDate) {
+                showFeedback({ tone: 'info', title: '当前分支已是最新', detail: res.message });
+                return;
+            }
+            await callbacks.afterSync?.();
+            if (!isCurrentGroupAction()) return;
+            showFeedback({ tone: 'success', title: '已同步 main 最新改动', detail: res.message });
+        } catch (error) {
+            if (!isCurrentGroupAction()) return;
+            const dirtyDetails = readDirtyWorkingTreeDetails(error);
+            if (dirtyDetails) {
+                setBranchDirtyState({
+                    action: 'sync-main',
+                    targetBranch: 'main',
+                    changedFlows: dirtyDetails.changedFlows,
+                    changedFlowDetails: dirtyDetails.changedFlowDetails ?? dirtyDetails.changedFlows.map((path) => ({ path, status: 'MODIFIED' })),
+                    otherFileCount: dirtyDetails.otherFileCount,
+                });
+                setBranchMenuOpen(false);
+                setBranchDirtyDialogOpen(true);
+                return;
+            }
+            showFeedback({
+                tone: 'error',
+                title: '同步 main 失败',
+                detail: getErrorMessage(error, ''),
+            });
+        } finally {
+            if (isCurrentGroupAction()) {
+                setBranchSyncing(false);
+            }
+        }
+    }, [branchLabel, canSyncFromMainFlag, captureGroupActionGuard, groupId, showFeedback]);
 
     const requestBranchSwitch = useCallback((branchName: string, options: RequestBranchSwitchOptions = {}) => {
         if (!canSwitchBranch || branchName === branchLabel) return;
@@ -385,6 +502,8 @@ export function useOfflineRepositoryWorkflow({
         remoteStatus,
         branchLabel,
         canSwitchBranch,
+        canCreateBranch: canCreateBranchFlag,
+        canSyncFromMain: canSyncFromMainFlag,
         canCommitRepo,
         canPush,
         pushLoading,
@@ -403,6 +522,13 @@ export function useOfflineRepositoryWorkflow({
         toggleBranchMenu,
         resetBranchList,
         branchSwitching,
+        createBranchDialogOpen,
+        setCreateBranchDialogOpen,
+        openCreateBranchDialog,
+        branchCreating,
+        createBranchAndSwitch,
+        branchSyncing,
+        syncFromMain,
         branchDirtyState,
         branchDirtyDialogOpen,
         setBranchDirtyDialogOpen,

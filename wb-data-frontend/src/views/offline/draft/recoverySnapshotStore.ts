@@ -1,4 +1,5 @@
 import type { OfflineFlowDocument } from '../../../api/offline';
+import { getActiveOfflineBranchForRequest } from '../../../utils/offlineBranchStore';
 
 export interface RecoverySnapshot {
     document: OfflineFlowDocument;
@@ -36,12 +37,20 @@ function getStorage(): StorageLike {
     };
 }
 
-function buildRecoverySnapshotKey(groupId: number, path: string) {
-    return `wb-data:offline-recovery:${groupId}:${path}`;
+function resolveBranchScope(groupId: number, branch?: string | null): string {
+    const explicit = branch?.trim();
+    if (explicit) {
+        return explicit;
+    }
+    return getActiveOfflineBranchForRequest(groupId) || 'main';
 }
 
-function buildRecoverySnapshotPrefix(groupId: number) {
-    return `wb-data:offline-recovery:${groupId}:`;
+function buildRecoverySnapshotKey(groupId: number, path: string, branch?: string | null) {
+    return `wb-data:offline-recovery:${groupId}:${resolveBranchScope(groupId, branch)}:${path}`;
+}
+
+function buildRecoverySnapshotPrefix(groupId: number, branch?: string | null) {
+    return `wb-data:offline-recovery:${groupId}:${resolveBranchScope(groupId, branch)}:`;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -66,9 +75,9 @@ function isRecoverySnapshot(value: unknown): value is RecoverySnapshot {
     return true;
 }
 
-function readRawRecoverySnapshot(groupId: number, path: string): RecoverySnapshot | null {
+function readRawRecoverySnapshot(groupId: number, path: string, branch?: string | null): RecoverySnapshot | null {
     const storage = getStorage();
-    const raw = storage.getItem(buildRecoverySnapshotKey(groupId, path));
+    const raw = storage.getItem(buildRecoverySnapshotKey(groupId, path, branch));
     if (!raw) return null;
 
     try {
@@ -79,14 +88,14 @@ function readRawRecoverySnapshot(groupId: number, path: string): RecoverySnapsho
     }
 }
 
-export function readRecoverySnapshot(groupId: number, path: string): RecoverySnapshot | null {
-    return readRawRecoverySnapshot(groupId, path);
+export function readRecoverySnapshot(groupId: number, path: string, branch?: string | null): RecoverySnapshot | null {
+    return readRawRecoverySnapshot(groupId, path, branch);
 }
 
-export function writeRecoverySnapshot(groupId: number, path: string, snapshot: RecoverySnapshot) {
+export function writeRecoverySnapshot(groupId: number, path: string, snapshot: RecoverySnapshot, branch?: string | null) {
     const storage = getStorage();
     try {
-        storage.setItem(buildRecoverySnapshotKey(groupId, path), JSON.stringify(snapshot));
+        storage.setItem(buildRecoverySnapshotKey(groupId, path, branch), JSON.stringify(snapshot));
     } catch (error) {
         // Silently degrade on QuotaExceededError or other write failures to prevent
         // core flows (leaveCurrentFlow, unmount) from crashing.
@@ -94,17 +103,17 @@ export function writeRecoverySnapshot(groupId: number, path: string, snapshot: R
     }
 }
 
-export function removeRecoverySnapshot(groupId: number, path: string) {
+export function removeRecoverySnapshot(groupId: number, path: string, branch?: string | null) {
     const storage = getStorage();
-    storage.removeItem(buildRecoverySnapshotKey(groupId, path));
+    storage.removeItem(buildRecoverySnapshotKey(groupId, path, branch));
 }
 
-export function moveRecoverySnapshot(groupId: number, oldPath: string, newPath: string) {
+export function moveRecoverySnapshot(groupId: number, oldPath: string, newPath: string, branch?: string | null) {
     if (oldPath === newPath) return;
 
-    const snapshot = readRawRecoverySnapshot(groupId, oldPath);
+    const snapshot = readRawRecoverySnapshot(groupId, oldPath, branch);
     if (!snapshot) {
-        removeRecoverySnapshot(groupId, oldPath);
+        removeRecoverySnapshot(groupId, oldPath, branch);
         return;
     }
 
@@ -127,12 +136,12 @@ export function moveRecoverySnapshot(groupId: number, oldPath: string, newPath: 
                 )),
             })),
         },
-    });
-    removeRecoverySnapshot(groupId, oldPath);
+    }, branch);
+    removeRecoverySnapshot(groupId, oldPath, branch);
 }
 
-export function listRecoverySnapshotPaths(groupId: number) {
-    const prefix = buildRecoverySnapshotPrefix(groupId);
+export function listRecoverySnapshotPaths(groupId: number, branch?: string | null) {
+    const prefix = buildRecoverySnapshotPrefix(groupId, branch);
     const storage = typeof globalThis.localStorage === 'undefined' ? null : globalThis.localStorage;
 
     if (storage && typeof storage.key === 'function' && typeof storage.length === 'number') {
@@ -151,20 +160,20 @@ export function listRecoverySnapshotPaths(groupId: number) {
         .map((key) => key.slice(prefix.length));
 }
 
-export function moveFolderRecoverySnapshots(groupId: number, oldPrefix: string, newPrefix: string) {
+export function moveFolderRecoverySnapshots(groupId: number, oldPrefix: string, newPrefix: string, branch?: string | null) {
     if (oldPrefix === newPrefix) return;
 
-    listRecoverySnapshotPaths(groupId)
+    listRecoverySnapshotPaths(groupId, branch)
         .filter((path) => path.startsWith(`${oldPrefix}/`))
         .forEach((path) => {
-            moveRecoverySnapshot(groupId, path, path.replace(oldPrefix, newPrefix));
+            moveRecoverySnapshot(groupId, path, path.replace(oldPrefix, newPrefix), branch);
         });
 }
 
-export function removeFolderRecoverySnapshots(groupId: number, folderPrefix: string) {
-    listRecoverySnapshotPaths(groupId)
+export function removeFolderRecoverySnapshots(groupId: number, folderPrefix: string, branch?: string | null) {
+    listRecoverySnapshotPaths(groupId, branch)
         .filter((path) => path.startsWith(`${folderPrefix}/`))
         .forEach((path) => {
-            removeRecoverySnapshot(groupId, path);
+            removeRecoverySnapshot(groupId, path, branch);
         });
 }

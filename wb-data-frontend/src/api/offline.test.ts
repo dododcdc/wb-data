@@ -25,6 +25,7 @@ import {
     rebuildOfflineRepo,
     saveOfflineFlowDocument,
     switchBranch,
+    syncBranchFromMain,
     testGitHubConnection,
     updateOfflineScheduleStatus,
 } from './offline';
@@ -153,6 +154,7 @@ describe('offline API group-scoped routes', () => {
         await createBranch(4, 'feature/test', 'main');
         await switchBranch(4, 'feature/test');
         await mergeBranch(4, 'feature/test', 'main');
+        await syncBranchFromMain(4, 'feature/test');
 
         expect(requestMock.post).toHaveBeenNthCalledWith(
             1,
@@ -221,6 +223,15 @@ describe('offline API group-scoped routes', () => {
             6,
             '/api/v1/groups/4/offline/repo/branch/merge',
             { source: 'feature/test', target: 'main' },
+            {
+                timeout: 90_000,
+                headers: { 'Content-Type': 'application/json' },
+            },
+        );
+        expect(requestMock.post).toHaveBeenNthCalledWith(
+            7,
+            '/api/v1/groups/4/offline/repo/branch/sync-main',
+            { targetBranch: 'feature/test' },
             {
                 timeout: 90_000,
                 headers: { 'Content-Type': 'application/json' },

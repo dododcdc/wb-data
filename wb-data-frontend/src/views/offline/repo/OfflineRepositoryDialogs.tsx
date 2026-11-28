@@ -1,6 +1,8 @@
-import { AlertTriangle, FileCode2, LoaderCircle } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, FileCode2, GitBranch, LoaderCircle } from 'lucide-react';
 
-import type { DirtyFlowChange } from '../../../api/offline';
+import type { BranchItem, DirtyFlowChange } from '../../../api/offline';
+import { SimpleSelect } from '../../../components/SimpleSelect';
 import { Button } from '../../../components/ui/button';
 import { ConfirmDialog } from '../../../components/ui/confirm-dialog';
 import {
@@ -11,6 +13,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '../../../components/ui/dialog';
+import { Input } from '../../../components/ui/input';
 import type { BranchDirtyState } from './useOfflineRepositoryWorkflow';
 
 function formatFlowPathDisplayName(flowPath: string) {
@@ -48,6 +51,11 @@ interface OfflineRepositoryDialogsProps {
     rebuildLoading: boolean;
     onRebuildDialogOpenChange: (open: boolean) => void;
     onRebuildRemote: () => void;
+    createBranchDialogOpen?: boolean;
+    branchCreating?: boolean;
+    branches?: BranchItem[];
+    onCreateBranchDialogOpenChange?: (open: boolean) => void;
+    onCreateBranch?: (name: string, baseBranch: string) => Promise<boolean> | boolean;
 }
 
 export function OfflineRepositoryDialogs({
@@ -69,7 +77,35 @@ export function OfflineRepositoryDialogs({
     rebuildLoading,
     onRebuildDialogOpenChange,
     onRebuildRemote,
+    createBranchDialogOpen = false,
+    branchCreating = false,
+    branches = [],
+    onCreateBranchDialogOpenChange,
+    onCreateBranch,
 }: OfflineRepositoryDialogsProps) {
+    const [newBranchName, setNewBranchName] = useState('');
+    const [baseBranchName, setBaseBranchName] = useState('main');
+
+    const baseBranchOptions = useMemo(() => {
+        const names = new Set<string>();
+        names.add('main');
+        if (currentBranchLabel && currentBranchLabel !== '未初始化') {
+            names.add(currentBranchLabel);
+        }
+        branches.forEach((b) => names.add(b.name));
+        return Array.from(names).map((name) => ({ value: name, label: name }));
+    }, [branches, currentBranchLabel]);
+
+    useEffect(() => {
+        if (!createBranchDialogOpen) return;
+        setNewBranchName('');
+        const defaultBase = baseBranchOptions.some((opt) => opt.value === 'main')
+            ? 'main'
+            : (baseBranchOptions[0]?.value ?? 'main');
+        setBaseBranchName(defaultBase);
+    }, [baseBranchOptions, createBranchDialogOpen]);
+
+    const isSyncMainDirty = branchDirtyState?.action === 'sync-main';
     return (
         <>
             <Dialog open={pushDialogOpen} onOpenChange={onPushDialogOpenChange}>
@@ -126,12 +162,14 @@ export function OfflineRepositoryDialogs({
                             <span className="offline-branch-dirty-dialog-icon" aria-hidden="true">
                                 <AlertTriangle size={16} />
                             </span>
-                            <DialogTitle>切换分支前请先提交改动</DialogTitle>
+                            <DialogTitle>{isSyncMainDirty ? '同步 main 前请先提交改动' : '切换分支前请先提交改动'}</DialogTitle>
                         </div>
                         <DialogDescription>
-                            {branchDirtyState?.targetBranch
-                                ? `当前分支（${currentBranchLabel}）仍有未提交改动，暂无法切换到「${branchDirtyState.targetBranch}」。请先提交仓库改动后再切换。`
-                                : `当前分支（${currentBranchLabel}）仍有未提交改动，请先提交仓库改动后再切换分支。`}
+                            {isSyncMainDirty
+                                ? `当前分支（${currentBranchLabel}）仍有未提交改动，暂无法同步 main 最新改动。请先提交仓库改动后再同步。`
+                                : branchDirtyState?.targetBranch
+                                    ? `当前分支（${currentBranchLabel}）仍有未提交改动，暂无法切换到「${branchDirtyState.targetBranch}」。请先提交仓库改动后再切换。`
+                                    : `当前分支（${currentBranchLabel}）仍有未提交改动，请先提交仓库改动后再切换分支。`}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -207,6 +245,76 @@ export function OfflineRepositoryDialogs({
                         <Button variant="default" onClick={onRebuildRemote} disabled={rebuildLoading}>
                             {rebuildLoading ? <LoaderCircle size={14} className="offline-spin" style={{ marginRight: 8 }} /> : null}
                             {rebuildLoading ? '推送中…' : '重建并推送'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={createBranchDialogOpen}
+                onOpenChange={(open) => {
+                    if (!open && branchCreating) return;
+                    onCreateBranchDialogOpenChange?.(open);
+                }}
+            >
+                <DialogContent style={{ maxWidth: '420px' }}>
+                    <DialogHeader>
+                        <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <GitBranch size={16} />
+                            <span>新建开发分支</span>
+                        </DialogTitle>
+                        <DialogDescription>
+                            为当前需求新建一个独立分支工作区，开发完成后可由管理员合并回 main。
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <label htmlFor="offline-new-branch-name" style={{ fontSize: '0.84rem', fontWeight: 500 }}>
+                                分支名称
+                            </label>
+                            <Input
+                                id="offline-new-branch-name"
+                                value={newBranchName}
+                                onChange={(e) => setNewBranchName(e.target.value)}
+                                placeholder="例如 feature/order-etl"
+                                disabled={branchCreating}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && newBranchName.trim() && !branchCreating) {
+                                        void onCreateBranch?.(newBranchName, baseBranchName);
+                                    }
+                                }}
+                            />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <label style={{ fontSize: '0.84rem', fontWeight: 500 }}>
+                                基于分支
+                            </label>
+                            <SimpleSelect
+                                value={baseBranchName}
+                                onChange={setBaseBranchName}
+                                options={baseBranchOptions}
+                                disabled={branchCreating}
+                                ariaLabel="选择基础分支"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => onCreateBranchDialogOpenChange?.(false)}
+                            disabled={branchCreating}
+                        >
+                            取消
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="default"
+                            onClick={() => void onCreateBranch?.(newBranchName, baseBranchName)}
+                            disabled={branchCreating || !newBranchName.trim()}
+                        >
+                            {branchCreating ? <LoaderCircle size={14} className="offline-spin" style={{ marginRight: 8 }} /> : null}
+                            {branchCreating ? '创建中…' : '创建并切换'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

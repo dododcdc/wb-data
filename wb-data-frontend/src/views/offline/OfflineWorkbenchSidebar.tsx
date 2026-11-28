@@ -10,8 +10,10 @@ import {
     FolderPlus,
     GitBranch,
     GitCommitHorizontal,
+    GitMerge,
     LoaderCircle,
     LocateFixed,
+    Lock,
     Plus,
     RefreshCcw,
     Search,
@@ -35,16 +37,22 @@ import type { BranchDirtyState } from './repo/useOfflineRepositoryWorkflow';
 interface BranchControls {
     label: string;
     canSwitch: boolean;
+    canCreate?: boolean;
+    canSyncMain?: boolean;
+    isProtectedMainBranch?: boolean;
     menuOpen: boolean;
     tooltipOpen: boolean;
     loading: boolean;
     switching: boolean;
+    syncing?: boolean;
     branches: BranchItem[];
     dirtyState: BranchDirtyState | null;
     onToggleMenu: () => void;
     onMenuOpenChange: (open: boolean) => void;
     onTooltipOpenChange: (open: boolean) => void;
     onSwitch: (branchName: string) => void;
+    onOpenCreate?: () => void;
+    onSyncMain?: () => void;
 }
 
 interface RepositoryControls {
@@ -52,6 +60,7 @@ interface RepositoryControls {
     loading: boolean;
     committing: boolean;
     pushLoading: boolean;
+    canRefresh?: boolean;
     canCommit: boolean;
     canPush: boolean;
     dirty: boolean;
@@ -194,7 +203,7 @@ function collectFlowPaths(node: OfflineRepoTreeNode | null | undefined): Set<str
 }
 
 interface OfflineWorkbenchSidebarProps {
-    isGroupAdmin: boolean;
+    isGroupAdmin?: boolean;
     branch: BranchControls;
     repository: RepositoryControls;
     creation: CreationControls;
@@ -211,7 +220,6 @@ function GitPushIcon({ dirty }: { dirty: boolean }) {
 }
 
 export function OfflineWorkbenchSidebar({
-    isGroupAdmin,
     branch,
     repository,
     creation,
@@ -386,7 +394,7 @@ export function OfflineWorkbenchSidebar({
                                 </span>
                             </TooltipTrigger>
                             <TooltipContent className="tooltip-content" side="bottom">
-                                当前分支：{branch.label}。只有项目组管理员可以切换分支
+                                当前分支：{branch.label}（仓库未初始化，暂不可切换分支）
                             </TooltipContent>
                         </Tooltip>
                     )}
@@ -402,34 +410,66 @@ export function OfflineWorkbenchSidebar({
                                             <span className="sr-only">正在加载分支</span>
                                         </div>
                                     ) : (
-                                        <div className="offline-branch-list" aria-label="可切换分支">
-                                            {currentBranch ? (
-                                                <div className="offline-branch-row is-current" title={currentBranch.name}>
-                                                    <GitBranch size={13} className="offline-branch-row-icon" aria-hidden="true" />
-                                                    <span className="offline-branch-row-name">{currentBranch.name}</span>
-                                                    <Check size={13} className="offline-branch-row-check" aria-hidden="true" />
+                                        <>
+                                            <div className="offline-branch-list" aria-label="可切换分支">
+                                                {currentBranch ? (
+                                                    <div className="offline-branch-row is-current" title={currentBranch.name}>
+                                                        <GitBranch size={13} className="offline-branch-row-icon" aria-hidden="true" />
+                                                        <span className="offline-branch-row-name">{currentBranch.name}</span>
+                                                        <Check size={13} className="offline-branch-row-check" aria-hidden="true" />
+                                                    </div>
+                                                ) : null}
+                                                {switchableBranches.map((item) => (
+                                                    <button
+                                                        key={item.name}
+                                                        type="button"
+                                                        className="offline-branch-row"
+                                                        aria-label={`切换到 ${item.name}`}
+                                                        title={item.name}
+                                                        onClick={() => branch.onSwitch(item.name)}
+                                                        disabled={branch.switching || branch.syncing}
+                                                    >
+                                                        <GitBranch size={13} className="offline-branch-row-icon" aria-hidden="true" />
+                                                        <span className="offline-branch-row-name">{item.name}</span>
+                                                    </button>
+                                                ))}
+                                                {switchableBranches.length === 0 ? (
+                                                    <div className="offline-branch-menu-empty" role="note" aria-label="暂无其他可切换分支">
+                                                        暂无其他可切换分支
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                            {branch.canSyncMain || branch.canCreate ? (
+                                                <div className="offline-branch-menu-actions">
+                                                    {branch.canSyncMain ? (
+                                                        <button
+                                                            type="button"
+                                                            className="offline-branch-menu-action"
+                                                            onClick={branch.onSyncMain}
+                                                            disabled={branch.switching || branch.syncing}
+                                                        >
+                                                            {branch.syncing ? (
+                                                                <LoaderCircle size={13} className="offline-spin" aria-hidden="true" />
+                                                            ) : (
+                                                                <GitMerge size={13} aria-hidden="true" />
+                                                            )}
+                                                            <span>{branch.syncing ? '正在同步 main…' : '从 main 同步最新改动'}</span>
+                                                        </button>
+                                                    ) : null}
+                                                    {branch.canCreate ? (
+                                                        <button
+                                                            type="button"
+                                                            className="offline-branch-menu-action"
+                                                            onClick={branch.onOpenCreate}
+                                                            disabled={branch.switching || branch.syncing}
+                                                        >
+                                                            <Plus size={13} aria-hidden="true" />
+                                                            <span>新建分支</span>
+                                                        </button>
+                                                    ) : null}
                                                 </div>
                                             ) : null}
-                                            {switchableBranches.map((item) => (
-                                                <button
-                                                    key={item.name}
-                                                    type="button"
-                                                    className="offline-branch-row"
-                                                    aria-label={`切换到 ${item.name}`}
-                                                    title={item.name}
-                                                    onClick={() => branch.onSwitch(item.name)}
-                                                    disabled={branch.switching}
-                                                >
-                                                    <GitBranch size={13} className="offline-branch-row-icon" aria-hidden="true" />
-                                                    <span className="offline-branch-row-name">{item.name}</span>
-                                                </button>
-                                            ))}
-                                            {switchableBranches.length === 0 ? (
-                                                <div className="offline-branch-menu-empty" role="note" aria-label="暂无其他可切换分支">
-                                                    暂无其他可切换分支
-                                                </div>
-                                            ) : null}
-                                        </div>
+                                        </>
                                     )}
                                 </div>
                             </div>
@@ -482,7 +522,7 @@ export function OfflineWorkbenchSidebar({
                         <TooltipContent className="tooltip-content" side="bottom">定位当前任务</TooltipContent>
                     </Tooltip>
 
-                    {creation.canWrite ? (
+                    {creation.canWrite || repository.canRefresh ? (
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <button
@@ -499,7 +539,7 @@ export function OfflineWorkbenchSidebar({
                         </Tooltip>
                     ) : null}
 
-                    {creation.canWrite && isGroupAdmin ? (
+                    {creation.canWrite ? (
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <button
@@ -519,7 +559,7 @@ export function OfflineWorkbenchSidebar({
                         </Tooltip>
                     ) : null}
 
-                    {creation.canWrite && isGroupAdmin ? (
+                    {creation.canWrite ? (
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <button
@@ -537,6 +577,24 @@ export function OfflineWorkbenchSidebar({
                     ) : null}
                 </div>
             </div>
+
+            {branch.isProtectedMainBranch ? (
+                <div className="offline-main-readonly-banner" role="note">
+                    <span className="offline-main-readonly-text">
+                        <Lock size={12} aria-hidden="true" />
+                        <span>main 分支仅只读查看</span>
+                    </span>
+                    {branch.canCreate ? (
+                        <button
+                            type="button"
+                            className="offline-main-readonly-action"
+                            onClick={branch.onOpenCreate}
+                        >
+                            新建分支
+                        </button>
+                    ) : null}
+                </div>
+            ) : null}
 
             <section className="offline-rail-panel offline-rail-panel-grow">
                 {tree.loading && !tree.data ? (

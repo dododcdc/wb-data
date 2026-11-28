@@ -15,6 +15,7 @@ import {
     DialogFooter,
 } from '../../components/ui/dialog';
 import { useOperationFeedback } from '../../hooks/useOperationFeedback';
+import { getSelectedOfflineBranch, setSelectedOfflineBranch } from '../../utils/offlineBranchStore';
 import {
     getOfflineRepoStatus,
     listBranches,
@@ -164,10 +165,16 @@ export default function LocalSettingsTab({ groupId, canEdit }: LocalSettingsTabP
 
     const deleteMutation = useMutation({
         mutationFn: ({ name, force }: { name: string; force: boolean }) => deleteBranch(groupId, name, force),
-        onSuccess: () => {
+        onSuccess: (_data, variables) => {
             showSuccess('本地分支删除成功');
             setPendingDeleteBranch(null);
             setForceDelete(false);
+            if (getSelectedOfflineBranch(groupId) === variables.name) {
+                setSelectedOfflineBranch(groupId, 'main');
+            }
+            window.dispatchEvent(new CustomEvent('wbdata:offline-branch-changed', {
+                detail: { groupId, branch: 'main', source: 'group-settings' },
+            }));
             void queryClient.invalidateQueries({ queryKey: ['offline-branches', groupId] });
         },
         onError: (err: unknown) => {
@@ -187,6 +194,9 @@ export default function LocalSettingsTab({ groupId, canEdit }: LocalSettingsTabP
         onSuccess: () => {
             showSuccess('分支合并成功');
             setIsMergeOpen(false);
+            window.dispatchEvent(new CustomEvent('wbdata:offline-branch-changed', {
+                detail: { groupId, source: 'group-settings' },
+            }));
             void queryClient.invalidateQueries({ queryKey: ['offline-repo-status', groupId] });
             void queryClient.invalidateQueries({ queryKey: ['offline-branches', groupId] });
         },

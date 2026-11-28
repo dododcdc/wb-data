@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearSelectedOfflineBranch, getSelectedOfflineBranch } from '../../../utils/offlineBranchStore';
 import { useOfflineRepositoryWorkflow } from './useOfflineRepositoryWorkflow';
 
 vi.mock('../../../api/offline', async () => {
@@ -7,12 +8,14 @@ vi.mock('../../../api/offline', async () => {
     return {
         ...actual,
         commitOfflineRepo: vi.fn(),
+        createBranch: vi.fn(),
         getOfflineRepoStatus: vi.fn(),
         getOfflineRepoRemote: vi.fn(),
         listBranches: vi.fn(),
         pushOfflineRepo: vi.fn(),
         rebuildOfflineRepo: vi.fn(),
         switchBranch: vi.fn(),
+        syncBranchFromMain: vi.fn(),
     };
 });
 
@@ -36,6 +39,11 @@ function makeRepoStatus() {
 describe('useOfflineRepositoryWorkflow', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        clearSelectedOfflineBranch(1);
+    });
+
+    afterEach(() => {
+        clearSelectedOfflineBranch(1);
     });
 
     function renderRepositoryWorkflow(showFeedback = vi.fn()) {
@@ -295,7 +303,91 @@ describe('useOfflineRepositoryWorkflow', () => {
 
         expect(discardDraft).toHaveBeenCalled();
         expect(offlineApi.switchBranch).toHaveBeenCalledWith(1, 'dev');
+        expect(getSelectedOfflineBranch(1)).toBe('dev');
         expect(afterSwitch).toHaveBeenCalledWith('dev');
         expect(result.current.discardBranchSwitchOpen).toBe(false);
+    });
+
+    it('creates a new branch, persists selection and switches to it', async () => {
+        const offlineApi = await import('../../../api/offline');
+        const showFeedback = vi.fn();
+        const afterSwitch = vi.fn();
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue(makeRepoStatus());
+        vi.mocked(offlineApi.createBranch).mockResolvedValue(null);
+
+        const { result } = renderRepositoryWorkflow(showFeedback);
+        await act(async () => {
+            await result.current.refreshRepoStatus();
+        });
+
+        let created = false;
+        await act(async () => {
+            created = await result.current.createBranchAndSwitch('feature/a', 'main', { afterSwitch });
+        });
+
+        expect(created).toBe(true);
+        expect(offlineApi.createBranch).toHaveBeenCalledWith(1, 'feature/a', 'main');
+        expect(getSelectedOfflineBranch(1)).toBe('feature/a');
+        expect(afterSwitch).toHaveBeenCalledWith('feature/a');
+        expect(showFeedback).toHaveBeenCalledWith(expect.objectContaining({ tone: 'success', title: '分支已创建并切换' }));
+    });
+
+    it('syncs active feature branch from main and opens dirty dialog on 409 dirty error', async () => {
+        const { AxiosError } = await import('axios');
+        const offlineApi = await import('../../../api/offline');
+        const showFeedback = vi.fn();
+        const afterSync = vi.fn();
+        vi.mocked(offlineApi.getOfflineRepoStatus).mockResolvedValue({
+            ...makeRepoStatus(),
+            branch: 'feature/a',
+        });
+        vi.mocked(offlineApi.syncBranchFromMain).mockResolvedValueOnce({
+            sourceBranch: 'main',
+            targetBranch: 'feature/a',
+            upToDate: false,
+            headCommitId: 'def456',
+            message: '已同步 main 最新改动',
+        });
+
+        const { result } = renderRepositoryWorkflow(showFeedback);
+        await act(async () => {
+            await result.current.refreshRepoStatus();
+        });
+
+        await act(async () => {
+            await result.current.syncFromMain({ afterSync });
+        });
+
+        expect(offlineApi.syncBranchFromMain).toHaveBeenCalledWith(1, 'feature/a');
+        expect(afterSync).toHaveBeenCalled();
+        expect(showFeedback).toHaveBeenCalledWith(expect.objectContaining({ tone: 'success', title: '已同步 main 最新改动' }));
+
+        vi.mocked(offlineApi.syncBranchFromMain).mockRejectedValueOnce(new AxiosError(
+            'Conflict',
+            undefined,
+            undefined,
+            undefined,
+            {
+                status: 409,
+                statusText: 'Conflict',
+                headers: {},
+                config: {} as never,
+                data: {
+                    data: {
+                        changedFlows: ['_flows/example/flow.yaml'],
+                        changedFiles: ['_flows/example/flow.yaml'],
+                        otherFileCount: 0,
+                        changedFlowDetails: [{ path: '_flows/example/flow.yaml', status: 'MODIFIED' }],
+                    },
+                },
+            },
+        ));
+
+        await act(async () => {
+            await result.current.syncFromMain({ afterSync });
+        });
+
+        expect(result.current.branchDirtyDialogOpen).toBe(true);
+        expect(result.current.branchDirtyState?.action).toBe('sync-main');
     });
 });

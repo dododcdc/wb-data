@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthContext } from '../hooks/useAuthContext';
 import { getAuthContext, selectGroupContext } from '../api/auth';
 import { useAuthStore } from './auth';
+import { clearSelectedOfflineBranch, setSelectedOfflineBranch } from './offlineBranchStore';
 import request from './request';
 
 const group = { id: 1, name: 'Alpha', description: '', role: 'DEVELOPER' };
@@ -94,5 +95,21 @@ describe('permission failure refresh', () => {
         await selectGroupContext(2);
         expect(adapter.mock.calls[0][0]).toMatchObject({ method: 'get', params: { groupId: 1 } });
         expect(adapter.mock.calls[1][0]).toMatchObject({ method: 'post', params: { groupId: 2 } });
+    });
+
+    it('attaches X-Offline-Branch header for offline endpoints when user selected a branch', async () => {
+        const adapter = vi.fn(async (config: InternalAxiosRequestConfig) => success(config));
+        request.defaults.adapter = adapter;
+        setSelectedOfflineBranch(4, 'feature/a', 1);
+
+        try {
+            await request.get('/api/v1/groups/4/offline/repo/tree');
+            await request.get('/api/v1/groups/4/datasources');
+
+            expect(adapter.mock.calls[0][0].headers['X-Offline-Branch']).toBe('feature/a');
+            expect(adapter.mock.calls[1][0].headers['X-Offline-Branch']).toBeUndefined();
+        } finally {
+            clearSelectedOfflineBranch(4, 1);
+        }
     });
 });

@@ -79,6 +79,14 @@ export interface BranchListResponse {
     branches: BranchItem[];
 }
 
+export interface SyncBranchResponse {
+    sourceBranch: string;
+    targetBranch: string;
+    upToDate: boolean;
+    headCommitId: string | null;
+    message: string;
+}
+
 export interface DirtyWorkingTreeResponse {
     changedFlows: string[];
     changedFiles: string[];
@@ -199,6 +207,17 @@ export const mergeBranch = (groupId: number, source: string, target: string) => 
         timeout: REMOTE_GIT_REQUEST_TIMEOUT_MS,
         headers: { 'Content-Type': 'application/json' },
     });
+};
+
+export const syncBranchFromMain = (groupId: number, targetBranch?: string) => {
+    return request.post<unknown, SyncBranchResponse>(
+        offlinePath(groupId, '/repo/branch/sync-main'),
+        targetBranch ? { targetBranch } : {},
+        {
+            timeout: REMOTE_GIT_REQUEST_TIMEOUT_MS,
+            headers: { 'Content-Type': 'application/json' },
+        },
+    );
 };
 
 export const deleteBranch = (groupId: number, name: string, force: boolean = false) => {

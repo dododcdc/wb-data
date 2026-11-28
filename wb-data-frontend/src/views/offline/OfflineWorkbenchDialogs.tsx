@@ -57,6 +57,7 @@ interface OfflineWorkbenchDialogsProps {
         hiveConf?: Record<string, string>,
     ) => void;
     onTransferNodeDraftChange: (transferDraft: TransferConfig, state: TransferNodeDraftState) => void;
+    onCreateBranch?: (name: string, baseBranch: string) => Promise<boolean> | boolean;
 }
 
 export function OfflineWorkbenchDialogs({
@@ -80,6 +81,7 @@ export function OfflineWorkbenchDialogs({
     onParameterDialogOpenChange,
     onNodeEditorTempSave,
     onTransferNodeDraftChange,
+    onCreateBranch,
 }: OfflineWorkbenchDialogsProps) {
     const { flowEditing, flowExecutionAndSchedule } = session;
     const { activeFlowPath, flowDocument, draftSession, isDirty, flowCommitDirty } = flowEditing;
@@ -279,6 +281,11 @@ export function OfflineWorkbenchDialogs({
                         onlineMode.refreshDeployment();
                     }
                 })()}
+                createBranchDialogOpen={repositoryWorkflow.createBranchDialogOpen}
+                branchCreating={repositoryWorkflow.branchCreating}
+                branches={repositoryWorkflow.branches}
+                onCreateBranchDialogOpenChange={repositoryWorkflow.setCreateBranchDialogOpen}
+                onCreateBranch={onCreateBranch}
             />
 
             <NodeEditorDialog

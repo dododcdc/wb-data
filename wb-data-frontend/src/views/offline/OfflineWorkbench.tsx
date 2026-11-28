@@ -47,7 +47,7 @@ export default function OfflineWorkbench() {
     const systemAdmin = useAuthStore((state) => state.systemAdmin);
     const groupId = currentGroup?.id ?? null;
     const canWrite = systemAdmin || permissions.includes('offline.write');
-    const canConfigureParameters = canWrite && (systemAdmin || permissions.includes('parameter.read'));
+    const canReadParameters = systemAdmin || permissions.includes('parameter.read');
     const isGroupAdmin = systemAdmin || permissions.includes('group.settings') || currentGroup?.role === 'GROUP_ADMIN';
     const canManageOthersOwnership = systemAdmin || isGroupAdmin || permissions.includes('member.manage');
     const defaultTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', []);
@@ -89,13 +89,21 @@ export default function OfflineWorkbench() {
     const repoWorkflow = useOfflineRepositoryWorkflow({
         groupId,
         canManageBranches: isGroupAdmin && !!groupId,
+        canSwitchBranches: !!groupId,
+        canCreateBranch: canWrite && !!groupId,
+        canSyncFromMain: canWrite && !!groupId,
         showFeedback,
     });
     const { refreshRepoStatus, refreshRemoteStatus, resetBranchList, resetBranchSwitchState, requestBranchSwitch } = repoWorkflow;
 
+    const activeBranch = repoWorkflow.repoStatus?.branch ?? 'main';
+    const isProtectedMainBranch = canWrite && activeBranch === 'main' && !isGroupAdmin;
+    const canWriteOnBranch = canWrite && !isProtectedMainBranch;
+    const effectiveCanConfigureParameters = canWriteOnBranch && canReadParameters;
+
     const session = useOfflineWorkbenchSession({
         groupId,
-        canWrite,
+        canWrite: canWriteOnBranch,
         defaultTimezone,
         showFeedback,
         showSuccess,
@@ -151,7 +159,7 @@ export default function OfflineWorkbench() {
         activeFlowPath,
         flowDocument,
         draftSession,
-        canWrite,
+        canWrite: canWriteOnBranch,
         savingFlow: flowEditing.savingFlow,
         isDirty,
         flowCommitDirty: flowEditing.flowCommitDirty,
@@ -216,6 +224,28 @@ export default function OfflineWorkbench() {
             });
         })();
     }, [flushDraftNow, isDirty, refreshWorkspace, requestBranchSwitch, resetAfterBranchSwitch]);
+
+    const handleCreateBranchConfirm = useCallback(async (branchName: string, baseBranch: string) => {
+        if (isDirty) await flushDraftNow();
+        return repoWorkflow.createBranchAndSwitch(branchName, baseBranch, {
+            afterSwitch: async () => {
+                resetAfterBranchSwitch();
+                await refreshWorkspace();
+            },
+        });
+    }, [flushDraftNow, isDirty, refreshWorkspace, repoWorkflow, resetAfterBranchSwitch]);
+
+    const handleSyncFromMainRequest = useCallback(() => {
+        void (async () => {
+            if (isDirty) await flushDraftNow();
+            await repoWorkflow.syncFromMain({
+                afterSync: async () => {
+                    resetAfterBranchSwitch();
+                    await refreshWorkspace();
+                },
+            });
+        })();
+    }, [flushDraftNow, isDirty, refreshWorkspace, repoWorkflow, resetAfterBranchSwitch]);
 
     const treeMutations = useOfflineTreeMutations({
         groupId,
@@ -319,9 +349,10 @@ export default function OfflineWorkbench() {
     const canTransferActiveFlow = Boolean(
         activeFlowPath
         && flowDocument
+        && !isProtectedMainBranch
         && (
             canManageOthersOwnership
-            || (canWrite && currentUser?.id != null && flowDocument.ownerUserId === currentUser.id)
+            || (canWriteOnBranch && currentUser?.id != null && flowDocument.ownerUserId === currentUser.id)
         ),
     );
 
@@ -427,24 +458,31 @@ export default function OfflineWorkbench() {
                         branch={{
                             label: repoWorkflow.branchLabel,
                             canSwitch: repoWorkflow.canSwitchBranch,
+                            canCreate: repoWorkflow.canCreateBranch,
+                            canSyncMain: repoWorkflow.canSyncFromMain,
+                            isProtectedMainBranch,
                             menuOpen: repoWorkflow.branchMenuOpen,
                             tooltipOpen: repoWorkflow.branchTooltipOpen,
                             loading: repoWorkflow.branchLoading,
                             switching: repoWorkflow.branchSwitching,
+                            syncing: repoWorkflow.branchSyncing,
                             branches: repoWorkflow.branches,
                             dirtyState: repoWorkflow.branchDirtyState,
                             onToggleMenu: repoWorkflow.toggleBranchMenu,
                             onMenuOpenChange: repoWorkflow.setBranchMenuOpen,
                             onTooltipOpenChange: repoWorkflow.setBranchTooltipOpen,
                             onSwitch: handleBranchSwitchRequest,
+                            onOpenCreate: repoWorkflow.openCreateBranchDialog,
+                            onSyncMain: handleSyncFromMainRequest,
                         }}
                         repository={{
                             available: !!groupId,
                             loading: repoWorkflow.repoLoading,
                             committing: publishWorkflow.committing,
                             pushLoading: repoWorkflow.pushLoading,
-                            canCommit: canCommitRepo,
-                            canPush: repoWorkflow.canPush,
+                            canRefresh: canWrite,
+                            canCommit: canWriteOnBranch && canCommitRepo,
+                            canPush: canWriteOnBranch && repoWorkflow.canPush,
                             dirty: isDirty || !!repoWorkflow.repoStatus?.dirty,
                             ahead: !!repoWorkflow.repoStatus?.ahead,
                             onRefresh: () => void refreshWorkspace(),
@@ -452,7 +490,7 @@ export default function OfflineWorkbench() {
                             onOpenPush: () => repoWorkflow.setPushDialogOpen(true),
                         }}
                         creation={{
-                            canWrite,
+                            canWrite: canWriteOnBranch,
                             menuOpen: treeMutations.newItemMenuOpen,
                             onMenuOpenChange: treeMutations.setNewItemMenuOpen,
                             onOpenNewFlow: () => { treeMutations.setNewItemMenuOpen(false); treeMutations.setNewFlowDialogOpen(true); },
@@ -468,10 +506,10 @@ export default function OfflineWorkbench() {
                             loading: treeLoading,
                             flowLoading: flowEditing.flowLoading,
                             activeFlowPath,
-                            canWrite: canWrite && !flowEditing.nodeEditorOpen && !onlineMode.onlineNodeEditorOpen && flowEditing.draftSaveState !== 'saving' && !isDirty,
+                            canWrite: canWriteOnBranch && !flowEditing.nodeEditorOpen && !onlineMode.onlineNodeEditorOpen && flowEditing.draftSaveState !== 'saving' && !isDirty,
                             currentUserId: currentUser?.id ?? null,
                             ownerSummaries: flowOwners,
-                            canBulkTransferOwner: canManageOthersOwnership || (canWrite && currentUser?.id != null),
+                            canBulkTransferOwner: !isProtectedMainBranch && (canManageOthersOwnership || (canWriteOnBranch && currentUser?.id != null)),
                             onOpenBulkTransferOwner: handleOpenBulkFlowTransfer,
                             onOpenFlow: (path) => void openFlowDocument(path),
                             onContextMenu: treeMutations.handleContextMenu,
@@ -498,8 +536,8 @@ export default function OfflineWorkbench() {
                         onOpenOnlineNodeEditor={onlineMode.handleOpenOnlineNodeEditor}
                         flowDocument={flowDocument}
                         flowLoading={flowEditing.flowLoading}
-                        canWrite={canWrite}
-                        canConfigureParameters={canConfigureParameters}
+                        canWrite={canWriteOnBranch}
+                        canConfigureParameters={effectiveCanConfigureParameters}
                         timezone={flowDocument?.runtimeTimezone || flowDocument?.schedule?.timezone || defaultTimezone}
                         nodeCount={flowEditing.nodeCount}
                         selectedTaskIds={flowEditing.selectedTaskIds}
@@ -549,7 +587,7 @@ export default function OfflineWorkbench() {
                 groupId={groupId}
                 repoTree={repoTree}
                 currentUserId={currentUser?.id ?? null}
-                canWrite={canWrite}
+                canWrite={canWriteOnBranch}
                 canManageOthersOwnership={canManageOthersOwnership}
                 onOpenTransferFlowOwner={handleOpenSingleFlowTransfer}
                 defaultTimezone={defaultTimezone}
@@ -566,6 +604,7 @@ export default function OfflineWorkbench() {
                 onParameterDialogOpenChange={setParameterDialogOpen}
                 onNodeEditorTempSave={handleNodeEditorTempSave}
                 onTransferNodeDraftChange={handleTransferNodeDraftChange}
+                onCreateBranch={handleCreateBranchConfirm}
             />
 
             {groupId != null ? (

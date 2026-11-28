@@ -81,9 +81,24 @@ describe('writeRecoverySnapshot', () => {
         writeRecoverySnapshot(1, 'test/flow.yml', makeSnapshot());
 
         expect(mockStorage.setItem).toHaveBeenCalledWith(
-            'wb-data:offline-recovery:1:test/flow.yml',
+            'wb-data:offline-recovery:1:main:test/flow.yml',
             expect.stringContaining('"baseDocumentHash":"abc"'),
         );
+    });
+
+    it('isolates recovery snapshots across branches for the same path', () => {
+        const mainSnap = makeSnapshot('_flows/a/flow.yaml');
+        mainSnap.baseDocumentHash = 'main-hash';
+        const featureSnap = makeSnapshot('_flows/a/flow.yaml');
+        featureSnap.baseDocumentHash = 'feature-hash';
+
+        writeRecoverySnapshot(1, '_flows/a/flow.yaml', mainSnap, 'main');
+        writeRecoverySnapshot(1, '_flows/a/flow.yaml', featureSnap, 'feature/a');
+
+        expect(readRecoverySnapshot(1, '_flows/a/flow.yaml', 'main')?.baseDocumentHash).toBe('main-hash');
+        expect(readRecoverySnapshot(1, '_flows/a/flow.yaml', 'feature/a')?.baseDocumentHash).toBe('feature-hash');
+        expect(listRecoverySnapshotPaths(1, 'main')).toEqual(['_flows/a/flow.yaml']);
+        expect(listRecoverySnapshotPaths(1, 'feature/a')).toEqual(['_flows/a/flow.yaml']);
     });
 
     it('lists only recovery snapshot paths for the requested group', () => {
