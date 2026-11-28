@@ -16,6 +16,8 @@ public class WbOfflineFlowIndex {
 
     private Long groupId;
 
+    private String branch;
+
     private String flowPath;
 
     private String flowId;

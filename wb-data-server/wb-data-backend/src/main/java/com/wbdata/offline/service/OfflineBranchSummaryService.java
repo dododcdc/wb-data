@@ -327,7 +327,7 @@ public class OfflineBranchSummaryService {
     }
 
     private boolean isGitRepoInitialized(Path repoPath) {
-        return Files.isDirectory(repoPath) && Files.isDirectory(repoPath.resolve(".git"));
+        return Files.isDirectory(repoPath) && OfflineProperties.isGitRepoInitialized(repoPath);
     }
 
     private boolean isValidBranchName(String branch) {

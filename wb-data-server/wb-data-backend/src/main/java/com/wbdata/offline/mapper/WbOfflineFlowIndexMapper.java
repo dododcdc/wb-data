@@ -12,7 +12,7 @@ import java.util.Map;
 public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex> {
 
     @Select("""
-            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
+            SELECT id, group_id, branch, flow_path, flow_id, owner_user_id, parse_status,
                    has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
                    cross_group_dependency, failure_policy, dependency_count,
                    file_mtime_ms, file_size, updated_at
@@ -22,7 +22,18 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
     List<WbOfflineFlowIndex> findByGroup(@Param("groupId") Long groupId);
 
     @Select("""
-            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
+            SELECT id, group_id, branch, flow_path, flow_id, owner_user_id, parse_status,
+                   has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
+                   cross_group_dependency, failure_policy, dependency_count,
+                   file_mtime_ms, file_size, updated_at
+            FROM wb_offline_flow_index
+            WHERE group_id = #{groupId} AND branch = #{branch}
+            """)
+    List<WbOfflineFlowIndex> findByGroupAndBranch(@Param("groupId") Long groupId,
+                                                  @Param("branch") String branch);
+
+    @Select("""
+            SELECT id, group_id, branch, flow_path, flow_id, owner_user_id, parse_status,
                    has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
                    cross_group_dependency, failure_policy, dependency_count,
                    file_mtime_ms, file_size, updated_at
@@ -33,7 +44,19 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
                                           @Param("flowPath") String flowPath);
 
     @Select("""
-            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
+            SELECT id, group_id, branch, flow_path, flow_id, owner_user_id, parse_status,
+                   has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
+                   cross_group_dependency, failure_policy, dependency_count,
+                   file_mtime_ms, file_size, updated_at
+            FROM wb_offline_flow_index
+            WHERE group_id = #{groupId} AND branch = #{branch} AND flow_path = #{flowPath}
+            """)
+    WbOfflineFlowIndex findByGroupAndBranchAndPath(@Param("groupId") Long groupId,
+                                                   @Param("branch") String branch,
+                                                   @Param("flowPath") String flowPath);
+
+    @Select("""
+            SELECT id, group_id, branch, flow_path, flow_id, owner_user_id, parse_status,
                    has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
                    cross_group_dependency, failure_policy, dependency_count,
                    file_mtime_ms, file_size, updated_at
@@ -44,8 +67,20 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
                                                   @Param("flowId") String flowId);
 
     @Select("""
+            SELECT id, group_id, branch, flow_path, flow_id, owner_user_id, parse_status,
+                   has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
+                   cross_group_dependency, failure_policy, dependency_count,
+                   file_mtime_ms, file_size, updated_at
+            FROM wb_offline_flow_index
+            WHERE group_id = #{groupId} AND branch = #{branch} AND flow_id = #{flowId}
+            """)
+    List<WbOfflineFlowIndex> findByGroupAndBranchAndFlowId(@Param("groupId") Long groupId,
+                                                           @Param("branch") String branch,
+                                                           @Param("flowId") String flowId);
+
+    @Select("""
             <script>
-            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
+            SELECT id, group_id, branch, flow_path, flow_id, owner_user_id, parse_status,
                    has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
                    cross_group_dependency, failure_policy, dependency_count,
                    file_mtime_ms, file_size, updated_at
@@ -60,7 +95,7 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
 
     @Select("""
             <script>
-            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
+            SELECT id, group_id, branch, flow_path, flow_id, owner_user_id, parse_status,
                    has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
                    cross_group_dependency, failure_policy, dependency_count,
                    file_mtime_ms, file_size, updated_at
@@ -76,7 +111,24 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
 
     @Select("""
             <script>
-            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
+            SELECT id, group_id, branch, flow_path, flow_id, owner_user_id, parse_status,
+                   has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
+                   cross_group_dependency, failure_policy, dependency_count,
+                   file_mtime_ms, file_size, updated_at
+            FROM wb_offline_flow_index
+            WHERE group_id = #{groupId} AND branch = #{branch} AND flow_id IN
+            <foreach collection="flowIds" item="fid" open="(" separator="," close=")">
+                #{fid}
+            </foreach>
+            </script>
+            """)
+    List<WbOfflineFlowIndex> findByGroupAndBranchAndFlowIds(@Param("groupId") Long groupId,
+                                                            @Param("branch") String branch,
+                                                            @Param("flowIds") List<String> flowIds);
+
+    @Select("""
+            <script>
+            SELECT id, group_id, branch, flow_path, flow_id, owner_user_id, parse_status,
                    has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
                    cross_group_dependency, failure_policy, dependency_count,
                    file_mtime_ms, file_size, updated_at
@@ -90,7 +142,7 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
     List<WbOfflineFlowIndex> findByIds(@Param("ids") List<Long> ids);
 
     @Select("""
-            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
+            SELECT id, group_id, branch, flow_path, flow_id, owner_user_id, parse_status,
                    has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
                    cross_group_dependency, failure_policy, dependency_count,
                    file_mtime_ms, file_size, updated_at
@@ -101,7 +153,19 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
                                                       @Param("prefix") String prefix);
 
     @Select("""
-            SELECT id, group_id, flow_path, flow_id, owner_user_id, parse_status,
+            SELECT id, group_id, branch, flow_path, flow_id, owner_user_id, parse_status,
+                   has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
+                   cross_group_dependency, failure_policy, dependency_count,
+                   file_mtime_ms, file_size, updated_at
+            FROM wb_offline_flow_index
+            WHERE group_id = #{groupId} AND branch = #{branch} AND LOCATE(#{prefix}, flow_path) = 1
+            """)
+    List<WbOfflineFlowIndex> findByGroupAndBranchAndPathPrefix(@Param("groupId") Long groupId,
+                                                               @Param("branch") String branch,
+                                                               @Param("prefix") String prefix);
+
+    @Select("""
+            SELECT id, group_id, branch, flow_path, flow_id, owner_user_id, parse_status,
                    has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
                    cross_group_dependency, failure_policy, dependency_count,
                    file_mtime_ms, file_size, updated_at
@@ -112,7 +176,19 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
                                                        @Param("ownerUserId") Long ownerUserId);
 
     @Select("""
-            SELECT COUNT(*)
+            SELECT id, group_id, branch, flow_path, flow_id, owner_user_id, parse_status,
+                   has_schedule, schedule_enabled, schedule_period, schedule_cron, schedule_timezone,
+                   cross_group_dependency, failure_policy, dependency_count,
+                   file_mtime_ms, file_size, updated_at
+            FROM wb_offline_flow_index
+            WHERE group_id = #{groupId} AND branch = #{branch} AND owner_user_id = #{ownerUserId}
+            """)
+    List<WbOfflineFlowIndex> findByGroupAndBranchAndOwnerUserId(@Param("groupId") Long groupId,
+                                                                @Param("branch") String branch,
+                                                                @Param("ownerUserId") Long ownerUserId);
+
+    @Select("""
+            SELECT COUNT(DISTINCT flow_path)
             FROM wb_offline_flow_index
             WHERE group_id = #{groupId} AND owner_user_id = #{ownerUserId}
             """)
@@ -120,7 +196,7 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
                                     @Param("ownerUserId") Long ownerUserId);
 
     @Select("""
-            SELECT group_id AS groupId, COUNT(*) AS cnt
+            SELECT group_id AS groupId, COUNT(DISTINCT flow_path) AS cnt
             FROM wb_offline_flow_index
             WHERE owner_user_id = #{ownerUserId}
             GROUP BY group_id
@@ -137,10 +213,10 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
     @Select("""
             SELECT COUNT(*)
             FROM (
-                SELECT group_id, flow_id
+                SELECT group_id, branch, flow_id
                 FROM wb_offline_flow_index
                 WHERE parse_status = 'OK' AND flow_id IS NOT NULL
-                GROUP BY group_id, flow_id
+                GROUP BY group_id, branch, flow_id
                 HAVING COUNT(*) > 1
             ) dup
             """)
@@ -155,10 +231,33 @@ public interface WbOfflineFlowIndexMapper extends BaseMapper<WbOfflineFlowIndex>
 
     @Delete("""
             DELETE FROM wb_offline_flow_index
+            WHERE group_id = #{groupId} AND branch = #{branch} AND flow_path = #{flowPath}
+            """)
+    int deleteByGroupAndBranchAndPath(@Param("groupId") Long groupId,
+                                      @Param("branch") String branch,
+                                      @Param("flowPath") String flowPath);
+
+    @Delete("""
+            DELETE FROM wb_offline_flow_index
             WHERE group_id = #{groupId} AND LOCATE(#{prefix}, flow_path) = 1
             """)
     int deleteByGroupAndPathPrefix(@Param("groupId") Long groupId,
                                    @Param("prefix") String prefix);
+
+    @Delete("""
+            DELETE FROM wb_offline_flow_index
+            WHERE group_id = #{groupId} AND branch = #{branch} AND LOCATE(#{prefix}, flow_path) = 1
+            """)
+    int deleteByGroupAndBranchAndPathPrefix(@Param("groupId") Long groupId,
+                                            @Param("branch") String branch,
+                                            @Param("prefix") String prefix);
+
+    @Delete("""
+            DELETE FROM wb_offline_flow_index
+            WHERE group_id = #{groupId} AND branch = #{branch}
+            """)
+    int deleteByGroupAndBranch(@Param("groupId") Long groupId,
+                               @Param("branch") String branch);
 
     @Delete("""
             DELETE FROM wb_offline_flow_index

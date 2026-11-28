@@ -5,6 +5,7 @@ import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.auth.service.AuthContextService;
 import com.wbdata.common.Result;
+import com.wbdata.offline.config.OfflineBranchGuard;
 import com.wbdata.offline.schedule.dto.OfflineDependencyCandidateResponse;
 import com.wbdata.offline.schedule.dto.OfflineDependencyConfigResponse;
 import com.wbdata.offline.schedule.dto.OfflineDependentItemResponse;
@@ -14,6 +15,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.Nullable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -31,6 +34,13 @@ public class OfflineDependencyController {
 
     private final OfflineFlowDependencyService offlineFlowDependencyService;
     private final AuthContextService authContextService;
+    @Nullable
+    private OfflineBranchGuard offlineBranchGuard;
+
+    @Autowired(required = false)
+    public void setOfflineBranchGuard(@Nullable OfflineBranchGuard offlineBranchGuard) {
+        this.offlineBranchGuard = offlineBranchGuard;
+    }
 
     @Operation(summary = "读取任务依赖配置")
     @GetMapping
@@ -44,6 +54,9 @@ public class OfflineDependencyController {
     @PutMapping
     public Result<OfflineDependencyConfigResponse> updateDependencies(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
                                                                       @Valid @RequestBody UpdateOfflineDependenciesRequest request) {
+        if (offlineBranchGuard != null) {
+            offlineBranchGuard.assertCanWriteCurrentBranch(context);
+        }
         UpdateOfflineDependenciesRequest normalizedRequest = new UpdateOfflineDependenciesRequest(
                 context.groupId(),
                 request.path(),

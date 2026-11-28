@@ -2,6 +2,7 @@ package com.wbdata.offline.service;
 
 import com.wbdata.group.entity.WbProjectGroup;
 import com.wbdata.group.mapper.WbProjectGroupMapper;
+import com.wbdata.offline.config.OfflineBranchContext;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.entity.WbOfflineFlowDependency;
 import com.wbdata.offline.entity.WbOfflineFlowIndex;
@@ -33,6 +34,7 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -193,6 +195,51 @@ class OfflineFlowIndexServiceTest {
         assertThat(fixture.states).extracting(WbOfflineRepoIndexState::getGroupId).containsOnly(1L);
     }
 
+    @Test
+    void isolatesIndexRowsPerBranchAndCleansDeletedBranch() throws Exception {
+        InMemoryIndexFixture fixture = new InMemoryIndexFixture(tempDir, true);
+        OfflineFlowIndexService indexService = fixture.indexService;
+
+        Path mainFlow = fixture.writeFlow(1L, "_flows/example/flow.yaml",
+                scheduledFlow("example", 1L, "") + "  wbdataOwnerUserId: '10'\n");
+        indexService.onFlowSaved(1L, "_flows/example/flow.yaml", Files.readString(mainFlow), mainFlow);
+
+        Path featureWt = tempDir.resolve("wb-data-1-worktrees/feature-a");
+        Path featureExample = featureWt.resolve("_flows/example/flow.yaml");
+        Path featureOnly = featureWt.resolve("_flows/only_feature/flow.yaml");
+        Files.createDirectories(featureExample.getParent());
+        Files.createDirectories(featureOnly.getParent());
+        Files.writeString(featureExample, scheduledFlow("example", 1L, "") + "  wbdataOwnerUserId: '20'\n");
+        Files.writeString(featureOnly, scheduledFlow("only_feature", 1L, "") + "  wbdataOwnerUserId: '20'\n");
+
+        OfflineBranchContext.withWorkspace(1L, "feature/a", featureWt, () -> {
+            try {
+                indexService.onFlowSaved(1L, "_flows/example/flow.yaml", Files.readString(featureExample), featureExample);
+                indexService.onFlowSaved(1L, "_flows/only_feature/flow.yaml", Files.readString(featureOnly), featureOnly);
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+            Map<String, WbOfflineFlowIndex> featureMap = indexService.listGroupFlowMap(1L);
+            assertThat(featureMap.keySet()).containsExactlyInAnyOrder("_flows/example/flow.yaml", "_flows/only_feature/flow.yaml");
+            assertThat(featureMap.get("_flows/example/flow.yaml").getOwnerUserId()).isEqualTo(20L);
+        });
+
+        Map<String, WbOfflineFlowIndex> mainMap = indexService.listGroupFlowMap(1L);
+        assertThat(mainMap.keySet()).containsExactly("_flows/example/flow.yaml");
+        assertThat(mainMap.get("_flows/example/flow.yaml").getOwnerUserId()).isEqualTo(10L);
+
+        Map<String, Long> owners = indexService.findFlowOwnersByGroupAndBranches(1L, Map.of(
+                "main", Set.of("example"),
+                "feature/a", Set.of("example", "only_feature")
+        ));
+        assertThat(owners).containsEntry("main::example", 10L);
+        assertThat(owners).containsEntry("feature/a::example", 20L);
+        assertThat(owners).containsEntry("feature/a::only_feature", 20L);
+
+        indexService.onBranchDeleted(1L, "feature/a");
+        assertThat(fixture.flows).extracting(WbOfflineFlowIndex::getBranch).containsOnly("main");
+    }
+
     static String scheduledFlow(String flowId, long groupId, String dependenciesLabel) {
         StringBuilder sb = new StringBuilder();
         sb.append("id: ").append(flowId).append('\n')
@@ -275,8 +322,10 @@ class OfflineFlowIndexServiceTest {
             WbOfflineFlowIndex copy = new WbOfflineFlowIndex();
             copy.setId(src.getId());
             copy.setGroupId(src.getGroupId());
+            copy.setBranch(src.getBranch());
             copy.setFlowPath(src.getFlowPath());
             copy.setFlowId(src.getFlowId());
+            copy.setOwnerUserId(src.getOwnerUserId());
             copy.setParseStatus(src.getParseStatus());
             copy.setHasSchedule(src.getHasSchedule());
             copy.setScheduleEnabled(src.getScheduleEnabled());
@@ -300,6 +349,15 @@ class OfflineFlowIndexServiceTest {
                     return flows.stream().filter(f -> gid.equals(f.getGroupId())).map(this::copyFlow).toList();
                 }
             });
+            when(mapper.findByGroupAndBranch(anyLong(), anyString())).thenAnswer(inv -> {
+                Long gid = inv.getArgument(0);
+                String branch = inv.getArgument(1);
+                synchronized (InMemoryIndexFixture.this) {
+                    return flows.stream()
+                            .filter(f -> gid.equals(f.getGroupId()) && branch.equals(f.getBranch()))
+                            .map(this::copyFlow).toList();
+                }
+            });
             when(mapper.findByGroupAndPath(anyLong(), anyString())).thenAnswer(inv -> {
                 Long gid = inv.getArgument(0);
                 String path = inv.getArgument(1);
@@ -309,12 +367,32 @@ class OfflineFlowIndexServiceTest {
                             .findFirst().map(this::copyFlow).orElse(null);
                 }
             });
+            when(mapper.findByGroupAndBranchAndPath(anyLong(), anyString(), anyString())).thenAnswer(inv -> {
+                Long gid = inv.getArgument(0);
+                String branch = inv.getArgument(1);
+                String path = inv.getArgument(2);
+                synchronized (InMemoryIndexFixture.this) {
+                    return flows.stream()
+                            .filter(f -> gid.equals(f.getGroupId()) && branch.equals(f.getBranch()) && path.equals(f.getFlowPath()))
+                            .findFirst().map(this::copyFlow).orElse(null);
+                }
+            });
             when(mapper.findByGroupAndFlowId(anyLong(), anyString())).thenAnswer(inv -> {
                 Long gid = inv.getArgument(0);
                 String fid = inv.getArgument(1);
                 synchronized (InMemoryIndexFixture.this) {
                     return flows.stream()
                             .filter(f -> gid.equals(f.getGroupId()) && fid.equals(f.getFlowId()))
+                            .map(this::copyFlow).toList();
+                }
+            });
+            when(mapper.findByGroupAndBranchAndFlowId(anyLong(), anyString(), anyString())).thenAnswer(inv -> {
+                Long gid = inv.getArgument(0);
+                String branch = inv.getArgument(1);
+                String fid = inv.getArgument(2);
+                synchronized (InMemoryIndexFixture.this) {
+                    return flows.stream()
+                            .filter(f -> gid.equals(f.getGroupId()) && branch.equals(f.getBranch()) && fid.equals(f.getFlowId()))
                             .map(this::copyFlow).toList();
                 }
             });
@@ -330,6 +408,16 @@ class OfflineFlowIndexServiceTest {
                 synchronized (InMemoryIndexFixture.this) {
                     return flows.stream()
                             .filter(f -> gid.equals(f.getGroupId()) && fids.contains(f.getFlowId()))
+                            .map(this::copyFlow).toList();
+                }
+            });
+            when(mapper.findByGroupAndBranchAndFlowIds(anyLong(), anyString(), anyList())).thenAnswer(inv -> {
+                Long gid = inv.getArgument(0);
+                String branch = inv.getArgument(1);
+                List<String> fids = inv.getArgument(2);
+                synchronized (InMemoryIndexFixture.this) {
+                    return flows.stream()
+                            .filter(f -> gid.equals(f.getGroupId()) && branch.equals(f.getBranch()) && fids.contains(f.getFlowId()))
                             .map(this::copyFlow).toList();
                 }
             });
@@ -349,6 +437,17 @@ class OfflineFlowIndexServiceTest {
                             .map(this::copyFlow).toList();
                 }
             });
+            when(mapper.findByGroupAndBranchAndPathPrefix(anyLong(), anyString(), anyString())).thenAnswer(inv -> {
+                Long gid = inv.getArgument(0);
+                String branch = inv.getArgument(1);
+                String prefix = inv.getArgument(2);
+                synchronized (InMemoryIndexFixture.this) {
+                    return flows.stream()
+                            .filter(f -> gid.equals(f.getGroupId()) && branch.equals(f.getBranch())
+                                    && f.getFlowPath() != null && f.getFlowPath().startsWith(prefix))
+                            .map(this::copyFlow).toList();
+                }
+            });
             when(mapper.countInvalidFlows()).thenAnswer(inv -> {
                 synchronized (InMemoryIndexFixture.this) {
                     return flows.stream()
@@ -361,7 +460,7 @@ class OfflineFlowIndexServiceTest {
                     Map<String, Long> counts = flows.stream()
                             .filter(f -> OfflineFlowIndexService.PARSE_STATUS_OK.equals(f.getParseStatus())
                                     && f.getFlowId() != null)
-                            .collect(Collectors.groupingBy(f -> f.getGroupId() + ":" + f.getFlowId(), Collectors.counting()));
+                            .collect(Collectors.groupingBy(f -> f.getGroupId() + ":" + f.getBranch() + ":" + f.getFlowId(), Collectors.counting()));
                     return counts.values().stream().filter(c -> c > 1).count();
                 }
             });
@@ -412,6 +511,21 @@ class OfflineFlowIndexServiceTest {
                     return removedIds.size();
                 }
             });
+            when(mapper.deleteByGroupAndBranchAndPath(anyLong(), anyString(), anyString())).thenAnswer(inv -> {
+                maybeFailWrite();
+                Long gid = inv.getArgument(0);
+                String branch = inv.getArgument(1);
+                String path = inv.getArgument(2);
+                synchronized (InMemoryIndexFixture.this) {
+                    Set<Long> removedIds = flows.stream()
+                            .filter(f -> gid.equals(f.getGroupId()) && branch.equals(f.getBranch()) && path.equals(f.getFlowPath()))
+                            .map(WbOfflineFlowIndex::getId)
+                            .collect(Collectors.toSet());
+                    flows.removeIf(f -> removedIds.contains(f.getId()));
+                    dependencies.removeIf(d -> removedIds.contains(d.getFlowIndexId()));
+                    return removedIds.size();
+                }
+            });
             when(mapper.deleteByGroupAndPathPrefix(anyLong(), anyString())).thenAnswer(inv -> {
                 maybeFailWrite();
                 Long gid = inv.getArgument(0);
@@ -420,6 +534,36 @@ class OfflineFlowIndexServiceTest {
                     Set<Long> removedIds = flows.stream()
                             .filter(f -> gid.equals(f.getGroupId())
                                     && f.getFlowPath() != null && f.getFlowPath().startsWith(prefix))
+                            .map(WbOfflineFlowIndex::getId)
+                            .collect(Collectors.toSet());
+                    flows.removeIf(f -> removedIds.contains(f.getId()));
+                    dependencies.removeIf(d -> removedIds.contains(d.getFlowIndexId()));
+                    return removedIds.size();
+                }
+            });
+            when(mapper.deleteByGroupAndBranchAndPathPrefix(anyLong(), anyString(), anyString())).thenAnswer(inv -> {
+                maybeFailWrite();
+                Long gid = inv.getArgument(0);
+                String branch = inv.getArgument(1);
+                String prefix = inv.getArgument(2);
+                synchronized (InMemoryIndexFixture.this) {
+                    Set<Long> removedIds = flows.stream()
+                            .filter(f -> gid.equals(f.getGroupId()) && branch.equals(f.getBranch())
+                                    && f.getFlowPath() != null && f.getFlowPath().startsWith(prefix))
+                            .map(WbOfflineFlowIndex::getId)
+                            .collect(Collectors.toSet());
+                    flows.removeIf(f -> removedIds.contains(f.getId()));
+                    dependencies.removeIf(d -> removedIds.contains(d.getFlowIndexId()));
+                    return removedIds.size();
+                }
+            });
+            when(mapper.deleteByGroupAndBranch(anyLong(), anyString())).thenAnswer(inv -> {
+                maybeFailWrite();
+                Long gid = inv.getArgument(0);
+                String branch = inv.getArgument(1);
+                synchronized (InMemoryIndexFixture.this) {
+                    Set<Long> removedIds = flows.stream()
+                            .filter(f -> gid.equals(f.getGroupId()) && branch.equals(f.getBranch()))
                             .map(WbOfflineFlowIndex::getId)
                             .collect(Collectors.toSet());
                     flows.removeIf(f -> removedIds.contains(f.getId()));
@@ -496,6 +640,7 @@ class OfflineFlowIndexServiceTest {
         private WbOfflineRepoIndexState copyState(WbOfflineRepoIndexState src) {
             WbOfflineRepoIndexState copy = new WbOfflineRepoIndexState();
             copy.setGroupId(src.getGroupId());
+            copy.setBranch(src.getBranch());
             copy.setSyncedBranch(src.getSyncedBranch());
             copy.setSyncedHeadSha(src.getSyncedHeadSha());
             copy.setFlowCount(src.getFlowCount());
@@ -507,7 +652,47 @@ class OfflineFlowIndexServiceTest {
             WbOfflineRepoIndexStateMapper mapper = mock(WbOfflineRepoIndexStateMapper.class);
             when(mapper.findAllGroupIds()).thenAnswer(inv -> {
                 synchronized (InMemoryIndexFixture.this) {
-                    return states.stream().map(WbOfflineRepoIndexState::getGroupId).toList();
+                    return states.stream().map(WbOfflineRepoIndexState::getGroupId).distinct().toList();
+                }
+            });
+            when(mapper.findByGroupAndBranch(anyLong(), anyString())).thenAnswer(inv -> {
+                Long gid = inv.getArgument(0);
+                String branch = inv.getArgument(1);
+                synchronized (InMemoryIndexFixture.this) {
+                    return states.stream()
+                            .filter(s -> gid.equals(s.getGroupId()) && branch.equals(s.getBranch()))
+                            .findFirst().map(this::copyState).orElse(null);
+                }
+            });
+            when(mapper.upsertState(any(WbOfflineRepoIndexState.class))).thenAnswer(inv -> {
+                WbOfflineRepoIndexState state = inv.getArgument(0);
+                synchronized (InMemoryIndexFixture.this) {
+                    states.removeIf(s -> Objects.equals(s.getGroupId(), state.getGroupId())
+                            && Objects.equals(s.getBranch(), state.getBranch()));
+                    states.add(copyState(state));
+                }
+                return 1;
+            });
+            when(mapper.adjustFlowCount(anyLong(), anyString(), anyInt(), any())).thenAnswer(inv -> {
+                Long gid = inv.getArgument(0);
+                String branch = inv.getArgument(1);
+                int delta = inv.getArgument(2);
+                synchronized (InMemoryIndexFixture.this) {
+                    for (WbOfflineRepoIndexState state : states) {
+                        if (gid.equals(state.getGroupId()) && branch.equals(state.getBranch())) {
+                            int current = state.getFlowCount() == null ? 0 : state.getFlowCount();
+                            state.setFlowCount(Math.max(0, current + delta));
+                            return 1;
+                        }
+                    }
+                }
+                return 0;
+            });
+            when(mapper.deleteByGroupAndBranch(anyLong(), anyString())).thenAnswer(inv -> {
+                Long gid = inv.getArgument(0);
+                String branch = inv.getArgument(1);
+                synchronized (InMemoryIndexFixture.this) {
+                    return states.removeIf(s -> gid.equals(s.getGroupId()) && branch.equals(s.getBranch())) ? 1 : 0;
                 }
             });
             when(mapper.selectById(any(Serializable.class))).thenAnswer(inv -> {

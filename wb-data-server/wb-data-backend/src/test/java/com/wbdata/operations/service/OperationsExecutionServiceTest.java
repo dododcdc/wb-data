@@ -1631,12 +1631,12 @@ class OperationsExecutionServiceTest {
         flowBob.setFlowId("weekly_etl");
         flowBob.setOwnerUserId(20L);
 
-        when(indexService.listGroupFlowMap(4L)).thenReturn(Map.of(
-                "_flows/daily_policy/flow.yaml", flowAlice,
-                "_flows/weekly_etl/flow.yaml", flowBob
+        when(indexService.findFlowOwnersByGroupAndBranches(Mockito.eq(4L), Mockito.anyMap())).thenReturn(Map.of(
+                "main::daily_policy", 10L,
+                "main::weekly_etl", 20L
         ));
-        when(indexService.listFlowsByGroupAndOwner(4L, 10L)).thenReturn(List.of(flowAlice));
-        when(indexService.listFlowsByGroupAndOwner(4L, 99L)).thenReturn(List.of());
+        when(indexService.listFlowsByGroupAndBranchAndOwner(4L, "main", 10L)).thenReturn(List.of(flowAlice));
+        when(indexService.listFlowsByGroupAndBranchAndOwner(4L, "main", 99L)).thenReturn(List.of());
         when(ownerService.resolveOwners(Mockito.eq(4L), Mockito.anyCollection())).thenReturn(Map.of(
                 10L, new GroupOwnerInfo(10L, "alice", "Alice", "ACTIVE"),
                 20L, new GroupOwnerInfo(20L, "bob", "Bob", "LEFT_GROUP")

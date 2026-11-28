@@ -6,6 +6,7 @@ import com.wbdata.auth.context.GroupAuthContext;
 import com.wbdata.auth.enums.Permission;
 import com.wbdata.auth.service.AuthContextService;
 import com.wbdata.common.Result;
+import com.wbdata.offline.config.OfflineBranchGuard;
 import com.wbdata.offline.schedule.dto.OfflineScheduleResponse;
 import com.wbdata.offline.schedule.dto.UpdateOfflineScheduleRequest;
 import com.wbdata.offline.schedule.dto.UpdateOfflineScheduleStatusRequest;
@@ -15,7 +16,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -34,6 +37,19 @@ public class OfflineScheduleController {
     private final OfflineScheduleService offlineScheduleService;
     private final OfflineFlowDependencyService offlineFlowDependencyService;
     private final AuthContextService authContextService;
+    @Nullable
+    private OfflineBranchGuard offlineBranchGuard;
+
+    @Autowired(required = false)
+    public void setOfflineBranchGuard(@Nullable OfflineBranchGuard offlineBranchGuard) {
+        this.offlineBranchGuard = offlineBranchGuard;
+    }
+
+    private void assertCanWriteCurrentBranch(GroupAuthContext context) {
+        if (offlineBranchGuard != null) {
+            offlineBranchGuard.assertCanWriteCurrentBranch(context);
+        }
+    }
 
     @Operation(summary = "读取任务调度配置")
     @GetMapping
@@ -46,6 +62,7 @@ public class OfflineScheduleController {
     @PutMapping
     public Result<OfflineScheduleResponse> updateSchedule(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
                                                           @Valid @RequestBody UpdateOfflineScheduleRequest request) {
+        assertCanWriteCurrentBranch(context);
         UpdateOfflineScheduleRequest normalizedRequest = new UpdateOfflineScheduleRequest(
                 context.groupId(),
                 request.path(),
@@ -69,6 +86,7 @@ public class OfflineScheduleController {
     @PatchMapping("/status")
     public Result<OfflineScheduleResponse> updateScheduleStatus(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
                                                                 @Valid @RequestBody UpdateOfflineScheduleStatusRequest request) {
+        assertCanWriteCurrentBranch(context);
         UpdateOfflineScheduleStatusRequest normalizedRequest = new UpdateOfflineScheduleStatusRequest(
                 context.groupId(),
                 request.path(),

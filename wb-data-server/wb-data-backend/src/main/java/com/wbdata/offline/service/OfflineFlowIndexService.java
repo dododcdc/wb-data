@@ -3,6 +3,7 @@ package com.wbdata.offline.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.wbdata.group.entity.WbProjectGroup;
 import com.wbdata.group.mapper.WbProjectGroupMapper;
+import com.wbdata.offline.config.OfflineBranchContext;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.entity.WbOfflineFlowDependency;
 import com.wbdata.offline.entity.WbOfflineFlowIndex;
@@ -13,6 +14,7 @@ import com.wbdata.offline.enums.OfflineSchedulePeriod;
 import com.wbdata.offline.mapper.WbOfflineFlowDependencyMapper;
 import com.wbdata.offline.mapper.WbOfflineFlowIndexMapper;
 import com.wbdata.offline.mapper.WbOfflineRepoIndexStateMapper;
+import com.wbdata.offline.repo.service.GitWorktreeManager;
 import com.wbdata.offline.repo.service.RepoLockManager;
 import com.wbdata.offline.schedule.dto.OfflineFlowDependencyRef;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +33,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Optional;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -70,10 +73,17 @@ public class OfflineFlowIndexService {
     private final WbProjectGroupMapper projectGroupMapper;
 
     private final OfflineFlowYamlSupport yamlSupport = new OfflineFlowYamlSupport();
-    private final Set<Long> indexedGroups = ConcurrentHashMap.newKeySet();
-    private final Set<Long> dirtyGroups = ConcurrentHashMap.newKeySet();
+    private final Set<GroupBranchKey> indexedKeys = ConcurrentHashMap.newKeySet();
+    private final Set<GroupBranchKey> dirtyKeys = ConcurrentHashMap.newKeySet();
     private final Object startupMonitor = new Object();
     private volatile boolean startupReconciled = false;
+    @Nullable
+    private GitWorktreeManager gitWorktreeManager;
+
+    @Autowired(required = false)
+    public void setGitWorktreeManager(@Nullable GitWorktreeManager gitWorktreeManager) {
+        this.gitWorktreeManager = gitWorktreeManager;
+    }
 
     public OfflineFlowIndexService(OfflineProperties offlineProperties,
                                    RepoLockManager repoLockManager,
@@ -132,10 +142,23 @@ public class OfflineFlowIndexService {
             List<Long> groupIds = collectKnownGroupIds();
             for (Long groupId : groupIds) {
                 try {
-                    reconcileGroup(groupId);
+                    List<GitWorktreeManager.WorktreeInfo> worktrees = gitWorktreeManager != null
+                            ? gitWorktreeManager.listActiveWorktrees(groupId)
+                            : List.of();
+                    if (worktrees.isEmpty()) {
+                        reconcileGroup(groupId);
+                        continue;
+                    }
+                    for (GitWorktreeManager.WorktreeInfo worktree : worktrees) {
+                        if (worktree.branch() == null || worktree.branch().isBlank()) {
+                            continue;
+                        }
+                        OfflineBranchContext.withWorkspace(groupId, worktree.branch(), worktree.path(),
+                                () -> reconcileGroup(groupId));
+                    }
                 } catch (RuntimeException ex) {
                     log.warn("启动对账项目组离线任务索引失败，已标记待自愈: groupId={}, reason={}", groupId, ex.getMessage(), ex);
-                    markDirty(groupId);
+                    markDirty(groupId, resolveActiveBranch(groupId));
                 }
             }
             startupReconciled = true;
@@ -146,8 +169,9 @@ public class OfflineFlowIndexService {
         if (!isEnabled() || groupId == null) {
             return;
         }
+        String branch = resolveActiveBranch(groupId);
         repoLockManager.withLock(groupId, () -> {
-            reconcileGroupUnlocked(groupId);
+            reconcileGroupUnlocked(groupId, branch);
             return null;
         });
     }
@@ -156,16 +180,37 @@ public class OfflineFlowIndexService {
         if (!isEnabled() || groupId == null) {
             return;
         }
+        String normalizedBranch = normalizeBranchName(branch);
         try {
             if (!groupExistsInDb(groupId)) {
                 return;
             }
-            runInTransaction(() -> upsertRepoState(groupId, branch, null, 0));
-            dirtyGroups.remove(groupId);
-            indexedGroups.add(groupId);
+            runInTransaction(() -> upsertRepoState(groupId, normalizedBranch, null, 0));
+            GroupBranchKey key = new GroupBranchKey(groupId, normalizedBranch);
+            dirtyKeys.remove(key);
+            indexedKeys.add(key);
         } catch (RuntimeException ex) {
-            log.error("初始化离线仓库索引状态失败: groupId={}", groupId, ex);
-            markDirty(groupId);
+            log.error("初始化离线仓库索引状态失败: groupId={}, branch={}", groupId, normalizedBranch, ex);
+            markDirty(groupId, normalizedBranch);
+        }
+    }
+
+    public void onBranchDeleted(Long groupId, String branch) {
+        if (!isEnabled() || groupId == null || branch == null || branch.isBlank()) {
+            return;
+        }
+        String normalizedBranch = normalizeBranchName(branch);
+        GroupBranchKey key = new GroupBranchKey(groupId, normalizedBranch);
+        try {
+            runInTransaction(() -> {
+                indexMapper.deleteByGroupAndBranch(groupId, normalizedBranch);
+                stateMapper.deleteByGroupAndBranch(groupId, normalizedBranch);
+            });
+            dirtyKeys.remove(key);
+            indexedKeys.remove(key);
+        } catch (RuntimeException ex) {
+            log.warn("清理已删除分支索引失败: groupId={}, branch={}", groupId, normalizedBranch, ex);
+            markDirty(groupId, normalizedBranch);
         }
     }
 
@@ -177,12 +222,13 @@ public class OfflineFlowIndexService {
         if (normalizedPath.isEmpty()) {
             return;
         }
+        String branch = resolveActiveBranch(groupId);
         try {
             FileStat stat = readFileStat(flowFile);
-            runInTransaction(() -> upsertFlowUnlocked(groupId, normalizedPath, yamlContent, stat));
+            runInTransaction(() -> upsertFlowUnlocked(groupId, branch, normalizedPath, yamlContent, stat));
         } catch (RuntimeException ex) {
-            log.error("写通更新离线任务索引失败，已标记待自愈: groupId={}, path={}", groupId, normalizedPath, ex);
-            markDirty(groupId);
+            log.error("写通更新离线任务索引失败，已标记待自愈: groupId={}, branch={}, path={}", groupId, branch, normalizedPath, ex);
+            markDirty(groupId, branch);
         }
     }
 
@@ -194,16 +240,17 @@ public class OfflineFlowIndexService {
         if (normalizedPath.isEmpty()) {
             return;
         }
+        String branch = resolveActiveBranch(groupId);
         try {
             runInTransaction(() -> {
-                int removed = indexMapper.deleteByGroupAndPath(groupId, normalizedPath);
+                int removed = indexMapper.deleteByGroupAndBranchAndPath(groupId, branch, normalizedPath);
                 if (removed > 0) {
-                    adjustStateFlowCount(groupId, -removed);
+                    adjustStateFlowCount(groupId, branch, -removed);
                 }
             });
         } catch (RuntimeException ex) {
-            log.error("删除离线任务索引失败，已标记待自愈: groupId={}, path={}", groupId, normalizedPath, ex);
-            markDirty(groupId);
+            log.error("删除离线任务索引失败，已标记待自愈: groupId={}, branch={}, path={}", groupId, branch, normalizedPath, ex);
+            markDirty(groupId, branch);
         }
     }
 
@@ -217,16 +264,18 @@ public class OfflineFlowIndexService {
         if (oldNormalized.equals(newNormalized)) {
             return;
         }
+        String branch = resolveActiveBranch(groupId);
         try {
             FileStat stat = readFileStat(newFlowFile);
             String diskContent = readStringIfRegularFile(newFlowFile);
             runInTransaction(() -> {
-                WbOfflineFlowIndex targetExisting = indexMapper.findByGroupAndPath(groupId, newNormalized);
+                WbOfflineFlowIndex targetExisting = indexMapper.findByGroupAndBranchAndPath(groupId, branch, newNormalized);
                 if (targetExisting != null && targetExisting.getId() != null) {
                     indexMapper.deleteById(targetExisting.getId());
                 }
-                WbOfflineFlowIndex existing = indexMapper.findByGroupAndPath(groupId, oldNormalized);
+                WbOfflineFlowIndex existing = indexMapper.findByGroupAndBranchAndPath(groupId, branch, oldNormalized);
                 if (existing != null) {
+                    existing.setBranch(branch);
                     existing.setFlowPath(newNormalized);
                     existing.setFileMtimeMs(stat.mtimeMs());
                     existing.setFileSize(stat.size());
@@ -235,13 +284,13 @@ public class OfflineFlowIndexService {
                     return;
                 }
                 if (diskContent != null) {
-                    upsertFlowUnlocked(groupId, newNormalized, diskContent, stat);
+                    upsertFlowUnlocked(groupId, branch, newNormalized, diskContent, stat);
                 }
             });
         } catch (RuntimeException ex) {
-            log.error("移动离线任务索引失败，已标记待自愈: groupId={}, oldPath={}, newPath={}",
-                    groupId, oldNormalized, newNormalized, ex);
-            markDirty(groupId);
+            log.error("移动离线任务索引失败，已标记待自愈: groupId={}, branch={}, oldPath={}, newPath={}",
+                    groupId, branch, oldNormalized, newNormalized, ex);
+            markDirty(groupId, branch);
         }
     }
 
@@ -253,16 +302,17 @@ public class OfflineFlowIndexService {
         if (prefix.isEmpty()) {
             return;
         }
+        String branch = resolveActiveBranch(groupId);
         try {
             runInTransaction(() -> {
-                int removed = indexMapper.deleteByGroupAndPathPrefix(groupId, prefix);
+                int removed = indexMapper.deleteByGroupAndBranchAndPathPrefix(groupId, branch, prefix);
                 if (removed > 0) {
-                    adjustStateFlowCount(groupId, -removed);
+                    adjustStateFlowCount(groupId, branch, -removed);
                 }
             });
         } catch (RuntimeException ex) {
-            log.error("删除文件夹离线任务索引失败，已标记待自愈: groupId={}, folderPath={}", groupId, folderPath, ex);
-            markDirty(groupId);
+            log.error("删除文件夹离线任务索引失败，已标记待自愈: groupId={}, branch={}, folderPath={}", groupId, branch, folderPath, ex);
+            markDirty(groupId, branch);
         }
     }
 
@@ -276,8 +326,9 @@ public class OfflineFlowIndexService {
         if (oldPrefix.isEmpty() || newPrefix.isEmpty() || oldPrefix.equals(newPrefix)) {
             return;
         }
+        String branch = resolveActiveBranch(groupId);
         try {
-            List<WbOfflineFlowIndex> movingRows = indexMapper.findByGroupAndPathPrefix(groupId, oldPrefix);
+            List<WbOfflineFlowIndex> movingRows = indexMapper.findByGroupAndBranchAndPathPrefix(groupId, branch, oldPrefix);
             if (movingRows.isEmpty()) {
                 return;
             }
@@ -292,7 +343,7 @@ public class OfflineFlowIndexService {
                 statsByNewPath.put(nextPath, readFileStat(nextFile));
             }
             runInTransaction(() -> {
-                indexMapper.deleteByGroupAndPathPrefix(groupId, newPrefix);
+                indexMapper.deleteByGroupAndBranchAndPathPrefix(groupId, branch, newPrefix);
                 for (WbOfflineFlowIndex row : movingRows) {
                     String currentPath = row.getFlowPath();
                     if (currentPath == null || !currentPath.startsWith(oldPrefix)) {
@@ -300,6 +351,7 @@ public class OfflineFlowIndexService {
                     }
                     String nextPath = newPrefix + currentPath.substring(oldPrefix.length());
                     FileStat stat = statsByNewPath.getOrDefault(nextPath, FileStat.EMPTY);
+                    row.setBranch(branch);
                     row.setFlowPath(nextPath);
                     row.setFileMtimeMs(stat.mtimeMs());
                     row.setFileSize(stat.size());
@@ -308,9 +360,9 @@ public class OfflineFlowIndexService {
                 }
             });
         } catch (RuntimeException ex) {
-            log.error("移动文件夹离线任务索引失败，已标记待自愈: groupId={}, old={}, new={}",
-                    groupId, oldPrefix, newPrefix, ex);
-            markDirty(groupId);
+            log.error("移动文件夹离线任务索引失败，已标记待自愈: groupId={}, branch={}, old={}, new={}",
+                    groupId, branch, oldPrefix, newPrefix, ex);
+            markDirty(groupId, branch);
         }
     }
 
@@ -318,18 +370,24 @@ public class OfflineFlowIndexService {
         if (!isEnabled() || groupId == null) {
             return;
         }
-        if (indexedGroups.contains(groupId) && !dirtyGroups.contains(groupId)) {
+        String branch = resolveActiveBranch(groupId);
+        ensureGroupBranchIndexed(groupId, branch);
+    }
+
+    private void ensureGroupBranchIndexed(Long groupId, String branch) {
+        GroupBranchKey key = new GroupBranchKey(groupId, branch);
+        if (indexedKeys.contains(key) && !dirtyKeys.contains(key)) {
             return;
         }
         repoLockManager.withLock(groupId, () -> {
-            if (indexedGroups.contains(groupId) && !dirtyGroups.contains(groupId)) {
+            if (indexedKeys.contains(key) && !dirtyKeys.contains(key)) {
                 return null;
             }
-            if (startupReconciled && !dirtyGroups.contains(groupId) && stateMapper.selectById(groupId) != null) {
-                indexedGroups.add(groupId);
+            if (startupReconciled && !dirtyKeys.contains(key) && stateMapper.findByGroupAndBranch(groupId, branch) != null) {
+                indexedKeys.add(key);
                 return null;
             }
-            reconcileGroupUnlocked(groupId);
+            reconcileGroupUnlocked(groupId, branch);
             return null;
         });
     }
@@ -341,9 +399,17 @@ public class OfflineFlowIndexService {
         if (!startupReconciled) {
             reconcileAllExistingGroupsAtStartup();
         }
-        if (!dirtyGroups.isEmpty()) {
-            for (Long dirtyGroupId : List.copyOf(dirtyGroups)) {
-                reconcileGroup(dirtyGroupId);
+        if (!dirtyKeys.isEmpty()) {
+            for (GroupBranchKey dirty : List.copyOf(dirtyKeys)) {
+                Optional<Path> worktree = gitWorktreeManager != null
+                        ? gitWorktreeManager.findExistingWorktree(dirty.groupId(), dirty.branch())
+                        : Optional.empty();
+                if (worktree.isPresent()) {
+                    OfflineBranchContext.withWorkspace(dirty.groupId(), dirty.branch(), worktree.get(),
+                            () -> reconcileGroup(dirty.groupId()));
+                } else {
+                    reconcileGroup(dirty.groupId());
+                }
             }
         }
     }
@@ -362,8 +428,9 @@ public class OfflineFlowIndexService {
         if (!isEnabled() || groupId == null) {
             return Map.of();
         }
-        ensureGroupIndexed(groupId);
-        List<WbOfflineFlowIndex> rows = indexMapper.findByGroup(groupId);
+        String branch = resolveActiveBranch(groupId);
+        ensureGroupBranchIndexed(groupId, branch);
+        List<WbOfflineFlowIndex> rows = indexMapper.findByGroupAndBranch(groupId, branch);
         Map<String, WbOfflineFlowIndex> result = new LinkedHashMap<>(rows.size());
         for (WbOfflineFlowIndex row : rows) {
             if (row.getFlowPath() != null) {
@@ -377,9 +444,71 @@ public class OfflineFlowIndexService {
         if (!isEnabled() || groupId == null || ownerUserId == null) {
             return List.of();
         }
+        String branch = resolveActiveBranch(groupId);
+        return listFlowsByGroupAndBranchAndOwner(groupId, branch, ownerUserId);
+    }
+
+    public List<WbOfflineFlowIndex> listFlowsByGroupAndBranchAndOwner(Long groupId, String branch, Long ownerUserId) {
+        if (!isEnabled() || groupId == null || ownerUserId == null) {
+            return List.of();
+        }
+        String normalizedBranch = normalizeBranchName(branch);
+        ensureGroupBranchIndexed(groupId, normalizedBranch);
+        List<WbOfflineFlowIndex> rows = indexMapper.findByGroupAndBranchAndOwnerUserId(groupId, normalizedBranch, ownerUserId);
+        return rows == null ? List.of() : rows;
+    }
+
+    public List<WbOfflineFlowIndex> listFlowsByGroupAndOwnerAllBranches(Long groupId, Long ownerUserId) {
+        if (!isEnabled() || groupId == null || ownerUserId == null) {
+            return List.of();
+        }
         ensureGroupIndexed(groupId);
         List<WbOfflineFlowIndex> rows = indexMapper.findByGroupAndOwnerUserId(groupId, ownerUserId);
         return rows == null ? List.of() : rows;
+    }
+
+    public Map<String, Long> findFlowOwnersByGroupAndBranches(Long groupId, Map<String, Set<String>> flowIdsByBranch) {
+        if (!isEnabled() || groupId == null || flowIdsByBranch == null || flowIdsByBranch.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Long> result = new LinkedHashMap<>();
+        Set<String> unresolved = new LinkedHashSet<>();
+        for (Map.Entry<String, Set<String>> entry : flowIdsByBranch.entrySet()) {
+            Set<String> flowIds = entry.getValue();
+            if (flowIds == null || flowIds.isEmpty()) {
+                continue;
+            }
+            String branchKey = entry.getKey() == null || entry.getKey().isBlank()
+                    ? OfflineBranchContext.MAIN_BRANCH
+                    : normalizeBranchName(entry.getKey());
+            ensureGroupBranchIndexed(groupId, branchKey);
+            List<WbOfflineFlowIndex> rows = indexMapper.findByGroupAndBranchAndFlowIds(
+                    groupId, branchKey, List.copyOf(flowIds));
+            if (rows != null) {
+                for (WbOfflineFlowIndex row : rows) {
+                    if (row != null && row.getFlowId() != null && row.getOwnerUserId() != null) {
+                        result.putIfAbsent(branchKey + "::" + row.getFlowId(), row.getOwnerUserId());
+                        result.putIfAbsent(row.getFlowId(), row.getOwnerUserId());
+                    }
+                }
+            }
+            for (String flowId : flowIds) {
+                if (!result.containsKey(branchKey + "::" + flowId)) {
+                    unresolved.add(flowId);
+                }
+            }
+        }
+        if (!unresolved.isEmpty()) {
+            List<WbOfflineFlowIndex> fallbackRows = indexMapper.findByGroupAndFlowIds(groupId, List.copyOf(unresolved));
+            if (fallbackRows != null) {
+                for (WbOfflineFlowIndex row : fallbackRows) {
+                    if (row != null && row.getFlowId() != null && row.getOwnerUserId() != null) {
+                        result.putIfAbsent(row.getFlowId(), row.getOwnerUserId());
+                    }
+                }
+            }
+        }
+        return result;
     }
 
     public long countFlowsByGroupAndOwner(Long groupId, Long ownerUserId) {
@@ -424,13 +553,16 @@ public class OfflineFlowIndexService {
         if (distinctGroupIds.isEmpty()) {
             return List.of();
         }
+        List<IndexedFlowSnapshot> snapshots = new ArrayList<>();
         for (Long groupId : distinctGroupIds) {
-            ensureGroupIndexed(groupId);
+            String branch = resolveActiveBranch(groupId);
+            ensureGroupBranchIndexed(groupId, branch);
+            indexMapper.findByGroupAndBranch(groupId, branch).stream()
+                    .filter(this::isParseOk)
+                    .map(this::toSnapshot)
+                    .forEach(snapshots::add);
         }
-        return indexMapper.findByGroupIds(distinctGroupIds).stream()
-                .filter(this::isParseOk)
-                .map(this::toSnapshot)
-                .toList();
+        return snapshots;
     }
 
     public Map<OfflineFlowDependencyRef, IndexedFlowSnapshot> findFlowsByRefs(Collection<OfflineFlowDependencyRef> refs) {
@@ -449,9 +581,11 @@ public class OfflineFlowIndexService {
         }
         Map<OfflineFlowDependencyRef, IndexedFlowSnapshot> result = new LinkedHashMap<>();
         for (Map.Entry<Long, Set<String>> entry : flowIdsByGroup.entrySet()) {
-            ensureGroupIndexed(entry.getKey());
-            List<WbOfflineFlowIndex> rows = indexMapper.findByGroupAndFlowIds(
-                    entry.getKey(), List.copyOf(entry.getValue()));
+            Long targetGroupId = entry.getKey();
+            String targetBranch = resolveActiveBranch(targetGroupId);
+            ensureGroupBranchIndexed(targetGroupId, targetBranch);
+            List<WbOfflineFlowIndex> rows = indexMapper.findByGroupAndBranchAndFlowIds(
+                    targetGroupId, targetBranch, List.copyOf(entry.getValue()));
             for (WbOfflineFlowIndex row : rows) {
                 if (isParseOk(row) && row.getFlowId() != null) {
                     result.putIfAbsent(new OfflineFlowDependencyRef(row.getGroupId(), row.getFlowId()), toSnapshot(row));
@@ -466,8 +600,9 @@ public class OfflineFlowIndexService {
         if (!isEnabled() || groupId == null || flowId == null || flowId.isBlank()) {
             return null;
         }
-        ensureGroupIndexed(groupId);
-        List<WbOfflineFlowIndex> rows = indexMapper.findByGroupAndFlowId(groupId, flowId);
+        String branch = resolveActiveBranch(groupId);
+        ensureGroupBranchIndexed(groupId, branch);
+        List<WbOfflineFlowIndex> rows = indexMapper.findByGroupAndBranchAndFlowId(groupId, branch, flowId);
         return rows.stream()
                 .filter(this::isParseOk)
                 .findFirst()
@@ -507,8 +642,9 @@ public class OfflineFlowIndexService {
         if (prefix.isEmpty()) {
             return List.of();
         }
+        String branch = resolveActiveBranch(groupId);
         ensureGlobalIndexReady();
-        List<WbOfflineFlowIndex> folderFlows = indexMapper.findByGroupAndPathPrefix(groupId, prefix);
+        List<WbOfflineFlowIndex> folderFlows = indexMapper.findByGroupAndBranchAndPathPrefix(groupId, branch, prefix);
         if (folderFlows.isEmpty()) {
             return List.of();
         }
@@ -538,6 +674,8 @@ public class OfflineFlowIndexService {
         }
         return indexMapper.findByIds(externalIndexIds).stream()
                 .filter(this::isParseOk)
+                .filter(row -> !Objects.equals(row.getGroupId(), groupId)
+                        || Objects.equals(normalizeBranchName(row.getBranch()), branch))
                 .map(this::toSnapshot)
                 .toList();
     }
@@ -583,15 +721,17 @@ public class OfflineFlowIndexService {
         return false;
     }
 
-    private void reconcileGroupUnlocked(Long groupId) {
+    private void reconcileGroupUnlocked(Long groupId, String targetBranch) {
+        String normalizedBranch = normalizeBranchName(targetBranch);
+        GroupBranchKey key = new GroupBranchKey(groupId, normalizedBranch);
         if (!groupExistsInDb(groupId)) {
-            dirtyGroups.remove(groupId);
+            dirtyKeys.remove(key);
             return;
         }
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
         Path flowsDir = repoPath.resolve("_flows");
         Map<String, Path> diskFlows = collectDiskFlows(repoPath, flowsDir);
-        List<WbOfflineFlowIndex> existingRows = indexMapper.findByGroup(groupId);
+        List<WbOfflineFlowIndex> existingRows = indexMapper.findByGroupAndBranch(groupId, normalizedBranch);
         Map<String, WbOfflineFlowIndex> dbByPath = new HashMap<>(existingRows.size());
         for (WbOfflineFlowIndex row : existingRows) {
             if (row.getFlowPath() != null) {
@@ -623,7 +763,8 @@ public class OfflineFlowIndexService {
             toUpsert.add(new PendingUpsert(flowPath, content, stat, existing));
         }
 
-        String branch = readGitBranch(repoPath);
+        String gitBranch = readGitBranch(repoPath);
+        String effectiveBranch = gitBranch != null ? normalizeBranchName(gitBranch) : normalizedBranch;
         String headSha = readGitHead(repoPath);
         int flowCount = diskFlows.size();
 
@@ -634,13 +775,13 @@ public class OfflineFlowIndexService {
                 }
             }
             for (PendingUpsert pending : toUpsert) {
-                persistParsedFlow(groupId, pending.flowPath(), pending.content(), pending.stat(), pending.existing());
+                persistParsedFlow(groupId, normalizedBranch, pending.flowPath(), pending.content(), pending.stat(), pending.existing());
             }
-            upsertRepoState(groupId, branch, headSha, flowCount);
+            upsertRepoState(groupId, normalizedBranch, effectiveBranch, headSha, flowCount);
         });
 
-        dirtyGroups.remove(groupId);
-        indexedGroups.add(groupId);
+        dirtyKeys.remove(key);
+        indexedKeys.add(key);
     }
 
     private Map<String, Path> collectDiskFlows(Path repoPath, Path flowsDir) {
@@ -660,21 +801,22 @@ public class OfflineFlowIndexService {
         return flows;
     }
 
-    private void upsertFlowUnlocked(Long groupId, String normalizedPath, String yamlContent, FileStat stat) {
-        WbOfflineFlowIndex existing = indexMapper.findByGroupAndPath(groupId, normalizedPath);
-        persistParsedFlow(groupId, normalizedPath, yamlContent, stat, existing);
+    private void upsertFlowUnlocked(Long groupId, String branch, String normalizedPath, String yamlContent, FileStat stat) {
+        WbOfflineFlowIndex existing = indexMapper.findByGroupAndBranchAndPath(groupId, branch, normalizedPath);
+        persistParsedFlow(groupId, branch, normalizedPath, yamlContent, stat, existing);
         if (existing == null) {
-            adjustStateFlowCount(groupId, 1);
+            adjustStateFlowCount(groupId, branch, 1);
         }
     }
 
     private void persistParsedFlow(Long groupId,
+                                   String branch,
                                    String normalizedPath,
                                    @Nullable String yamlContent,
                                    FileStat stat,
                                    @Nullable WbOfflineFlowIndex existing) {
         ParsedFlowProjection parsed = parseForProjection(yamlContent);
-        WbOfflineFlowIndex entity = parsed.toEntity(groupId, normalizedPath, stat);
+        WbOfflineFlowIndex entity = parsed.toEntity(groupId, branch, normalizedPath, stat);
         if (existing != null && existing.getId() != null) {
             entity.setId(existing.getId());
             indexMapper.updateById(entity);
@@ -726,30 +868,24 @@ public class OfflineFlowIndexService {
         }
     }
 
-    private void adjustStateFlowCount(Long groupId, int delta) {
-        WbOfflineRepoIndexState state = stateMapper.selectById(groupId);
-        if (state == null) {
-            return;
-        }
-        int current = state.getFlowCount() == null ? 0 : state.getFlowCount();
-        state.setFlowCount(Math.max(0, current + delta));
-        state.setIndexedAt(LocalDateTime.now());
-        stateMapper.updateById(state);
+    private void adjustStateFlowCount(Long groupId, String branch, int delta) {
+        stateMapper.adjustFlowCount(groupId, branch, delta, LocalDateTime.now());
     }
 
-    private void upsertRepoState(Long groupId, @Nullable String branch, @Nullable String headSha, int flowCount) {
-        WbOfflineRepoIndexState existing = stateMapper.selectById(groupId);
-        WbOfflineRepoIndexState state = existing == null ? new WbOfflineRepoIndexState() : existing;
+    private void upsertRepoState(Long groupId, String branchKey, @Nullable String syncedBranch, @Nullable String headSha, int flowCount) {
+        WbOfflineRepoIndexState state = new WbOfflineRepoIndexState();
         state.setGroupId(groupId);
-        state.setSyncedBranch(branch);
+        state.setBranch(branchKey);
+        state.setSyncedBranch(syncedBranch);
         state.setSyncedHeadSha(headSha);
         state.setFlowCount(flowCount);
         state.setIndexedAt(LocalDateTime.now());
-        if (existing == null) {
-            stateMapper.insert(state);
-        } else {
-            stateMapper.updateById(state);
-        }
+        stateMapper.upsertState(state);
+    }
+
+    private void upsertRepoState(Long groupId, @Nullable String branch, @Nullable String headSha, int flowCount) {
+        String normalized = normalizeBranchName(branch);
+        upsertRepoState(groupId, normalized, branch, headSha, flowCount);
     }
 
     private List<Long> collectKnownGroupIds() {
@@ -772,7 +908,7 @@ public class OfflineFlowIndexService {
             try (var directories = Files.list(base)) {
                 for (Path directory : directories.filter(Files::isDirectory).toList()) {
                     String name = directory.getFileName().toString();
-                    if (!name.startsWith(prefix)) {
+                    if (!name.startsWith(prefix) || name.endsWith("-worktrees")) {
                         continue;
                     }
                     try {
@@ -795,11 +931,36 @@ public class OfflineFlowIndexService {
         return projectGroupMapper.selectById(groupId) != null;
     }
 
-    private void markDirty(@Nullable Long groupId) {
+    private void markDirty(@Nullable Long groupId, @Nullable String branch) {
         if (groupId != null) {
-            dirtyGroups.add(groupId);
-            indexedGroups.remove(groupId);
+            GroupBranchKey key = new GroupBranchKey(groupId, normalizeBranchName(branch));
+            dirtyKeys.add(key);
+            indexedKeys.remove(key);
         }
+    }
+
+    private String resolveActiveBranch(Long groupId) {
+        String contextBranch = OfflineBranchContext.currentBranch(groupId);
+        if (contextBranch != null && !contextBranch.isBlank()) {
+            return normalizeBranchName(contextBranch);
+        }
+        Path repoPath = offlineProperties.resolveRepoPath(groupId);
+        String diskBranch = readGitBranch(repoPath);
+        return normalizeBranchName(diskBranch);
+    }
+
+    private static String normalizeBranchName(@Nullable String branch) {
+        if (branch == null) {
+            return OfflineBranchContext.MAIN_BRANCH;
+        }
+        String trimmed = branch.trim();
+        if (trimmed.isEmpty()) {
+            return OfflineBranchContext.MAIN_BRANCH;
+        }
+        return trimmed.length() > 191 ? trimmed.substring(0, 191) : trimmed;
+    }
+
+    private record GroupBranchKey(Long groupId, String branch) {
     }
 
     private void runInTransaction(Runnable action) {
@@ -900,7 +1061,7 @@ public class OfflineFlowIndexService {
 
     @Nullable
     private String tryRunReadOnlyGit(Path repoPath, String... args) {
-        if (!Files.isDirectory(repoPath.resolve(".git"))) {
+        if (!OfflineProperties.isGitRepoInitialized(repoPath)) {
             return null;
         }
         List<String> command = new ArrayList<>();
@@ -970,9 +1131,10 @@ public class OfflineFlowIndexService {
             );
         }
 
-        private WbOfflineFlowIndex toEntity(Long groupId, String flowPath, FileStat stat) {
+        private WbOfflineFlowIndex toEntity(Long groupId, String branch, String flowPath, FileStat stat) {
             WbOfflineFlowIndex entity = new WbOfflineFlowIndex();
             entity.setGroupId(groupId);
+            entity.setBranch(branch);
             entity.setFlowPath(flowPath);
             entity.setFlowId(flowId);
             entity.setOwnerUserId(ownerUserId);

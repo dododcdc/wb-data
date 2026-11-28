@@ -136,7 +136,9 @@ public class OperationsExecutionService {
                 ? DEFAULT_PAGE
                 : effectiveQuery.page();
         String flowFilter = blankToNull(effectiveQuery.flowId());
-        List<String> ownedFlowIds = resolveOwnedFlowIdsForFilter(groupId, effectiveQuery.ownerUserId(), flowFilter);
+        String branchFilter = blankToNull(effectiveQuery.branch());
+        List<String> ownedFlowIds = resolveOwnedFlowIdsForFilter(
+                groupId, "__all__".equals(branchFilter) ? null : branchFilter, effectiveQuery.ownerUserId(), flowFilter);
         if (ownedFlowIds != null && ownedFlowIds.isEmpty()) {
             return new OperationsExecutionListResponse(
                     namespaceToBranch.values().stream().toList(),
@@ -243,7 +245,9 @@ public class OperationsExecutionService {
                 .map(item -> {
                     OperationsRerunClassifier.Classification classification = OperationsRerunClassifier.classify(
                             snapshotsById.get(item.id()), manualRerunIds);
-                    Long ownerUserId = flowOwnerIdMap.get(item.flowId());
+                    String branchKey = item.branch() == null || item.branch().isBlank() ? "main" : item.branch().trim();
+                    Long ownerUserId = flowOwnerIdMap.getOrDefault(branchKey + "::" + item.flowId(),
+                            flowOwnerIdMap.get(item.flowId()));
                     GroupOwnerInfo ownerInfo = ownerUserId == null ? null : ownerInfoMap.get(ownerUserId);
                     return new OperationsExecutionListItem(
                             item.id(), item.namespace(), item.flowId(), item.branch(), item.status(),
@@ -558,6 +562,7 @@ public class OperationsExecutionService {
 
     @Nullable
     private List<String> resolveOwnedFlowIdsForFilter(Long groupId,
+                                                      @Nullable String branchFilter,
                                                       @Nullable Long ownerUserId,
                                                       @Nullable String flowFilter) {
         if (ownerUserId == null) {
@@ -566,7 +571,9 @@ public class OperationsExecutionService {
         if (offlineFlowIndexService == null || !offlineFlowIndexService.isEnabled()) {
             return List.of();
         }
-        List<WbOfflineFlowIndex> rows = offlineFlowIndexService.listFlowsByGroupAndOwner(groupId, ownerUserId);
+        List<WbOfflineFlowIndex> rows = branchFilter != null
+                ? offlineFlowIndexService.listFlowsByGroupAndBranchAndOwner(groupId, branchFilter, ownerUserId)
+                : offlineFlowIndexService.listFlowsByGroupAndOwnerAllBranches(groupId, ownerUserId);
         if (rows == null || rows.isEmpty()) {
             return List.of();
         }
@@ -588,17 +595,18 @@ public class OperationsExecutionService {
         if (items.isEmpty() || offlineFlowIndexService == null || !offlineFlowIndexService.isEnabled()) {
             return Map.of();
         }
-        Map<String, WbOfflineFlowIndex> flows = offlineFlowIndexService.listGroupFlowMap(groupId);
-        if (flows.isEmpty()) {
+        Map<String, Set<String>> flowIdsByBranch = new LinkedHashMap<>();
+        for (OperationsExecutionListItem item : items) {
+            if (item == null || item.flowId() == null || item.flowId().isBlank()) {
+                continue;
+            }
+            String branchKey = item.branch() == null || item.branch().isBlank() ? "main" : item.branch().trim();
+            flowIdsByBranch.computeIfAbsent(branchKey, ignored -> new LinkedHashSet<>()).add(item.flowId());
+        }
+        if (flowIdsByBranch.isEmpty()) {
             return Map.of();
         }
-        Map<String, Long> result = new LinkedHashMap<>();
-        for (WbOfflineFlowIndex row : flows.values()) {
-            if (row != null && row.getFlowId() != null && row.getOwnerUserId() != null) {
-                result.putIfAbsent(row.getFlowId(), row.getOwnerUserId());
-            }
-        }
-        return result;
+        return offlineFlowIndexService.findFlowOwnersByGroupAndBranches(groupId, flowIdsByBranch);
     }
 
     private Map<Long, GroupOwnerInfo> resolvePageOwners(Long groupId, Map<String, Long> flowOwnerIdMap) {

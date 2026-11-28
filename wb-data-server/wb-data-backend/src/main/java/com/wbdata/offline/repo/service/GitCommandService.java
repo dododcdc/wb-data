@@ -3,8 +3,10 @@ package com.wbdata.offline.repo.service;
 import com.wbdata.offline.service.OfflineFlowDocumentService;
 import com.wbdata.offline.service.OfflineFlowIndexService;
 
+import com.wbdata.offline.config.OfflineBranchContext;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.repo.dto.BranchListResponse;
+import com.wbdata.offline.repo.dto.SyncBranchResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -42,6 +44,7 @@ public class GitCommandService extends GitRepositoryOperations {
     private final OfflinePublishHistoryPort publishHistoryPort;
     private final RepoLockManager repoLockManager;
     private final GitBranchOperations branchOperations;
+    private final GitWorktreeManager worktreeManager;
     private ApplicationEventPublisher applicationEventPublisher = event -> {};
     @Nullable
     private OfflineFlowIndexService offlineFlowIndexService;
@@ -54,12 +57,32 @@ public class GitCommandService extends GitRepositoryOperations {
                              OfflineFlowDocumentService offlineFlowDocumentService,
                              OfflinePublishHistoryPort publishHistoryPort,
                              RepoLockManager repoLockManager) {
+        this(
+                offlineProperties,
+                gitRemotePort,
+                offlineFlowDocumentService,
+                publishHistoryPort,
+                repoLockManager,
+                new GitWorktreeManager(offlineProperties, gitRemotePort, repoLockManager)
+        );
+    }
+
+    @Autowired
+    public GitCommandService(OfflineProperties offlineProperties,
+                             OfflineGitRemotePort gitRemotePort,
+                             OfflineFlowDocumentService offlineFlowDocumentService,
+                             OfflinePublishHistoryPort publishHistoryPort,
+                             RepoLockManager repoLockManager,
+                             GitWorktreeManager worktreeManager) {
         super(offlineProperties);
         this.gitRemotePort = gitRemotePort;
         this.offlineFlowDocumentService = offlineFlowDocumentService;
         this.publishHistoryPort = publishHistoryPort;
         this.repoLockManager = repoLockManager;
-        this.branchOperations = new GitBranchOperations(offlineProperties, gitRemotePort);
+        this.worktreeManager = worktreeManager != null
+                ? worktreeManager
+                : new GitWorktreeManager(offlineProperties, gitRemotePort, repoLockManager);
+        this.branchOperations = new GitBranchOperations(offlineProperties, gitRemotePort, this.worktreeManager);
     }
 
     public BranchListResponse listBranches(Long groupId) {
@@ -68,7 +91,7 @@ public class GitCommandService extends GitRepositoryOperations {
 
     public List<String> listFlowFilesAtRevision(Long groupId, String revision) {
         validateRevision(revision);
-        return repoLockManager.withLock(groupId, () -> runGit(repoPath(groupId),
+        return repoLockManager.withLock(groupId, () -> runGit(primaryRepoPath(groupId),
                         "ls-tree", "-r", "--name-only", revision, "--", ".wb-data/kestra-flows")
                 .lines()
                 .filter(path -> !path.isBlank())
@@ -80,7 +103,7 @@ public class GitCommandService extends GitRepositoryOperations {
      */
     public Map<String, String> readFlowFilesAtRevision(Long groupId, String revision) {
         validateRevision(revision);
-        return repoLockManager.withLock(groupId, () -> readFlowFilesAtRevisionUnlocked(repoPath(groupId), revision));
+        return repoLockManager.withLock(groupId, () -> readFlowFilesAtRevisionUnlocked(primaryRepoPath(groupId), revision));
     }
 
     private Map<String, String> readFlowFilesAtRevisionUnlocked(Path repoPath, String revision) {
@@ -255,7 +278,7 @@ public class GitCommandService extends GitRepositoryOperations {
         }
         String relativePath = normalized.toString().replace('\\', '/');
         return repoLockManager.withLock(groupId,
-                () -> runGit(repoPath(groupId), "show", revision + ":" + relativePath));
+                () -> runGit(primaryRepoPath(groupId), "show", revision + ":" + relativePath));
     }
 
     private void validateRevision(String revision) {
@@ -270,36 +293,68 @@ public class GitCommandService extends GitRepositoryOperations {
 
     public String createBranch(Long groupId, String name, String baseBranch) {
         return repoLockManager.withLock(groupId, () -> {
-            try {
-                return branchOperations.createBranch(groupId, name, baseBranch);
-            } finally {
-                reconcileIndex(groupId);
-            }
+            Path worktreePath = branchOperations.createBranch(groupId, name, baseBranch);
+            OfflineBranchContext.withWorkspace(groupId, name, worktreePath, () -> reconcileIndex(groupId));
+            return name;
         });
     }
 
     public String switchBranch(Long groupId, String branch) {
         return repoLockManager.withLock(groupId, () -> {
-            try {
-                return branchOperations.switchBranch(groupId, branch);
-            } finally {
-                reconcileIndex(groupId);
-            }
+            Path worktreePath = branchOperations.switchBranch(groupId, branch);
+            OfflineBranchContext.withWorkspace(groupId, branch, worktreePath, () -> reconcileIndex(groupId));
+            return branch;
         });
     }
 
     public String mergeBranch(Long groupId, String source, String target) {
         return repoLockManager.withLock(groupId, () -> {
-            try {
-                return branchOperations.mergeBranch(groupId, source, target);
-            } finally {
-                reconcileIndex(groupId);
+            GitBranchOperations.MergeResult merged = branchOperations.mergeBranch(groupId, source, target);
+            OfflineBranchContext.withWorkspace(groupId, merged.targetBranch(), merged.worktreePath(),
+                    () -> reconcileIndex(groupId));
+            return merged.targetBranch();
+        });
+    }
+
+    public SyncBranchResponse syncFromMain(Long groupId, String targetBranch) {
+        return repoLockManager.withLock(groupId, () -> {
+            GitBranchOperations.SyncResult synced = branchOperations.syncFromMain(groupId, targetBranch);
+            if (!synced.upToDate()) {
+                OfflineBranchContext.withWorkspace(groupId, synced.targetBranch(), synced.worktreePath(),
+                        () -> reconcileIndex(groupId));
             }
+            String message = synced.upToDate()
+                    ? "当前分支已是最新，无需同步"
+                    : "已将 main 分支最新改动同步到 " + synced.targetBranch();
+            return new SyncBranchResponse(
+                    OfflineBranchContext.MAIN_BRANCH,
+                    synced.targetBranch(),
+                    synced.upToDate(),
+                    synced.headCommitId(),
+                    message
+            );
         });
     }
 
     public void deleteBranch(Long groupId, String branch, boolean force) {
-        repoLockManager.withLock(groupId, () -> branchOperations.deleteBranch(groupId, branch, force));
+        repoLockManager.withLock(groupId, () -> {
+            branchOperations.deleteBranch(groupId, branch, force);
+            if (offlineFlowIndexService != null) {
+                offlineFlowIndexService.onBranchDeleted(groupId, branch);
+            }
+        });
+    }
+
+    public String getCurrentBranch(Long groupId) {
+        String contextBranch = OfflineBranchContext.currentBranch(groupId);
+        if (contextBranch != null && !contextBranch.isBlank()) {
+            return contextBranch;
+        }
+        Path repoPath = repoPath(groupId);
+        if (!OfflineProperties.isGitRepoInitialized(repoPath)) {
+            return null;
+        }
+        return getCurrentBranch(repoPath);
     }
 
     /**
@@ -343,7 +398,7 @@ public class GitCommandService extends GitRepositoryOperations {
 
     private boolean hasUnpushedFlowChangesUnlocked(Long groupId, String flowPath) {
         Path repoPath = repoPath(groupId);
-        if (!Files.isDirectory(repoPath.resolve(".git"))) {
+        if (!OfflineProperties.isGitRepoInitialized(repoPath)) {
             return false;
         }
         String headSha = tryRevParse(repoPath, "HEAD");
@@ -926,7 +981,7 @@ public class GitCommandService extends GitRepositoryOperations {
 
     public String readRemoteBranchSha(Long groupId, String branch) {
         return repoLockManager.withLock(groupId,
-                () -> readOriginBranchSha(repoPath(groupId), groupId, branch));
+                () -> readOriginBranchSha(primaryRepoPath(groupId), groupId, branch));
     }
 
     private String readOriginBranchSha(Path repoPath, Long groupId, String branch) {
@@ -974,7 +1029,7 @@ public class GitCommandService extends GitRepositoryOperations {
         if (!gitRemotePort.isConfigured(groupId)) {
             return null;
         }
-        Path repoPath = repoPath(groupId);
+        Path repoPath = primaryRepoPath(groupId);
         String remote = getCurrentRemote(repoPath);
         if (remote == null) {
             return null;
@@ -984,7 +1039,7 @@ public class GitCommandService extends GitRepositoryOperations {
 
     /** 是否已关联远程仓库 */
     public boolean hasRemote(Long groupId) {
-        Path repoPath = repoPath(groupId);
+        Path repoPath = primaryRepoPath(groupId);
         return getCurrentRemote(repoPath) != null;
     }
 

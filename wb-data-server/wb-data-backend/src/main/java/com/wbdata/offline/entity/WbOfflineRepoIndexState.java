@@ -14,6 +14,8 @@ public class WbOfflineRepoIndexState {
     @TableId(type = IdType.INPUT)
     private Long groupId;
 
+    private String branch;
+
     private String syncedBranch;
 
     private String syncedHeadSha;

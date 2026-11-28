@@ -9,6 +9,7 @@ import com.wbdata.group.service.GroupOwnerService;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.dto.TransferOfflineFlowOwnerRequest;
 import com.wbdata.offline.entity.WbOfflineFlowIndex;
+import com.wbdata.offline.repo.service.GitWorktreeManager;
 import com.wbdata.offline.repo.service.RepoLockManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -124,5 +125,88 @@ class OfflineFlowOwnerServiceTest {
                 1L, new TransferOfflineFlowOwnerRequest(null, 10L, 30L), adminCtx);
         assertThat(bulkRes.updatedCount()).isEqualTo(1);
         assertThat(new OfflineFlowYamlSupport().readOwnerUserId(Files.readString(flowBPath))).isEqualTo(30L);
+    }
+
+    @Test
+    void transferAllFromOwnerInternalSyncsAcrossAllActiveWorktrees() throws Exception {
+        OfflineProperties props = new OfflineProperties();
+        props.setRepoBaseDir(tempDir.toString());
+        props.setRepoDirPrefix("group-");
+        Path mainRepoPath = tempDir.resolve("group-1");
+        Path featureRepoPath = tempDir.resolve("group-1-worktrees/feature-a");
+        Path mainFlowPath = mainRepoPath.resolve("_flows/shared/flow.yaml");
+        Path featureFlowPath = featureRepoPath.resolve("_flows/shared/flow.yaml");
+        Path onlyFeatureFlowPath = featureRepoPath.resolve("_flows/only_feature/flow.yaml");
+        Files.createDirectories(mainFlowPath.getParent());
+        Files.createDirectories(featureFlowPath.getParent());
+        Files.createDirectories(onlyFeatureFlowPath.getParent());
+
+        String yamlOwner10 = """
+                id: %s
+                namespace: pg-1
+                labels:
+                  wbdataOwnerUserId: '10'
+                tasks: []
+                """;
+        Files.writeString(mainFlowPath, yamlOwner10.formatted("shared"), StandardCharsets.UTF_8);
+        Files.writeString(featureFlowPath, yamlOwner10.formatted("shared"), StandardCharsets.UTF_8);
+        Files.writeString(onlyFeatureFlowPath, yamlOwner10.formatted("only_feature"), StandardCharsets.UTF_8);
+
+        RepoLockManager lockManager = new RepoLockManager();
+        OfflineKestraFlowFileService kestraFlowFileService = mock(OfflineKestraFlowFileService.class);
+        OfflineFlowIndexService indexService = mock(OfflineFlowIndexService.class);
+        GroupOwnerService groupOwnerService = mock(GroupOwnerService.class);
+        GitWorktreeManager worktreeManager = mock(GitWorktreeManager.class);
+
+        when(worktreeManager.listActiveWorktrees(1L)).thenReturn(List.of(
+                new GitWorktreeManager.WorktreeInfo("main", mainRepoPath, true),
+                new GitWorktreeManager.WorktreeInfo("feature/a", featureRepoPath, false)
+        ));
+
+        WbOfflineFlowIndex mainShared = new WbOfflineFlowIndex();
+        mainShared.setGroupId(1L);
+        mainShared.setBranch("main");
+        mainShared.setFlowPath("_flows/shared/flow.yaml");
+        mainShared.setFlowId("shared");
+        mainShared.setOwnerUserId(10L);
+
+        WbOfflineFlowIndex featureShared = new WbOfflineFlowIndex();
+        featureShared.setGroupId(1L);
+        featureShared.setBranch("feature/a");
+        featureShared.setFlowPath("_flows/shared/flow.yaml");
+        featureShared.setFlowId("shared");
+        featureShared.setOwnerUserId(10L);
+
+        WbOfflineFlowIndex featureOnly = new WbOfflineFlowIndex();
+        featureOnly.setGroupId(1L);
+        featureOnly.setBranch("feature/a");
+        featureOnly.setFlowPath("_flows/only_feature/flow.yaml");
+        featureOnly.setFlowId("only_feature");
+        featureOnly.setOwnerUserId(10L);
+
+        when(groupOwnerService.requireAssignableOwner(1L, 30L))
+                .thenReturn(new GroupOwnerInfo(30L, "charlie", "Charlie", "ACTIVE"));
+        when(indexService.listFlowsByGroupAndOwner(1L, 10L)).thenAnswer(invocation ->
+                "feature/a".equals(com.wbdata.offline.config.OfflineBranchContext.currentBranch(1L))
+                        ? List.of(featureShared, featureOnly)
+                        : List.of(mainShared));
+
+        OfflineFlowOwnerService service = new OfflineFlowOwnerService(
+                props, lockManager, kestraFlowFileService, indexService, groupOwnerService);
+        service.setGitWorktreeManager(worktreeManager);
+
+        TransferOwnerResponse res = service.transferAllFromOwnerInternal(1L, 10L, 30L);
+
+        assertThat(res.updatedCount()).isEqualTo(2);
+        assertThat(res.targetOwnerName()).isEqualTo("Charlie");
+        assertThat(new OfflineFlowYamlSupport().readOwnerUserId(Files.readString(mainFlowPath))).isEqualTo(30L);
+        assertThat(new OfflineFlowYamlSupport().readOwnerUserId(Files.readString(featureFlowPath))).isEqualTo(30L);
+        assertThat(new OfflineFlowYamlSupport().readOwnerUserId(Files.readString(onlyFeatureFlowPath))).isEqualTo(30L);
+        verify(kestraFlowFileService).syncFlowFile(mainRepoPath, "_flows/shared/flow.yaml");
+        verify(kestraFlowFileService).syncFlowFile(featureRepoPath, "_flows/shared/flow.yaml");
+        verify(kestraFlowFileService).syncFlowFile(featureRepoPath, "_flows/only_feature/flow.yaml");
+        verify(indexService).onFlowSaved(eq(1L), eq("_flows/shared/flow.yaml"), any(), eq(mainFlowPath));
+        verify(indexService).onFlowSaved(eq(1L), eq("_flows/shared/flow.yaml"), any(), eq(featureFlowPath));
+        verify(indexService).onFlowSaved(eq(1L), eq("_flows/only_feature/flow.yaml"), any(), eq(onlyFeatureFlowPath));
     }
 }

@@ -1,5 +1,6 @@
 package com.wbdata.offline.repo.service;
 
+import com.wbdata.offline.config.OfflineBranchContext;
 import com.wbdata.offline.config.OfflineProperties;
 import com.wbdata.offline.repo.dto.BranchItemResponse;
 import com.wbdata.offline.repo.dto.BranchListResponse;
@@ -11,20 +12,31 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
- * 分支管理实现：列表（本地+远程合并）、创建、切换、合并（含冲突回滚）、删除。
+ * 分支管理实现：列表（本地+远程合并）、基于 worktree 创建、按需检出切换、合并（含冲突回滚）、从 main 同步与删除。
  * 方法不带锁；锁由入口 {@link GitCommandService} 在调用处获取。
  */
 @Slf4j
 class GitBranchOperations extends GitRepositoryOperations {
 
+    record MergeResult(String targetBranch, Path worktreePath) {
+    }
+
+    record SyncResult(String targetBranch, Path worktreePath, boolean upToDate, String headCommitId) {
+    }
+
     private final GitWorkingTreeStatus workingTreeStatus = new GitWorkingTreeStatus();
     private final OfflineGitRemotePort gitRemotePort;
+    private final GitWorktreeManager worktreeManager;
 
-    GitBranchOperations(OfflineProperties offlineProperties, OfflineGitRemotePort gitRemotePort) {
+    GitBranchOperations(OfflineProperties offlineProperties,
+                        OfflineGitRemotePort gitRemotePort,
+                        GitWorktreeManager worktreeManager) {
         super(offlineProperties);
         this.gitRemotePort = gitRemotePort;
+        this.worktreeManager = worktreeManager;
     }
 
     private void ensureClean(Path repoPath) {
@@ -32,7 +44,7 @@ class GitBranchOperations extends GitRepositoryOperations {
     }
 
     List<String> listRemoteBranchNames(Long groupId) {
-        Path repoPath = repoPath(groupId);
+        Path repoPath = primaryRepoPath(groupId);
         ensureRepoExists(repoPath);
         if (getCurrentRemote(repoPath) == null) {
             return List.of();
@@ -63,10 +75,13 @@ class GitBranchOperations extends GitRepositoryOperations {
     }
 
     BranchListResponse listBranches(Long groupId) {
-        Path repoPath = repoPath(groupId);
+        Path repoPath = primaryRepoPath(groupId);
         ensureRepoExists(repoPath);
 
-        String currentBranch = getCurrentBranch(repoPath);
+        String activeBranch = OfflineBranchContext.currentBranch(groupId);
+        if (activeBranch == null) {
+            activeBranch = getCurrentBranch(repoPath);
+        }
         Map<String, MutableBranch> branches = new LinkedHashMap<>();
 
         String localOutput = runGit(repoPath, "for-each-ref", "--format=%(refname:short)|%(upstream:short)", "refs/heads");
@@ -76,7 +91,7 @@ class GitBranchOperations extends GitRepositoryOperations {
             String upstream = parts.length > 1 && !parts[1].isBlank() ? parts[1].trim() : null;
             MutableBranch branch = branches.computeIfAbsent(name, MutableBranch::new);
             branch.local = true;
-            branch.current = name.equals(currentBranch);
+            branch.current = name.equals(activeBranch);
             branch.trackingBranch = upstream;
         }
 
@@ -97,58 +112,111 @@ class GitBranchOperations extends GitRepositoryOperations {
         return new BranchListResponse(items);
     }
 
-    String createBranch(Long groupId, String name, String baseBranch) {
-        Path repoPath = repoPath(groupId);
-        ensureRepoExists(repoPath);
-        validateBranchName(repoPath, name);
-        validateBranchName(repoPath, baseBranch);
-        ensureClean(repoPath);
-
-        switchToExistingOrRemote(repoPath, groupId, baseBranch);
-        runGit(repoPath, "switch", "-c", name);
-        return name;
+    Path createBranch(Long groupId, String name, String baseBranch) {
+        return worktreeManager.createBranchWorktree(groupId, name, baseBranch);
     }
 
-    String switchBranch(Long groupId, String branch) {
-        Path repoPath = repoPath(groupId);
-        ensureRepoExists(repoPath);
-        validateBranchName(repoPath, branch);
-        ensureClean(repoPath);
-
-        switchToExistingOrRemote(repoPath, groupId, branch);
-        return branch;
+    Path switchBranch(Long groupId, String branch) {
+        return worktreeManager.resolveOrCreateWorktree(groupId, branch);
     }
 
-    String mergeBranch(Long groupId, String source, String target) {
-        Path repoPath = repoPath(groupId);
-        ensureRepoExists(repoPath);
-        validateBranchName(repoPath, source);
-        validateBranchName(repoPath, target);
-        ensureClean(repoPath);
+    MergeResult mergeBranch(Long groupId, String source, String target) {
+        Path primaryRepo = primaryRepoPath(groupId);
+        ensureRepoExists(primaryRepo);
+        validateBranchName(primaryRepo, source);
+        validateBranchName(primaryRepo, target);
 
-        String originalBranch = getCurrentBranch(repoPath);
-        String sourceRef = resolveMergeSourceRef(repoPath, groupId, source);
+        String sourceRef = resolveMergeSourceRef(primaryRepo, groupId, source);
+        Path targetWorktree = worktreeManager.resolveOrCreateWorktree(groupId, target);
+        ensureClean(targetWorktree);
+
         try {
-            switchToExistingOrRemote(repoPath, groupId, target);
-            runGit(repoPath, "merge", sourceRef);
-            if (originalBranch != null && !originalBranch.isBlank() && !originalBranch.equals(target)) {
-                switchToExistingOrRemote(repoPath, groupId, originalBranch);
-            }
-            return target;
+            runGit(targetWorktree, "merge", "--no-edit", sourceRef);
+            return new MergeResult(target, targetWorktree);
         } catch (GitException ex) {
             try {
-                runGit(repoPath, "merge", "--abort");
+                runGit(targetWorktree, "merge", "--abort");
             } catch (GitException ignored) {
                 // No merge in progress or abort already completed.
             }
-            if (originalBranch != null && !originalBranch.isBlank()) {
-                try {
-                    runGit(repoPath, "switch", originalBranch);
-                } catch (GitException restoreEx) {
-                    throw new ResponseStatusException(HttpStatus.CONFLICT, "合并后恢复分支失败，请手动检查仓库状态");
-                }
-            }
             throw new ResponseStatusException(HttpStatus.CONFLICT, "合并冲突，请在本地解决后重新推送");
+        }
+    }
+
+    SyncResult syncFromMain(Long groupId, String targetBranch) {
+        if (targetBranch == null || targetBranch.isBlank() || OfflineBranchContext.MAIN_BRANCH.equals(targetBranch.trim())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前已在 main 分支，无需同步");
+        }
+        String normalizedTarget = targetBranch.trim();
+        Path primaryRepo = primaryRepoPath(groupId);
+        ensureRepoExists(primaryRepo);
+        validateBranchName(primaryRepo, normalizedTarget);
+
+        Path targetWorktree = worktreeManager.resolveOrCreateWorktree(groupId, normalizedTarget);
+        ensureClean(targetWorktree);
+
+        String mainRef = resolveMainSyncSourceRef(primaryRepo, groupId);
+        String beforeHead = tryRevParse(targetWorktree, "HEAD");
+        try {
+            runGit(targetWorktree, "merge", "--no-edit", mainRef);
+        } catch (GitException ex) {
+            try {
+                runGit(targetWorktree, "merge", "--abort");
+            } catch (GitException ignored) {
+                // No merge in progress.
+            }
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "与 main 分支存在合并冲突，请在远端 Git 平台（PR/MR）或本地解决冲突后重新推送"
+            );
+        }
+        String afterHead = tryRevParse(targetWorktree, "HEAD");
+        boolean upToDate = Objects.equals(beforeHead, afterHead);
+        return new SyncResult(normalizedTarget, targetWorktree, upToDate, afterHead);
+    }
+
+    private String resolveMainSyncSourceRef(Path primaryRepo, Long groupId) {
+        if (getCurrentRemote(primaryRepo) != null) {
+            try {
+                runRemoteGit(primaryRepo, gitRemotePort, groupId,
+                        "fetch", "origin", "main:refs/remotes/origin/main");
+            } catch (GitException ignored) {
+                // Fall back to local/cached refs.
+            }
+        }
+        boolean hasLocalMain = localBranchExists(primaryRepo, OfflineBranchContext.MAIN_BRANCH);
+        boolean hasRemoteMain = remoteBranchExists(primaryRepo, OfflineBranchContext.MAIN_BRANCH);
+        if (hasLocalMain && hasRemoteMain) {
+            String localSha = tryRevParse(primaryRepo, "refs/heads/main");
+            String remoteSha = tryRevParse(primaryRepo, "refs/remotes/origin/main");
+            if (!Objects.equals(localSha, remoteSha) && isAncestor(primaryRepo, "refs/heads/main", "refs/remotes/origin/main")) {
+                return "refs/remotes/origin/main";
+            }
+            return "refs/heads/main";
+        }
+        if (hasLocalMain) {
+            return "refs/heads/main";
+        }
+        if (hasRemoteMain) {
+            return "refs/remotes/origin/main";
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "未找到 main 分支，无法同步");
+    }
+
+    private boolean isAncestor(Path repoPath, String ancestorRef, String descendantRef) {
+        try {
+            runGit(repoPath, "merge-base", "--is-ancestor", ancestorRef, descendantRef);
+            return true;
+        } catch (GitException ex) {
+            return false;
+        }
+    }
+
+    private String tryRevParse(Path repoPath, String ref) {
+        try {
+            return runGit(repoPath, "rev-parse", ref).trim();
+        } catch (GitException ex) {
+            return null;
         }
     }
 
@@ -168,27 +236,23 @@ class GitBranchOperations extends GitRepositoryOperations {
     }
 
     void deleteBranch(Long groupId, String branch, boolean force) {
-        Path repoPath = repoPath(groupId);
-        ensureRepoExists(repoPath);
-        validateBranchName(repoPath, branch);
+        Path primaryRepo = primaryRepoPath(groupId);
+        ensureRepoExists(primaryRepo);
+        validateBranchName(primaryRepo, branch);
 
-        String currentBranch = getCurrentBranch(repoPath);
-        if (branch.equals(currentBranch)) {
+        String activeBranch = OfflineBranchContext.currentBranch(groupId);
+        if (activeBranch == null) {
+            activeBranch = getCurrentBranch(primaryRepo);
+        }
+        if (branch.equals(activeBranch)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不能删除当前分支");
         }
-        if ("main".equals(branch)) {
+        if (OfflineBranchContext.MAIN_BRANCH.equals(branch)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不能删除 main 分支");
         }
 
-        runGit(repoPath, "branch", force ? "-D" : "-d", branch);
-    }
-
-    private void switchToExistingOrRemote(Path repoPath, Long groupId, String branch) {
-        if (localBranchExists(repoPath, branch)) {
-            runGit(repoPath, "switch", branch);
-            return;
-        }
-        checkoutRemoteTrackingBranch(repoPath, groupId, branch);
+        worktreeManager.removeBranchWorktree(groupId, branch, force, workingTreeStatus);
+        runGit(primaryRepo, "branch", force ? "-D" : "-d", branch);
     }
 
     private boolean localBranchExists(Path repoPath, String branch) {
@@ -207,11 +271,6 @@ class GitBranchOperations extends GitRepositoryOperations {
         } catch (GitException ex) {
             return false;
         }
-    }
-
-    private void checkoutRemoteTrackingBranch(Path repoPath, Long groupId, String branch) {
-        runRemoteGit(repoPath, gitRemotePort, groupId, "fetch", "origin", branch + ":refs/remotes/origin/" + branch);
-        runGit(repoPath, "switch", "--track", "-c", branch, "origin/" + branch);
     }
 
     private String stripOrigin(String remoteName) {

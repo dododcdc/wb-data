@@ -29,7 +29,7 @@ public class OfflineRepoStatusService {
 
     public Set<String> listDirtyFlowPaths(Long groupId) {
         Path repoPath = offlineProperties.resolveRepoPath(groupId);
-        if (!Files.isDirectory(repoPath) || !Files.isDirectory(repoPath.resolve(".git"))) {
+        if (!Files.isDirectory(repoPath) || !OfflineProperties.isGitRepoInitialized(repoPath)) {
             return Set.of();
         }
         String porcelain = runGitCommandRaw(repoPath, "status", "--porcelain");
@@ -65,7 +65,7 @@ public class OfflineRepoStatusService {
             );
         }
 
-        boolean gitInitialized = Files.isDirectory(repoPath.resolve(".git"));
+        boolean gitInitialized = OfflineProperties.isGitRepoInitialized(repoPath);
         if (!gitInitialized) {
             return new OfflineRepoStatusResponse(
                     groupId,

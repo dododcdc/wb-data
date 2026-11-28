@@ -228,7 +228,7 @@ class GitCommandServiceBranchTest {
     }
 
     @Test
-    void createBranch_rejectsDirtyWorkingTreeWithFlowSummary() throws Exception {
+    void mergeBranch_rejectsDirtyTargetWorkingTreeWithFlowSummary() throws Exception {
         OfflineProperties properties = properties();
         Path repo = properties.resolveRepoPath(1L);
         initRepo(repo);
@@ -240,6 +240,14 @@ class GitCommandServiceBranchTest {
         write(repo, "README.md", "hello\n");
         git(repo, "add", "-A");
         git(repo, "commit", "-m", "init");
+
+        GitCommandService svc = service(properties);
+        svc.createBranch(1L, "feature/test", "main");
+        Path featureWt = worktreeManager(properties).findExistingWorktree(1L, "feature/test").orElseThrow();
+        write(featureWt, "_flows/example/flow.yaml", "id: committed-on-feature\n");
+        git(featureWt, "add", "-A");
+        git(featureWt, "commit", "-m", "feature commit");
+
         write(repo, "_flows/example/flow.yaml", "id: changed\n");
         write(repo, "_flows/with-layout/.layout.json", "{\"node_1\":{\"x\":1,\"y\":2}}\n");
         write(repo, "_flows/with-parameters/.parameters.json", "{\"groupVersion\":2}\n");
@@ -248,7 +256,7 @@ class GitCommandServiceBranchTest {
         write(repo, "README.md", "changed\n");
 
         DirtyWorkingTreeException ex = assertThrows(DirtyWorkingTreeException.class,
-                () -> service(properties).createBranch(1L, "feature/test", "main"));
+                () -> svc.mergeBranch(1L, "feature/test", "main"));
 
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(ex.getReason()).isEqualTo("工作区有未提交改动");
@@ -272,7 +280,7 @@ class GitCommandServiceBranchTest {
     }
 
     @Test
-    void createBranch_marksDeletedFlowAsDeletedInDirtySummary() throws Exception {
+    void syncFromMain_marksDeletedFlowAsDeletedInDirtySummary() throws Exception {
         OfflineProperties properties = properties();
         Path repo = properties.resolveRepoPath(1L);
         initRepo(repo);
@@ -280,12 +288,16 @@ class GitCommandServiceBranchTest {
         write(repo, "_flows/modified/flow.yaml", "id: modified\n");
         git(repo, "add", "-A");
         git(repo, "commit", "-m", "init");
-        Files.delete(repo.resolve("_flows/deleted/flow.yaml"));
-        write(repo, "_flows/modified/flow.yaml", "id: changed\n");
-        write(repo, "_flows/added/flow.yaml", "id: added\n");
+
+        GitCommandService svc = service(properties);
+        svc.createBranch(1L, "feature/test", "main");
+        Path featureWt = worktreeManager(properties).findExistingWorktree(1L, "feature/test").orElseThrow();
+        Files.delete(featureWt.resolve("_flows/deleted/flow.yaml"));
+        write(featureWt, "_flows/modified/flow.yaml", "id: changed\n");
+        write(featureWt, "_flows/added/flow.yaml", "id: added\n");
 
         DirtyWorkingTreeException ex = assertThrows(DirtyWorkingTreeException.class,
-                () -> service(properties).createBranch(1L, "feature/test", "main"));
+                () -> svc.syncFromMain(1L, "feature/test"));
 
         assertThat(ex.details().changedFlowDetails())
                 .extracting("path", "status")
@@ -297,21 +309,25 @@ class GitCommandServiceBranchTest {
     }
 
     @Test
-    void createBranch_switchesToNewBranchWhenClean() throws Exception {
+    void createBranch_createsIsolatedWorktreeEvenWhenMainHasUncommittedChanges() throws Exception {
         OfflineProperties properties = properties();
         Path repo = properties.resolveRepoPath(1L);
         initRepo(repo);
         write(repo, "_flows/example/flow.yaml", "id: example\n");
         git(repo, "add", "-A");
         git(repo, "commit", "-m", "init");
+        write(repo, "_flows/example/flow.yaml", "id: uncommitted-on-main\n");
 
         service(properties).createBranch(1L, "feature/test", "main");
 
-        assertThat(git(repo, "branch", "--show-current")).isEqualTo("feature/test");
+        assertThat(git(repo, "branch", "--show-current")).isEqualTo("main");
+        Path featureWt = worktreeManager(properties).findExistingWorktree(1L, "feature/test").orElseThrow();
+        assertThat(git(featureWt, "branch", "--show-current")).isEqualTo("feature/test");
+        assertThat(Files.readString(featureWt.resolve("_flows/example/flow.yaml"))).isEqualTo("id: example\n");
     }
 
     @Test
-    void switchBranch_createsLocalTrackingBranchForRemoteOnlyBranch() throws Exception {
+    void switchBranch_createsLocalTrackingWorktreeWithoutTouchingMainCheckout() throws Exception {
         OfflineProperties properties = properties();
         Path repo = properties.resolveRepoPath(1L);
         Path remote = tempDir.resolve("remote.git");
@@ -321,8 +337,10 @@ class GitCommandServiceBranchTest {
 
         service(properties).switchBranch(1L, "feature/remote-only");
 
-        assertThat(git(repo, "branch", "--show-current")).isEqualTo("feature/remote-only");
-        assertThat(git(repo, "rev-parse", "--abbrev-ref", "@{upstream}")).isEqualTo("origin/feature/remote-only");
+        assertThat(git(repo, "branch", "--show-current")).isEqualTo("main");
+        Path remoteWt = worktreeManager(properties).findExistingWorktree(1L, "feature/remote-only").orElseThrow();
+        assertThat(git(remoteWt, "branch", "--show-current")).isEqualTo("feature/remote-only");
+        assertThat(git(remoteWt, "rev-parse", "--abbrev-ref", "@{upstream}")).isEqualTo("origin/feature/remote-only");
     }
 
     @Test
@@ -341,7 +359,7 @@ class GitCommandServiceBranchTest {
     }
 
     @Test
-    void mergeBranch_restoresOriginalActiveBranchOnSuccess() throws Exception {
+    void mergeBranch_updatesTargetWithoutDisturbingFeatureWorktree() throws Exception {
         OfflineProperties properties = properties();
         Path repo = properties.resolveRepoPath(1L);
         initRepo(repo);
@@ -349,20 +367,58 @@ class GitCommandServiceBranchTest {
         git(repo, "add", "-A");
         git(repo, "commit", "-m", "init");
 
-        // Create feature branch and switch to it
-        git(repo, "switch", "-c", "feature/my-feature");
-        write(repo, "_flows/example/flow.yaml", "id: changed-in-feature\n");
-        git(repo, "add", "-A");
-        git(repo, "commit", "-m", "feature change");
+        GitCommandService svc = service(properties);
+        svc.createBranch(1L, "feature/my-feature", "main");
+        Path featureWt = worktreeManager(properties).findExistingWorktree(1L, "feature/my-feature").orElseThrow();
+        write(featureWt, "_flows/example/flow.yaml", "id: changed-in-feature\n");
+        git(featureWt, "add", "-A");
+        git(featureWt, "commit", "-m", "feature change");
 
-        // Merge feature/my-feature into main, while current branch is feature/my-feature
-        service(properties).mergeBranch(1L, "feature/my-feature", "main");
+        svc.mergeBranch(1L, "feature/my-feature", "main");
 
-        // Original active branch feature/my-feature should be restored after successful merge
-        assertThat(git(repo, "branch", "--show-current")).isEqualTo("feature/my-feature");
-        // Verify main has the merged changes
-        git(repo, "switch", "main");
+        assertThat(git(featureWt, "branch", "--show-current")).isEqualTo("feature/my-feature");
+        assertThat(git(repo, "branch", "--show-current")).isEqualTo("main");
         assertThat(Files.readString(repo.resolve("_flows/example/flow.yaml"))).contains("id: changed-in-feature");
+    }
+
+    @Test
+    void concurrentWorktreesAllowHotfixMergeToMainAndSyncFromMainWithoutConflict() throws Exception {
+        OfflineProperties properties = properties();
+        Path repo = properties.resolveRepoPath(1L);
+        initRepo(repo);
+        write(repo, "_flows/a/flow.yaml", "id: a\n");
+        write(repo, "_flows/b/flow.yaml", "id: b\n");
+        git(repo, "add", "-A");
+        git(repo, "commit", "-m", "init");
+
+        GitCommandService svc = service(properties);
+        svc.createBranch(1L, "feature/a", "main");
+        svc.createBranch(1L, "hotfix/b", "main");
+
+        Path featureAWt = worktreeManager(properties).findExistingWorktree(1L, "feature/a").orElseThrow();
+        Path hotfixBWt = worktreeManager(properties).findExistingWorktree(1L, "hotfix/b").orElseThrow();
+
+        // Developer leaves dirty edit in feature/a while hotfix/b commits & merges into main
+        write(featureAWt, "_flows/a/flow.yaml", "id: a-wip-uncommitted\n");
+        write(hotfixBWt, "_flows/b/flow.yaml", "id: b-hotfix\n");
+        git(hotfixBWt, "add", "-A");
+        git(hotfixBWt, "commit", "-m", "hotfix b");
+
+        svc.mergeBranch(1L, "hotfix/b", "main");
+        assertThat(Files.readString(repo.resolve("_flows/b/flow.yaml"))).isEqualTo("id: b-hotfix\n");
+        assertThat(Files.readString(featureAWt.resolve("_flows/a/flow.yaml"))).isEqualTo("id: a-wip-uncommitted\n");
+
+        // Commit feature/a work and sync latest hotfix from main
+        git(featureAWt, "add", "-A");
+        git(featureAWt, "commit", "-m", "commit feature a");
+
+        var syncRes = svc.syncFromMain(1L, "feature/a");
+        assertThat(syncRes.upToDate()).isFalse();
+        assertThat(Files.readString(featureAWt.resolve("_flows/b/flow.yaml"))).isEqualTo("id: b-hotfix\n");
+        assertThat(Files.readString(featureAWt.resolve("_flows/a/flow.yaml"))).isEqualTo("id: a-wip-uncommitted\n");
+
+        var secondSync = svc.syncFromMain(1L, "feature/a");
+        assertThat(secondSync.upToDate()).isTrue();
     }
 
     @Test
@@ -382,7 +438,7 @@ class GitCommandServiceBranchTest {
     }
 
     @Test
-    void deleteBranch_refusesCurrentBranchAndMain() throws Exception {
+    void deleteBranch_refusesActiveRequestBranchAndMainAndRemovesDetachedWorktree() throws Exception {
         OfflineProperties properties = properties();
         Path repo = properties.resolveRepoPath(1L);
         initRepo(repo);
@@ -390,18 +446,33 @@ class GitCommandServiceBranchTest {
         git(repo, "add", "-A");
         git(repo, "commit", "-m", "init");
 
-        ResponseStatusException current = assertThrows(ResponseStatusException.class,
-                () -> service(properties).deleteBranch(1L, "main", false));
-
-        assertThat(current.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(current.getReason()).contains("当前分支");
-
-        git(repo, "switch", "-c", "feature/test");
+        GitCommandService svc = service(properties);
         ResponseStatusException main = assertThrows(ResponseStatusException.class,
-                () -> service(properties).deleteBranch(1L, "main", false));
-
+                () -> svc.deleteBranch(1L, "main", false));
         assertThat(main.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(main.getReason()).contains("main");
+
+        svc.createBranch(1L, "feature/test", "main");
+        Path featureWt = worktreeManager(properties).findExistingWorktree(1L, "feature/test").orElseThrow();
+        assertThat(Files.exists(featureWt)).isTrue();
+
+        com.wbdata.offline.config.OfflineBranchContext.withWorkspace(1L, "feature/test", featureWt, () -> {
+            ResponseStatusException current = assertThrows(ResponseStatusException.class,
+                    () -> svc.deleteBranch(1L, "feature/test", false));
+            assertThat(current.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(current.getReason()).contains("当前分支");
+        });
+
+        svc.deleteBranch(1L, "feature/test", false);
+        assertThat(worktreeManager(properties).findExistingWorktree(1L, "feature/test")).isEmpty();
+        assertThat(Files.exists(featureWt)).isFalse();
+    }
+
+    private GitWorktreeManager worktreeManager(OfflineProperties properties) {
+        return new GitWorktreeManager(
+                properties,
+                Mockito.mock(OfflineGitRemotePort.class),
+                new RepoLockManager()
+        );
     }
 
     private GitCommandService service(OfflineProperties properties) {

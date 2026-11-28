@@ -56,6 +56,10 @@ abstract class GitRepositoryOperations {
         return offlineProperties.resolveRepoPath(groupId);
     }
 
+    protected Path primaryRepoPath(Long groupId) {
+        return offlineProperties.resolvePrimaryRepoPath(groupId);
+    }
+
     protected void ensureRepoExists(Path repoPath) {
         if (!Files.exists(repoPath)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "本地仓库不存在，请先创建项目组");

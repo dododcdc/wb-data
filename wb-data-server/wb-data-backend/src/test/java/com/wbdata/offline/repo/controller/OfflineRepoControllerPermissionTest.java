@@ -59,7 +59,7 @@ class OfflineRepoControllerPermissionTest {
     }
 
     @Test
-    void branchList_requiresOfflineRead_andMutationsRequireGroupSettings() throws Exception {
+    void branchListAndSwitch_requireOfflineRead_createAndSyncRequireOfflineWrite_mergeAndDeleteRequireGroupSettings() throws Exception {
         Method list = OfflineRepoController.class.getMethod(
                 "listBranches",
                 GroupAuthContext.class
@@ -74,6 +74,10 @@ class OfflineRepoControllerPermissionTest {
                 GroupAuthContext.class,
                 SwitchBranchRequest.class
         );
+        Method syncFromMain = OfflineRepoController.class.getMethod(
+                "syncFromMain",
+                GroupAuthContext.class
+        );
         Method merge = OfflineRepoController.class.getMethod(
                 "mergeBranch",
                 GroupAuthContext.class,
@@ -86,8 +90,9 @@ class OfflineRepoControllerPermissionTest {
         );
 
         assertThat(((RequireGroupAuth) list.getParameters()[0].getAnnotations()[0]).value()).isEqualTo(Permission.OFFLINE_READ);
-        assertThat(((RequireGroupAuth) create.getParameters()[0].getAnnotations()[0]).value()).isEqualTo(Permission.GROUP_SETTINGS);
-        assertThat(((RequireGroupAuth) switchBranch.getParameters()[0].getAnnotations()[0]).value()).isEqualTo(Permission.GROUP_SETTINGS);
+        assertThat(((RequireGroupAuth) create.getParameters()[0].getAnnotations()[0]).value()).isEqualTo(Permission.OFFLINE_WRITE);
+        assertThat(((RequireGroupAuth) switchBranch.getParameters()[0].getAnnotations()[0]).value()).isEqualTo(Permission.OFFLINE_READ);
+        assertThat(((RequireGroupAuth) syncFromMain.getParameters()[0].getAnnotations()[0]).value()).isEqualTo(Permission.OFFLINE_WRITE);
         assertThat(((RequireGroupAuth) merge.getParameters()[0].getAnnotations()[0]).value()).isEqualTo(Permission.GROUP_SETTINGS);
         assertThat(((RequireGroupAuth) delete.getParameters()[0].getAnnotations()[0]).value()).isEqualTo(Permission.GROUP_SETTINGS);
     }

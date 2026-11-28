@@ -7,6 +7,7 @@ import com.wbdata.auth.enums.Permission;
 import com.wbdata.auth.service.AuthContextService;
 import com.wbdata.auth.service.AuthSession;
 import com.wbdata.common.Result;
+import com.wbdata.offline.config.OfflineBranchGuard;
 import com.wbdata.group.dto.AssetOwnerSummaryResponse;
 import com.wbdata.group.dto.TransferOwnerResponse;
 import com.wbdata.group.service.GroupOwnerService;
@@ -34,6 +35,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -60,6 +62,19 @@ public class OfflineFlowController {
     private OfflineFlowSnapshotService offlineFlowSnapshotService;
     private OfflineFlowOwnerService offlineFlowOwnerService;
     private GroupOwnerService groupOwnerService;
+    @Nullable
+    private OfflineBranchGuard offlineBranchGuard;
+
+    @Autowired(required = false)
+    public void setOfflineBranchGuard(@Nullable OfflineBranchGuard offlineBranchGuard) {
+        this.offlineBranchGuard = offlineBranchGuard;
+    }
+
+    private void assertCanWriteCurrentBranch(GroupAuthContext context) {
+        if (offlineBranchGuard != null) {
+            offlineBranchGuard.assertCanWriteCurrentBranch(context);
+        }
+    }
 
     public OfflineFlowController(OfflineFlowContentService offlineFlowContentService,
                                  OfflineFlowDocumentService offlineFlowDocumentService,
@@ -143,6 +158,7 @@ public class OfflineFlowController {
     @PutMapping("/content")
     public Result<OfflineFlowContentResponse> saveFlowContent(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
                                                               @Valid @RequestBody SaveOfflineFlowRequest request) {
+        assertCanWriteCurrentBranch(context);
         SaveOfflineFlowRequest normalizedRequest = new SaveOfflineFlowRequest(
                 context.groupId(),
                 request.path(),
@@ -172,6 +188,7 @@ public class OfflineFlowController {
     @PutMapping("/document")
     public Result<OfflineFlowDocumentResponse> saveFlowDocument(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
                                                                 @Valid @RequestBody SaveOfflineFlowDocumentRequest request) {
+        assertCanWriteCurrentBranch(context);
         SaveOfflineFlowDocumentRequest normalizedRequest = new SaveOfflineFlowDocumentRequest(
                 context.groupId(),
                 request.path(),
@@ -214,6 +231,7 @@ public class OfflineFlowController {
     public Result<RollbackOfflineFlowResponse> rollbackFlow(
             @RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
             @Valid @RequestBody RollbackOfflineFlowRequest request) {
+        assertCanWriteCurrentBranch(context);
         if (offlineFlowSnapshotService == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "版本服务未启用");
         }
@@ -243,6 +261,7 @@ public class OfflineFlowController {
     @DeleteMapping
     public Result<Void> deleteFlow(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
                                    @Valid @RequestBody DeleteOfflineFlowRequest request) {
+        assertCanWriteCurrentBranch(context);
         return offlineFlowDependencyService.withDependencyGraphLock(() -> {
             offlineFlowDependencyService.assertDeletionAllowed(
                     context.groupId(), request.path(), authContextService.listAccessibleGroups(context.user()));
@@ -255,6 +274,7 @@ public class OfflineFlowController {
     @PostMapping("/move")
     public Result<Void> moveFlow(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
                                  @Valid @RequestBody MoveOfflineFlowRequest request) {
+        assertCanWriteCurrentBranch(context);
         offlineFlowContentService.moveFlow(context.groupId(), request.path(), request.newPath());
         return Result.success(null);
     }
@@ -274,6 +294,7 @@ public class OfflineFlowController {
     public Result<TransferOwnerResponse> transferOwner(
             @RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
             @Valid @RequestBody TransferOfflineFlowOwnerRequest request) {
+        assertCanWriteCurrentBranch(context);
         if (offlineFlowOwnerService == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "负责人转移服务未启用");
         }

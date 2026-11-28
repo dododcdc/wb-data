@@ -7,6 +7,9 @@ import com.wbdata.auth.enums.Permission;
 import com.wbdata.auth.service.AuthContextService;
 import com.wbdata.auth.service.AuthSession;
 import com.wbdata.common.Result;
+import com.wbdata.offline.config.OfflineBranchContext;
+import com.wbdata.offline.config.OfflineBranchGuard;
+import com.wbdata.offline.repo.dto.SyncBranchResponse;
 import com.wbdata.offline.service.OfflineFlowDependencyService;
 import com.wbdata.offline.repo.dto.BranchListResponse;
 import com.wbdata.offline.repo.dto.CreateFolderRequest;
@@ -33,7 +36,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -55,6 +60,19 @@ public class OfflineRepoController {
     private final GitCommandService gitCommandService;
     private final OfflineFlowDependencyService offlineFlowDependencyService;
     private final AuthContextService authContextService;
+    @Nullable
+    private OfflineBranchGuard offlineBranchGuard;
+
+    @Autowired(required = false)
+    public void setOfflineBranchGuard(@Nullable OfflineBranchGuard offlineBranchGuard) {
+        this.offlineBranchGuard = offlineBranchGuard;
+    }
+
+    private void assertCanWriteCurrentBranch(GroupAuthContext context) {
+        if (offlineBranchGuard != null) {
+            offlineBranchGuard.assertCanWriteCurrentBranch(context);
+        }
+    }
 
     @Operation(summary = "获取项目组离线仓库状态")
     @GetMapping("/repo/status")
@@ -86,7 +104,7 @@ public class OfflineRepoController {
     @Operation(summary = "创建项目组离线仓库分支")
     @PostMapping("/repo/branch")
     public Result<Void> createBranch(
-            @RequireGroupAuth(Permission.GROUP_SETTINGS) GroupAuthContext context,
+            @RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
             @Valid @RequestBody CreateBranchRequest request
     ) {
         gitCommandService.createBranch(context.groupId(), request.name(), request.baseBranch());
@@ -96,11 +114,23 @@ public class OfflineRepoController {
     @Operation(summary = "切换项目组离线仓库分支")
     @PutMapping("/repo/branch/switch")
     public Result<Void> switchBranch(
-            @RequireGroupAuth(Permission.GROUP_SETTINGS) GroupAuthContext context,
+            @RequireGroupAuth(Permission.OFFLINE_READ) GroupAuthContext context,
             @Valid @RequestBody SwitchBranchRequest request
     ) {
         gitCommandService.switchBranch(context.groupId(), request.branch());
         return Result.success(null);
+    }
+
+    @Operation(summary = "从 main 分支同步最新改动到当前分支")
+    @PostMapping("/repo/branch/sync-main")
+    public Result<SyncBranchResponse> syncFromMain(
+            @RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context
+    ) {
+        String targetBranch = OfflineBranchContext.currentBranch(context.groupId());
+        if (targetBranch == null || targetBranch.isBlank()) {
+            targetBranch = gitCommandService.getCurrentBranch(context.groupId());
+        }
+        return Result.success(gitCommandService.syncFromMain(context.groupId(), targetBranch));
     }
 
     @Operation(summary = "合并项目组离线仓库分支")
@@ -129,6 +159,7 @@ public class OfflineRepoController {
             @RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
             @Valid @RequestBody CommitCurrentFlowRequest request
     ) {
+        assertCanWriteCurrentBranch(context);
         GitCommandService.CommitResult result = gitCommandService.commitCurrentFlow(
                 context.groupId(),
                 request.flowPath(),
@@ -154,6 +185,7 @@ public class OfflineRepoController {
             @RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
             @Valid @RequestBody PushCurrentFlowRequest request
     ) {
+        assertCanWriteCurrentBranch(context);
         GitCommandService.PushResult result = gitCommandService.pushCurrentFlow(
                 context.groupId(),
                 request.flowPath(),
@@ -204,6 +236,7 @@ public class OfflineRepoController {
     @PostMapping("/repo/folder")
     public Result<Void> createFolder(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
                                      @Valid @RequestBody CreateFolderRequest request) {
+        assertCanWriteCurrentBranch(context);
         offlineRepoTreeService.createFolder(new CreateFolderRequest(context.groupId(), request.path()));
         return Result.success(null);
     }
@@ -212,6 +245,7 @@ public class OfflineRepoController {
     @DeleteMapping("/repo/folder")
     public Result<Void> deleteFolder(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
                                      @Valid @RequestBody DeleteFolderRequest request) {
+        assertCanWriteCurrentBranch(context);
         return offlineFlowDependencyService.withDependencyGraphLock(() -> {
             offlineFlowDependencyService.assertFolderDeletionAllowed(
                     context.groupId(), request.path(), authContextService.listAccessibleGroups(context.user()));
@@ -224,6 +258,7 @@ public class OfflineRepoController {
     @PostMapping("/repo/folder/move")
     public Result<Void> moveFolder(@RequireGroupAuth(Permission.OFFLINE_WRITE) GroupAuthContext context,
                                    @Valid @RequestBody MoveFolderRequest request) {
+        assertCanWriteCurrentBranch(context);
         offlineRepoTreeService.moveFolder(context.groupId(), request.path(), request.newPath());
         return Result.success(null);
     }
